@@ -1,0 +1,29 @@
+name: Agent testimony from main
+
+on:
+  workflow_dispatch:
+    inputs:
+      testimony:
+        description: Témoignage libre rédigé par l’agent en français
+        required: true
+        type: string
+      source_commit:
+        description: Commit exact de main concerné par le témoignage
+        required: true
+        type: string
+
+jobs:
+  testimony:
+    name: Collect agent testimony from main
+    uses: ng-galien/ng-galien.github.io/.github/workflows/collect-agent-testimony-main.yml@main
+    with:
+      app_id: ${{ vars.BLOG_APP_ID }}
+      project_slug: trust
+      project_label: TRUST
+      categories_json: '["Agents", "TRUST"]'
+      tags_json: '["agent-testimony", "trust"]'
+      testimony: ${{ inputs.testimony }}
+      source_commit: ${{ inputs.source_commit }}
+      source_ref: main
+    secrets:
+      app_private_key: ${{ secrets.BLOG_APP_PRIVATE_KEY }}
