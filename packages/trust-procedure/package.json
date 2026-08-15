@@ -14,7 +14,7 @@
   },
   "files": ["src", "dist"],
   "scripts": {
-    "prebuild": "npm run build --workspace=@trust/gherkin",
+    "prebuild": "npm run build --workspace=@trust/operation",
     "build": "npm run clean && tsc -p tsconfig.json",
     "clean": "node --input-type=module -e \"import { rmSync } from 'node:fs'; rmSync('dist', { recursive: true, force: true })\"",
     "test:acceptance": "npm run build && vitest run acceptance",
@@ -22,9 +22,12 @@
   },
   "dependencies": {
     "@cucumber/messages": "^31.0.0",
-    "@trust/gherkin": "file:../trust-gherkin"
+    "@trust/gherkin": "file:../trust-gherkin",
+    "@trust/operation": "file:../trust-operation",
+    "jsonata": "^2.2.1"
   },
   "devDependencies": {
+    "@trust/runner": "file:../trust-runner",
     "@types/node": "^24.0.0",
     "typescript": "^5.7.2",
     "vitest": "^4.1.10"

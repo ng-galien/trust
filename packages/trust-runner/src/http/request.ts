@@ -21,7 +21,7 @@ export async function requestHttp(request: HttpRequest): Promise<HttpResponse> {
     method: request.method,
     ...(request.headers === undefined ? {} : { headers: request.headers }),
     ...(request.body === undefined ? {} : { body: request.body }),
-    redirect: "follow",
+    redirect: "error",
     signal: AbortSignal.timeout(request.timeoutMs ?? 30_000),
   });
   return {

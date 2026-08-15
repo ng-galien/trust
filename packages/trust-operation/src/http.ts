@@ -2,8 +2,11 @@ import type { JsonValue } from "./json.js";
 
 export type HttpFormat = "text" | "json";
 
-export interface HttpGet {
+export interface Http {
+  readonly method: "GET" | "POST";
   readonly url: { readonly environment: string };
+  readonly appendInput?: string;
+  readonly body?: "input-json";
   readonly format: HttpFormat;
 }
 

@@ -45,6 +45,7 @@ test("the server returns flat symbols when the client does not support hierarchy
   assert.deepEqual(symbols.map(({ name, containerName }) => ({ name, containerName })), [
     { name: "git.head-read", containerName: undefined },
     { name: "projectRoot", containerName: "git.head-read" },
+    { name: "project", containerName: "git.head-read" },
     { name: "head", containerName: "git.head-read" },
     { name: "status", containerName: "git.head-read" },
     { name: "headRevision", containerName: "git.head-read" },
@@ -162,6 +163,7 @@ async function assertValidCatalog(connection: MessageConnection): Promise<void> 
       });
       assert.deepEqual(symbols[0]?.children?.map(({ name, detail }) => ({ name, detail })), [
         { name: "projectRoot", detail: "Environment: directory" },
+        { name: "project", detail: "Input: reference one" },
         { name: "head", detail: "Step: shell" },
         { name: "status", detail: "Step: shell" },
         { name: "headRevision", detail: "Produced: reference one" },
@@ -172,8 +174,8 @@ async function assertValidCatalog(connection: MessageConnection): Promise<void> 
         end: { line: 7, character: 19 },
       });
       assert.deepEqual(symbols[0]?.children?.[1]?.selectionRange, {
-        start: { line: 14, character: 16 },
-        end: { line: 14, character: 20 },
+        start: { line: 10, character: 8 },
+        end: { line: 10, character: 15 },
       });
     }
   }

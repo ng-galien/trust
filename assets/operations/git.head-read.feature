@@ -6,6 +6,9 @@ Feature: Read Git HEAD and working tree
     Given Environment
       | name        | type |
       | projectRoot | directory |
+    And Input
+      | input   | type      | cardinality |
+      | project | reference | one         |
     And Produced fields
       | field        | type      | cardinality | domain                |
       | headRevision | reference | one         | any                   |
@@ -13,15 +16,15 @@ Feature: Read Git HEAD and working tree
 
   Scenario: Run
     When Shell "head" runs "git" with cwd from Environment "projectRoot"
-      | argument  |
-      | rev-parse |
-      | --verify  |
-      | HEAD      |
+      | argument  | source  |
+      | rev-parse | literal |
+      | --verify  | literal |
+      | HEAD      | literal |
     And Shell "status" runs "git" with cwd from Environment "projectRoot"
-      | argument                 |
-      | status                   |
-      | --porcelain=v1           |
-      | --untracked-files=normal |
+      | argument                 | source  |
+      | status                   | literal |
+      | --porcelain=v1           | literal |
+      | --untracked-files=normal | literal |
     Then Produce with JSONata
       """
       {

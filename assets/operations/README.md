@@ -1,176 +1,59 @@
-# TRUST Operation catalog — design direction
+# TRUST Operation catalog
 
-## Status
+An Operation describes how to call one external system and which typed fields that call produces.
+It does not define a Check, a Plan, qualification or an OpenTelemetry envelope.
 
-This document records the current design direction for TRUST Operations. It is a guide for the
-next iterations. It is not the grammar specification, the compiled contract, or an implementation
-plan.
+Every `.feature` in this directory is executable source for `@trust/operation`. The compiler emits
+one `CompiledOperation`; the runner executes only that compiled object.
 
-The direction comes from reducing the current Git, Jira and Maven examples to the information that
-is actually required to execute them and produce values usable by TRUST.
+## Closed language
 
-## Direction
+An Operation contains:
 
-TRUST uses one closed Gherkin DSL with two distinct Feature kinds:
+- one stable `@operation:<domain>.<action>` name and semantic version;
+- typed `Input` supplied by the Procedure Check;
+- typed `Environment` supplied by execution configuration;
+- ordered Shell, File-read or HTTP-GET steps;
+- one final JSONata expression;
+- the exact typed fields produced by that expression.
 
-- an **Operation Feature** describes how to produce values;
-- a **Procedure Feature** describes what Checks must establish from those values.
+The current value types are `string`, `number`, `instant` and `reference`. Cardinality is `one` or
+`many`. Environment values are `directory` or `url`.
 
-An Operation is reusable. A Procedure references an Operation by its stable name and does not
-repeat its inputs, produced fields or execution details.
+Shell arguments are structured. Each row is either `literal` or comes from one scalar Input. The
+runner never parses a shell command line. Exit code `0` is expected by default. An Operation may
+declare other expected exits and may require exact text to occur in their standard output or error
+output. An expected exit remains a step result and can produce fields. Any other exit interrupts
+the Operation before fields are produced. This distinction lets a failing test be an expected
+observation without mistaking a compilation or infrastructure error for that observation.
 
-Gherkin is the source language. The runner does not interpret Gherkin. The server compiles Gherkin
-into a `CompiledOperation`, hydrates its Input and Environment, and gives that object to the runner.
+HTTP GET can use an Environment URL directly or append one scalar Input as one encoded path
+segment. HTTP POST sends the complete typed Input as one JSON object and reads one JSON response.
+There is no authored header, body template or free URL interpolation. File read accepts one fixed
+relative path below a directory Environment.
 
-```text
-Operation Feature ──> compiled Operation ─┐
-                                         ├──> compiled Procedure revision
-Procedure Feature ───────────────────────┘
-
-compiled Operation + Input + Environment ──> runner ──> produced values
-```
-
-## Separation
-
-### Operation
-
-An Operation owns:
-
-- its stable name;
-- the Input values it requires;
-- the Environment keys it requires;
-- its ordered steps;
-- explicit failure conditions that differ from runner defaults;
-- its final `Produce with JSONata` expression;
-- the names, types and domains of the fields it produces.
-
-### Procedure
-
-A Procedure owns:
-
-- Plan context;
-- Scenarios and their dependencies;
-- Checks;
-- the mapping from Plan context to Operation Input;
-- predicates over fields produced by Operations;
-- Check reasons;
-- materialization of produced values into Plan context.
-
-The Procedure does not redeclare the Operation contract.
-
-### Operation package, runner and server
-
-The Operation package compiles and validates Operation Gherkin. The server resolves the compiled
-Operation and hydrates its Input and Environment. The runner executes its Steps.
-
-The runner and server own these technical concerns:
-
-- environment hydration and secret resolution;
-- path containment;
-- timeouts and size limits;
-- step default failure rules;
-- OTLP trace construction and correlation;
-- Fact construction from produced values;
-- Check qualification and verdicts.
-
-These concerns are not written into every Operation.
-
-## Operation language
-
-The current compiled language is intentionally small. It contains only the forms implemented by
-the compiler and represented by `CompiledOperation`.
-
-| Purpose | Closed vocabulary |
-| --- | --- |
-| Acquire data | `Shell`, `File` read, `HTTP` GET |
-| Decode content | `Text`, `JSON` |
-| Produce values | `Produce with JSONata` |
-
-### Stable step results
-
-Each step returns one stable shape:
+Every step result has one stable shape:
 
 ```text
-Shell -> exitCode, stdout, stderr
-File Text -> relativePath, string content
-File JSON -> relativePath, JSON content
-HTTP -> status, headers, body
+Shell     -> exitCode, stdout, stderr
+File Text -> relativePath, content
+File JSON -> relativePath, content
+HTTP      -> status, headers, body
 ```
 
-Every Shell working directory references an Environment field whose type is `directory`. The
-compiler translates that closed type to `type: string` and `format: trust-directory` in the compiled
-schema; it does not accept an arbitrary JSON value.
+`Produce with JSONata` sees `input`, `environment` and `steps`. It must return exactly the declared
+fields. The JSONata subset is closed by the compiler.
 
-A File path is canonical and relative to a `directory` Environment. Absolute paths, parent segments
-and backslashes are rejected by the compiler. The runner must still resolve links and prove that the
-resolved file remains inside the Environment directory.
+A field copied from `input` attests the admitted context used by the executed action. It does not
+claim that the external system independently re-observed that value. Step-derived fields attest
+the action result itself.
 
-An HTTP URL references an Environment field whose type is `url`. The current HTTP vocabulary is
-limited to GET and decodes the response as Text or JSON.
+## Catalog purpose
 
-### Default failures
+The software Operations exercise Git, Jira, Maven, Karate, Playwright, Docker, Kind, Kubernetes and
+trace reading. The healthcare, aviation and food Operations call simulated HTTP endpoints. They are
+language examples and runner smoke-test inputs, not claims that TRUST contains professional domain
+rules.
 
-- A non-zero Shell exit code fails the Operation by default.
-- A non-success HTTP status fails the Operation by default.
-- A response declared as JSON fails the Operation when its body is not valid JSON.
-
-### Produce
-
-One final JSONata expression sees:
-
-- `input`;
-- `environment`;
-- every named step result.
-
-It returns one object containing the values produced by the Operation. That object is returned as
-the action result and used by the runner to construct the Fact.
-
-The current JSONata subset does not include regular-expression functions or literals. Regex support
-will be added only with a concrete Operation and fixtures; it will not introduce a separate Produce
-language.
-
-## Compilation and composition
-
-Composition happens between parsed and compiled definitions, never by textual inclusion of
-Gherkin files.
-
-When a Procedure is compiled, TRUST:
-
-1. resolves every referenced Operation;
-2. validates the supplied Input and every referenced produced field;
-3. incorporates the exact compiled Operations into the Procedure revision.
-
-The compiled Procedure is therefore autonomous. A later change to an Operation does not silently
-change an existing Procedure revision. Runtime execution does not require the runner to query an
-Operation registry.
-
-Source autonomy applies to the source package rather than to one Procedure file: the package
-contains the Procedure Features and the Operation Features they reference.
-
-## Deliberate limits
-
-- The DSL is closed. Arbitrary natural-language steps are not executable.
-- Shell arguments remain structured; the runner does not invoke a shell parser.
-- Environment declarations contain typed fields, never secret values.
-- Input, Environment and produced fields compile directly to closed JSON Schema objects. Those
-  objects are the runtime contract; no parallel hand-maintained schema duplicates them.
-- OTLP envelopes, Fact metadata and Check verdicts are generated, not authored in Operations.
-- No additional operator is introduced without a concrete Operation that cannot be expressed
-  clearly with the existing vocabulary.
-
-## Next operators
-
-XML File decoding, File write and explicit failure conditions remain candidates. They are
-not part of the current grammar or `CompiledOperation`. Accepting a non-zero Shell exit is one such
-future condition; Maven verification is the reference example. Each addition requires a concrete
-Operation and its fixtures.
-
-## Current examples
-
-The catalogue contains executable Git, File and HTTP Operation Features. The neighboring Jira and
-Maven text files are exploratory examples used to derive later language additions; they are not
-valid Operation Gherkin and are not normative grammar.
-
-The next useful step is to use these compiled Operations from the minimal Procedure. Jira, Maven
-and deployment Operations can then expose missing language requirements without designing them in
-advance.
+An Operation is reusable. A compiled Procedure embeds the exact compiled Operations it uses, so a
+later catalog change cannot silently change an existing Procedure revision.

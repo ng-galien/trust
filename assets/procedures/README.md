@@ -1,37 +1,34 @@
-# TRUST procedure language
+# TRUST Procedure catalog
 
-Every published `.feature` is autonomous and carries the mandatory `@trust-dsl:1` language tag. It
-declares the procedure roles, exact required Skill capabilities, stable typed ports, authentic
-observations, output projections, named Checks, bindings,
-qualification and semantic feedback. A Check uses one Skill capability. There is no complementary
-business catalog and no procedure configuration loaded when the server starts.
+A Procedure describes a Plan as typed context, Scenarios and Checks. A Check runs one named
+Operation, maps Plan context to its Input and qualifies the fields it produces. A Procedure never
+repeats the Operation's Input, Environment, execution steps or produced-field contract.
 
-The active product vocabulary is:
+The closed language is specified in [GRAMMAR.md](GRAMMAR.md).
 
-```text
-Feature publication
-  → exact capability requirements
-  → Plan + Sessions
-  → OPEN or SATISFIED Checks
-  → Skill capability + exact Action Contract
-  → authentic Facts
-  → VALIDATED or NOT_VALIDATED
-```
+## Current corpus
 
-The closed language is specified in [GRAMMAR.md](GRAMMAR.md). The current product slice is
-[01-defect-correction-multi-project.feature](01-defect-correction-multi-project.feature):
-ten non-polymorphic capabilities used by twelve Check templates and implemented by six autonomous
-Skills. Each capability is declared once in the Feature and may be reused by several named Checks with
-different local role-to-port bindings.
+The catalog deliberately exercises different sizes and domains:
 
-The dependency language is deliberately limited to Scenario prerequisites and typed observations
-read from named upstream Checks. New accepted Facts replace the current qualification and
-recursively reopen consumers without introducing another public state beyond `OPEN` and
-`SATISFIED`.
+- Git status: one Check;
+- mono-project Jira, Git and Maven change;
+- integration test with an OpenTelemetry trace marker;
+- Playwright user-interface test;
+- multi-project Red-Green, Maven, Docker, Kind and Kubernetes deployment;
+- simulated hospital patient admission;
+- simulated aircraft departure;
+- simulated food-batch release.
 
-Compilation and publication accept only the Feature source and source name. A Feature can be
-published and a Plan engaged before any Skill is registered. Skills later register exact claims for
-`(capability, actionContractDigest)`; registration is not authorization.
+The last three Procedures test language expressiveness outside software development. Their
+Operations use simulated endpoints. The Procedure language itself contains no healthcare,
+aviation, food or software-specific keyword.
 
-Compiler rejection examples live in public runtime acceptances. No parallel fixture manifest,
-business catalog or suite corpus is loaded by the compiler or runtime.
+## Compilation boundary
+
+`compileProcedure` receives one Procedure source and a catalog of compiled Operations. It resolves
+every referenced Operation, validates every Input binding and produced-field predicate, then embeds
+only the exact Operations used by the Procedure. The compiled revision is autonomous.
+
+The current TRUST runtime still consumes the previous Procedure artifact. Connecting
+`trust.compiled-procedure@3` to Plan engagement, Check hydration and qualification is a separate
+runtime-integration milestone and is intentionally not hidden inside this catalog work.

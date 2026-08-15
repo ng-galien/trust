@@ -27,6 +27,7 @@
       "name": "response",
       "type": "http",
       "http": {
+        "method": "GET",
         "url": {
           "environment": "serviceUrl"
         },

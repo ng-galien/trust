@@ -17,7 +17,8 @@
   "scripts": {
     "dev": "bun scripts/server.ts start",
     "build": "npm run build --workspaces --if-present",
-    "typecheck": "npm run typecheck --workspaces --if-present",
+    "check:dependencies": "node scripts/check-workspace-dependencies.mjs",
+    "typecheck": "npm run check:dependencies && npm run typecheck --workspaces --if-present",
     "test": "npm run test:acceptance",
     "test:acceptance": "npm run test:acceptance --workspaces --if-present && node --test acceptance/runtime-mcp-agent-loop.acceptance.test.mjs",
     "start": "npm --workspace @trust/runtime start"

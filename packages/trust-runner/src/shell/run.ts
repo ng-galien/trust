@@ -23,7 +23,11 @@ export class ShellError extends Error {
 const TIMEOUT_MS = 30_000;
 const MAX_OUTPUT_BYTES = 1_048_576;
 
-export async function runShell(shell: Shell, environment: JsonObject): Promise<ShellResult> {
+export async function runShell(
+  shell: Shell,
+  input: JsonObject,
+  environment: JsonObject,
+): Promise<ShellResult> {
   const directoryValue = environment[shell.cwd.environment];
   if (typeof directoryValue !== "string") {
     throw new ShellError(`Environment "${shell.cwd.environment}" must be a directory.`);
@@ -31,13 +35,21 @@ export async function runShell(shell: Shell, environment: JsonObject): Promise<S
   const directory = await realpath(directoryValue);
   let processHandle: ReturnType<typeof spawn>;
   try {
-    processHandle = spawn(shell.executable, shell.arguments, {
+    processHandle = spawn(shell.executable, shell.arguments.map((argument) => {
+      if (argument.kind === "literal") return argument.value;
+      const value = input[argument.input];
+      if (typeof value !== "string") {
+        throw new ShellError(`Input "${argument.input}" must be one string Shell argument.`);
+      }
+      return value;
+    }), {
       shell: false,
       cwd: directory,
       env: shellEnvironment(),
       stdio: ["ignore", "pipe", "pipe"],
     });
   } catch (error) {
+    if (error instanceof ShellError) throw error;
     throw new ShellError(`Cannot start Shell: ${shell.executable}.`, { cause: error });
   }
 
@@ -60,9 +72,14 @@ export async function runShell(shell: Shell, environment: JsonObject): Promise<S
     if (typeof exitCode !== "number") {
       throw new ShellError(`Shell ended without an exit code: ${shell.executable}.`);
     }
-    if (exitCode !== 0) {
+    const accepted = shell.acceptedExits.some((expected) =>
+      expected.code === exitCode
+      && (expected.stdoutContains === undefined || stdout.includes(expected.stdoutContains))
+      && (expected.stderrContains === undefined || stderr.includes(expected.stderrContains))
+    );
+    if (!accepted) {
       const detail = stderr.trim() || stdout.trim() || `exit ${exitCode}`;
-      throw new ShellError(`Shell "${shell.executable}" failed: ${detail}`);
+      throw new ShellError(`Shell "${shell.executable}" returned an unexpected exit: ${detail}`);
     }
     return Object.freeze({ exitCode, stdout, stderr });
   } catch (error) {

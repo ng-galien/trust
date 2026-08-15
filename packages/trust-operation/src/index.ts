@@ -15,10 +15,10 @@ export type {
 } from "./file-read.js";
 export type {
   HttpFormat,
-  HttpGet,
+  Http,
   HttpJsonResult,
   HttpTextResult,
-} from "./http-get.js";
+} from "./http.js";
 export type { JsonValue } from "./json.js";
 export type {
   CompiledOperation,
@@ -39,7 +39,7 @@ export type {
   ValueSchema,
   ShellStep,
 } from "./operation.js";
-export type { EnvironmentPath, Shell } from "./shell.js";
+export type { AcceptedShellExit, EnvironmentPath, Shell, ShellArgument } from "./shell.js";
 export type {
   OperationAnalysis,
   OperationCompilationErrorCode,

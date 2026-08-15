@@ -263,7 +263,12 @@ function compileParsedOperation(
   if (scenarios[0].tags.length !== 0) {
     fail(context, "invalid-operation", "Operation Scenario tags are outside the closed grammar", scenarios[0]);
   }
-  const run = parseRun(scenarios[0].steps, operationInterface.environment, context);
+  const run = parseRun(
+    scenarios[0].steps,
+    operationInterface.input,
+    operationInterface.environment,
+    context,
+  );
   validateProduce(
     run.expression,
     run.steps,
@@ -372,10 +377,10 @@ function readOperationDocument(
   for (const scenario of feature.children.flatMap((child) => child.scenario ? [child.scenario] : [])) {
     for (const step of scenario.steps) {
       const parsed = parseRunStepSentence(step.text);
-      if (!parsed) continue;
+      if (!parsed || parsed.type === "shell-exits") continue;
       steps.push({
         name: parsed.name,
-        type: parsed.type,
+        type: parsed.type === "http-post" ? "http" : parsed.type,
         range: sourceLineRange(context.source, step.location),
         selectionRange: sourceValueRange(context.source, step, parsed.name),
       });
@@ -510,6 +515,7 @@ function parseInterface(steps: readonly Step[], context: CompileContext): {
 
 function parseRun(
   steps: readonly Step[],
+  input: Readonly<Record<string, InputField>>,
   environment: Readonly<Record<string, EnvironmentField>>,
   context: CompileContext,
 ): {
@@ -548,8 +554,37 @@ function parseRun(
           step,
         );
       }
-      const arguments_ = requireTable(step, ["argument"], context)
-        .map((row) => row.cells[0]?.value ?? "");
+      const table = step.dataTable;
+      if (!table) fail(context, "invalid-operation", `Shell "${name}" requires an argument table`, step);
+      const headers = table.rows[0]?.cells.map((cell) => cell.value.trim()) ?? [];
+      if (headers.length !== 1 && headers.length !== 2) {
+        fail(context, "invalid-operation", `Shell "${name}" argument table must use argument or argument | source`, step);
+      }
+      if (headers[0] !== "argument" || (headers.length === 2 && headers[1] !== "source")) {
+        fail(context, "invalid-operation", `Shell "${name}" argument table must use argument or argument | source`, step);
+      }
+      const arguments_ = table.rows.slice(1).map((row) => {
+        if (row.cells.length !== headers.length) {
+          fail(context, "invalid-operation", `Shell "${name}" argument row has the wrong number of cells`, row);
+        }
+        const value = row.cells[0]?.value ?? "";
+        const source = row.cells[1]?.value.trim() ?? "literal";
+        if (source === "literal") return { kind: "literal" as const, value };
+        const sourceTokens = tokenizeSentence(source);
+        const inputName = sourceTokens.length === 2
+          && sourceTokens[0]?.kind === "text" && sourceTokens[0].value === "Input"
+          && sourceTokens[1]?.kind === "quoted"
+          ? sourceTokens[1].value
+          : undefined;
+        if (!inputName || !Object.hasOwn(input, inputName)) {
+          fail(context, "invalid-operation", `Shell "${name}" argument references unknown Input "${inputName ?? source}"`, row);
+        }
+        const schema = compileInputSchema(input).properties[inputName];
+        if (!schema || schema.type !== "string") {
+          fail(context, "invalid-operation", `Shell "${name}" argument Input "${inputName}" must be one string`, row);
+        }
+        return { kind: "input" as const, input: inputName };
+      });
       names.add(name);
       compiled.push({
         name,
@@ -558,8 +593,44 @@ function parseRun(
           executable,
           arguments: arguments_,
           cwd: { environment: environmentName },
+          acceptedExits: [{ code: 0 }],
         },
       });
+      continue;
+    }
+
+    if (parsed?.type === "shell-exits") {
+      const keyword = step.keyword.trim();
+      if (keyword !== "And" || expression !== undefined) {
+        fail(context, "unknown-step", "Shell accepted exits must follow a Shell step", step);
+      }
+      const index = compiled.findIndex((candidate) => candidate.type === "shell" && candidate.name === parsed.name);
+      const existing = compiled[index];
+      if (!existing || existing.type !== "shell") {
+        fail(context, "invalid-operation", `Shell "${parsed.name}" is unknown`, step);
+      }
+      const exits = requireTable(step, ["exit code", "stdout contains", "stderr contains"], context).map((row) => {
+        const raw = row.cells[0]?.value.trim() ?? "";
+        const code = Number(raw);
+        if (!Number.isInteger(code) || code < 0 || code > 255) {
+          fail(context, "invalid-operation", `Shell exit code "${raw}" must be an integer from 0 to 255`, row);
+        }
+        const stdoutContains = row.cells[1]?.value ?? "";
+        const stderrContains = row.cells[2]?.value ?? "";
+        return {
+          code,
+          ...(stdoutContains === "" ? {} : { stdoutContains }),
+          ...(stderrContains === "" ? {} : { stderrContains }),
+        };
+      });
+      const keys = exits.map((exit) => JSON.stringify(exit));
+      if (exits.length === 0 || new Set(keys).size !== keys.length) {
+        fail(context, "invalid-operation", `Shell "${parsed.name}" accepted exits must be non-empty and unique`, step);
+      }
+      compiled[index] = {
+        ...existing,
+        shell: { ...existing.shell, acceptedExits: exits },
+      };
       continue;
     }
 
@@ -617,7 +688,7 @@ function parseRun(
       if (step.dataTable || step.docString) {
         fail(context, "unknown-step", "HTTP does not accept a table or DocString", step);
       }
-      const { name, environment: environmentName, format } = parsed;
+      const { name, environment: environmentName, format, appendInput } = parsed;
       if (names.has(name)) fail(context, "duplicate-step", `Step "${name}" is repeated`, step);
       if (!Object.hasOwn(environment, environmentName)) {
         fail(
@@ -635,13 +706,54 @@ function parseRun(
           step,
         );
       }
+      if (appendInput) {
+        const schema = compileInputSchema(input).properties[appendInput];
+        if (!schema || schema.type !== "string") {
+          fail(context, "invalid-operation", `HTTP "${name}" path Input "${appendInput}" must be one string`, step);
+        }
+      }
       names.add(name);
       compiled.push({
         name,
         type: "http",
         http: {
+          method: "GET",
           url: { environment: environmentName },
+          ...(appendInput ? { appendInput } : {}),
           format,
+        },
+      });
+      continue;
+    }
+
+    if (parsed?.type === "http-post") {
+      const keyword = step.keyword.trim();
+      if (keyword !== "When" && keyword !== "And") {
+        fail(context, "unknown-step", "HTTP must use When or And", step);
+      }
+      if (expression !== undefined || step.dataTable || step.docString) {
+        fail(context, "unknown-step", "HTTP POST must precede Produce and accepts no table or DocString", step);
+      }
+      const { name, environment: environmentName } = parsed;
+      if (names.has(name)) fail(context, "duplicate-step", `Step "${name}" is repeated`, step);
+      if (!Object.hasOwn(environment, environmentName)) {
+        fail(context, "unknown-environment", `HTTP "${name}" uses undeclared Environment "${environmentName}"`, step);
+      }
+      if (environment[environmentName]?.type !== "url") {
+        fail(context, "invalid-operation", `HTTP "${name}" requires Environment "${environmentName}" to be a url`, step);
+      }
+      if (Object.keys(input).length === 0) {
+        fail(context, "invalid-operation", `HTTP "${name}" cannot post an empty Input`, step);
+      }
+      names.add(name);
+      compiled.push({
+        name,
+        type: "http",
+        http: {
+          method: "POST",
+          url: { environment: environmentName },
+          body: "input-json",
+          format: "json",
         },
       });
       continue;
@@ -680,6 +792,10 @@ type ParsedRunStepSentence =
       readonly environment: string;
     }
   | {
+      readonly type: "shell-exits";
+      readonly name: string;
+    }
+  | {
       readonly type: "file-read";
       readonly name: string;
       readonly path: string;
@@ -690,6 +806,12 @@ type ParsedRunStepSentence =
       readonly type: "http";
       readonly name: string;
       readonly format: "text" | "json";
+      readonly environment: string;
+      readonly appendInput?: string;
+    }
+  | {
+      readonly type: "http-post";
+      readonly name: string;
       readonly environment: string;
     };
 
@@ -732,6 +854,11 @@ function parseRunStepSentence(source: string): ParsedRunStepSentence | undefined
     };
   }
 
+  if (tokens.length === 4 && text(0, "Shell") && shellName && text(2, "accepts")
+    && text(3, "exits")) {
+    return { type: "shell-exits", name: shellName };
+  }
+
   const fileName = field(1);
   const path = quoted(3);
   const fileFormat = format(5);
@@ -759,6 +886,26 @@ function parseRunStepSentence(source: string): ParsedRunStepSentence | undefined
       environment: httpEnvironment,
       format: httpFormat,
     };
+  }
+  const httpAppendInput = field(7);
+  const appendedHttpFormat = format(9);
+  if (tokens.length === 10 && text(0, "HTTP") && httpName && text(2, "gets")
+    && text(3, "Environment") && httpEnvironment && text(5, "appending")
+    && text(6, "Input") && httpAppendInput && text(8, "as") && appendedHttpFormat) {
+    return {
+      type: "http",
+      name: httpName,
+      environment: httpEnvironment,
+      appendInput: httpAppendInput,
+      format: appendedHttpFormat,
+    };
+  }
+  const postEnvironment = field(8);
+  if (tokens.length === 12 && text(0, "HTTP") && httpName && text(2, "posts")
+    && text(3, "Input") && text(4, "as") && text(5, "JSON") && text(6, "to")
+    && text(7, "Environment") && postEnvironment && text(9, "and")
+    && text(10, "reads") && text(11, "JSON")) {
+    return { type: "http-post", name: httpName, environment: postEnvironment };
   }
   return undefined;
 }

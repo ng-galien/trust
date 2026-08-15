@@ -5,8 +5,15 @@
   "title": "Read Git HEAD and working tree",
   "input": {
     "type": "object",
-    "properties": {},
-    "required": [],
+    "properties": {
+      "project": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "required": [
+      "project"
+    ],
     "additionalProperties": false
   },
   "environment": {
@@ -29,13 +36,14 @@
       "shell": {
         "executable": "git",
         "arguments": [
-          "rev-parse",
-          "--verify",
-          "HEAD"
+          { "kind": "literal", "value": "rev-parse" },
+          { "kind": "literal", "value": "--verify" },
+          { "kind": "literal", "value": "HEAD" }
         ],
         "cwd": {
           "environment": "projectRoot"
-        }
+        },
+        "acceptedExits": [{ "code": 0 }]
       }
     },
     {
@@ -44,13 +52,14 @@
       "shell": {
         "executable": "git",
         "arguments": [
-          "status",
-          "--porcelain=v1",
-          "--untracked-files=normal"
+          { "kind": "literal", "value": "status" },
+          { "kind": "literal", "value": "--porcelain=v1" },
+          { "kind": "literal", "value": "--untracked-files=normal" }
         ],
         "cwd": {
           "environment": "projectRoot"
-        }
+        },
+        "acceptedExits": [{ "code": 0 }]
       }
     }
   ],

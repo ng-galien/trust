@@ -52,11 +52,47 @@ describe("Operation runner", () => {
     const { stdout: revision } = await execute("git", ["rev-parse", "HEAD"], { cwd: projectRoot });
     await writeFile(join(projectRoot, "untracked.txt"), "dirty\n", "utf8");
 
-    const result = await runOperation(operation("git.head-read.feature"), {}, { projectRoot });
+    const result = await runOperation(
+      operation("git.head-read.feature"),
+      { project: "trust-example" },
+      { projectRoot },
+    );
 
     expect(result.produced).toEqual({
       headRevision: revision.trim(),
       workingTree: "dirty",
+    });
+  });
+
+  test("resolves a Shell argument from Operation Input", async () => {
+    const projectRoot = await temporaryDirectory("trust-runner-git-compare-");
+    await execute("git", ["init", "-q"], { cwd: projectRoot });
+    await writeFile(join(projectRoot, "tracked.txt"), "baseline\n", "utf8");
+    await execute("git", ["add", "tracked.txt"], { cwd: projectRoot });
+    await execute("git", [
+      "-c", "user.name=TRUST Acceptance",
+      "-c", "user.email=trust@example.invalid",
+      "commit", "-qm", "baseline",
+    ], { cwd: projectRoot });
+    const { stdout: baseline } = await execute("git", ["rev-parse", "HEAD"], { cwd: projectRoot });
+    await writeFile(join(projectRoot, "tracked.txt"), "change\n", "utf8");
+    await execute("git", ["add", "tracked.txt"], { cwd: projectRoot });
+    await execute("git", [
+      "-c", "user.name=TRUST Acceptance",
+      "-c", "user.email=trust@example.invalid",
+      "commit", "-qm", "change",
+    ], { cwd: projectRoot });
+
+    const result = await runOperation(
+      operation("git.head-compare.feature"),
+      { project: "trust-example", baseRevision: baseline.trim() },
+      { projectRoot },
+    );
+
+    expect(result.produced).toMatchObject({
+      comparedBaseRevision: baseline.trim(),
+      commitsAhead: 1,
+      workingTree: "clean",
     });
   });
 
@@ -103,7 +139,11 @@ describe("Operation runner", () => {
   });
 
   test("refuses Environment values before executing a Step", async () => {
-    await expect(runOperation(operation("git.head-read.feature"), {}, { projectRoot: "relative" }))
+    await expect(runOperation(
+      operation("git.head-read.feature"),
+      { project: "trust-example" },
+      { projectRoot: "relative" },
+    ))
       .rejects.toMatchObject({ values: "environment" });
   });
 
@@ -111,8 +151,38 @@ describe("Operation runner", () => {
     const projectRoot = await temporaryDirectory("trust-runner-shell-");
     await execute("git", ["init", "-q"], { cwd: projectRoot });
 
-    await expect(runOperation(operation("git.head-read.feature"), {}, { projectRoot }))
+    await expect(runOperation(
+      operation("git.head-read.feature"),
+      { project: "trust-example" },
+      { projectRoot },
+    ))
       .rejects.toMatchObject({ name: "ShellError" });
+  });
+
+  test("observes an explicitly accepted non-zero Shell exit", async () => {
+    const projectRoot = await temporaryDirectory("trust-runner-expected-exit-");
+
+    const result = await runOperation(
+      fixtureOperation("shell.expected-exit.feature"),
+      {},
+      { projectRoot },
+    );
+
+    expect(result.produced).toEqual({ exitCode: 1 });
+  });
+
+  test("interrupts when a Shell exit does not contain its declared output", async () => {
+    const projectRoot = await temporaryDirectory("trust-runner-unexpected-output-");
+    const source = readFileSync(
+      new URL("./fixtures/shell.expected-exit.feature", import.meta.url),
+      "utf8",
+    ).replace("Tests run: 1", "Compilation failed");
+
+    await expect(runOperation(
+      compileOperation({ source, sourceName: "shell.unexpected-output.feature" }),
+      {},
+      { projectRoot },
+    )).rejects.toMatchObject({ name: "ShellError" });
   });
 
   test("gets and decodes JSON from a real HTTP server", async () => {
@@ -129,6 +199,84 @@ describe("Operation runner", () => {
     expect(receivedHttpRequests).toEqual([
       expect.objectContaining({ method: "GET", url: "/status" }),
     ]);
+  });
+
+  test("appends one encoded Input as an HTTP path segment", async () => {
+    const baseUrl = await startHttpServer();
+
+    const result = await runOperation(
+      operation("jira.issue-read.feature"),
+      { issue: "TRUST-1" },
+      { jiraIssueUrl: `${baseUrl}/issue/` },
+    );
+
+    expect(result.produced).toEqual({
+      issue: "TRUST-1",
+      summary: "Runner integration",
+      issueType: "defect",
+      workflowStatus: "todo",
+    });
+    expect(receivedHttpRequests).toContainEqual(expect.objectContaining({ url: "/issue/TRUST-1" }));
+  });
+
+  test("posts the complete typed Input as JSON", async () => {
+    const baseUrl = await startHttpServer();
+    const input = {
+      patient: "PATIENT-1",
+      admission: "ADMISSION-1",
+      documents: ["DOCUMENT-1", "DOCUMENT-2"],
+      documentRecordedAt: ["2026-08-15T11:00:00.000Z", "2026-08-15T11:05:00.000Z"],
+    };
+
+    const result = await runOperation(
+      operation("healthcare.admission-record.feature"),
+      input,
+      { admissionUrl: `${baseUrl}/admissions` },
+    );
+
+    expect(result.produced).toEqual({
+      admission: "ADMISSION-1",
+      admissionStatus: "recorded",
+      admittedAt: "2026-08-15T12:00:00.000Z",
+    });
+    expect(receivedHttpRequests).toContainEqual(expect.objectContaining({
+      method: "POST",
+      url: "/admissions",
+      body: JSON.stringify(input),
+    }));
+  });
+
+  test("does not forward a posted Input through an HTTP redirect", async () => {
+    const baseUrl = await startHttpServer();
+
+    await expect(runOperation(
+      operation("healthcare.admission-record.feature"),
+      {
+        patient: "PATIENT-1",
+        admission: "ADMISSION-1",
+        documents: ["DOCUMENT-1"],
+        documentRecordedAt: ["2026-08-15T11:00:00.000Z"],
+      },
+      { admissionUrl: `${baseUrl}/redirect-admissions` },
+    )).rejects.toThrow();
+
+    expect(receivedHttpRequests.some((request) => request.url === "/redirect-target")).toBe(false);
+  });
+
+  test("reads one professional document with its recorded instant", async () => {
+    const baseUrl = await startHttpServer();
+
+    const result = await runOperation(
+      operation("healthcare.document-read.feature"),
+      { document: "DOCUMENT-1" },
+      { documentUrl: `${baseUrl}/documents/` },
+    );
+
+    expect(result.produced).toEqual({
+      document: "DOCUMENT-1",
+      documentStatus: "confirmed",
+      recordedAt: "2026-08-15T11:00:00.000Z",
+    });
   });
 
   test("gets Text from a real HTTP server", async () => {
@@ -287,6 +435,11 @@ function operation(name: string) {
   return compileOperation({ source, sourceName: name });
 }
 
+function fixtureOperation(name: string) {
+  const source = readFileSync(new URL(`./fixtures/${name}`, import.meta.url), "utf8");
+  return compileOperation({ source, sourceName: name });
+}
+
 function readOperation(name: string): string {
   return readFileSync(new URL(`../../../assets/operations/${name}`, import.meta.url), "utf8");
 }
@@ -324,6 +477,45 @@ async function respond(request: IncomingMessage, response: ServerResponse): Prom
     response.end(otlpResponse.body);
     return;
   }
+  if (request.method === "POST" && request.url === "/admissions") {
+    receivedHttpRequests.push({
+      method: request.method,
+      url: request.url,
+      headers: request.headers,
+      body: await readRequest(request),
+    });
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end(JSON.stringify({
+      admissionStatus: "recorded",
+      admittedAt: "2026-08-15T12:00:00.000Z",
+    }));
+    return;
+  }
+  if (request.method === "POST" && request.url === "/redirect-admissions") {
+    receivedHttpRequests.push({
+      method: request.method,
+      url: request.url,
+      headers: request.headers,
+      body: await readRequest(request),
+    });
+    response.writeHead(307, { location: "/redirect-target" });
+    response.end();
+    return;
+  }
+  if (request.method === "POST" && request.url === "/redirect-target") {
+    receivedHttpRequests.push({
+      method: request.method,
+      url: request.url,
+      headers: request.headers,
+      body: await readRequest(request),
+    });
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end(JSON.stringify({
+      admissionStatus: "recorded",
+      admittedAt: "2026-08-15T12:00:00.000Z",
+    }));
+    return;
+  }
   if (request.method !== "GET") {
     response.writeHead(405, { "content-type": "text/plain" });
     response.end("method not allowed");
@@ -338,6 +530,23 @@ async function respond(request: IncomingMessage, response: ServerResponse): Prom
     if (request.url === "/status") {
       response.writeHead(200, { "content-type": "application/json" });
       response.end(JSON.stringify({ service: "ready" }));
+      return;
+    }
+    if (request.url === "/issue/TRUST-1") {
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(JSON.stringify({
+        summary: "Runner integration",
+        issueType: "defect",
+        workflowStatus: "todo",
+      }));
+      return;
+    }
+    if (request.url === "/documents/DOCUMENT-1") {
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(JSON.stringify({
+        documentStatus: "confirmed",
+        recordedAt: "2026-08-15T11:00:00.000Z",
+      }));
       return;
     }
     if (request.url === "/text") {

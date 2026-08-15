@@ -7,7 +7,7 @@ import {
 } from "@trust/operation";
 
 import { runFileRead } from "../file-read/run.js";
-import { runHttpGet } from "../http/run.js";
+import { runHttp } from "../http/run.js";
 import { isJsonObject, type JsonObject, type JsonValue } from "../lib/json.js";
 import { transformJsonata } from "../lib/jsonata.js";
 import { runShell } from "../shell/run.js";
@@ -31,10 +31,10 @@ export async function runOperation(
 
   for (const step of operation.steps) {
     const result = step.type === "shell"
-      ? await runShell(step.shell, environment)
+      ? await runShell(step.shell, input, environment)
       : step.type === "file-read"
         ? await runFileRead(step.file, environment)
-        : await runHttpGet(step.http, environment);
+        : await runHttp(step.http, input, environment);
     steps[step.name] = json(result, `Operation step "${step.name}" result`);
   }
 

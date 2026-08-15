@@ -1,5 +1,5 @@
 import type { FileRead } from "./file-read.js";
-import type { HttpGet } from "./http-get.js";
+import type { Http } from "./http.js";
 import type { Shell } from "./shell.js";
 
 export type OperationValueType = "string" | "number" | "instant" | "reference";
@@ -70,7 +70,7 @@ export interface FileReadStep {
 export interface HttpStep {
   readonly name: string;
   readonly type: "http";
-  readonly http: HttpGet;
+  readonly http: Http;
 }
 
 export type OperationStep = ShellStep | FileReadStep | HttpStep;
