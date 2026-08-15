@@ -1,0 +1,7 @@
+{
+  "values": "environment",
+  "value": {
+    "workingDirectory": "/tmp/project"
+  },
+  "rules": ["required"]
+}

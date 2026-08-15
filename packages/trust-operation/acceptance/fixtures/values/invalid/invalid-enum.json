@@ -1,0 +1,13 @@
+{
+  "values": "produced",
+  "value": {
+    "argument": "--verbose",
+    "tags": ["release"],
+    "count": 2,
+    "occurredAt": "2026-08-15T10:00:00Z",
+    "revision": "abc123",
+    "serviceUrl": "https://service.example.test/api",
+    "workingTree": "unknown"
+  },
+  "rules": ["enum"]
+}

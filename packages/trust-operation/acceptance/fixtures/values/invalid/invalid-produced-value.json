@@ -1,0 +1,8 @@
+{
+  "values": "produced",
+  "value": {
+    "argument": "--verbose",
+    "serviceUrl": 42
+  },
+  "rules": ["type"]
+}

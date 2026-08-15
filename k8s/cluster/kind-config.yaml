@@ -1,0 +1,33 @@
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: trust-test
+nodes:
+  - role: control-plane
+    kubeadmConfigPatches:
+      - |
+        kind: InitConfiguration
+        nodeRegistration:
+          kubeletExtraArgs:
+            node-labels: "ingress-ready=true"
+    extraPortMappings:
+      - containerPort: 80
+        hostPort: 80
+        protocol: TCP
+      - containerPort: 443
+        hostPort: 443
+        protocol: TCP
+      - containerPort: 30080
+        hostPort: 18080
+        protocol: TCP
+      - containerPort: 30081
+        hostPort: 18081
+        protocol: TCP
+      - containerPort: 30082
+        hostPort: 1880
+        protocol: TCP
+      - containerPort: 30083
+        hostPort: 3200
+        protocol: TCP
+      - containerPort: 30085
+        hostPort: 18082
+        protocol: TCP

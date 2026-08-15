@@ -1,0 +1,33 @@
+{
+  "name": "@trust/language-server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24.10.0"
+  },
+  "bin": {
+    "trust-language-server": "bin/trust-language-server.js"
+  },
+  "files": [
+    "bin",
+    "dist/src"
+  ],
+  "scripts": {
+    "prebuild": "npm run build --workspace=@trust/operation",
+    "build": "npm run clean && tsc -p tsconfig.json",
+    "clean": "node --input-type=module -e \"import { rmSync } from 'node:fs'; rmSync('dist', { recursive: true, force: true })\"",
+    "test:acceptance": "npm run build && node --test dist/acceptance/*.acceptance.test.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@trust/operation": "file:../trust-operation",
+    "vscode-languageserver": "^10.1.0",
+    "vscode-languageserver-textdocument": "^1.0.12"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "^5.7.2",
+    "vscode-jsonrpc": "^9.0.1"
+  }
+}

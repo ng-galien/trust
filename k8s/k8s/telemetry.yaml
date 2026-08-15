@@ -1,0 +1,241 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: tempo-config
+  namespace: telemetry
+data:
+  tempo.yaml: |
+    server:
+      http_listen_port: 3200
+
+    distributor:
+      receivers:
+        otlp:
+          protocols:
+            grpc:
+              endpoint: 0.0.0.0:4317
+            http:
+              endpoint: 0.0.0.0:4318
+
+    storage:
+      trace:
+        backend: local
+        local:
+          path: /tmp/tempo/traces
+
+    compactor:
+      compaction:
+        # Trust uses Tempo as an operational evidence store during multi-day changes.
+        # Search time ranges are a caller concern; this is the physical retention policy.
+        block_retention: 720h
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tempo
+  namespace: telemetry
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: tempo
+  template:
+    metadata:
+      labels:
+        app: tempo
+    spec:
+      initContainers:
+        - name: initialize-tempo-data
+          image: busybox:1.36.1
+          command:
+            - sh
+            - -c
+            - mkdir -p /tmp/tempo/traces && chown -R 10001:10001 /tmp/tempo
+          securityContext:
+            runAsUser: 0
+          volumeMounts:
+            - name: tempo-data
+              mountPath: /tmp/tempo
+      containers:
+        - name: tempo
+          image: grafana/tempo:2.6.1
+          args: ["-config.file=/etc/tempo/tempo.yaml"]
+          ports:
+            - name: http
+              containerPort: 3200
+            - name: otlp-grpc
+              containerPort: 4317
+            - name: otlp-http
+              containerPort: 4318
+          volumeMounts:
+            - name: config
+              mountPath: /etc/tempo
+            - name: tempo-data
+              mountPath: /tmp/tempo
+      volumes:
+        - name: config
+          configMap:
+            name: tempo-config
+        # Keeps Tempo blocks across a Deployment pod recreation on the Kind node.
+        # Deleting the Kind cluster deliberately deletes this test environment-local evidence.
+        - name: tempo-data
+          hostPath:
+            path: /var/local/trust/tempo
+            type: DirectoryOrCreate
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: tempo
+  namespace: telemetry
+spec:
+  type: NodePort
+  selector:
+    app: tempo
+  ports:
+    - name: http
+      port: 3200
+      targetPort: 3200
+      nodePort: 30083
+    - name: otlp-grpc
+      port: 4317
+      targetPort: 4317
+    - name: otlp-http
+      port: 4318
+      targetPort: 4318
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: otel-collector-config
+  namespace: telemetry
+data:
+  collector.yaml: |
+    receivers:
+      otlp:
+        protocols:
+          grpc:
+            endpoint: 0.0.0.0:4317
+          http:
+            endpoint: 0.0.0.0:4318
+
+    processors:
+      resource:
+        attributes:
+          - action: upsert
+            key: k8s.cluster.name
+            value: trust-test
+          - action: upsert
+            key: telemetry.auto.version
+            value: "2"
+      attributes:
+        actions:
+          - key: http.url
+            action: extract
+            pattern: '^https?://[^/]+(?P<url_path>/?.*)'
+      transform:
+        trace_statements:
+          - context: span
+            statements:
+              - set(attributes["http.status_code"], attributes["http.response.status_code"]) where attributes["http.response.status_code"] != nil
+              - set(attributes["linked"], true) where Len(links) > 0
+              - set(name, Format("linked %s", [name])) where Len(links) > 0
+              - set(attributes["http.status_category"], "ok") where Int(attributes["http.status_code"]) >= 200 and Int(attributes["http.status_code"]) < 300
+              - set(attributes["http.status_category"], "redirect") where Int(attributes["http.status_code"]) >= 300 and Int(attributes["http.status_code"]) < 400
+              - set(attributes["http.status_category"], "client_error") where Int(attributes["http.status_code"]) >= 400 and Int(attributes["http.status_code"]) < 500
+              - set(attributes["http.status_category"], "server_error") where Int(attributes["http.status_code"]) >= 500
+      tail_sampling:
+        decision_wait: 2s
+        num_traces: 1000
+        expected_new_traces_per_sec: 50
+        policies:
+          - name: keep-tr-audit
+            type: ottl_condition
+            ottl_condition:
+              error_mode: ignore
+              span:
+                - attributes["tr-audit-feat"] != nil
+                - attributes["tr-audit-run"] != nil
+                - attributes["tr-audit-phase"] != nil
+          - name: keep-pulsar
+            type: ottl_condition
+            ottl_condition:
+              error_mode: ignore
+              span:
+                - IsMatch(name, "^persistent:.*$")
+                - attributes["linked"] == true
+          - name: keep-sample-services
+            type: string_attribute
+            string_attribute:
+              key: service.name
+              values:
+                - payment-api
+                - payment-worker
+                - event-store
+      batch:
+        send_batch_size: 256
+        timeout: 200ms
+
+    exporters:
+      otlp/tempo:
+        endpoint: tempo.telemetry.svc.cluster.local:4317
+        tls:
+          insecure: true
+
+    service:
+      pipelines:
+        traces:
+          receivers: [otlp]
+          processors: [resource, attributes, transform, tail_sampling, batch]
+          exporters: [otlp/tempo]
+      telemetry:
+        logs:
+          level: info
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: otel-collector
+  namespace: telemetry
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: otel-collector
+  template:
+    metadata:
+      labels:
+        app: otel-collector
+    spec:
+      containers:
+        - name: otel-collector
+          image: otel/opentelemetry-collector-contrib:0.116.1
+          args: ["--config=/etc/otelcol/collector.yaml"]
+          ports:
+            - name: otlp-grpc
+              containerPort: 4317
+            - name: otlp-http
+              containerPort: 4318
+          volumeMounts:
+            - name: config
+              mountPath: /etc/otelcol
+      volumes:
+        - name: config
+          configMap:
+            name: otel-collector-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: otel-collector
+  namespace: telemetry
+spec:
+  selector:
+    app: otel-collector
+  ports:
+    - name: otlp-grpc
+      port: 4317
+      targetPort: 4317
+    - name: otlp-http
+      port: 4318
+      targetPort: 4318

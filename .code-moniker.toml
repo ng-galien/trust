@@ -1,0 +1,49 @@
+default_rules = false
+
+[aliases]
+active_source = "(source ~ '**/dir:apps/**' OR source ~ '**/dir:packages/**') AND NOT source ~ '**/dir:legacy/**'"
+legacy_target = "target ~ '**/dir:legacy/**'"
+domain_source = "source ~ '**/dir:domain/**' AND NOT source ~ '**/dir:legacy/**'"
+application_source = "source ~ '**/dir:application/**' AND NOT source ~ '**/dir:legacy/**'"
+application_target = "target ~ '**/dir:application/**'"
+ports_target = "target ~ '**/dir:ports/**'"
+infrastructure_target = "target ~ '**/dir:infrastructure/**'"
+presentation_target = "target ~ '**/dir:presentation/**'"
+sdk_source = "source ~ '**/dir:packages/dir:trust-skill-sdk/**' AND NOT source ~ '**/dir:legacy/**'"
+runtime_target = "target ~ '**/dir:apps/dir:trust-runtime/**'"
+
+[profiles.greenfield]
+enable = [
+  "^refs\\.active-does-not-depend-on-legacy$",
+  "^refs\\.domain-is-independent$",
+  "^refs\\.application-does-not-depend-on-adapters$",
+  "^refs\\.sdk-does-not-depend-on-private-runtime$",
+]
+
+[[refs.where]]
+id = "active-does-not-depend-on-legacy"
+severity = "error"
+rationale = "The two archived generations are anti-models, not dependencies of the greenfield product."
+expr = "$active_source => NOT $legacy_target"
+message = "Active code must not depend on legacy code."
+
+[[refs.where]]
+id = "domain-is-independent"
+severity = "error"
+rationale = "Domain types must remain independent from application orchestration and adapters."
+expr = "$domain_source => NOT ($application_target OR $ports_target OR $infrastructure_target OR $presentation_target)"
+message = "Domain code must not depend on outer layers."
+
+[[refs.where]]
+id = "application-does-not-depend-on-adapters"
+severity = "error"
+rationale = "Application services depend on ports, never infrastructure or presentation adapters."
+expr = "$application_source => NOT ($infrastructure_target OR $presentation_target)"
+message = "Application code must not depend on adapters."
+
+[[refs.where]]
+id = "sdk-does-not-depend-on-private-runtime"
+severity = "error"
+rationale = "The distributed Skill SDK is independent from the private runtime implementation."
+expr = "$sdk_source => NOT $runtime_target"
+message = "The Skill SDK must not import the private runtime."

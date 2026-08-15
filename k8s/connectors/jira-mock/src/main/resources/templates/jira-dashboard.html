@@ -1,0 +1,418 @@
+<!doctype html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Jira Mock</title>
+  <style>
+    :root {
+      color-scheme: light;
+      font-family: Arial, Helvetica, sans-serif;
+      color: #18222d;
+      background: #f4f6f8;
+    }
+    * {
+      box-sizing: border-box;
+    }
+    body {
+      margin: 0;
+    }
+    main {
+      max-width: 1220px;
+      margin: 0 auto;
+      padding: 24px 18px 38px;
+    }
+    header {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: end;
+      justify-content: space-between;
+      gap: 14px;
+      margin-bottom: 18px;
+    }
+    h1,
+    h2,
+    h3 {
+      margin: 0;
+      line-height: 1.2;
+    }
+    h1 {
+      font-size: 28px;
+    }
+    h2 {
+      font-size: 18px;
+    }
+    h3 {
+      font-size: 15px;
+    }
+    .meta {
+      margin: 6px 0 0;
+      color: #5d6b78;
+      font-size: 14px;
+    }
+    a {
+      color: #145a9e;
+      text-decoration: none;
+    }
+    a:hover {
+      text-decoration: underline;
+    }
+    .top-links {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .button,
+    button {
+      min-height: 36px;
+      border: 1px solid #b7c6d6;
+      border-radius: 6px;
+      background: #ffffff;
+      color: #18222d;
+      padding: 8px 11px;
+      font: inherit;
+      font-size: 14px;
+      cursor: pointer;
+    }
+    .button:hover,
+    button:hover {
+      background: #eef3f8;
+      text-decoration: none;
+    }
+    .button-primary {
+      border-color: #165f9d;
+      background: #1769aa;
+      color: #ffffff;
+      font-weight: 700;
+    }
+    .button-primary:hover {
+      background: #155d96;
+    }
+    .button-danger {
+      border-color: #c94b4b;
+      color: #9e2f2f;
+    }
+    .layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1.05fr) minmax(360px, 0.95fr);
+      gap: 18px;
+      align-items: start;
+    }
+    .panel {
+      background: #ffffff;
+      border: 1px solid #d6dee8;
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    .panel-header {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 14px 16px;
+      border-bottom: 1px solid #e6ebf1;
+      background: #fbfcfd;
+    }
+    .panel-body {
+      padding: 16px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    th,
+    td {
+      padding: 10px 12px;
+      border-bottom: 1px solid #e6ebf1;
+      text-align: left;
+      vertical-align: top;
+      font-size: 14px;
+    }
+    th {
+      color: #3d4c5c;
+      font-weight: 700;
+      background: #f1f5f8;
+    }
+    tbody tr:hover {
+      background: #f8fbfd;
+    }
+    tbody tr.selected {
+      background: #eaf3fb;
+    }
+    .key {
+      font-weight: 700;
+      white-space: nowrap;
+    }
+    .summary-cell {
+      min-width: 220px;
+    }
+    .pill {
+      display: inline-block;
+      min-width: 88px;
+      border-radius: 999px;
+      padding: 4px 9px;
+      background: #e7f0fb;
+      color: #17446f;
+      font-weight: 700;
+      font-size: 12px;
+      text-align: center;
+      white-space: nowrap;
+    }
+    form {
+      margin: 0;
+    }
+    .form-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+    .span-2 {
+      grid-column: 1 / -1;
+    }
+    label {
+      display: block;
+      margin-bottom: 6px;
+      color: #415160;
+      font-size: 13px;
+      font-weight: 700;
+    }
+    input,
+    textarea,
+    select {
+      width: 100%;
+      border: 1px solid #b9c8d8;
+      border-radius: 6px;
+      background: #ffffff;
+      color: #18222d;
+      padding: 8px 9px;
+      font: inherit;
+      font-size: 14px;
+    }
+    textarea {
+      min-height: 88px;
+      resize: vertical;
+    }
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+      margin-top: 14px;
+    }
+    .details {
+      display: grid;
+      gap: 18px;
+    }
+    .empty {
+      color: #657483;
+      font-size: 14px;
+    }
+    .comments {
+      display: grid;
+      gap: 10px;
+      margin-top: 12px;
+    }
+    .comment {
+      border: 1px solid #d9e1ea;
+      border-radius: 6px;
+      padding: 10px;
+      background: #fbfcfd;
+    }
+    .comment-meta {
+      margin-bottom: 6px;
+      color: #657483;
+      font-size: 12px;
+    }
+    .comment-body {
+      white-space: pre-wrap;
+      font-size: 14px;
+    }
+    @media (max-width: 920px) {
+      .layout {
+        grid-template-columns: 1fr;
+      }
+    }
+    @media (max-width: 640px) {
+      main {
+        padding: 18px 12px 30px;
+      }
+      h1 {
+        font-size: 24px;
+      }
+      .form-grid {
+        grid-template-columns: 1fr;
+      }
+      .span-2 {
+        grid-column: auto;
+      }
+      .table-wrap {
+        overflow-x: auto;
+      }
+    }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <div>
+      <h1>Jira Mock</h1>
+      <p class="meta">
+        <span th:text="${issueCount}">0</span> tickets -
+        <span th:text="${baseUrl}">http://jira.127.0.0.1.nip.io</span>
+      </p>
+    </div>
+    <nav class="top-links" aria-label="Service links">
+      <a class="button" href="/actuator/health">Health</a>
+    </nav>
+  </header>
+
+  <section class="layout">
+    <div class="panel">
+      <div class="panel-header">
+        <h2>Tickets</h2>
+        <span class="meta">IDs auto-incrementes en TK-000NN</span>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+          <tr>
+            <th>Key</th>
+            <th>Status</th>
+            <th>Priority</th>
+            <th>Summary</th>
+            <th>Assignee</th>
+          </tr>
+          </thead>
+          <tbody>
+          <tr th:each="issue : ${issues}" th:classappend="${selectedIssue != null and selectedIssue.key == issue.key} ? 'selected'">
+            <td class="key"><a th:href="@{/(issue=${issue.key})}" th:text="${issue.key}">TK-00000</a></td>
+            <td><span class="pill" th:text="${issue.status}">In Progress</span></td>
+            <td th:text="${issue.priority}">High</td>
+            <td class="summary-cell" th:text="${issue.summary}">Summary</td>
+            <td th:text="${issue.assignee}">Mock User</td>
+          </tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="panel-body" th:if="${issueCount == 0}">
+        <p class="empty">Aucun ticket pour l'instant.</p>
+      </div>
+    </div>
+
+    <div class="details">
+      <div class="panel">
+        <div class="panel-header">
+          <h2>Nouveau ticket</h2>
+        </div>
+        <div class="panel-body">
+          <form method="post" action="/ui/issues">
+            <div class="form-grid">
+              <div class="span-2">
+                <label for="new-summary">Summary</label>
+                <input id="new-summary" name="summary" required>
+              </div>
+              <div>
+                <label for="new-status">Status</label>
+                <select id="new-status" name="status">
+                  <option th:each="status : ${statuses}" th:value="${status}" th:text="${status}" th:selected="${status == 'To Do'}">To Do</option>
+                </select>
+              </div>
+              <div>
+                <label for="new-priority">Priority</label>
+                <select id="new-priority" name="priority">
+                  <option th:each="priority : ${priorities}" th:value="${priority}" th:text="${priority}" th:selected="${priority == 'Medium'}">Medium</option>
+                </select>
+              </div>
+              <div class="span-2">
+                <label for="new-assignee">Assignee</label>
+                <input id="new-assignee" name="assignee" value="Mock Trust User">
+              </div>
+              <div class="span-2">
+                <label for="new-description">Description</label>
+                <textarea id="new-description" name="description"></textarea>
+              </div>
+            </div>
+            <div class="actions">
+              <button class="button-primary" type="submit">Create</button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <div class="panel" th:if="${selectedIssue != null}">
+        <div class="panel-header">
+          <h2 th:text="${selectedIssue.key}">TK-00000</h2>
+          <a class="button" th:href="${selectedIssue.url}">API</a>
+        </div>
+        <div class="panel-body">
+          <form method="post" th:action="@{/ui/issues/{key}(key=${selectedIssue.key})}">
+            <div class="form-grid">
+              <div class="span-2">
+                <label for="edit-summary">Summary</label>
+                <input id="edit-summary" name="summary" required th:value="${selectedIssue.summary}">
+              </div>
+              <div>
+                <label for="edit-status">Status</label>
+                <select id="edit-status" name="status">
+                  <option th:each="status : ${statuses}" th:value="${status}" th:text="${status}" th:selected="${status == selectedIssue.status}">In Progress</option>
+                </select>
+              </div>
+              <div>
+                <label for="edit-priority">Priority</label>
+                <select id="edit-priority" name="priority">
+                  <option th:each="priority : ${priorities}" th:value="${priority}" th:text="${priority}" th:selected="${priority == selectedIssue.priority}">High</option>
+                </select>
+              </div>
+              <div class="span-2">
+                <label for="edit-assignee">Assignee</label>
+                <input id="edit-assignee" name="assignee" th:value="${selectedIssue.assignee}">
+              </div>
+              <div class="span-2">
+                <label for="edit-description">Description</label>
+                <textarea id="edit-description" name="description" th:text="${selectedIssue.description}"></textarea>
+              </div>
+            </div>
+            <div class="actions">
+              <button class="button-primary" type="submit">Save</button>
+            </div>
+          </form>
+
+          <form method="post" th:action="@{/ui/issues/{key}/delete(key=${selectedIssue.key})}" class="actions">
+            <button class="button-danger" type="submit">Delete</button>
+          </form>
+        </div>
+      </div>
+
+      <div class="panel" th:if="${selectedIssue != null}">
+        <div class="panel-header">
+          <h2>Comments</h2>
+          <span class="meta" th:text="${comments.size()} + ' comments'">0 comments</span>
+        </div>
+        <div class="panel-body">
+          <form method="post" th:action="@{/ui/issues/{key}/comments(key=${selectedIssue.key})}">
+            <label for="comment-body">New comment</label>
+            <textarea id="comment-body" name="body" required></textarea>
+            <div class="actions">
+              <button class="button-primary" type="submit">Add comment</button>
+            </div>
+          </form>
+
+          <div class="comments">
+            <article class="comment" th:each="comment : ${comments}">
+              <div class="comment-meta">
+                <span th:text="${comment.author}">Mock User</span>
+                -
+                <span th:text="${comment.created}">2026-07-03T00:00:00Z</span>
+              </div>
+              <div class="comment-body" th:text="${comment.body}">Comment</div>
+            </article>
+            <p class="empty" th:if="${comments.isEmpty()}">Aucun commentaire pour ce ticket.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+</body>
+</html>

@@ -1,0 +1,22 @@
+{
+  "input": {
+    "argument": "--verbose",
+    "tags": ["release", "verified"],
+    "count": 2,
+    "occurredAt": "2026-08-15T10:00:00Z",
+    "revision": "abc123"
+  },
+  "environment": {
+    "workingDirectory": "/tmp/project",
+    "serviceUrl": "https://service.example.test/api"
+  },
+  "produced": {
+    "argument": "--verbose",
+    "tags": ["release", "verified"],
+    "count": 2,
+    "occurredAt": "2026-08-15T10:00:00Z",
+    "revision": "abc123",
+    "serviceUrl": "https://service.example.test/api",
+    "workingTree": "clean"
+  }
+}

@@ -1,0 +1,19 @@
+server:
+  port: 8080
+
+spring:
+  datasource:
+    url: jdbc:sqlite:${JIRA_MOCK_DB_PATH:/data/jira-mock.sqlite}
+    driver-class-name: org.sqlite.JDBC
+    hikari:
+      maximum-pool-size: 1
+      connection-init-sql: PRAGMA foreign_keys=ON
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
+jira-mock:
+  base-url: ${JIRA_MOCK_BASE_URL:http://jira.127.0.0.1.nip.io}

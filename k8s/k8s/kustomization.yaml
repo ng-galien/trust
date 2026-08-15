@@ -1,0 +1,9 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - namespaces.yaml
+  - postgres.yaml
+  - pulsar.yaml
+  - telemetry.yaml
+  - sample-services.yaml
+  - ingress.yaml

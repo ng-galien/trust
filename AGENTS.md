@@ -1,0 +1,100 @@
+# TRUST current agent guide
+
+Read this file first. The product owner is the product authority for TRUST. The A3 Maket functional
+model records approved product decisions and must be kept aligned with the executable grammar,
+runtime and public acceptances after every significant implementation milestone. A document or an
+implementation never overrides an explicit product decision.
+
+The active product language is **Plan + Sessions → Checks**. Product Action Contracts own the
+reusable Fact shape. The runner executes the command or HTTP definition returned for one Check.
+TRUST resolves a semantic Check URI, validates the delegation context, qualifies verified Facts and returns the
+checklist verdict. An agent never infers whether its action advanced the Plan. The normative release scope is
+[TRUST V1 — minimal product scope](docs/product/v1-minimal-scope.md).
+
+## Active repository map
+
+```text
+apps/trust-runtime/       one private runtime: domain, services, SQLite, RPC, MCP and OTLP
+packages/trust-operation/ Operation types shared by the runtime and runner
+packages/trust-procedure/ Procedure types and Gherkin compiler
+packages/trust-runner/    one generic Check runner
+assets/procedures/        authoritative grammar and product Action Contracts
+assets/operations/        Operation catalog and design direction
+docs/                     active decisions and executable contracts
+k8s/                      retained integration test environment
+```
+
+## Non-negotiable design rules
+
+- English is the only language for active code, Skill instructions and metadata, CLI/MCP messages,
+  technical documentation, and acceptance tests. Product terms and Action Contract identifiers
+  must use their canonical English wording.
+- The agent gives the runner only one semantic Check URI.
+- Every completed attempt whose Facts are accepted returns the external action result and an
+  explicit `VALIDATED` or `NOT_VALIDATED` checklist verdict with a useful reason. Without accepted
+  Facts there is no qualification: a refusal, crash or transport interruption leaves the Check
+  unchanged and the agent may invoke the runner again.
+- A Fact batch missing any observation required by the Check's compiled predicates is rejected
+  atomically before persistence. It produces no Fact, Snapshot, verdict or checklist delta; the runner
+  may re-observe and resubmit without repeating a known external action.
+- Replaying after missing Facts is the normal rule. TRUST deduplicates identical Facts and the
+  resulting Snapshot, verdict and checklist delta. Rare actions that cannot safely be replayed after
+  an unknown outcome require explicit human intervention; they do not justify a generic exactly-once
+  engine in TRUST.
+- A Check is either `OPEN` or `SATISFIED`. Facts and Snapshots are immutable history, but the
+  qualification active in the current Plan revision is replaceable. New accepted Facts for one
+  Check recompute that qualification and recursively make every dependent Check `OPEN` through
+  Scenario prerequisites and Check-observation references; the agent resumes the same Plan from any
+  Check whose dependencies are satisfied.
+- The runner never qualifies Checks. `actionOutcome` is never qualification input.
+- A Skill release manifest declares only the exact Action Contract digests implemented. It never
+  owns or repeats the product Fact schema. Compatibility is the exact
+  `(capability, actionContractDigest)` match.
+- The runner receives the compiled Operation from TRUST. Shared Operation types belong to
+  `trust-operation`; Shell and HTTP execution belong to `trust-runner`.
+- Skills may create, update, delete, publish, transition, send or deploy when their Action Contract
+  requires it. The Skill acts with its own external permissions. Domain-specific idempotency or
+  reconciliation may remain local Skill/SDK safeguards, but advanced retry, shared journals, high
+  availability and automatic recovery are not generic product gates.
+- Gherkin plus a closed DSL owns Check intent, expected capability, typed predicate and semantic
+  reasons. The generic server contains no procedure-specific business rule.
+- Delegation is refused before the external action until every compiled prerequisite Scenario is
+  validated and every Check referenced by an observation has an active `VALIDATED` qualification.
+- TRUST owns URI and Session resolution, delegation grants, the Skill implementation registry,
+  explicit environment selection, Fact validation, qualification,
+  immutable snapshots and checklist deltas. A grant validates and correlates the requested Check,
+  Skill capability, context and release; it is not proof that the external action occurred.
+- Plan engagement accepts only the procedure/version, Plan identifier, environment and the closed
+  set of compiled root Plan inputs. Fixed roles and future Skill-produced roles are never repeated.
+  Roles explicitly compiled as agent declarations are replaced after engagement only through the
+  closed, revision-checked declaration operation; it cannot write roots, fixed roles or Skill
+  outputs. V1 has no auto-fill, generic context patch, rich engagement UI or organizational input policy.
+- A procedure may compile while remaining non-operable. `READY` is a timestamped projection, not a
+  persisted Skill lifecycle state. Plan engagement validates its closed business inputs and creates
+  the initial Checks independently of Skill availability. In `verified` Skill policy, an ephemeral
+  CLI deployment announces and probes itself when it is invoked for one Check URI; attempt admission
+  then requires the exact selected, approved, compatible and currently available deployment before
+  any external action. The default `local` Skill policy skips credentials, registry publication,
+  authorization and deployment checks.
+  Managed MCP STDIO or HTTP integrations may use `READY` as an operator preflight before engagement,
+  but the Plan engagement service never imposes that advanced provisioning policy.
+- RPC and MCP call the same application services. MCP never proxies RPC or exposes raw DTOs.
+- Do not create Proof, Evidence or Binding resources, SQL per requirement, manual references,
+  `checks.refresh`, compatibility adapters or another product module.
+- Use OpenTelemetry traces only. Logs and metrics are outside the governance contract.
+- The Awilix-injected database driver is a singleton. Services never fetch the container.
+- There are no schema or data migrations before release. Replace the schema and reseed manually.
+- No `MEMORY.md` or Codex memory is used for this project.
+
+## Verification
+
+Only acceptance tests at public boundaries are allowed. Do not add or run unit tests.
+
+Public evidence comes from the real runtime process through RPC, MCP, OTLP, the Skill CLI and the
+test environment. A build or typecheck is useful qualification but is never accepted as behavioral
+evidence.
+
+Use Code Moniker as the single architecture analyzer when relationship or dependency evidence is
+required. Do not create a parallel import checker.
+
+Commit only when explicitly requested.

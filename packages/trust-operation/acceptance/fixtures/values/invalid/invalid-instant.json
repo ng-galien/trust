@@ -1,0 +1,11 @@
+{
+  "values": "input",
+  "value": {
+    "argument": "--verbose",
+    "tags": ["release"],
+    "count": 2,
+    "occurredAt": "yesterday",
+    "revision": "abc123"
+  },
+  "rules": ["format"]
+}

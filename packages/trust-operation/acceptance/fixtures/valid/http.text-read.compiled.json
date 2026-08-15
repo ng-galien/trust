@@ -1,0 +1,57 @@
+{
+  "contract": "trust.compiled-operation@1",
+  "operation": "http.text-read",
+  "version": "1.0.0",
+  "title": "Read HTTP text",
+  "input": {
+    "type": "object",
+    "properties": {},
+    "required": [],
+    "additionalProperties": false
+  },
+  "environment": {
+    "type": "object",
+    "properties": {
+      "serviceUrl": {
+        "type": "string",
+        "format": "trust-url"
+      }
+    },
+    "required": [
+      "serviceUrl"
+    ],
+    "additionalProperties": false
+  },
+  "steps": [
+    {
+      "name": "response",
+      "type": "http",
+      "http": {
+        "url": {
+          "environment": "serviceUrl"
+        },
+        "format": "text"
+      }
+    }
+  ],
+  "produce": {
+    "language": "jsonata",
+    "expression": "{ \"body\": steps.response.body, \"status\": steps.response.status }"
+  },
+  "produced": {
+    "type": "object",
+    "properties": {
+      "body": {
+        "type": "string"
+      },
+      "status": {
+        "type": "number"
+      }
+    },
+    "required": [
+      "body",
+      "status"
+    ],
+    "additionalProperties": false
+  }
+}

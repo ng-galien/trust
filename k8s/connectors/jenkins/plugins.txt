@@ -1,0 +1,8 @@
+cloudbees-folder
+build-token-root
+configuration-as-code
+credentials
+git
+job-dsl
+pipeline-stage-view
+workflow-aggregator

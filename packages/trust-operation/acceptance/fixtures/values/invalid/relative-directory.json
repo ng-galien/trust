@@ -1,0 +1,8 @@
+{
+  "values": "environment",
+  "value": {
+    "workingDirectory": "relative/project",
+    "serviceUrl": "https://service.example.test/api"
+  },
+  "rules": ["format"]
+}

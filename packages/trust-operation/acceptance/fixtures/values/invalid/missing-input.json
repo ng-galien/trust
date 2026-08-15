@@ -1,0 +1,10 @@
+{
+  "values": "input",
+  "value": {
+    "argument": "--verbose",
+    "tags": ["release"],
+    "count": 2,
+    "occurredAt": "2026-08-15T10:00:00Z"
+  },
+  "rules": ["required"]
+}

@@ -1,0 +1,407 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: gitlab-root
+  namespace: trust-test
+type: Opaque
+stringData:
+  root-password: qK7!vR2@zM9#tP4%wX8
+  api-token: local-gitlab-token
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: gitlab-data
+  namespace: trust-test
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 8Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: gitlab-config
+  namespace: trust-test
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gitlab
+  namespace: trust-test
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: gitlab
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: gitlab
+    spec:
+      terminationGracePeriodSeconds: 60
+      containers:
+        - name: gitlab
+          image: gitlab/gitlab-ce:18.2.0-ce.0
+          ports:
+            - name: http
+              containerPort: 80
+            - name: ssh
+              containerPort: 22
+          env:
+            - name: GITLAB_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: gitlab-root
+                  key: root-password
+            - name: GITLAB_OMNIBUS_CONFIG
+              value: |
+                external_url 'http://gitlab.127.0.0.1.nip.io';
+                gitlab_rails['gitlab_shell_ssh_port'] = 2222;
+                gitlab_rails['time_zone'] = 'UTC';
+                gitlab_rails['usage_ping_enabled'] = false;
+                gitlab_rails['lfs_enabled'] = false;
+                gitlab_rails['artifacts_enabled'] = false;
+                gitlab_rails['terraform_state_enabled'] = false;
+                gitlab_rails['dependency_proxy_enabled'] = false;
+                gitlab_rails['packages_enabled'] = false;
+                gitlab_rails['registry_enabled'] = false;
+                gitlab_rails['gitlab_default_projects_features_container_registry'] = false;
+                gitlab_rails['initial_root_password'] = ENV['GITLAB_ROOT_PASSWORD'];
+                gitlab_rails['databases']['ci']['enable'] = false;
+                puma['worker_processes'] = 0;
+                puma['min_threads'] = 1;
+                puma['max_threads'] = 2;
+                puma['per_worker_max_memory_mb'] = 768;
+                puma['exporter_enabled'] = false;
+                sidekiq['concurrency'] = 5;
+                sidekiq['metrics_enabled'] = false;
+                prometheus_monitoring['enable'] = false;
+                prometheus['enable'] = false;
+                alertmanager['enable'] = false;
+                node_exporter['enable'] = false;
+                redis_exporter['enable'] = false;
+                postgres_exporter['enable'] = false;
+                gitlab_exporter['enable'] = false;
+                registry['enable'] = false;
+                mattermost['enable'] = false;
+                gitlab_pages['enable'] = false;
+                gitlab_kas['enable'] = false;
+                nginx['redirect_http_to_https'] = false;
+          resources:
+            requests:
+              cpu: "1500m"
+              memory: 3Gi
+            limits:
+              cpu: "3"
+              memory: 5Gi
+          readinessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - "curl -fsS -H 'Host: gitlab.127.0.0.1.nip.io' http://127.0.0.1/-/readiness >/dev/null"
+            initialDelaySeconds: 180
+            timeoutSeconds: 5
+            periodSeconds: 20
+            failureThreshold: 30
+          livenessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - "curl -fsS -H 'Host: gitlab.127.0.0.1.nip.io' http://127.0.0.1/-/liveness >/dev/null"
+            initialDelaySeconds: 300
+            timeoutSeconds: 5
+            periodSeconds: 30
+            failureThreshold: 10
+          volumeMounts:
+            - name: config
+              mountPath: /etc/gitlab
+            - name: data
+              mountPath: /var/opt/gitlab
+            - name: logs
+              mountPath: /var/log/gitlab
+            - name: dshm
+              mountPath: /dev/shm
+      volumes:
+        - name: config
+          persistentVolumeClaim:
+            claimName: gitlab-config
+        - name: data
+          persistentVolumeClaim:
+            claimName: gitlab-data
+        - name: logs
+          emptyDir: {}
+        - name: dshm
+          emptyDir:
+            medium: Memory
+            sizeLimit: 256Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: gitlab
+  namespace: trust-test
+spec:
+  selector:
+    app: gitlab
+  ports:
+    - name: http
+      port: 80
+      targetPort: 80
+    - name: ssh
+      port: 22
+      targetPort: 22
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: jenkins-admin
+  namespace: trust-test
+type: Opaque
+stringData:
+  username: admin
+  password: local-jenkins-token
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: jenkins-home
+  namespace: trust-test
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 4Gi
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: jenkins-casc
+  namespace: trust-test
+data:
+  jenkins.yaml: |
+    jenkins:
+      systemMessage: "Trust Kind integration Jenkins"
+      numExecutors: 2
+      mode: NORMAL
+      scmCheckoutRetryCount: 1
+      securityRealm:
+        local:
+          allowsSignup: false
+          users:
+            - id: "${JENKINS_ADMIN_ID}"
+              password: "${JENKINS_ADMIN_PASSWORD}"
+      authorizationStrategy:
+        loggedInUsersCanDoAnything:
+          allowAnonymousRead: false
+    unclassified:
+      location:
+        url: "http://jenkins.127.0.0.1.nip.io/"
+    jobs:
+      - script: |
+          def gitlabBaseUrl = 'http://gitlab.trust-test.svc.cluster.local/trustgroup/trust-devs'
+          ['payment-common', 'payment-api', 'payment-worker', 'event-store', 'payment-acceptance'].each { project ->
+            multibranchPipelineJob(project) {
+              description('Builds every branch of ' + project + ' from GitLab.')
+              branchSources {
+                git {
+                  id('trust-' + project)
+                  remote(gitlabBaseUrl + '/' + project + '.git')
+                  includes('*')
+                }
+              }
+              factory {
+                workflowBranchProjectFactory {
+                  scriptPath('Jenkinsfile')
+                }
+              }
+              orphanedItemStrategy {
+                discardOldItems {
+                  numToKeep(20)
+                }
+              }
+              triggers {
+                periodicFolderTrigger {
+                  interval('1m')
+                }
+              }
+            }
+          }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: jenkins
+  namespace: trust-test
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: jenkins
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: jenkins
+    spec:
+      securityContext:
+        fsGroup: 1000
+      containers:
+        - name: jenkins
+          image: trust/jenkins-test:local
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+            - name: agent
+              containerPort: 50000
+          env:
+            - name: CASC_JENKINS_CONFIG
+              value: /var/jenkins_config/jenkins.yaml
+            - name: JAVA_OPTS
+              value: >-
+                -Djenkins.install.runSetupWizard=false
+                -Dhudson.plugins.git.GitStatus.NOTIFY_COMMIT_ACCESS_CONTROL=disabled-for-polling
+            - name: JENKINS_ADMIN_ID
+              valueFrom:
+                secretKeyRef:
+                  name: jenkins-admin
+                  key: username
+            - name: JENKINS_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: jenkins-admin
+                  key: password
+            - name: GITLAB_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: gitlab-root
+                  key: api-token
+          resources:
+            requests:
+              cpu: "500m"
+              memory: 1Gi
+            limits:
+              cpu: "2"
+              memory: 2Gi
+          readinessProbe:
+            httpGet:
+              path: /login
+              port: http
+            initialDelaySeconds: 60
+            periodSeconds: 10
+          volumeMounts:
+            - name: home
+              mountPath: /var/jenkins_home
+            - name: casc
+              mountPath: /var/jenkins_config
+      volumes:
+        - name: home
+          persistentVolumeClaim:
+            claimName: jenkins-home
+        - name: casc
+          configMap:
+            name: jenkins-casc
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: jira-mock
+  namespace: trust-test
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: jira-mock
+  template:
+    metadata:
+      labels:
+        app: jira-mock
+    spec:
+      containers:
+        - name: jira-mock
+          image: trust/jira-mock:local
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            - name: JIRA_MOCK_BASE_URL
+              value: http://jira.127.0.0.1.nip.io
+            - name: JIRA_MOCK_DB_PATH
+              value: /data/jira-mock.sqlite
+          resources:
+            requests:
+              cpu: "100m"
+              memory: 256Mi
+            limits:
+              cpu: "500m"
+              memory: 512Mi
+          readinessProbe:
+            httpGet:
+              path: /actuator/health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          volumeMounts:
+            - name: data
+              mountPath: /data
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: jira-mock-data
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: jira-mock-data
+  namespace: trust-test
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: jenkins
+  namespace: trust-test
+spec:
+  selector:
+    app: jenkins
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+    - name: agent
+      port: 50000
+      targetPort: 50000
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: jira-mock
+  namespace: trust-test
+spec:
+  selector:
+    app: jira-mock
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080

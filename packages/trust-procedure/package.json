@@ -1,0 +1,32 @@
+{
+  "name": "@trust/procedure",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24.10.0"
+  },
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": ["src", "dist"],
+  "scripts": {
+    "prebuild": "npm run build --workspace=@trust/gherkin",
+    "build": "npm run clean && tsc -p tsconfig.json",
+    "clean": "node --input-type=module -e \"import { rmSync } from 'node:fs'; rmSync('dist', { recursive: true, force: true })\"",
+    "test:acceptance": "npm run build && vitest run acceptance",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.acceptance.json"
+  },
+  "dependencies": {
+    "@cucumber/messages": "^31.0.0",
+    "@trust/gherkin": "file:../trust-gherkin"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "^5.7.2",
+    "vitest": "^4.1.10"
+  }
+}

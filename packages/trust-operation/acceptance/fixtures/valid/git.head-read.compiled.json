@@ -1,0 +1,82 @@
+{
+  "contract": "trust.compiled-operation@1",
+  "operation": "git.head-read",
+  "version": "1.0.0",
+  "title": "Read Git HEAD and working tree",
+  "input": {
+    "type": "object",
+    "properties": {},
+    "required": [],
+    "additionalProperties": false
+  },
+  "environment": {
+    "type": "object",
+    "properties": {
+      "projectRoot": {
+        "type": "string",
+        "format": "trust-directory"
+      }
+    },
+    "required": [
+      "projectRoot"
+    ],
+    "additionalProperties": false
+  },
+  "steps": [
+    {
+      "name": "head",
+      "type": "shell",
+      "shell": {
+        "executable": "git",
+        "arguments": [
+          "rev-parse",
+          "--verify",
+          "HEAD"
+        ],
+        "cwd": {
+          "environment": "projectRoot"
+        }
+      }
+    },
+    {
+      "name": "status",
+      "type": "shell",
+      "shell": {
+        "executable": "git",
+        "arguments": [
+          "status",
+          "--porcelain=v1",
+          "--untracked-files=normal"
+        ],
+        "cwd": {
+          "environment": "projectRoot"
+        }
+      }
+    }
+  ],
+  "produce": {
+    "language": "jsonata",
+    "expression": "{\n  \"headRevision\": $trim(steps.head.stdout),\n  \"workingTree\": $trim(steps.status.stdout) = \"\" ? \"clean\" : \"dirty\"\n}"
+  },
+  "produced": {
+    "type": "object",
+    "properties": {
+      "headRevision": {
+        "type": "string",
+        "minLength": 1
+      },
+      "workingTree": {
+        "type": "string",
+        "enum": [
+          "clean",
+          "dirty"
+        ]
+      }
+    },
+    "required": [
+      "headRevision",
+      "workingTree"
+    ],
+    "additionalProperties": false
+  }
+}

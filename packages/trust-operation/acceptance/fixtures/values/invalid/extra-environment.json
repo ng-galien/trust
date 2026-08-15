@@ -1,0 +1,9 @@
+{
+  "values": "environment",
+  "value": {
+    "workingDirectory": "/tmp/project",
+    "serviceUrl": "https://service.example.test/api",
+    "other": "not declared"
+  },
+  "rules": ["additionalProperties"]
+}

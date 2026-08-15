@@ -1,0 +1,28 @@
+{
+  "name": "trust-server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24.10.0"
+  },
+  "workspaces": [
+    "apps/trust-runtime",
+    "packages/trust-gherkin",
+    "packages/trust-language-server",
+    "packages/trust-operation",
+    "packages/trust-procedure",
+    "packages/trust-runner"
+  ],
+  "scripts": {
+    "dev": "bun scripts/server.ts start",
+    "build": "npm run build --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm run test:acceptance",
+    "test:acceptance": "npm run test:acceptance --workspaces --if-present && node --test acceptance/runtime-mcp-agent-loop.acceptance.test.mjs",
+    "start": "npm --workspace @trust/runtime start"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.2"
+  }
+}

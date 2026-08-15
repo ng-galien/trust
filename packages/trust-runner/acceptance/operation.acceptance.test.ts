@@ -1,0 +1,391 @@
+import { execFile } from "node:child_process";
+import { readFileSync } from "node:fs";
+import { mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
+import {
+  createServer,
+  type IncomingMessage,
+  type Server,
+  type ServerResponse,
+} from "node:http";
+import type { AddressInfo } from "node:net";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { promisify } from "node:util";
+
+import { compileOperation } from "@trust/operation";
+import { OtlpFactExporter, runOperation } from "@trust/runner";
+import { afterEach, describe, expect, test } from "vitest";
+
+const execute = promisify(execFile);
+const temporaryDirectories: string[] = [];
+const httpServers: Server[] = [];
+const receivedHttpRequests: Array<{
+  readonly method: string;
+  readonly url: string;
+  readonly headers: Readonly<Record<string, string | string[] | undefined>>;
+  readonly body: string;
+}> = [];
+let otlpResponse = { status: 200, body: "{}" };
+
+afterEach(async () => {
+  await Promise.all([
+    ...temporaryDirectories.splice(0).map((directory) =>
+      rm(directory, { recursive: true, force: true })
+    ),
+    ...httpServers.splice(0).map(closeHttpServer),
+  ]);
+  receivedHttpRequests.splice(0);
+  otlpResponse = { status: 200, body: "{}" };
+});
+
+describe("Operation runner", () => {
+  test("executes the Git Operation in its declared directory", async () => {
+    const projectRoot = await temporaryDirectory("trust-runner-git-");
+    await execute("git", ["init", "-q"], { cwd: projectRoot });
+    await writeFile(join(projectRoot, "tracked.txt"), "baseline\n", "utf8");
+    await execute("git", ["add", "tracked.txt"], { cwd: projectRoot });
+    await execute("git", [
+      "-c", "user.name=TRUST Acceptance",
+      "-c", "user.email=trust@example.invalid",
+      "commit", "-qm", "baseline",
+    ], { cwd: projectRoot });
+    const { stdout: revision } = await execute("git", ["rev-parse", "HEAD"], { cwd: projectRoot });
+    await writeFile(join(projectRoot, "untracked.txt"), "dirty\n", "utf8");
+
+    const result = await runOperation(operation("git.head-read.feature"), {}, { projectRoot });
+
+    expect(result.produced).toEqual({
+      headRevision: revision.trim(),
+      workingTree: "dirty",
+    });
+  });
+
+  test("reads and decodes a JSON File inside its declared directory", async () => {
+    const projectRoot = await temporaryDirectory("trust-runner-file-");
+    await writeFile(join(projectRoot, "package.json"), JSON.stringify({ name: "trust-example" }), "utf8");
+
+    const result = await runOperation(operation("file.package-read.feature"), {}, { projectRoot });
+
+    expect(result.produced).toEqual({ name: "trust-example" });
+    expect(result.steps).toEqual({
+      manifest: {
+        relativePath: "package.json",
+        content: { name: "trust-example" },
+      },
+    });
+  });
+
+  test("reads a Text File inside its declared directory", async () => {
+    const projectRoot = await temporaryDirectory("trust-runner-file-text-");
+    await writeFile(join(projectRoot, "LICENSE"), "TRUST license\n", "utf8");
+
+    const result = await runOperation(operation("file.license-read.feature"), {}, { projectRoot });
+
+    expect(result.produced).toEqual({ text: "TRUST license\n" });
+  });
+
+  test("fails when a JSON File is invalid", async () => {
+    const projectRoot = await temporaryDirectory("trust-runner-file-json-");
+    await writeFile(join(projectRoot, "package.json"), "not-json", "utf8");
+
+    await expect(runOperation(operation("file.package-read.feature"), {}, { projectRoot }))
+      .rejects.toThrow('File "package.json" is not valid JSON');
+  });
+
+  test("refuses a File resolved outside its declared directory", async () => {
+    const projectRoot = await temporaryDirectory("trust-runner-root-");
+    const outside = await temporaryDirectory("trust-runner-outside-");
+    await writeFile(join(outside, "package.json"), JSON.stringify({ name: "outside" }), "utf8");
+    await symlink(join(outside, "package.json"), join(projectRoot, "package.json"));
+
+    await expect(runOperation(operation("file.package-read.feature"), {}, { projectRoot }))
+      .rejects.toThrow("resolves outside Environment");
+  });
+
+  test("refuses Environment values before executing a Step", async () => {
+    await expect(runOperation(operation("git.head-read.feature"), {}, { projectRoot: "relative" }))
+      .rejects.toMatchObject({ values: "environment" });
+  });
+
+  test("fails when a Shell exits with a non-zero code", async () => {
+    const projectRoot = await temporaryDirectory("trust-runner-shell-");
+    await execute("git", ["init", "-q"], { cwd: projectRoot });
+
+    await expect(runOperation(operation("git.head-read.feature"), {}, { projectRoot }))
+      .rejects.toMatchObject({ name: "ShellError" });
+  });
+
+  test("gets and decodes JSON from a real HTTP server", async () => {
+    const baseUrl = await startHttpServer();
+
+    const result = await runOperation(
+      operation("http.status-read.feature"),
+      {},
+      { serviceUrl: `${baseUrl}/status` },
+    );
+
+    expect(result.produced).toEqual({ service: "ready", status: 200 });
+    expect(result.steps.response).toMatchObject({ status: 200, body: { service: "ready" } });
+    expect(receivedHttpRequests).toEqual([
+      expect.objectContaining({ method: "GET", url: "/status" }),
+    ]);
+  });
+
+  test("gets Text from a real HTTP server", async () => {
+    const baseUrl = await startHttpServer();
+
+    const result = await runOperation(
+      operation("http.text-read.feature"),
+      {},
+      { serviceUrl: `${baseUrl}/text` },
+    );
+
+    expect(result.produced).toEqual({ body: "ready", status: 200 });
+  });
+
+  test("preserves an empty HTTP Text response", async () => {
+    const baseUrl = await startHttpServer();
+
+    const result = await runOperation(
+      operation("http.text-read.feature"),
+      {},
+      { serviceUrl: `${baseUrl}/empty-text` },
+    );
+
+    expect(result.produced).toEqual({ body: "", status: 200 });
+  });
+
+  test("fails on a non-success HTTP status", async () => {
+    const baseUrl = await startHttpServer();
+
+    await expect(runOperation(
+      operation("http.status-read.feature"),
+      {},
+      { serviceUrl: `${baseUrl}/missing` },
+    )).rejects.toMatchObject({
+      name: "HttpStatusError",
+      status: 404,
+    });
+  });
+
+  test("fails when an HTTP JSON response is invalid", async () => {
+    const baseUrl = await startHttpServer();
+
+    await expect(runOperation(
+      operation("http.status-read.feature"),
+      {},
+      { serviceUrl: `${baseUrl}/invalid-json` },
+    )).rejects.toThrow("HTTP response is not valid JSON");
+  });
+
+  test("validates values produced from an HTTP response", async () => {
+    const baseUrl = await startHttpServer();
+
+    await expect(runOperation(
+      operation("http.status-read.feature"),
+      {},
+      { serviceUrl: `${baseUrl}/missing-service` },
+    )).rejects.toMatchObject({ values: "produced" });
+  });
+
+  test("exports Facts as an OpenTelemetry trace through HTTP", async () => {
+    const baseUrl = await startHttpServer();
+    const exporter = new OtlpFactExporter(`${baseUrl}/v1/traces`);
+
+    await exporter.export({
+      attemptKey: "attempt-1",
+      executionHandle: "execution-1",
+      checkUri: "trust://local/example@1.0.0/plan/scenario/check/target",
+      facts: [{
+        kind: "git.head",
+        observedAt: "2026-08-15T12:00:00.000Z",
+        values: { revision: "abc123" },
+      }],
+      recordedAt: "2026-08-15T12:00:00.000Z",
+    });
+
+    expect(receivedHttpRequests).toHaveLength(1);
+    const request = receivedHttpRequests[0];
+    expect(request).toMatchObject({
+      method: "POST",
+      url: "/v1/traces",
+      headers: { "content-type": "application/json" },
+    });
+    const envelope = JSON.parse(request?.body ?? "") as {
+      resourceSpans: Array<{
+        scopeSpans: Array<{
+          spans: Array<{
+            name: string;
+            attributes: Array<{ key: string; value: { stringValue: string } }>;
+            events: Array<{
+              name: string;
+              attributes: Array<{ key: string; value: { stringValue?: string } }>;
+            }>;
+          }>;
+        }>;
+      }>;
+    };
+    const span = envelope.resourceSpans[0]?.scopeSpans[0]?.spans[0];
+    expect(span?.name).toBe("trust.runner.facts");
+    expect(span?.attributes).toEqual(expect.arrayContaining([
+      { key: "trust.attempt_key", value: { stringValue: "attempt-1" } },
+      { key: "trust.execution_handle", value: { stringValue: "execution-1" } },
+      {
+        key: "trust.check_uri",
+        value: { stringValue: "trust://local/example@1.0.0/plan/scenario/check/target" },
+      },
+    ]));
+    expect(span?.events[0]).toMatchObject({
+      name: "trust.runner.fact",
+      attributes: expect.arrayContaining([
+        {
+          key: "trust.fact.kind",
+          value: { stringValue: "git.head" },
+        },
+        {
+          key: "trust.fact.observed_at",
+          value: { stringValue: "2026-08-15T12:00:00.000Z" },
+        },
+        {
+          key: "trust.fact.values",
+          value: {
+            kvlistValue: {
+              values: [{ key: "revision", value: { stringValue: "abc123" } }],
+            },
+          },
+        },
+      ]),
+    });
+  });
+
+  test("fails when the OpenTelemetry endpoint rejects the request", async () => {
+    otlpResponse = { status: 503, body: "unavailable" };
+    const baseUrl = await startHttpServer();
+    const exporter = new OtlpFactExporter(`${baseUrl}/v1/traces`);
+
+    await expect(exporter.export(factTrace()))
+      .rejects.toThrow("OTLP export failed with HTTP 503");
+  });
+
+  test("fails when OpenTelemetry reports rejected Facts", async () => {
+    otlpResponse = {
+      status: 200,
+      body: JSON.stringify({
+        partialSuccess: { rejectedSpans: 1, errorMessage: "invalid Fact" },
+      }),
+    };
+    const baseUrl = await startHttpServer();
+    const exporter = new OtlpFactExporter(`${baseUrl}/v1/traces`);
+
+    await expect(exporter.export(factTrace()))
+      .rejects.toThrow("TRUST rejected the Facts: invalid Fact");
+  });
+});
+
+function operation(name: string) {
+  const source = readOperation(name);
+  return compileOperation({ source, sourceName: name });
+}
+
+function readOperation(name: string): string {
+  return readFileSync(new URL(`../../../assets/operations/${name}`, import.meta.url), "utf8");
+}
+
+async function temporaryDirectory(prefix: string): Promise<string> {
+  const directory = await mkdtemp(join(tmpdir(), prefix));
+  temporaryDirectories.push(directory);
+  return directory;
+}
+
+async function startHttpServer(): Promise<string> {
+  const server = createServer((request, response) => {
+    void respond(request, response).catch((error: unknown) => {
+      response.destroy(error instanceof Error ? error : new Error(String(error)));
+    });
+  });
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", resolve);
+  });
+  httpServers.push(server);
+  const address = server.address() as AddressInfo;
+  return `http://127.0.0.1:${address.port}`;
+}
+
+async function respond(request: IncomingMessage, response: ServerResponse): Promise<void> {
+  if (request.method === "POST" && request.url === "/v1/traces") {
+    receivedHttpRequests.push({
+      method: request.method,
+      url: request.url,
+      headers: request.headers,
+      body: await readRequest(request),
+    });
+    response.writeHead(otlpResponse.status, { "content-type": "application/json" });
+    response.end(otlpResponse.body);
+    return;
+  }
+  if (request.method !== "GET") {
+    response.writeHead(405, { "content-type": "text/plain" });
+    response.end("method not allowed");
+    return;
+  }
+    receivedHttpRequests.push({
+      method: request.method,
+      url: request.url ?? "",
+      headers: request.headers,
+      body: "",
+    });
+    if (request.url === "/status") {
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(JSON.stringify({ service: "ready" }));
+      return;
+    }
+    if (request.url === "/text") {
+      response.writeHead(200, { "content-type": "text/plain" });
+      response.end("ready");
+      return;
+    }
+    if (request.url === "/empty-text") {
+      response.writeHead(200, { "content-type": "text/plain" });
+      response.end("");
+      return;
+    }
+    if (request.url === "/invalid-json") {
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end("not-json");
+      return;
+    }
+    if (request.url === "/missing-service") {
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end("{}");
+      return;
+    }
+    response.writeHead(404, { "content-type": "text/html" });
+    response.end("<h1>missing</h1>");
+}
+
+async function readRequest(request: IncomingMessage): Promise<string> {
+  const chunks: Buffer[] = [];
+  for await (const chunk of request) chunks.push(Buffer.from(chunk as Uint8Array));
+  return Buffer.concat(chunks).toString("utf8");
+}
+
+function factTrace() {
+  return {
+    attemptKey: "attempt-1",
+    executionHandle: "execution-1",
+    checkUri: "trust://local/example@1.0.0/plan/scenario/check/target",
+    facts: [{
+      kind: "git.head",
+      observedAt: "2026-08-15T12:00:00.000Z",
+      values: { revision: "abc123" },
+    }],
+    recordedAt: "2026-08-15T12:00:00.000Z",
+  };
+}
+
+async function closeHttpServer(server: Server): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    server.close((error) => error ? reject(error) : resolve());
+  });
+}

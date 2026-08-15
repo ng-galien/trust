@@ -1,0 +1,8 @@
+{
+  "values": "environment",
+  "value": {
+    "workingDirectory": "/tmp/project",
+    "serviceUrl": "not a URL"
+  },
+  "rules": ["format"]
+}

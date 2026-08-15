@@ -1,0 +1,18 @@
+package dev.trust.jiramock;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.context.annotation.Bean;
+
+@SpringBootApplication
+public class JiraMockApplication {
+  public static void main(String[] args) {
+    SpringApplication.run(JiraMockApplication.class, args);
+  }
+
+  @Bean
+  ObjectMapper objectMapper() {
+    return new ObjectMapper();
+  }
+}

@@ -1,0 +1,238 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: sample-service-otel-diagnostics
+  namespace: trust-test
+data:
+  OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector.telemetry.svc.cluster.local:4318
+  OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
+  OTEL_PROPAGATORS: tracecontext,baggage
+  OTEL_TRACES_SAMPLER: always_on
+  OTEL_LOGS_EXPORTER: none
+  OTEL_METRICS_EXPORTER: none
+  OTEL_ATTRIBUTE_VALUE_LENGTH_LIMIT: "8192"
+  OTEL_SPAN_ATTRIBUTE_COUNT_LIMIT: "256"
+  OTEL_SPAN_EVENT_COUNT_LIMIT: "256"
+  OTEL_INSTRUMENTATION_COMMON_DEFAULT_ENABLED: "true"
+  OTEL_INSTRUMENTATION_HTTP_KNOWN_METHODS: GET,POST,PUT,PATCH,DELETE,OPTIONS,HEAD
+  OTEL_INSTRUMENTATION_HTTP_SERVER_CAPTURE_REQUEST_HEADERS: traceparent,tracestate,baggage,x-request-id,x-correlation-id,x-fwd-request-id,content-type,accept,user-agent,host,origin,referer,authorization,cookie
+  OTEL_INSTRUMENTATION_HTTP_SERVER_CAPTURE_RESPONSE_HEADERS: traceparent,tracestate,baggage,x-request-id,x-correlation-id,x-fwd-request-id,content-type,location
+  OTEL_INSTRUMENTATION_HTTP_CLIENT_CAPTURE_REQUEST_HEADERS: traceparent,tracestate,baggage,x-request-id,x-correlation-id,x-fwd-request-id,content-type,accept,user-agent,host,origin,referer,authorization,cookie
+  OTEL_INSTRUMENTATION_HTTP_CLIENT_CAPTURE_RESPONSE_HEADERS: traceparent,tracestate,baggage,x-request-id,x-correlation-id,x-fwd-request-id,content-type,location
+  OTEL_INSTRUMENTATION_COMMON_DB_STATEMENT_SANITIZER_ENABLED: "false"
+  OTEL_INSTRUMENTATION_JDBC_ENABLED: "true"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: payment-api
+  namespace: trust-test
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: payment-api
+  template:
+    metadata:
+      labels:
+        app: payment-api
+    spec:
+      containers:
+        - name: payment-api
+          image: trust/payment-api:dev
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - configMapRef:
+                name: sample-service-otel-diagnostics
+          ports:
+            - containerPort: 8080
+          env:
+            - name: SERVER_PORT
+              value: "8080"
+            - name: PAYMENT_WORKER_URL
+              value: http://payment-worker.trust-test.svc.cluster.local:8080
+            - name: SPRING_DATASOURCE_URL
+              value: jdbc:postgresql://postgres.trust-test.svc.cluster.local:5432/flowlab
+            - name: SPRING_DATASOURCE_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-auth
+                  key: POSTGRES_USER
+            - name: SPRING_DATASOURCE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-auth
+                  key: POSTGRES_PASSWORD
+            - name: SPRING_PULSAR_CLIENT_SERVICE_URL
+              value: pulsar://pulsar.trust-test.svc.cluster.local:6650
+            - name: PAYMENT_EVENTS_TOPIC
+              value: persistent://public/default/payment-events
+            - name: OTEL_SERVICE_NAME
+              value: payment-api
+            - name: OTEL_RESOURCE_ATTRIBUTES
+              value: service.namespace=trust-test,deployment.environment.name=kind-test,k8s.service.name=payment-api,trust.environment.id=kind-integration
+            - name: OTEL_INSTRUMENTATION_METHODS_INCLUDE
+              value: dev.sprinttracker.lab.paymentapi.PaymentController[createPaymentLink];dev.sprinttracker.lab.paymentapi.PaymentEventPublisher[publishPaymentLinkCreated];dev.sprinttracker.lab.paymentapi.PaymentLinkRepository[saveCreated]
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 5
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: payment-api
+  namespace: trust-test
+spec:
+  type: NodePort
+  selector:
+    app: payment-api
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+      nodePort: 30080
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: payment-worker
+  namespace: trust-test
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: payment-worker
+  template:
+    metadata:
+      labels:
+        app: payment-worker
+    spec:
+      containers:
+        - name: payment-worker
+          image: trust/payment-worker:dev
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - configMapRef:
+                name: sample-service-otel-diagnostics
+          ports:
+            - containerPort: 8080
+          env:
+            - name: SERVER_PORT
+              value: "8080"
+            - name: SPRING_DATASOURCE_URL
+              value: jdbc:postgresql://postgres.trust-test.svc.cluster.local:5432/flowlab
+            - name: SPRING_DATASOURCE_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-auth
+                  key: POSTGRES_USER
+            - name: SPRING_DATASOURCE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-auth
+                  key: POSTGRES_PASSWORD
+            - name: OTEL_SERVICE_NAME
+              value: payment-worker
+            - name: OTEL_RESOURCE_ATTRIBUTES
+              value: service.namespace=trust-test,deployment.environment.name=kind-test,k8s.service.name=payment-worker,trust.environment.id=kind-integration
+            - name: OTEL_INSTRUMENTATION_METHODS_INCLUDE
+              value: dev.sprinttracker.lab.paymentworker.WorkerController[authorize];dev.sprinttracker.lab.paymentworker.AuthorizationRepository[saveAuthorized]
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 5
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: payment-worker
+  namespace: trust-test
+spec:
+  type: NodePort
+  selector:
+    app: payment-worker
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+      nodePort: 30081
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: event-store
+  namespace: trust-test
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: event-store
+  template:
+    metadata:
+      labels:
+        app: event-store
+    spec:
+      containers:
+        - name: event-store
+          image: trust/event-store:dev
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - configMapRef:
+                name: sample-service-otel-diagnostics
+          ports:
+            - containerPort: 8080
+          env:
+            - name: SERVER_PORT
+              value: "8080"
+            - name: SPRING_DATASOURCE_URL
+              value: jdbc:postgresql://postgres.trust-test.svc.cluster.local:5432/flowlab
+            - name: SPRING_DATASOURCE_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-auth
+                  key: POSTGRES_USER
+            - name: SPRING_DATASOURCE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-auth
+                  key: POSTGRES_PASSWORD
+            - name: SPRING_PULSAR_CLIENT_SERVICE_URL
+              value: pulsar://pulsar.trust-test.svc.cluster.local:6650
+            - name: PAYMENT_EVENTS_TOPIC
+              value: persistent://public/default/payment-events
+            - name: PAYMENT_EVENTS_SUBSCRIPTION
+              value: event-store
+            - name: OTEL_SERVICE_NAME
+              value: event-store
+            - name: OTEL_RESOURCE_ATTRIBUTES
+              value: service.namespace=trust-test,deployment.environment.name=kind-test,k8s.service.name=event-store,trust.environment.id=kind-integration
+            - name: OTEL_INSTRUMENTATION_METHODS_INCLUDE
+              value: dev.sprinttracker.lab.eventstore.PaymentEventConsumer[consume];dev.sprinttracker.lab.eventstore.EventStoreController[events];dev.sprinttracker.lab.eventstore.EventStoreRepository[save,findByRun]
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 5
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: event-store
+  namespace: trust-test
+spec:
+  type: NodePort
+  selector:
+    app: event-store
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+      nodePort: 30085

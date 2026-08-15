@@ -1,0 +1,54 @@
+{
+  "contract": "trust.compiled-operation@1",
+  "operation": "file.package-read",
+  "version": "1.0.0",
+  "title": "Read package name",
+  "input": {
+    "type": "object",
+    "properties": {},
+    "required": [],
+    "additionalProperties": false
+  },
+  "environment": {
+    "type": "object",
+    "properties": {
+      "projectRoot": {
+        "type": "string",
+        "format": "trust-directory"
+      }
+    },
+    "required": [
+      "projectRoot"
+    ],
+    "additionalProperties": false
+  },
+  "steps": [
+    {
+      "name": "manifest",
+      "type": "file-read",
+      "file": {
+        "relativePath": "package.json",
+        "root": {
+          "environment": "projectRoot"
+        },
+        "format": "json"
+      }
+    }
+  ],
+  "produce": {
+    "language": "jsonata",
+    "expression": "{ \"name\": steps.manifest.content.name }"
+  },
+  "produced": {
+    "type": "object",
+    "properties": {
+      "name": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "name"
+    ],
+    "additionalProperties": false
+  }
+}

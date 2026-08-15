@@ -1,0 +1,7 @@
+{
+  "values": "input",
+  "value": {
+    "argument": 42
+  },
+  "rules": ["type"]
+}

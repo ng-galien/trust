@@ -1,0 +1,8 @@
+{
+  "values": "environment",
+  "value": {
+    "workingDirectory": "/tmp/project",
+    "serviceUrl": "mailto:owner@example.test"
+  },
+  "rules": ["format"]
+}

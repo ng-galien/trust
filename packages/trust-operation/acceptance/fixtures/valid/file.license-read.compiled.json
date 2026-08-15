@@ -1,0 +1,54 @@
+{
+  "contract": "trust.compiled-operation@1",
+  "operation": "file.license-read",
+  "version": "1.0.0",
+  "title": "Read license text",
+  "input": {
+    "type": "object",
+    "properties": {},
+    "required": [],
+    "additionalProperties": false
+  },
+  "environment": {
+    "type": "object",
+    "properties": {
+      "projectRoot": {
+        "type": "string",
+        "format": "trust-directory"
+      }
+    },
+    "required": [
+      "projectRoot"
+    ],
+    "additionalProperties": false
+  },
+  "steps": [
+    {
+      "name": "license",
+      "type": "file-read",
+      "file": {
+        "relativePath": "LICENSE",
+        "root": {
+          "environment": "projectRoot"
+        },
+        "format": "text"
+      }
+    }
+  ],
+  "produce": {
+    "language": "jsonata",
+    "expression": "{ \"text\": steps.license.content }"
+  },
+  "produced": {
+    "type": "object",
+    "properties": {
+      "text": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "text"
+    ],
+    "additionalProperties": false
+  }
+}
