@@ -13,7 +13,7 @@ const stateDirectory = resolve(root, ".trust/server");
 const generated = resolve(stateDirectory, "generated");
 const database = resolve(stateDirectory, "runtime.sqlite");
 const operations = resolve(root, "assets/operations");
-const executionEnvironments = JSON.stringify({
+const environments = JSON.stringify({
   local: { projectRoot: root },
   "trust-test": { projectRoot: root },
 });
@@ -70,8 +70,8 @@ async function start(reset: boolean) {
     "-e", `TRUST_SKILL_POLICY=${skillPolicy}`,
     ...(skillPolicy === "verified" ? ["-e", `TRUST_CONFIG_DIRECTORY=${generated}`] : []),
     "-e", `TRUST_DATABASE_PATH=${database}`,
-    "-e", `TRUST_EXECUTIONS_DIRECTORY=${operations}`,
-    "-e", `TRUST_EXECUTION_ENVIRONMENTS_JSON=${executionEnvironments}`,
+    "-e", `TRUST_OPERATIONS_DIRECTORY=${operations}`,
+    "-e", `TRUST_ENVIRONMENTS_JSON=${environments}`,
     "-e", "TRUST_HOST=127.0.0.1",
     "-e", "TRUST_PORT=4318",
     "-e", "TRUST_SEMANTIC_AUTHORITY=trust-test:4318",
@@ -96,11 +96,11 @@ async function seed() {
   const names = (await readdir(procedureDirectory)).filter((name) => name.endsWith(".feature")).sort();
   const procedures = [];
   for (const name of names) {
-    const publication = await publicRpc(rpcEndpoint, "procedure.definition.publish", {
+    const publication = await publicRpc(rpcEndpoint, "procedure.publish", {
       source: await readFile(resolve(procedureDirectory, name), "utf8"),
       sourceName: name,
     }, publisherToken);
-    procedures.push(`${publication.definition.procedure}@${publication.definition.version}`);
+    procedures.push(`${publication.procedure.procedure}@${publication.procedure.version}`);
   }
   process.stdout.write(`TRUST seed: ${procedures.join(", ")}\n`);
 }
@@ -113,13 +113,13 @@ async function preflight(options: { ticket: string; procedure: string; version: 
     await assertCredential("TRUST_SKILL_PROCESS_IDENTITY", "TRUST_RUNTIME_PROCESS_CREDENTIAL");
   }
 
-  const definition = await publicRpc(rpcEndpoint, "procedure.definition.read", {
+  const published = await publicRpc(rpcEndpoint, "procedure.read", {
     procedure: options.procedure,
     version: options.version,
   }, policyCredential("TRUST_PUBLISHER_TOKEN"));
   if (
-    definition?.definition?.procedure !== options.procedure
-    || definition?.definition?.version !== options.version
+    published?.procedure?.procedure !== options.procedure
+    || published?.procedure?.version !== options.version
   ) {
     throw new Error(`published procedure mismatch: ${options.procedure}@${options.version}`);
   }
@@ -207,8 +207,8 @@ async function assertServer() {
     ["TRUST_SKILL_POLICY", skillPolicy],
     ...(skillPolicy === "verified" ? [["TRUST_CONFIG_DIRECTORY", generated]] : []),
     ["TRUST_DATABASE_PATH", database],
-    ["TRUST_EXECUTIONS_DIRECTORY", operations],
-    ["TRUST_EXECUTION_ENVIRONMENTS_JSON", executionEnvironments],
+    ["TRUST_OPERATIONS_DIRECTORY", operations],
+    ["TRUST_ENVIRONMENTS_JSON", environments],
   ] as readonly (readonly [string, string])[]) {
     const output = await capture(["tmux", "show-environment", "-t", tmux.session, name]);
     if (output.trim() !== `${name}=${expected}`) {

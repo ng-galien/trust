@@ -14,7 +14,7 @@ checklist verdict. An agent never infers whether its action advanced the Plan. T
 ## Active repository map
 
 ```text
-apps/trust-runtime/       one private runtime: domain, services, SQLite, RPC, MCP and OTLP
+packages/trust-runtime/   shared runtime: domain, services, SQLite, RPC, MCP and OTLP
 packages/trust-operation/ Operation types shared by the runtime and runner
 packages/trust-procedure/ Procedure types and Gherkin compiler
 packages/trust-runner/    one generic Check runner
@@ -78,11 +78,11 @@ k8s/                      retained integration test environment
   authorization and deployment checks.
   Managed MCP STDIO or HTTP integrations may use `READY` as an operator preflight before engagement,
   but the Plan engagement service never imposes that advanced provisioning policy.
-- RPC and MCP call the same application services. MCP never proxies RPC or exposes raw DTOs.
+- RPC and MCP call the same runtime functions. MCP never proxies RPC or exposes raw DTOs.
 - Do not create Proof, Evidence or Binding resources, SQL per requirement, manual references,
   `checks.refresh`, compatibility adapters or another product module.
 - Use OpenTelemetry traces only. Logs and metrics are outside the governance contract.
-- The Awilix-injected database driver is a singleton. Services never fetch the container.
+- The Awilix-injected database driver is a singleton. Runtime code never fetches the container.
 - There are no schema or data migrations before release. Replace the schema and reseed manually.
 - No `MEMORY.md` or Codex memory is used for this project.
 

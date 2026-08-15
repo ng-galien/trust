@@ -5,8 +5,8 @@ import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const repositoryRoot = fileURLToPath(new URL("../../", import.meta.url));
-const runtimeEntry = resolve(repositoryRoot, "apps/trust-runtime/dist/src/index.js");
-const runtimeOutput = resolve(repositoryRoot, "apps/trust-runtime/dist/src");
+const runtimeEntry = resolve(repositoryRoot, "packages/trust-runtime/dist/src/index.js");
+const runtimeOutput = resolve(repositoryRoot, "packages/trust-runtime/dist/src");
 const skillPolicy = parseSkillPolicy(process.env.TRUST_SKILL_POLICY);
 const principals = skillPolicy === "verified"
   ? await readFile(
@@ -24,7 +24,7 @@ const children = [];
 if (developmentMode) {
   children.push(spawn(resolve(repositoryRoot, "node_modules/.bin/tsc"), [
     "-p",
-    resolve(repositoryRoot, "apps/trust-runtime/tsconfig.json"),
+    resolve(repositoryRoot, "packages/trust-runtime/tsconfig.json"),
     "--watch",
     "--preserveWatchOutput",
   ], {

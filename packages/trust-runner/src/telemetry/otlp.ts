@@ -11,7 +11,7 @@ export type Fact = JsonObject & {
 
 export interface FactTrace {
   readonly attemptKey: string;
-  readonly executionHandle: string;
+  readonly attemptHandle: string;
   readonly checkUri: string;
   readonly facts: readonly Fact[];
   readonly recordedAt: string;
@@ -71,15 +71,15 @@ function otlp(trace: FactTrace): JsonObject {
       scopeSpans: [{
         scope: { name: "@trust/runner" },
         spans: [{
-          traceId: digest(`trace\0${trace.executionHandle}`).slice(0, 32),
-          spanId: digest(`span\0${trace.executionHandle}`).slice(0, 16),
+          traceId: digest(`trace\0${trace.attemptHandle}`).slice(0, 32),
+          spanId: digest(`span\0${trace.attemptHandle}`).slice(0, 16),
           name: "trust.runner.facts",
           kind: 3,
           startTimeUnixNano: timeUnixNano,
           endTimeUnixNano: timeUnixNano,
           attributes: [
             attribute("trust.attempt_key", trace.attemptKey),
-            attribute("trust.execution_handle", trace.executionHandle),
+            attribute("trust.attempt_handle", trace.attemptHandle),
             attribute("trust.check_uri", trace.checkUri),
           ],
           events: trace.facts.map((fact, index) => ({

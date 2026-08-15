@@ -61,20 +61,20 @@ export function createCheckRunner(options: CheckRunnerOptions) {
       const observedAt = clock().toISOString();
       await options.facts.export({
         attemptKey: attempt,
-        executionHandle: admission.executionHandle,
+        attemptHandle: admission.attemptHandle,
         checkUri,
         facts: [{
-          kind: admission.capability,
+          kind: admission.operation.operation,
           observedAt,
           values: result.produced,
         }],
         recordedAt: clock().toISOString(),
       });
-      const finalization = await options.checkClient.finalize(admission.executionHandle);
+      const finalization = await options.checkClient.finalize(admission.attemptHandle);
       return {
         status: "COMPLETED",
         checkUri,
-        actionOutcome: result.produced,
+        actionOutcome: result.steps,
         verdict: finalization.verdict,
         reasonCode: finalization.reasonCode,
         reason: finalization.reason,

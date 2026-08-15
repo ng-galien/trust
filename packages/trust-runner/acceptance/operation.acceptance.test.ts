@@ -342,7 +342,7 @@ describe("Operation runner", () => {
 
     await exporter.export({
       attemptKey: "attempt-1",
-      executionHandle: "execution-1",
+      attemptHandle: "attempt-1",
       checkUri: "trust://local/example@1.0.0/plan/scenario/check/target",
       facts: [{
         kind: "git.head",
@@ -377,7 +377,7 @@ describe("Operation runner", () => {
     expect(span?.name).toBe("trust.runner.facts");
     expect(span?.attributes).toEqual(expect.arrayContaining([
       { key: "trust.attempt_key", value: { stringValue: "attempt-1" } },
-      { key: "trust.execution_handle", value: { stringValue: "execution-1" } },
+      { key: "trust.attempt_handle", value: { stringValue: "attempt-1" } },
       {
         key: "trust.check_uri",
         value: { stringValue: "trust://local/example@1.0.0/plan/scenario/check/target" },
@@ -582,7 +582,7 @@ async function readRequest(request: IncomingMessage): Promise<string> {
 function factTrace() {
   return {
     attemptKey: "attempt-1",
-    executionHandle: "execution-1",
+    attemptHandle: "attempt-1",
     checkUri: "trust://local/example@1.0.0/plan/scenario/check/target",
     facts: [{
       kind: "git.head",

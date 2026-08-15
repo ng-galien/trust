@@ -2,8 +2,6 @@ export { CheckClient } from "./check/client.js";
 export type {
   CheckAdmission,
   CheckFinalization,
-  MaterializationOutput,
-  MaterializationParent,
 } from "./check/client.js";
 export { createCheckRunner } from "./check/run.js";
 export type { CheckResult, CheckRunnerOptions } from "./check/run.js";

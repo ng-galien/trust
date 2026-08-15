@@ -3,29 +3,13 @@ import type { CompiledOperation } from "@trust/operation";
 import { parseHttpJson, requestHttp } from "../http/request.js";
 import { isJsonObject, type JsonObject } from "../lib/json.js";
 
-export interface MaterializationParent {
-  readonly kind: "input" | "output";
-  readonly port: string;
-  readonly valueType: "string" | "number" | "instant" | "reference";
-}
-
-export interface MaterializationOutput {
-  readonly output: string;
-  readonly observation: string;
-  readonly valueType: "string" | "number" | "instant" | "reference";
-  readonly sourceCardinality: "one" | "many";
-  readonly parents: readonly MaterializationParent[];
-}
-
 export type CheckAdmission =
   | {
       readonly status: "ADMITTED";
       readonly attemptKey: string;
-      readonly executionHandle: string;
+      readonly attemptHandle: string;
       readonly checkUri: string;
-      readonly capability: string;
       readonly actionInput: JsonObject;
-      readonly materializationContract: readonly MaterializationOutput[];
       readonly operation: CompiledOperation;
       readonly environment: JsonObject;
       readonly expiresAt: string;
@@ -66,10 +50,10 @@ export class CheckClient {
     }) as unknown as Promise<CheckAdmission>;
   }
 
-  async finalize(executionHandle: string): Promise<CheckFinalization> {
+  async finalize(attemptHandle: string): Promise<CheckFinalization> {
     return this.#call("check.attempt.finalize", {
-      contract: "trust.check-finalization-request@1",
-      executionHandle,
+      contract: "trust.attempt-finalization-request@1",
+      attemptHandle,
     }) as unknown as Promise<CheckFinalization>;
   }
 
