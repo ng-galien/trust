@@ -1,115 +1,61 @@
-# ADR 0002 — Source Skill execution and implicit Session
+# ADR 0002 — TRUST Skill execution
 
 Status: accepted.
 
 ## Decision
 
-An agent gives a Skill one semantic Check URI. The mandatory execution envelope is a short-lived
-TypeScript source script run directly by Bun. TRUST admits the attempt before the external action,
-accepts authentic Facts, qualifies the Check and returns the external result followed by an explicit
-`VALIDATED` or `NOT_VALIDATED` verdict, reason and checklist delta.
+An agent gives the packaged TRUST Skill one semantic Check URI. The Skill asks TRUST for admission
+before the external action. TRUST returns the compiled Operation, its Input and the selected
+Environment. The Skill executes the Operation, emits Facts through OTLP and finalizes the Attempt.
+TRUST alone returns `VALIDATED` or `NOT_VALIDATED` and the checklist delta.
 
-There is no local Skill database, execution journal, generic recovery engine or exactly-once
-guarantee. Without accepted Facts there is no qualification and the Check remains unchanged.
+The packaged artifact runs with Node and exposes the same runner through CLI and MCP STDIO. These
+entrypoints change transport only. They do not change the Operation, Facts or verdict.
 
-## Runtime boundary
+## Local policy
+
+`local` is the default policy and the path implemented by the current packaged runner.
 
 ```mermaid
 sequenceDiagram
-    autonumber
     actor A as Agent
+    participant S as Packaged TRUST Skill
     participant T as TRUST runtime
-    participant S as Source Skill + SDK (Bun)
     participant E as External system
 
-    A->>T: engage(procedure, version, plan, environment, rootInputs)
-    T-->>A: Session + initial Check URI(s)
-    Note over T: Skill availability is not an engagement gate
-    A->>S: bun scripts/run.ts --check URI
-    S->>S: inspect exact Skill and SDK sources
-    S->>T: announce CLI + bounded probes
-    S->>T: admit(URI, release, deployment, identities)
-    alt delegation refused
+    A->>S: run one Check URI
+    S->>T: check.attempt.admit(Check URI)
+    alt refused
         T-->>S: REFUSED + reason
-        S-->>A: refusal; no external action; no verdict
+        S-->>A: refusal; Check unchanged
     else admitted
-        T-->>S: capability + input ports + materialization contract
-        S->>E: execute and observe
-        E-->>S: external result and observations
-        S->>T: Facts through OTLP traces
-        T->>T: validate, persist, deduplicate and qualify
-        S->>T: finalize(execution handle)
-        T-->>S: VALIDATED or NOT_VALIDATED + checklist delta
+        T-->>S: Operation + Input + Environment
+        S->>E: execute Operation
+        E-->>S: external result
+        S->>T: Facts through OTLP
+        S->>T: check.attempt.finalize
+        T-->>S: verdict + reason + checklist delta
         S-->>A: external result + TRUST verdict
-        A->>T: reread Plan and Checks
     end
 ```
 
-The grant correlates the requested Check, capability, context, release and future Facts. It is not
-proof that the external action occurred. The Skill owns external execution, provenance and observed
-values; it never qualifies a Check, and `actionOutcome` is never qualification input.
+Local admission skips release credentials, registry publication, deployment authorization,
+announcement and probes. It still validates the Check URI, Session, dependencies, current Plan
+context and accepted Facts.
 
-## Facts, replay and resumption
+## Verified policy
 
-| Event | Result |
-|---|---|
-| refusal, crash or interruption before accepted Facts | no Fact, Snapshot, verdict or delta |
-| missing predicate observation | atomic rejection before persistence |
-| complete accepted Facts | immutable Snapshot and `VALIDATED` or `NOT_VALIDATED` |
-| identical Facts replayed | deduplicated Facts, Snapshot, verdict and delta |
-| new accepted Facts for one Check | replace its active qualification and recursively reopen dependants |
+`verified` is an opt-in server policy. It adds the exact Skill release, Action Contract digest,
+authorization, deployment selection, announcement and probe checks before the external action.
+A verified Skill integration must use `skill.attempt.admit` with those identities.
 
-A Check is only `OPEN` or `SATISFIED`. Facts and Snapshots are immutable history; the active
-qualification in the current Plan revision is replaceable. The agent can therefore resume the same
-Plan from any open Check whose Scenario prerequisites and Check-observation references are
-satisfied.
+The current generic packaged runner does not implement that verified client sequence. It must not be
+presented as announcing or probing itself. Adding that sequence is a separate integration milestone;
+it must reuse the same Operation execution and Fact emission.
 
-If no Facts were accepted, replay is normal. The SDK may reobserve and resubmit an incomplete batch
-inside the same live roundtrip without repeating a known action. A replayable or domain-reconcilable
-action can be invoked again after an unknown result. A rare non-replayable unknown result requires
-explicit human intervention rather than a generic recovery subsystem.
+## Replay
 
-## Release compatibility and deployment
-
-The autonomous Feature owns each capability contract. A Skill release manifest claims only exact
-`(capability, actionContractDigest)` tuples.
-
-```text
-Feature publication
-→ exact capability requirement
-→ source release claim
-→ verified source distribution
-→ release and deployment authorization
-→ environment selection
-→ ephemeral CLI announcement and probes
-→ attempt admission
-```
-
-`READY` is a dated projection, not a persisted lifecycle state. A procedure can be published and a
-Plan engaged while no Skill is available. Admission still requires the exact selected, approved,
-compatible and currently announced deployment before any external action.
-
-## Envelopes
-
-| Envelope | Contract |
-|---|---|
-| CLI | mandatory source entrypoint; one short-lived process per Check invocation |
-| MCP STDIO | optional declared managed envelope |
-| MCP HTTP | optional declared managed envelope |
-
-All envelopes use the same release, capability handlers, observations and Facts. They change only
-transport and process supervision.
-
-## V1 test environment releases
-
-| Source Skill | Exact capability claims |
-|---|---|
-| Jira | `jira.issue-read` |
-| Git | `git.head-read`, `git.head-compare`, `git.worktree-inspect` |
-| Maven | `maven.defect-reproduce`, `maven.fix-confirm`, `maven.project-verify` |
-| Docker | `docker.image-build` |
-| Kind | `kind.image-load` |
-| Kubernetes | `kubernetes.rollout` |
-
-These six releases implement ten contracts compiled from the Feature. No static server catalog or
-monolithic Skill defines them.
+Without accepted Facts there is no qualification and the Check remains unchanged. Re-observation is
+normal. Identical Facts and their resulting Snapshot, verdict and checklist delta are deduplicated.
+Rare actions with an unknown non-replayable outcome require explicit human intervention rather than
+a generic exactly-once subsystem.
