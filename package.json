@@ -17,6 +17,7 @@
   "scripts": {
     "dev": "bun scripts/server.ts start",
     "build": "npm run build --workspaces --if-present",
+    "package:skill": "npm run package:skill --workspace=@trust/runner",
     "check:dependencies": "node scripts/check-workspace-dependencies.mjs",
     "typecheck": "npm run check:dependencies && npm run typecheck --workspaces --if-present",
     "test": "npm run test:acceptance",

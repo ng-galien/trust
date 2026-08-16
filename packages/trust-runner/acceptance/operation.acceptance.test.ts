@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { readFileSync } from "node:fs";
-import { mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import {
   createServer,
   type IncomingMessage,
@@ -39,23 +39,25 @@ afterEach(async () => {
 });
 
 describe("Operation runner", () => {
-  test("executes the Git Operation in its declared directory", async () => {
-    const projectRoot = await temporaryDirectory("trust-runner-git-");
-    await execute("git", ["init", "-q"], { cwd: projectRoot });
-    await writeFile(join(projectRoot, "tracked.txt"), "baseline\n", "utf8");
-    await execute("git", ["add", "tracked.txt"], { cwd: projectRoot });
+  test("executes the Git Operation in the project named by its Input below the Environment root", async () => {
+    const projectsRoot = await temporaryDirectory("trust-runner-git-");
+    const workspaceRoot = join(projectsRoot, "trust-example");
+    await mkdir(workspaceRoot);
+    await execute("git", ["init", "-q"], { cwd: workspaceRoot });
+    await writeFile(join(workspaceRoot, "tracked.txt"), "baseline\n", "utf8");
+    await execute("git", ["add", "tracked.txt"], { cwd: workspaceRoot });
     await execute("git", [
       "-c", "user.name=TRUST Acceptance",
       "-c", "user.email=trust@example.invalid",
       "commit", "-qm", "baseline",
-    ], { cwd: projectRoot });
-    const { stdout: revision } = await execute("git", ["rev-parse", "HEAD"], { cwd: projectRoot });
-    await writeFile(join(projectRoot, "untracked.txt"), "dirty\n", "utf8");
+    ], { cwd: workspaceRoot });
+    const { stdout: revision } = await execute("git", ["rev-parse", "HEAD"], { cwd: workspaceRoot });
+    await writeFile(join(workspaceRoot, "untracked.txt"), "dirty\n", "utf8");
 
     const result = await runOperation(
       operation("git.head-read.feature"),
       { project: "trust-example" },
-      { projectRoot },
+      { workspaceRoot: projectsRoot },
     );
 
     expect(result.produced).toEqual({
@@ -64,29 +66,39 @@ describe("Operation runner", () => {
     });
   });
 
+  test("refuses a project Input that escapes or leaves the Environment root", async () => {
+    const projectsRoot = await temporaryDirectory("trust-runner-git-escape-");
+    for (const project of ["../outside", "missing", "a/b"]) {
+      await expect(runOperation(operation("git.head-read.feature"), { project }, { workspaceRoot: projectsRoot }))
+        .rejects.toThrow(/Input "project"|does not exist/);
+    }
+  });
+
   test("resolves a Shell argument from Operation Input", async () => {
-    const projectRoot = await temporaryDirectory("trust-runner-git-compare-");
-    await execute("git", ["init", "-q"], { cwd: projectRoot });
-    await writeFile(join(projectRoot, "tracked.txt"), "baseline\n", "utf8");
-    await execute("git", ["add", "tracked.txt"], { cwd: projectRoot });
+    const projectsRoot = await temporaryDirectory("trust-runner-git-compare-");
+    const workspaceRoot = join(projectsRoot, "trust-example");
+    await mkdir(workspaceRoot);
+    await execute("git", ["init", "-q"], { cwd: workspaceRoot });
+    await writeFile(join(workspaceRoot, "tracked.txt"), "baseline\n", "utf8");
+    await execute("git", ["add", "tracked.txt"], { cwd: workspaceRoot });
     await execute("git", [
       "-c", "user.name=TRUST Acceptance",
       "-c", "user.email=trust@example.invalid",
       "commit", "-qm", "baseline",
-    ], { cwd: projectRoot });
-    const { stdout: baseline } = await execute("git", ["rev-parse", "HEAD"], { cwd: projectRoot });
-    await writeFile(join(projectRoot, "tracked.txt"), "change\n", "utf8");
-    await execute("git", ["add", "tracked.txt"], { cwd: projectRoot });
+    ], { cwd: workspaceRoot });
+    const { stdout: baseline } = await execute("git", ["rev-parse", "HEAD"], { cwd: workspaceRoot });
+    await writeFile(join(workspaceRoot, "tracked.txt"), "change\n", "utf8");
+    await execute("git", ["add", "tracked.txt"], { cwd: workspaceRoot });
     await execute("git", [
       "-c", "user.name=TRUST Acceptance",
       "-c", "user.email=trust@example.invalid",
       "commit", "-qm", "change",
-    ], { cwd: projectRoot });
+    ], { cwd: workspaceRoot });
 
     const result = await runOperation(
       operation("git.head-compare.feature"),
       { project: "trust-example", baseRevision: baseline.trim() },
-      { projectRoot },
+      { workspaceRoot: projectsRoot },
     );
 
     expect(result.produced).toMatchObject({
@@ -97,10 +109,10 @@ describe("Operation runner", () => {
   });
 
   test("reads and decodes a JSON File inside its declared directory", async () => {
-    const projectRoot = await temporaryDirectory("trust-runner-file-");
-    await writeFile(join(projectRoot, "package.json"), JSON.stringify({ name: "trust-example" }), "utf8");
+    const workspaceRoot = await temporaryDirectory("trust-runner-file-");
+    await writeFile(join(workspaceRoot, "package.json"), JSON.stringify({ name: "trust-example" }), "utf8");
 
-    const result = await runOperation(operation("file.package-read.feature"), {}, { projectRoot });
+    const result = await runOperation(operation("file.package-read.feature"), {}, { workspaceRoot });
 
     expect(result.produced).toEqual({ name: "trust-example" });
     expect(result.steps).toEqual({
@@ -112,29 +124,29 @@ describe("Operation runner", () => {
   });
 
   test("reads a Text File inside its declared directory", async () => {
-    const projectRoot = await temporaryDirectory("trust-runner-file-text-");
-    await writeFile(join(projectRoot, "LICENSE"), "TRUST license\n", "utf8");
+    const workspaceRoot = await temporaryDirectory("trust-runner-file-text-");
+    await writeFile(join(workspaceRoot, "LICENSE"), "TRUST license\n", "utf8");
 
-    const result = await runOperation(operation("file.license-read.feature"), {}, { projectRoot });
+    const result = await runOperation(operation("file.license-read.feature"), {}, { workspaceRoot });
 
     expect(result.produced).toEqual({ text: "TRUST license\n" });
   });
 
   test("fails when a JSON File is invalid", async () => {
-    const projectRoot = await temporaryDirectory("trust-runner-file-json-");
-    await writeFile(join(projectRoot, "package.json"), "not-json", "utf8");
+    const workspaceRoot = await temporaryDirectory("trust-runner-file-json-");
+    await writeFile(join(workspaceRoot, "package.json"), "not-json", "utf8");
 
-    await expect(runOperation(operation("file.package-read.feature"), {}, { projectRoot }))
+    await expect(runOperation(operation("file.package-read.feature"), {}, { workspaceRoot }))
       .rejects.toThrow('File "package.json" is not valid JSON');
   });
 
   test("refuses a File resolved outside its declared directory", async () => {
-    const projectRoot = await temporaryDirectory("trust-runner-root-");
+    const workspaceRoot = await temporaryDirectory("trust-runner-root-");
     const outside = await temporaryDirectory("trust-runner-outside-");
     await writeFile(join(outside, "package.json"), JSON.stringify({ name: "outside" }), "utf8");
-    await symlink(join(outside, "package.json"), join(projectRoot, "package.json"));
+    await symlink(join(outside, "package.json"), join(workspaceRoot, "package.json"));
 
-    await expect(runOperation(operation("file.package-read.feature"), {}, { projectRoot }))
+    await expect(runOperation(operation("file.package-read.feature"), {}, { workspaceRoot }))
       .rejects.toThrow("resolves outside Environment");
   });
 
@@ -142,37 +154,37 @@ describe("Operation runner", () => {
     await expect(runOperation(
       operation("git.head-read.feature"),
       { project: "trust-example" },
-      { projectRoot: "relative" },
+      { workspaceRoot: "relative" },
     ))
       .rejects.toMatchObject({ values: "environment" });
   });
 
   test("fails when a Shell exits with a non-zero code", async () => {
-    const projectRoot = await temporaryDirectory("trust-runner-shell-");
-    await execute("git", ["init", "-q"], { cwd: projectRoot });
+    const workspaceRoot = await temporaryDirectory("trust-runner-shell-");
+    await execute("git", ["init", "-q"], { cwd: workspaceRoot });
 
     await expect(runOperation(
       operation("git.head-read.feature"),
       { project: "trust-example" },
-      { projectRoot },
+      { workspaceRoot },
     ))
       .rejects.toMatchObject({ name: "ShellError" });
   });
 
   test("observes an explicitly accepted non-zero Shell exit", async () => {
-    const projectRoot = await temporaryDirectory("trust-runner-expected-exit-");
+    const workspaceRoot = await temporaryDirectory("trust-runner-expected-exit-");
 
     const result = await runOperation(
       fixtureOperation("shell.expected-exit.feature"),
       {},
-      { projectRoot },
+      { workspaceRoot },
     );
 
     expect(result.produced).toEqual({ exitCode: 1 });
   });
 
   test("interrupts when a Shell exit does not contain its declared output", async () => {
-    const projectRoot = await temporaryDirectory("trust-runner-unexpected-output-");
+    const workspaceRoot = await temporaryDirectory("trust-runner-unexpected-output-");
     const source = readFileSync(
       new URL("./fixtures/shell.expected-exit.feature", import.meta.url),
       "utf8",
@@ -181,7 +193,7 @@ describe("Operation runner", () => {
     await expect(runOperation(
       compileOperation({ source, sourceName: "shell.unexpected-output.feature" }),
       {},
-      { projectRoot },
+      { workspaceRoot },
     )).rejects.toMatchObject({ name: "ShellError" });
   });
 

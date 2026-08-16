@@ -4,14 +4,14 @@ Feature: Observe one expected non-zero exit
 
   Background: Operation interface
     Given Environment
-      | name        | type      |
-      | projectRoot | directory |
+      | name          | type      |
+      | workspaceRoot | directory |
     And Produced fields
       | field    | type   | cardinality | domain |
       | exitCode | number | one         | any    |
 
   Scenario: Run
-    When Shell "command" runs "node" with cwd from Environment "projectRoot"
+    When Shell "command" runs "node" with cwd from Environment "workspaceRoot"
       | argument        | source  |
       | -e              | literal |
       | process.stdout.write("Tests run: 1"); process.exit(1) | literal |

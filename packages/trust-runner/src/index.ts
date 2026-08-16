@@ -13,3 +13,8 @@ export type { OperationResult } from "./operation/run.js";
 export { HttpStatusError } from "./http/run.js";
 export { OtlpFactExporter } from "./telemetry/otlp.js";
 export type { Fact, FactExporter, FactTrace } from "./telemetry/otlp.js";
+export type { DiagnosticEvent, DiagnosticsSink, StepReporter } from "./diagnostics/events.js";
+export { OtlpDiagnosticsSink } from "./diagnostics/otlp.js";
+export { parseTrialJob, runTrial } from "./trial/run.js";
+export type { TrialJob, TrialOutcome } from "./trial/run.js";
+export { runTrialCli } from "./cli/trial.js";

@@ -1,0 +1,4 @@
+interface:
+  display_name: "TRUST"
+  short_description: "Execute one semantic TRUST Check"
+  default_prompt: "Use $trust to execute the next semantic TRUST Check URI."

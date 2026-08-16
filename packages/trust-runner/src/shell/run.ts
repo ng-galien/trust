@@ -1,11 +1,12 @@
 import { spawn } from "node:child_process";
 import { once } from "node:events";
-import { realpath } from "node:fs/promises";
 import type { Readable } from "node:stream";
 
 import type { Shell } from "@trust/operation";
 
+import { nullReporter, type StepReporter } from "../diagnostics/events.js";
 import type { JsonObject } from "../lib/json.js";
+import { DirectoryError, resolveEnvironmentDirectory } from "../lib/paths.js";
 
 export interface ShellResult {
   readonly exitCode: number;
@@ -20,20 +21,29 @@ export class ShellError extends Error {
   }
 }
 
-const TIMEOUT_MS = 30_000;
+const DEFAULT_TIMEOUT_MS = 30_000;
+const FORCE_KILL_DELAY_MS = 2_000;
+/** Per-command timeout; hosts running long trials raise it through TRUST_SHELL_TIMEOUT_MS. */
+const TIMEOUT_MS = Number.parseInt(process.env.TRUST_SHELL_TIMEOUT_MS ?? "", 10) > 0
+  ? Number.parseInt(process.env.TRUST_SHELL_TIMEOUT_MS ?? "", 10)
+  : DEFAULT_TIMEOUT_MS;
 const MAX_OUTPUT_BYTES = 1_048_576;
 
 export async function runShell(
   shell: Shell,
   input: JsonObject,
   environment: JsonObject,
+  reporter: StepReporter = nullReporter,
 ): Promise<ShellResult> {
-  const directoryValue = environment[shell.cwd.environment];
-  if (typeof directoryValue !== "string") {
-    throw new ShellError(`Environment "${shell.cwd.environment}" must be a directory.`);
+  let directory: string;
+  try {
+    ({ directory } = await resolveEnvironmentDirectory(shell.cwd, input, environment, `Shell "${shell.executable}"`));
+  } catch (error) {
+    if (error instanceof DirectoryError) throw new ShellError(error.message, { cause: error });
+    throw error;
   }
-  const directory = await realpath(directoryValue);
   let processHandle: ReturnType<typeof spawn>;
+  const ownsProcessGroup = process.platform !== "win32" && process.env.TRUST_RUNNER_PROCESS_GROUP !== "1";
   try {
     processHandle = spawn(shell.executable, shell.arguments.map((argument) => {
       if (argument.kind === "literal") return argument.value;
@@ -47,6 +57,7 @@ export async function runShell(
       cwd: directory,
       env: shellEnvironment(),
       stdio: ["ignore", "pipe", "pipe"],
+      detached: ownsProcessGroup,
     });
   } catch (error) {
     if (error instanceof ShellError) throw error;
@@ -54,18 +65,27 @@ export async function runShell(
   }
 
   let timedOut = false;
+  let forceKillTimer: NodeJS.Timeout | undefined;
+  const requestStop = (): void => {
+    terminateProcessTree(processHandle, "SIGTERM", ownsProcessGroup);
+    if (forceKillTimer === undefined) {
+      forceKillTimer = setTimeout(() => terminateProcessTree(processHandle, "SIGKILL", ownsProcessGroup), FORCE_KILL_DELAY_MS);
+      forceKillTimer.unref();
+    }
+  };
   const timer = setTimeout(() => {
     timedOut = true;
-    processHandle.kill("SIGTERM");
+    requestStop();
   }, TIMEOUT_MS);
+  timer.unref();
   try {
     if (processHandle.stdout === null || processHandle.stderr === null) {
       throw new ShellError(`Shell output is unavailable: ${shell.executable}.`);
     }
     const [closed, stdout, stderr] = await Promise.all([
       once(processHandle, "close"),
-      readBounded(processHandle.stdout, () => processHandle.kill("SIGTERM")),
-      readBounded(processHandle.stderr, () => processHandle.kill("SIGTERM")),
+      readBounded(processHandle.stdout, requestStop, (text) => reporter.log("stdout", text)),
+      readBounded(processHandle.stderr, requestStop, (text) => reporter.log("stderr", text)),
     ]);
     if (timedOut) throw new ShellError(`Shell timed out: ${shell.executable}.`);
     const exitCode = closed[0];
@@ -87,7 +107,22 @@ export async function runShell(
     throw new ShellError(`Shell failed: ${shell.executable}.`, { cause: error });
   } finally {
     clearTimeout(timer);
+    if (processHandle.exitCode === null && processHandle.signalCode === null) requestStop();
+    else if (forceKillTimer) clearTimeout(forceKillTimer);
   }
+}
+
+function terminateProcessTree(child: ReturnType<typeof spawn>, signal: NodeJS.Signals, ownsProcessGroup: boolean): void {
+  if (child.pid === undefined) return;
+  if (ownsProcessGroup) {
+    try {
+      process.kill(-child.pid, signal);
+      return;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ESRCH") return;
+    }
+  }
+  child.kill(signal);
 }
 
 function shellEnvironment(): Record<string, string> {
@@ -99,7 +134,7 @@ function shellEnvironment(): Record<string, string> {
   return environment;
 }
 
-async function readBounded(stream: Readable, abort: () => void): Promise<string> {
+async function readBounded(stream: Readable, abort: () => void, onChunk?: (text: string) => void): Promise<string> {
   const chunks: Buffer[] = [];
   let size = 0;
   for await (const rawChunk of stream) {
@@ -110,6 +145,7 @@ async function readBounded(stream: Readable, abort: () => void): Promise<string>
       throw new ShellError(`Shell output exceeds ${MAX_OUTPUT_BYTES} bytes.`);
     }
     chunks.push(chunk);
+    onChunk?.(chunk.toString("utf8"));
   }
   return Buffer.concat(chunks, size).toString("utf8");
 }
