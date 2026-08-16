@@ -1,6 +1,4 @@
-import type { DatabaseDriver } from "./database.js";
-
-const CURRENT_SCHEMA = `
+export const SQLITE_SCHEMA = `
   CREATE TABLE IF NOT EXISTS environments (
     name TEXT PRIMARY KEY,
     created_at TEXT NOT NULL,
@@ -47,100 +45,6 @@ const CURRENT_SCHEMA = `
   BEGIN
     SELECT RAISE(ABORT, 'published procedures are immutable');
   END;
-
-  CREATE TABLE IF NOT EXISTS skill_release_claims (
-    release_digest TEXT PRIMARY KEY,
-    skill TEXT NOT NULL,
-    version TEXT NOT NULL,
-    publisher TEXT NOT NULL,
-    claim_json TEXT NOT NULL,
-    registered_at TEXT NOT NULL,
-    UNIQUE (skill, version)
-  ) STRICT;
-
-  CREATE TRIGGER IF NOT EXISTS skill_release_claims_cannot_change
-  BEFORE UPDATE ON skill_release_claims
-  BEGIN
-    SELECT RAISE(ABORT, 'Skill release claims are immutable');
-  END;
-
-  CREATE TRIGGER IF NOT EXISTS skill_release_claims_cannot_be_deleted
-  BEFORE DELETE ON skill_release_claims
-  BEGIN
-    SELECT RAISE(ABORT, 'Skill release claims are immutable');
-  END;
-
-  CREATE TABLE IF NOT EXISTS skill_verified_distributions (
-    distribution_digest TEXT PRIMARY KEY,
-    release_digest TEXT NOT NULL REFERENCES skill_release_claims(release_digest),
-    issuer TEXT NOT NULL,
-    signature TEXT NOT NULL,
-    verified_at TEXT NOT NULL
-  ) STRICT;
-
-  CREATE TRIGGER IF NOT EXISTS skill_verified_distributions_cannot_change
-  BEFORE UPDATE ON skill_verified_distributions
-  BEGIN
-    SELECT RAISE(ABORT, 'verified distribution links are immutable');
-  END;
-
-  CREATE TRIGGER IF NOT EXISTS skill_verified_distributions_cannot_be_deleted
-  BEFORE DELETE ON skill_verified_distributions
-  BEGIN
-    SELECT RAISE(ABORT, 'verified distribution links are immutable');
-  END;
-
-  CREATE TABLE IF NOT EXISTS skill_release_authorizations (
-    environment TEXT NOT NULL,
-    release_digest TEXT NOT NULL REFERENCES skill_release_claims(release_digest),
-    authorized_by TEXT NOT NULL,
-    authorized_at TEXT NOT NULL,
-    PRIMARY KEY (environment, release_digest)
-  ) STRICT;
-
-  CREATE TABLE IF NOT EXISTS skill_deployment_authorizations (
-    environment TEXT NOT NULL,
-    logical_deployment_key TEXT NOT NULL,
-    release_digest TEXT NOT NULL REFERENCES skill_release_claims(release_digest),
-    envelope TEXT NOT NULL CHECK (envelope IN ('cli', 'mcp-stdio', 'mcp-http')),
-    runtime_identity TEXT NOT NULL,
-    authorized_by TEXT NOT NULL,
-    authorized_at TEXT NOT NULL,
-    PRIMARY KEY (
-      environment,
-      logical_deployment_key,
-      release_digest,
-      envelope,
-      runtime_identity
-    )
-  ) STRICT;
-
-  CREATE TABLE IF NOT EXISTS skill_deployment_selections (
-    environment TEXT NOT NULL,
-    capability TEXT NOT NULL,
-    action_contract_digest TEXT NOT NULL,
-    logical_deployment_key TEXT NOT NULL,
-    selected_by TEXT NOT NULL,
-    selected_at TEXT NOT NULL,
-    PRIMARY KEY (
-      environment, capability, action_contract_digest
-    )
-  ) STRICT;
-
-  CREATE TABLE IF NOT EXISTS skill_deployment_announcements (
-    environment TEXT NOT NULL,
-    logical_deployment_key TEXT NOT NULL,
-    envelope TEXT NOT NULL CHECK (envelope IN ('cli', 'mcp-stdio', 'mcp-http')),
-    runtime_identity TEXT NOT NULL,
-    process_identity TEXT NOT NULL,
-    release_digest TEXT NOT NULL REFERENCES skill_release_claims(release_digest),
-    distribution_digest TEXT NOT NULL,
-    probes_json TEXT NOT NULL,
-    announced_at TEXT NOT NULL,
-    recorded_at TEXT NOT NULL,
-    lease_expires_at TEXT NOT NULL,
-    PRIMARY KEY (environment, logical_deployment_key)
-  ) STRICT;
 
   CREATE TABLE IF NOT EXISTS plans (
     plan_slug TEXT PRIMARY KEY,
@@ -231,7 +135,6 @@ const CURRENT_SCHEMA = `
     action_input_json TEXT NOT NULL,
 
     environment TEXT NOT NULL,
-    owner_json TEXT NOT NULL,
     state TEXT NOT NULL CHECK (state IN ('pending', 'finalized')),
     admitted_at TEXT NOT NULL,
     expires_at TEXT NOT NULL,
@@ -314,36 +217,3 @@ const CURRENT_SCHEMA = `
       REFERENCES compiled_checks(plan_slug, plan_revision, check_uri, compiled_digest)
   ) STRICT;
 `;
-
-export function initializeCurrentSchema(databaseDriver: DatabaseDriver): void {
-  databaseDriver.exec(CURRENT_SCHEMA);
-}
-
-export function recreateCurrentSchema(databaseDriver: DatabaseDriver): void {
-  databaseDriver.exec(`
-    DROP TABLE IF EXISTS active_check_qualifications;
-    DROP TABLE IF EXISTS check_snapshots;
-    DROP TABLE IF EXISTS attempt_fact_receipts;
-    DROP TABLE IF EXISTS facts;
-    DROP TABLE IF EXISTS attempts;
-    DROP INDEX IF EXISTS one_open_session_per_plan;
-    DROP TABLE IF EXISTS sessions;
-    DROP TRIGGER IF EXISTS compiled_checks_cannot_change;
-    DROP TABLE IF EXISTS compiled_checks;
-    DROP TRIGGER IF EXISTS plan_revisions_cannot_change;
-    DROP TRIGGER IF EXISTS plan_revision_definition_is_immutable;
-    DROP TABLE IF EXISTS plan_revisions;
-    DROP TABLE IF EXISTS plans;
-    DROP TABLE IF EXISTS skill_deployment_announcements;
-    DROP TABLE IF EXISTS skill_deployment_selections;
-    DROP TABLE IF EXISTS skill_deployment_authorizations;
-    DROP TABLE IF EXISTS skill_release_authorizations;
-    DROP TABLE IF EXISTS skill_verified_distributions;
-    DROP TABLE IF EXISTS skill_conformance_attestations;
-    DROP TABLE IF EXISTS skill_release_claims;
-    DROP TABLE IF EXISTS environment_credentials;
-    DROP TABLE IF EXISTS environment_variables;
-    DROP TABLE IF EXISTS environments;
-  `);
-  initializeCurrentSchema(databaseDriver);
-}

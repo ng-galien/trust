@@ -94,7 +94,6 @@ test("a Plan engages before future agent declarations exist", async () => {
 
 test("MCP never presents a Check as actionable after its Session expires", async () => {
   const runtime = await startPublicRuntime("trust-expired-session-", {
-    skillPolicy: "local",
     operationsDirectory,
     environments: { local: { workspaceRoot: repositoryRoot } },
     sessionDurationMs: 100,
@@ -322,45 +321,104 @@ test("Fact rejection is atomic and Attempt finalization is idempotent", async ()
   }
 });
 
-test("a runner trace cannot write Facts for a Skill Attempt", async () => {
-  const runtime = await startRuntime("trust-attempt-owner-");
+test("concurrent admission and finalization keep one Attempt and one result", async () => {
+  const runtime = await startRuntime("trust-concurrent-attempt-");
   try {
     await publish(runtime.endpoint, path.join(repositoryRoot, "assets/procedures/00-git-status.feature"));
     const engagement = await rpc(runtime.endpoint, "plan.engage", {
       contract: "trust.plan-engagement-request@1",
       procedure: "git-status",
       procedureVersion: "2.0.0",
-      plan: "attempt-owner",
+      plan: "concurrent-attempt",
       environment: "local",
       rootInputs: { repository: "repository" },
     }) as { checkUris: readonly string[] };
-    const admission = await rpc(runtime.endpoint, "skill.attempt.admit", {
-      contract: "trust.skill-admission-request@1",
-      attemptKey: "skill-attempt-1",
-      checkUri: engagement.checkUris[0],
-      releaseDigest: `sha256:${"a".repeat(64)}`,
-      environment: "local",
-      deploymentKey: "deployment-1",
-      envelope: "cli",
-      runtimeIdentity: "spiffe://trust-test/runtime",
-      processIdentity: "urn:uuid:00000000-0000-4000-8000-000000000001",
-    }) as {
-      attemptKey: string;
-      attemptHandle: string;
-      checkUri: string;
-      operation: string;
-    };
+    const checkUri = engagement.checkUris[0]!;
 
-    const rejected = await postFacts(runtime.endpoint, {
-      attemptKey: admission.attemptKey,
-      attemptHandle: admission.attemptHandle,
-      checkUri: admission.checkUri,
-    }, {
-      kind: admission.operation,
+    const admissions = await Promise.all(Array.from({ length: 12 }, () => (
+      admit(runtime.endpoint, checkUri, "concurrent-attempt-key")
+    )));
+    assert.equal(new Set(admissions.map(({ attemptHandle }) => attemptHandle)).size, 1);
+    const admission = admissions[0]!;
+
+    await sendRunnerFacts(runtime.endpoint, admission, {
+      kind: admission.operation.operation,
       observedAt: "2026-08-15T12:00:00.000Z",
       values: { headRevision: "revision-a", workingTree: "clean" },
     });
-    assert.equal(rejected.partialSuccess?.rejectedSpans, 1);
+    const finalizations = await Promise.all(Array.from({ length: 12 }, () => (
+      rpc(runtime.endpoint, "check.attempt.finalize", {
+        contract: "trust.attempt-finalization-request@1",
+        attemptHandle: admission.attemptHandle,
+      })
+    )));
+    for (const result of finalizations.slice(1)) assert.deepEqual(result, finalizations[0]);
+
+    const check = await rpc(runtime.endpoint, "check.read", {
+      contract: "trust.check-read-request@1",
+      checkUri,
+    }) as {
+      history: readonly unknown[];
+      attempts: readonly { state: string; facts: readonly unknown[] }[];
+    };
+    assert.equal(check.attempts.length, 1);
+    assert.equal(check.attempts[0]?.state, "finalized");
+    assert.equal(check.attempts[0]?.facts.length, 1);
+    assert.equal(check.history.length, 1);
+  } finally {
+    await runtime.close();
+  }
+});
+
+test("concurrent Fact ingestion and finalization keep Facts and Snapshot consistent", async () => {
+  const runtime = await startRuntime("trust-concurrent-facts-");
+  try {
+    await publish(runtime.endpoint, path.join(repositoryRoot, "assets/procedures/00-git-status.feature"));
+    for (let index = 0; index < 8; index += 1) {
+      const engagement = await rpc(runtime.endpoint, "plan.engage", {
+        contract: "trust.plan-engagement-request@1",
+        procedure: "git-status",
+        procedureVersion: "2.0.0",
+        plan: `concurrent-facts-${index}`,
+        environment: "local",
+        rootInputs: { repository: "repository" },
+      }) as { checkUris: readonly string[] };
+      const checkUri = engagement.checkUris[0]!;
+      const admission = await admit(runtime.endpoint, checkUri, `concurrent-facts-${index}`);
+      await sendRunnerFacts(runtime.endpoint, admission, {
+        kind: admission.operation.operation,
+        observedAt: "2026-08-15T12:00:00.000Z",
+        values: { headRevision: "revision-a", workingTree: "clean" },
+      });
+
+      await Promise.all([
+        rpc(runtime.endpoint, "check.attempt.finalize", {
+          contract: "trust.attempt-finalization-request@1",
+          attemptHandle: admission.attemptHandle,
+        }),
+        sendRunnerFacts(runtime.endpoint, admission, {
+          kind: admission.operation.operation,
+          observedAt: "2026-08-15T12:00:00.000Z",
+          values: { headRevision: "revision-a", workingTree: "clean" },
+        }, [{
+          kind: admission.operation.operation,
+          observedAt: "2026-08-15T12:00:01.000Z",
+          values: { headRevision: "revision-a", workingTree: "clean" },
+        }]),
+      ]);
+
+      const check = await rpc(runtime.endpoint, "check.read", {
+        contract: "trust.check-read-request@1",
+        checkUri,
+      }) as {
+        history: readonly { factIds: readonly string[] }[];
+        attempts: readonly { facts: readonly { id: string }[] }[];
+      };
+      assert.deepEqual(
+        check.attempts[0]?.facts.map(({ id }) => id).sort(),
+        [...(check.history[0]?.factIds ?? [])].sort(),
+      );
+    }
   } finally {
     await runtime.close();
   }
@@ -376,7 +434,6 @@ interface RunnerAdmission {
 
 async function startRuntime(prefix: string) {
   return startPublicRuntime(prefix, {
-    skillPolicy: "local",
     operationsDirectory,
     environments: { local: { workspaceRoot: repositoryRoot } },
   });
@@ -405,14 +462,15 @@ async function sendRunnerFacts(
   endpoint: string,
   admission: RunnerAdmission,
   fact: Readonly<Record<string, unknown>>,
+  additionalFacts: readonly Readonly<Record<string, unknown>>[] = [],
 ) {
-  return postFacts(endpoint, admission, fact);
+  return postFacts(endpoint, admission, [fact, ...additionalFacts]);
 }
 
 async function postFacts(
   endpoint: string,
   attempt: { readonly attemptKey: string; readonly attemptHandle: string; readonly checkUri: string },
-  fact: Readonly<Record<string, unknown>>,
+  facts: readonly Readonly<Record<string, unknown>>[],
 ): Promise<{ partialSuccess?: { rejectedSpans?: number; errorMessage?: string } }> {
   const response = await fetch(`${endpoint}/v1/traces`, {
     method: "POST",
@@ -428,14 +486,18 @@ async function postFacts(
               { key: "trust.attempt_handle", value: { stringValue: attempt.attemptHandle } },
               { key: "trust.check_uri", value: { stringValue: attempt.checkUri } },
             ],
-            events: [{ name: "trust.runner.fact", attributes: otlpFactAttributes(fact, 0) }],
+            events: facts.map((fact, index) => ({
+              name: "trust.runner.fact",
+              attributes: otlpFactAttributes(fact, index),
+            })),
           }],
         }],
       }],
     }),
   });
-  assert.equal(response.status, 200);
-  return response.json() as Promise<{ partialSuccess?: { rejectedSpans?: number; errorMessage?: string } }>;
+  const body = await response.json() as { partialSuccess?: { rejectedSpans?: number; errorMessage?: string } };
+  assert.equal(response.status, 200, JSON.stringify(body));
+  return body;
 }
 
 async function mcpTool(

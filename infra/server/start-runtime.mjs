@@ -1,19 +1,11 @@
 #!/usr/bin/env node
 import { spawn } from "node:child_process";
-import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const repositoryRoot = fileURLToPath(new URL("../../", import.meta.url));
 const runtimeEntry = resolve(repositoryRoot, "packages/trust-runtime/dist/src/index.js");
 const runtimeOutput = resolve(repositoryRoot, "packages/trust-runtime/dist/src");
-const skillPolicy = parseSkillPolicy(process.env.TRUST_SKILL_POLICY);
-const principals = skillPolicy === "verified"
-  ? await readFile(
-      resolve(requiredEnvironment("TRUST_CONFIG_DIRECTORY"), "registry-principals.json"),
-      "utf8",
-    )
-  : undefined;
 const developmentMode = process.argv.includes("--dev");
 
 if (developmentMode) {
@@ -36,11 +28,7 @@ const child = spawn(process.execPath, [
   ...(developmentMode ? [`--watch-path=${runtimeOutput}`, "--watch-preserve-output"] : []),
   runtimeEntry,
 ], {
-  env: {
-    ...process.env,
-    TRUST_SKILL_POLICY: skillPolicy,
-    ...(principals === undefined ? {} : { TRUST_REGISTRY_PRINCIPALS_JSON: principals.trim() }),
-  },
+  env: process.env,
   stdio: "inherit",
 });
 children.push(child);
@@ -72,18 +60,4 @@ async function runBuild() {
       rejectBuild(new Error(`runtime build failed: ${code ?? signal ?? "unknown"}`));
     });
   });
-}
-
-function requiredEnvironment(name) {
-  const value = process.env[name];
-  if (value === undefined || value === "" || value.includes("\0")) {
-    throw new TypeError(`${name} is required`);
-  }
-  return value;
-}
-
-function parseSkillPolicy(value) {
-  if (value === undefined || value === "" || value === "local") return "local";
-  if (value === "verified") return "verified";
-  throw new TypeError(`TRUST_SKILL_POLICY must be 'local' or 'verified', received '${value}'`);
 }

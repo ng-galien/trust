@@ -1,6 +1,5 @@
 import express, { type Router } from "express";
 
-import { RegistryAuthorityError, type RegistryAuthority } from "../skill/authority.js";
 import type { TrialRegistry } from "../trial/registry.js";
 
 /* Diagnostic OTLP receiver — separate from the production /v1/traces ingest.
@@ -11,10 +10,9 @@ export const DIAGNOSTICS_JSON_LIMIT_BYTES = 4 * 1_048_576;
 
 export interface DiagnosticsHttpDependencies {
   readonly trialRegistry: TrialRegistry;
-  readonly registryAuthority: RegistryAuthority;
 }
 
-export function createDiagnosticsHttpHandler({ trialRegistry, registryAuthority }: DiagnosticsHttpDependencies): Router {
+export function createDiagnosticsHttpHandler({ trialRegistry }: DiagnosticsHttpDependencies): Router {
   const router = express.Router();
   router.use(express.json({ limit: DIAGNOSTICS_JSON_LIMIT_BYTES, type: () => true }));
 
@@ -34,22 +32,7 @@ export function createDiagnosticsHttpHandler({ trialRegistry, registryAuthority 
     response.status(200).json(accepted === 0 ? { partialSuccess: { rejectedSpans: 0 } } : {});
   });
 
-  // Live event stream for one trial. EventSource cannot send headers: the operator token travels as ?token=.
   router.get("/trials/:id/stream", (request, response) => {
-    const token = typeof request.query.token === "string" ? request.query.token : undefined;
-    const header = token ? `Bearer ${token}` : request.get("authorization");
-    try {
-      registryAuthority.authorize({
-        ...(header === undefined ? {} : { authorizationHeader: header }),
-        anyRoleOf: ["observer", "operator", "publisher"],
-      });
-    } catch (error) {
-      if (error instanceof RegistryAuthorityError) {
-        response.status(401).json({ error: error.reason, message: error.message });
-        return;
-      }
-      throw error;
-    }
     const trial = trialRegistry.get(String(request.params.id));
     if (!trial) {
       response.status(404).json({ error: "unknown-trial" });

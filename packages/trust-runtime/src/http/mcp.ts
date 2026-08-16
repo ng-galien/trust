@@ -19,11 +19,6 @@ import {
   type PlanDeclarationReplacementResult,
   type PlanRuntime,
 } from "../plan/runtime.js";
-import {
-  RegistryAuthorityError,
-  type RegistryAuthority,
-  type RegistryPrincipal,
-} from "../skill/authority.js";
 
 export const MCP_JSON_LIMIT_BYTES = 1_048_576;
 
@@ -50,7 +45,6 @@ type JsonRpcId = string | number;
 interface McpHttpDependencies {
   readonly planReader: PlanReader;
   readonly planRuntime: PlanRuntime;
-  readonly registryAuthority: RegistryAuthority;
 }
 
 interface JsonRpcResponse {
@@ -66,36 +60,21 @@ interface JsonRpcResponse {
 export function createMcpHttpHandler(dependencies: McpHttpDependencies): Router {
   const router = express.Router();
   const handle: RequestHandler = (request, response) => {
-    let principal: RegistryPrincipal;
-    try {
-      const authorizationHeader = request.get("authorization");
-      principal = dependencies.registryAuthority.authorize({
-        ...(authorizationHeader === undefined ? {} : { authorizationHeader }),
-        anyRoleOf: ["observer", "operator"],
-      });
-    } catch (error) {
-      if (error instanceof RegistryAuthorityError) {
-        response.status(401).json(failure(null, INVALID_REQUEST, "MCP access denied"));
-        return;
-      }
-      throw error;
-    }
-
     if (!acceptsJson(request.get("accept"))) {
       response.status(406).end();
       return;
     }
-    const result = dispatch(
+    void dispatch(
       request.body,
       request.get("mcp-protocol-version"),
       dependencies,
-      principal.roles.includes("operator"),
-    );
-    if (result === undefined) {
-      response.status(202).end();
-      return;
-    }
-    response.status(200).json(result);
+    ).then((result) => {
+      if (result === undefined) {
+        response.status(202).end();
+        return;
+      }
+      response.status(200).json(result);
+    }).catch(() => response.status(500).json(failure(null, INVALID_REQUEST, "Internal error")));
   };
 
   router.get("/", (_request, response) => {
@@ -115,12 +94,11 @@ export function createMcpHttpHandler(dependencies: McpHttpDependencies): Router 
   return router;
 }
 
-function dispatch(
+async function dispatch(
   message: unknown,
   protocolVersion: string | undefined,
   dependencies: McpHttpDependencies,
-  canEngagePlan: boolean,
-): JsonRpcResponse | undefined {
+): Promise<JsonRpcResponse | undefined> {
   if (!isRecord(message) || message.jsonrpc !== "2.0" || typeof message.method !== "string") {
     return failure(requestId(message), INVALID_REQUEST, "Invalid Request");
   }
@@ -156,36 +134,32 @@ function dispatch(
       if (!validToolsListParams(message.params)) {
         return failure(id, INVALID_PARAMS, "Invalid tools/list parameters");
       }
-      return success(id, { tools: tools(canEngagePlan) });
+      return success(id, { tools: tools() });
     case "tools/call":
-      return callTool(id, message.params, dependencies, canEngagePlan);
+      return callTool(id, message.params, dependencies);
     default:
       return failure(id, METHOD_NOT_FOUND, "Method not found");
   }
 }
 
-function callTool(
+async function callTool(
   id: JsonRpcId,
   value: unknown,
   dependencies: McpHttpDependencies,
-  canEngagePlan: boolean,
-): JsonRpcResponse {
+): Promise<JsonRpcResponse> {
   if (!isRecord(value) || !isToolName(value.name) || !isRecord(value.arguments)) {
     return failure(id, INVALID_PARAMS, "Unknown tool or invalid arguments");
   }
   if (value.name === "trust_plan_engage") {
-    if (!canEngagePlan) {
-      return toolError(id, "TRUST Plan engagement requires operator authority");
-    }
     const input = exactPlanEngagement(value.arguments);
     if (input === undefined) {
       return failure(id, INVALID_PARAMS, "Plan engagement arguments are invalid");
     }
     try {
-      const result = dependencies.planRuntime.engage(input);
+      const result = await dependencies.planRuntime.engage(input);
       return textResult(
         id,
-        renderEngagement(result, dependencies.planReader.readPlanBySlug(result.plan)),
+        renderEngagement(result, await dependencies.planReader.readPlanBySlug(result.plan)),
       );
     } catch (error) {
       if (error instanceof PlanRuntimeError) {
@@ -195,20 +169,17 @@ function callTool(
     }
   }
   if (value.name === "trust_plan_declarations_replace") {
-    if (!canEngagePlan) {
-      return toolError(id, "TRUST Plan declaration replacement requires operator authority");
-    }
     const input = exactPlanDeclarationReplacement(value.arguments);
     if (input === undefined) {
       return failure(id, INVALID_PARAMS, "Plan declaration replacement arguments are invalid");
     }
     try {
-      const result = dependencies.planRuntime.replaceDeclarations(input);
+      const result = await dependencies.planRuntime.replaceDeclarations(input);
       return textResult(
         id,
         renderDeclarationReplacement(
           result,
-          dependencies.planReader.readPlanBySlug(result.plan),
+          await dependencies.planReader.readPlanBySlug(result.plan),
         ),
       );
     } catch (error) {
@@ -233,7 +204,7 @@ function callTool(
         ) {
           return failure(id, INVALID_PARAMS, "Procedure page arguments are invalid");
         }
-        const page = dependencies.planReader.readProcedure({
+        const page = await dependencies.planReader.readProcedure({
           checkUri,
           ...(typeof cursor === "string" ? { cursor } : {}),
           ...(typeof limit === "number" ? { limit } : {}),
@@ -244,11 +215,11 @@ function callTool(
         });
       }
       case "trust_plan_read":
-        return textResult(id, renderPlan(dependencies.planReader.readPlan(checkUri)));
+        return textResult(id, renderPlan(await dependencies.planReader.readPlan(checkUri)));
       case "trust_session_read":
-        return textResult(id, renderSession(dependencies.planReader.readSession(checkUri)));
+        return textResult(id, renderSession(await dependencies.planReader.readSession(checkUri)));
       case "trust_check_read":
-        return textResult(id, renderCheck(dependencies.planReader.readCheck(checkUri)));
+        return textResult(id, renderCheck(await dependencies.planReader.readCheck(checkUri)));
     }
   } catch (error) {
     if (error instanceof ReadError) {
@@ -570,7 +541,7 @@ function renderRevisionChange(view: PlanView): readonly string[] {
   ];
 }
 
-function tools(canEngagePlan: boolean): readonly unknown[] {
+function tools(): readonly unknown[] {
   const checkUri = {
     type: "string",
     description: "Canonical semantic TRUST Check URI",
@@ -625,7 +596,6 @@ function tools(canEngagePlan: boolean): readonly unknown[] {
       },
     },
   ];
-  if (!canEngagePlan) return readTools;
   return [
     ...readTools,
     {

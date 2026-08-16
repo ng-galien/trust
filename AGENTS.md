@@ -8,8 +8,7 @@ implementation never overrides an explicit product decision.
 The active product language is **Plan + Sessions → Checks**. Product Action Contracts own the
 reusable Fact shape. The runner executes the command or HTTP definition returned for one Check.
 TRUST resolves a semantic Check URI, validates the delegation context, qualifies verified Facts and returns the
-checklist verdict. An agent never infers whether its action advanced the Plan. The normative release scope is
-[TRUST V1 — minimal product scope](docs/product/v1-minimal-scope.md).
+checklist verdict. An agent never infers whether its action advanced the Plan.
 
 ## Active repository map
 
@@ -20,13 +19,12 @@ packages/trust-procedure/ Procedure types and Gherkin compiler
 packages/trust-runner/    one generic Check runner
 assets/procedures/        authoritative grammar and product Action Contracts
 assets/operations/        Operation catalog and design direction
-docs/                     active decisions and executable contracts
 k8s/                      retained integration test environment
 ```
 
 ## Non-negotiable design rules
 
-- English is the only language for active code, Skill instructions and metadata, CLI/MCP messages,
+- English is the only language for active code, runner instructions and metadata, CLI/MCP messages,
   technical documentation, and acceptance tests. Product terms and Action Contract identifiers
   must use their canonical English wording.
 - The agent gives the runner only one semantic Check URI.
@@ -47,37 +45,28 @@ k8s/                      retained integration test environment
   Scenario prerequisites and Check-observation references; the agent resumes the same Plan from any
   Check whose dependencies are satisfied.
 - The runner never qualifies Checks. `actionOutcome` is never qualification input.
-- A Skill release manifest declares only the exact Action Contract digests implemented. It never
-  owns or repeats the product Fact schema. Compatibility is the exact
-  `(capability, actionContractDigest)` match.
 - The runner receives the compiled Operation from TRUST. Shared Operation types belong to
   `trust-operation`; Shell and HTTP execution belong to `trust-runner`.
-- Skills may create, update, delete, publish, transition, send or deploy when their Action Contract
-  requires it. The Skill acts with its own external permissions. Domain-specific idempotency or
-  reconciliation may remain local Skill/SDK safeguards, but advanced retry, shared journals, high
+- Operations may create, update, delete, publish, transition, send or deploy when their Action Contract
+  requires it. The runner acts with its own external permissions. Domain-specific idempotency or
+  reconciliation may remain local runner safeguards, but advanced retry, shared journals, high
   availability and automatic recovery are not generic product gates.
 - Gherkin plus a closed DSL owns Check intent, expected capability, typed predicate and semantic
   reasons. The generic server contains no procedure-specific business rule.
 - Delegation is refused before the external action until every compiled prerequisite Scenario is
   validated and every Check referenced by an observation has an active `VALIDATED` qualification.
-- TRUST owns URI and Session resolution, delegation grants, the Skill implementation registry,
-  explicit environment selection, Fact validation, qualification,
+- TRUST owns URI and Session resolution, delegation grants, explicit environment selection, Fact validation, qualification,
   immutable snapshots and checklist deltas. A grant validates and correlates the requested Check,
-  Skill capability, context and release; it is not proof that the external action occurred.
+  Operation, context and attempt; it is not proof that the external action occurred.
 - Plan engagement accepts only the procedure/version, Plan identifier, environment and the closed
-  set of compiled root Plan inputs. Fixed roles and future Skill-produced roles are never repeated.
+  set of compiled root Plan inputs. Fixed roles and future Check-produced roles are never repeated.
   Roles explicitly compiled as agent declarations are replaced after engagement only through the
-  closed, revision-checked declaration operation; it cannot write roots, fixed roles or Skill
+  closed, revision-checked declaration operation; it cannot write roots, fixed roles or Check
   outputs. V1 has no auto-fill, generic context patch, rich engagement UI or organizational input policy.
-- A procedure may compile while remaining non-operable. `READY` is a timestamped projection, not a
-  persisted Skill lifecycle state. Plan engagement validates its closed business inputs and creates
-  the initial Checks independently of Skill availability. In `verified` Skill policy, an ephemeral
-  CLI deployment announces and probes itself when it is invoked for one Check URI; attempt admission
-  then requires the exact selected, approved, compatible and currently available deployment before
-  any external action. The default `local` Skill policy skips credentials, registry publication,
-  authorization and deployment checks.
-  Managed MCP STDIO or HTTP integrations may use `READY` as an operator preflight before engagement,
-  but the Plan engagement service never imposes that advanced provisioning policy.
+- A procedure may compile and publish independently of runner availability. Plan engagement validates
+  its closed business inputs and creates the initial Checks. Attempt admission validates the current
+  Check, Session, dependencies, Action Contract and Environment without a release registry or
+  deployment lifecycle.
 - RPC and MCP call the same runtime functions. MCP never proxies RPC or exposes raw DTOs.
 - Do not create Proof, Evidence or Binding resources, SQL per requirement, manual references,
   `checks.refresh`, compatibility adapters or another product module.
@@ -90,7 +79,7 @@ k8s/                      retained integration test environment
 
 Only acceptance tests at public boundaries are allowed. Do not add or run unit tests.
 
-Public evidence comes from the real runtime process through RPC, MCP, OTLP, the Skill CLI and the
+Public evidence comes from the real runtime process through RPC, MCP, OTLP, the runner CLI and the
 test environment. A build or typecheck is useful qualification but is never accepted as behavioral
 evidence.
 

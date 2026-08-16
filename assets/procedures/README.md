@@ -28,7 +28,3 @@ aviation, food or software-specific keyword.
 `compileProcedure` receives one Procedure source and a catalog of compiled Operations. It resolves
 every referenced Operation, validates every Input binding and produced-field predicate, then embeds
 only the exact Operations used by the Procedure. The compiled revision is autonomous.
-
-The current TRUST runtime still consumes the previous Procedure artifact. Connecting
-`trust.compiled-procedure@3` to Plan engagement, Check hydration and qualification is a separate
-runtime-integration milestone and is intentionally not hidden inside this catalog work.

@@ -8,7 +8,7 @@ import type { Clock } from "../time.js";
 import {
   ProcedureStore,
   type PublishedProcedure,
-} from "../sqlite/procedures.js";
+} from "./store.js";
 
 export type ProcedureSource = Omit<ProcedureCompilationInput, "operations">;
 
@@ -33,7 +33,7 @@ export class Procedures {
     return compileProcedure({ ...input, operations: this.#operations });
   }
 
-  publish(input: ProcedureSource, publisher: string): PublishedProcedure {
+  async publish(input: ProcedureSource, publisher: string): Promise<PublishedProcedure> {
     const procedure = this.compile(input);
     return this.#store.publish(
       procedure,
@@ -43,18 +43,18 @@ export class Procedures {
     );
   }
 
-  find(procedure: string, version: string): PublishedProcedure | undefined {
+  async find(procedure: string, version: string): Promise<PublishedProcedure | undefined> {
     return this.#store.find(procedure, version);
   }
 
-  list(): readonly PublishedProcedure[] {
+  async list(): Promise<readonly PublishedProcedure[]> {
     return this.#store.list();
   }
 
-  findOperation(
+  async findOperation(
     operation: string,
     digest: string,
-  ): { readonly operation: string; readonly digest: string } | undefined {
+  ): Promise<{ readonly operation: string; readonly digest: string } | undefined> {
     return this.#store.findOperation(operation, digest);
   }
 }

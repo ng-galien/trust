@@ -47,7 +47,6 @@ test("the packaged TRUST Skill executes the git-status Check", async () => {
   await writeFile(path.join(project, "untracked.txt"), "dirty\n", "utf8");
 
   const runtime = await startPublicRuntime("trust-runner-runtime-", {
-    skillPolicy: "local",
     operationsDirectory: path.join(repositoryRoot, "assets/operations"),
     environments: { local: { workspaceRoot: projectsRoot } },
   });

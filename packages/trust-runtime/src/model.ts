@@ -1,8 +1,6 @@
 import type { CompiledOperation } from "@trust/operation";
 import type { CompiledProcedureCheck } from "@trust/procedure";
 
-import type { SkillEnvelope } from "./skill/model.js";
-
 export type RuntimeJsonObject = Readonly<Record<string, unknown>>;
 
 export interface Plan {
@@ -90,16 +88,6 @@ export interface Attempt {
   operationDigest: string;
   actionInput: RuntimeJsonObject;
   environment: string;
-  owner:
-    | { readonly kind: "runner" }
-    | {
-        readonly kind: "skill";
-        readonly releaseDigest: string;
-        readonly deploymentKey: string;
-        readonly envelope: SkillEnvelope;
-        readonly runtimeIdentity: string;
-        readonly processIdentity: string;
-      };
   state: AttemptState;
   admittedAt: string;
   expiresAt: string;

@@ -1,12 +1,12 @@
 import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 
 import { checkIsActionable } from "../check/actionability.js";
-import type { Attempt, CheckSnapshot, Fact, PlanCheck } from "../model.js";
-import type { AttemptStore } from "../sqlite/attempts.js";
-import type { FactStore } from "../sqlite/facts.js";
-import type { SnapshotStore } from "../sqlite/snapshots.js";
-import type { PlanStore } from "../sqlite/plans.js";
-import type { SessionStore } from "../sqlite/sessions.js";
+import type { Attempt, CheckSnapshot, Fact, Plan, PlanCheck, PlanRevision } from "../model.js";
+import type { AttemptStore } from "../attempt/store.js";
+import type { FactStore } from "../fact/store.js";
+import type { SnapshotStore } from "../snapshot/store.js";
+import type { PlanStore } from "./store.js";
+import type { SessionStore } from "../session/store.js";
 import type { Procedures } from "../procedure/procedures.js";
 import type { Clock } from "../time.js";
 
@@ -150,7 +150,6 @@ export interface CheckAttemptView {
   readonly handle: string;
   readonly attemptKey: string;
   readonly sessionId: string;
-  readonly owner: Attempt["owner"];
   readonly state: Attempt["state"];
   readonly admittedAt: string;
   readonly expiresAt: string;
@@ -236,9 +235,9 @@ export class PlanReader {
     this.#procedures = procedures;
   }
 
-  readProcedure(input: ProcedureReadInput): ProcedureReadView {
-    const { check, plan } = this.#resolve(input.checkUri);
-    const revision = this.#plans.readRevision(plan.slug, plan.currentRevision);
+  async readProcedure(input: ProcedureReadInput): Promise<ProcedureReadView> {
+    const { check, plan } = await this.#resolve(input.checkUri);
+    const revision = await this.#plans.readRevision(plan.slug, plan.currentRevision);
     if (!revision) {
       throw new ReadError(
         "revision-not-found",
@@ -275,14 +274,15 @@ export class PlanReader {
     };
   }
 
-  readPlan(checkUri: string): PlanView {
-    const { plan } = this.#resolve(checkUri);
+  async readPlan(checkUri: string): Promise<PlanView> {
+    const { plan } = await this.#resolve(checkUri);
     return this.readPlanBySlug(plan.slug);
   }
 
-  listPlans(): readonly PlanSummaryView[] {
-    return this.#plans.listPlans().map((plan) => {
-      const view = this.readPlanBySlug(plan.slug);
+  async listPlans(): Promise<readonly PlanSummaryView[]> {
+    const plans = await this.#plans.listPlans();
+    return Promise.all(plans.map(async (plan) => {
+      const view = await this.readPlanBySlug(plan.slug);
       return {
         plan: view.plan,
         procedure: view.procedure,
@@ -295,22 +295,22 @@ export class PlanReader {
         satisfiedChecks: view.satisfiedChecks,
         checkCount: view.checks.length,
       };
-    });
+    }));
   }
 
-  readPlanBySlug(planSlug: string): PlanView {
-    const plan = this.#plans.findPlan(planSlug);
+  async readPlanBySlug(planSlug: string): Promise<PlanView> {
+    const plan = await this.#plans.findPlan(planSlug);
     if (!plan) {
       throw new ReadError("plan-not-found", `Plan ${planSlug} is unavailable`);
     }
-    const revision = this.#plans.readRevision(plan.slug, plan.currentRevision);
+    const revision = await this.#plans.readRevision(plan.slug, plan.currentRevision);
     if (!revision) {
       throw new ReadError(
         "revision-not-found",
         `The active revision for Plan ${plan.slug} is unavailable`,
       );
     }
-    const procedure = this.#procedures.find(plan.procedure, plan.procedureVersion)?.procedure;
+    const procedure = (await this.#procedures.find(plan.procedure, plan.procedureVersion))?.procedure;
     if (!procedure) {
       throw new ReadError(
         "revision-not-found",
@@ -325,15 +325,17 @@ export class PlanReader {
         cardinality: role.cardinality,
         parents: role.parents,
       }));
-    const checks = this.#plans.listCurrentChecks(plan.slug);
-    const sessionAvailable = this.#sessions.findAvailable(plan.slug, this.#now()) !== undefined;
+    const [checks, availableSession, activeQualifications] = await Promise.all([
+      this.#plans.listCurrentChecks(plan.slug),
+      this.#sessions.findAvailable(plan.slug, this.#now()),
+      this.#snapshots.listActive(plan.slug, plan.currentRevision),
+    ]);
+    const sessionAvailable = availableSession !== undefined;
     const active = new Set(
-      this.#snapshots
-        .listActive(plan.slug, plan.currentRevision)
-        .map((qualification) => qualification.checkUri),
+      activeQualifications.map((qualification) => qualification.checkUri),
     );
-    const latestSnapshots = checks
-      .map((check) => this.#snapshots.findLatest(check.uri))
+    const latestByCheck = await Promise.all(checks.map((check) => this.#snapshots.findLatest(check.uri)));
+    const latestSnapshots = latestByCheck
       .filter((snapshot): snapshot is CheckSnapshot => snapshot !== undefined);
     const latestQualification = [...latestSnapshots].sort(compareSnapshots).at(-1);
     const missingDeclarations = declarationRoles
@@ -344,11 +346,11 @@ export class PlanReader {
       .map((check) => check.uri)
       .sort();
     const checkViews = checks
-      .map((check) => checkView(
+      .map((check, index) => checkView(
         check,
         checks,
         active,
-        this.#snapshots.findLatest(check.uri),
+        latestByCheck[index],
         sessionAvailable,
       ))
       .sort((left, right) => left.checkUri.localeCompare(right.checkUri));
@@ -379,7 +381,7 @@ export class PlanReader {
       actionableChecks,
       blockedChecks,
       checks: checkViews,
-      latestRevisionChange: this.#revisionChange(plan.slug, revision, active),
+      latestRevisionChange: await this.#revisionChange(plan.slug, revision, active),
       latestQualification: latestQualification === undefined
         ? null
         : {
@@ -391,7 +393,7 @@ export class PlanReader {
             newlyOpened: [...latestQualification.checklistDelta.newlyOpened].sort(),
             unchanged: [...latestQualification.checklistDelta.unchanged].sort(),
           },
-      revisions: this.#plans.listRevisions(plan.slug).map((item) => ({
+      revisions: (await this.#plans.listRevisions(plan.slug)).map((item) => ({
         revision: item.revision,
         definitionDigest: item.definitionDigest,
         source: item.source,
@@ -400,13 +402,13 @@ export class PlanReader {
         checkValues: item.checkValues,
         checkUris: item.checks.map((check) => check.uri),
       })),
-      sessions: this.#sessions.listForPlan(plan.slug).map(sessionRecord),
+      sessions: (await this.#sessions.listForPlan(plan.slug)).map(sessionRecord),
     };
   }
 
-  readSession(checkUri: string): SessionView {
-    const { plan } = this.#resolve(checkUri);
-    const view = this.readPlanBySlug(plan.slug);
+  async readSession(checkUri: string): Promise<SessionView> {
+    const { plan } = await this.#resolve(checkUri);
+    const view = await this.readPlanBySlug(plan.slug);
     return {
       plan: plan.slug,
       state: view.sessionState,
@@ -419,31 +421,31 @@ export class PlanReader {
     };
   }
 
-  readCheck(checkUri: string): CheckView {
-    const { check, plan } = this.#resolve(checkUri);
-    const history = this.#snapshots.listHistory(checkUri);
+  async readCheck(checkUri: string): Promise<CheckView> {
+    const { check, plan } = await this.#resolve(checkUri);
+    const [history, activeQualifications, checks, availableSession, storedAttempts] = await Promise.all([
+      this.#snapshots.listHistory(checkUri),
+      this.#snapshots.listActive(plan.slug, plan.currentRevision),
+      this.#plans.listCurrentChecks(plan.slug),
+      this.#sessions.findAvailable(plan.slug, this.#now()),
+      this.#attempts.listByCheck(checkUri),
+    ]);
     const latest = history.at(-1);
-    const active = new Set(
-      this.#snapshots
-        .listActive(plan.slug, plan.currentRevision)
-        .map((qualification) => qualification.checkUri),
-    );
+    const active = new Set(activeQualifications.map((qualification) => qualification.checkUri));
     const state = active.has(checkUri) ? "SATISFIED" : "OPEN";
-    const checks = this.#plans.listCurrentChecks(plan.slug);
-    const sessionAvailable = this.#sessions.findAvailable(plan.slug, this.#now()) !== undefined;
+    const sessionAvailable = availableSession !== undefined;
     const view = checkView(check, checks, active, latest, sessionAvailable);
-    const attempts = this.#attempts.listByCheck(checkUri).map((attempt) => ({
+    const attempts = await Promise.all(storedAttempts.map(async (attempt) => ({
       handle: attempt.handle,
       attemptKey: attempt.attemptKey,
       sessionId: attempt.sessionId,
-      owner: attempt.owner,
       state: attempt.state,
       admittedAt: attempt.admittedAt,
       expiresAt: attempt.expiresAt,
       ...(attempt.finalizedAt === undefined ? {} : { finalizedAt: attempt.finalizedAt }),
       ...(attempt.finalization === undefined ? {} : { finalization: attempt.finalization }),
-      facts: this.#facts.list(attempt.handle),
-    }));
+      facts: await this.#facts.list(attempt.handle),
+    })));
     return {
       checkUri,
       name: view.name,
@@ -475,20 +477,20 @@ export class PlanReader {
     };
   }
 
-  #revisionChange(
+  async #revisionChange(
     planSlug: string,
-    current: NonNullable<ReturnType<PlanStore["readRevision"]>>,
+    current: PlanRevision,
     currentActive: ReadonlySet<string>,
-  ): PlanView["latestRevisionChange"] {
+  ): Promise<PlanView["latestRevisionChange"]> {
     const previous = current.revision > 1
-      ? this.#plans.readRevision(planSlug, current.revision - 1)
+      ? await this.#plans.readRevision(planSlug, current.revision - 1)
       : undefined;
     const previousChecks = new Map((previous?.checks ?? []).map((check) => [check.uri, check]));
     const currentChecks = new Map(current.checks.map((check) => [check.uri, check]));
     const previousActive = new Set(
       previous === undefined
         ? []
-        : this.#snapshots.listActive(planSlug, previous.revision).map((entry) => entry.checkUri),
+        : (await this.#snapshots.listActive(planSlug, previous.revision)).map((entry) => entry.checkUri),
     );
     const added = [...currentChecks.keys()].filter((uri) => !previousChecks.has(uri)).sort();
     const removed = [...previousChecks.keys()].filter((uri) => !currentChecks.has(uri)).sort();
@@ -530,18 +532,18 @@ export class PlanReader {
     return now;
   }
 
-  #resolve(checkUri: string): {
+  async #resolve(checkUri: string): Promise<{
     readonly check: PlanCheck;
-    readonly plan: NonNullable<ReturnType<PlanStore["findPlan"]>>;
-  } {
+    readonly plan: Plan;
+  }> {
     if (checkUri.length === 0 || checkUri.length > 2_048) {
       throw new ReadError("check-not-found", "The semantic Check URI is unknown");
     }
-    const check = this.#plans.findCurrentCheck(checkUri);
+    const check = await this.#plans.findCurrentCheck(checkUri);
     if (!check) {
       throw new ReadError("check-not-found", "The semantic Check URI is unknown");
     }
-    const plan = this.#plans.findPlan(check.planSlug);
+    const plan = await this.#plans.findPlan(check.planSlug);
     if (!plan) {
       throw new ReadError("plan-not-found", "The Check has no active Plan");
     }

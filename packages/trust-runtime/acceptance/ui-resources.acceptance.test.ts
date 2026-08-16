@@ -11,7 +11,6 @@ const operationsDirectory = path.join(repositoryRoot, "assets/operations");
 
 test("the public runtime exposes the resources required by the TRUST interface", async () => {
   const runtime = await startPublicRuntime("trust-ui-resources-", {
-    skillPolicy: "local",
     operationsDirectory,
     environments: { local: { workspaceRoot: repositoryRoot } },
   });

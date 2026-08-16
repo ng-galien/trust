@@ -12,7 +12,6 @@ const operationsDirectory = path.join(repositoryRoot, "assets/operations");
 
 test("an Operation Trial runs through the packaged runner and streams its diagnostics", async () => {
   const runtime = await startPublicRuntime("trust-operation-trial-", {
-    skillPolicy: "local",
     operationsDirectory,
     environments: { local: { workspaceRoot: path.dirname(repositoryRoot) } },
   });
@@ -52,7 +51,6 @@ test("a timed-out Trial kills its process tree and still closes a full diagnosti
   const workspaceRoot = await mkdtemp(path.join(tmpdir(), "trust-operation-timeout-"));
   const pidFile = path.join(workspaceRoot, "stubborn.pid");
   const runtime = await startPublicRuntime("trust-operation-timeout-runtime-", {
-    skillPolicy: "local",
     environments: { local: { workspaceRoot } },
     trialTimeoutMs: 500,
   });
@@ -89,7 +87,6 @@ test("an operator can cancel a running Trial and its process tree", async () => 
   const workspaceRoot = await mkdtemp(path.join(tmpdir(), "trust-operation-cancel-"));
   const pidFile = path.join(workspaceRoot, "stubborn.pid");
   const runtime = await startPublicRuntime("trust-operation-cancel-runtime-", {
-    skillPolicy: "local",
     environments: { local: { workspaceRoot } },
     trialTimeoutMs: 30_000,
   });

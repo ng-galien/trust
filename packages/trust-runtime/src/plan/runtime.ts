@@ -10,16 +10,14 @@ import type {
   PlanRevision,
   RuntimeJsonObject,
 } from "../model.js";
-import type { SkillEnvelope } from "../skill/model.js";
 import type { Clock } from "../time.js";
-import type { DatabaseDriver } from "../sqlite/database.js";
-import type { AttemptStore } from "../sqlite/attempts.js";
-import type { SnapshotStore } from "../sqlite/snapshots.js";
-import type { FactStore } from "../sqlite/facts.js";
-import type { PlanStore } from "../sqlite/plans.js";
-import type { SessionStore } from "../sqlite/sessions.js";
+import type { Database } from "../database/database.js";
+import type { AttemptCreation, AttemptStore } from "../attempt/store.js";
+import type { SnapshotStore } from "../snapshot/store.js";
+import type { FactStore } from "../fact/store.js";
+import type { PlanStore } from "./store.js";
+import type { SessionStore } from "../session/store.js";
 import type { Procedures } from "../procedure/procedures.js";
-import type { SkillAdmission } from "../skill/admission.js";
 import type { EnvironmentService } from "../environment/service.js";
 import { buildPlanRevision, validateAgentDeclarations } from "./build.js";
 
@@ -86,18 +84,6 @@ export interface CheckAttemptAdmissionInput {
   readonly checkUri: string;
 }
 
-export interface SkillAttemptAdmissionInput {
-  readonly contract: "trust.skill-admission-request@1";
-  readonly attemptKey: string;
-  readonly checkUri: string;
-  readonly releaseDigest: string;
-  readonly environment: string;
-  readonly deploymentKey: string;
-  readonly envelope: SkillEnvelope;
-  readonly runtimeIdentity: string;
-  readonly processIdentity: string;
-}
-
 export type CheckAttemptAdmissionResult =
   | {
       readonly contract: "trust.check-admission@1";
@@ -112,22 +98,8 @@ export type CheckAttemptAdmissionResult =
     }
   | Refusal;
 
-export type SkillAttemptAdmissionResult =
-  | {
-      readonly contract: "trust.skill-admission@1";
-      readonly status: "ADMITTED";
-      readonly attemptKey: string;
-      readonly attemptHandle: string;
-      readonly checkUri: string;
-      readonly operation: string;
-      readonly operationDigest: string;
-      readonly actionInput: RuntimeJsonObject;
-      readonly expiresAt: string;
-    }
-  | Refusal;
-
 interface Refusal {
-  readonly contract: "trust.check-admission@1" | "trust.skill-admission@1";
+  readonly contract: "trust.check-admission@1";
   readonly status: "REFUSED";
   readonly attemptKey: string;
   readonly reasonCode: string;
@@ -142,16 +114,7 @@ export interface FactBatchInput {
   readonly recordedAt: string;
 }
 
-export interface SkillFactBatchInput extends FactBatchInput {
-  readonly releaseDigest: string;
-  readonly environment: string;
-  readonly deploymentKey: string;
-  readonly envelope: SkillEnvelope;
-  readonly runtimeIdentity: string;
-  readonly processIdentity: string;
-}
-
-export interface SkillFactBatchResult {
+export interface FactBatchResult {
   readonly acceptedFactIds: readonly string[];
   readonly duplicateFactIds: readonly string[];
 }
@@ -167,7 +130,7 @@ export interface AttemptFinalizationResult {
 
 export interface PlanRuntimeDependencies {
   readonly clock: Clock;
-  readonly databaseDriver: DatabaseDriver;
+  readonly database: Database;
   readonly semanticAuthority: string;
   readonly environmentService: EnvironmentService;
   readonly procedures: Procedures;
@@ -176,13 +139,12 @@ export interface PlanRuntimeDependencies {
   readonly attemptStore: AttemptStore;
   readonly factStore: FactStore;
   readonly snapshotStore: SnapshotStore;
-  readonly skillAdmission: SkillAdmission;
   readonly sessionDurationMs: number;
 }
 
 export class PlanRuntime {
   readonly #clock: Clock;
-  readonly #database: DatabaseDriver;
+  readonly #database: Database;
   readonly #authority: string;
   readonly #environments: EnvironmentService;
   readonly #procedures: Procedures;
@@ -191,7 +153,6 @@ export class PlanRuntime {
   readonly #attempts: AttemptStore;
   readonly #facts: FactStore;
   readonly #snapshots: SnapshotStore;
-  readonly #skillAdmission: SkillAdmission;
   readonly #sessionDurationMs: number;
 
   constructor(dependencies: PlanRuntimeDependencies) {
@@ -199,7 +160,7 @@ export class PlanRuntime {
       throw new TypeError("sessionDurationMs must be a positive integer");
     }
     this.#clock = dependencies.clock;
-    this.#database = dependencies.databaseDriver;
+    this.#database = dependencies.database;
     this.#authority = dependencies.semanticAuthority;
     this.#environments = dependencies.environmentService;
     this.#procedures = dependencies.procedures;
@@ -208,15 +169,14 @@ export class PlanRuntime {
     this.#attempts = dependencies.attemptStore;
     this.#facts = dependencies.factStore;
     this.#snapshots = dependencies.snapshotStore;
-    this.#skillAdmission = dependencies.skillAdmission;
     this.#sessionDurationMs = dependencies.sessionDurationMs;
   }
 
-  engage(input: PlanEngagementInput): PlanEngagementResult {
+  async engage(input: PlanEngagementInput): Promise<PlanEngagementResult> {
     if (input.contract !== "trust.plan-engagement-request@1") {
       throw new PlanRuntimeError("invalid-plan-engagement", "Unsupported Plan engagement contract");
     }
-    const published = this.#procedures.find(input.procedure, input.procedureVersion);
+    const published = await this.#procedures.find(input.procedure, input.procedureVersion);
     if (!published) {
       throw new PlanRuntimeError("procedure-not-found", `Procedure ${input.procedure}@${input.procedureVersion} is not published`);
     }
@@ -236,21 +196,21 @@ export class PlanRuntime {
     } catch (error) {
       throw new PlanRuntimeError("invalid-plan-engagement", message(error), { cause: error });
     }
-    const existing = this.#plans.findPlan(input.plan);
+    const existing = await this.#plans.findPlan(input.plan);
     if (existing) {
-      const current = this.#plans.readRevision(input.plan, existing.currentRevision);
+      const current = await this.#plans.readRevision(input.plan, existing.currentRevision);
       if (!current || current.definitionDigest !== revision.definitionDigest
         || canonicalJson(existing.rootInputs) !== canonicalJson(revision.rootInputs)
         || existing.environment !== revision.environment) {
         throw new PlanRuntimeError("plan-conflict", `Plan ${input.plan} is already engaged with another Procedure or context`);
       }
-      this.#ensureSession(input.plan);
+      await this.#ensureSession(input.plan);
       return engagement(existing.currentRevision, current, input);
     }
     const now = this.#now();
-    this.#database.transaction(() => {
-      this.#plans.saveRevision(revision, now.toISOString());
-      this.#sessions.create({
+    await this.#database.transaction().execute(async (transaction) => {
+      await this.#plans.using(transaction).saveRevision(revision, now.toISOString());
+      await this.#sessions.using(transaction).create({
         id: randomUUID(),
         planSlug: input.plan,
         state: "open",
@@ -261,10 +221,10 @@ export class PlanRuntime {
     return engagement(1, revision, input);
   }
 
-  replaceDeclarations(input: PlanDeclarationReplacementInput) {
-    const plan = this.#plans.findPlan(input.plan);
-    const current = plan && this.#plans.readRevision(plan.slug, plan.currentRevision);
-    const published = plan && this.#procedures.find(plan.procedure, plan.procedureVersion);
+  async replaceDeclarations(input: PlanDeclarationReplacementInput): Promise<PlanDeclarationReplacementResult> {
+    const plan = await this.#plans.findPlan(input.plan);
+    const current = plan ? await this.#plans.readRevision(plan.slug, plan.currentRevision) : undefined;
+    const published = plan ? await this.#procedures.find(plan.procedure, plan.procedureVersion) : undefined;
     if (!plan || !current || !published || plan.currentRevision !== input.expectedRevision) {
       throw new PlanRuntimeError("plan-conflict", `Plan ${input.plan} is unavailable or changed`);
     }
@@ -292,21 +252,25 @@ export class PlanRuntime {
       roleValues: current.roleValues,
       checkValues: current.checkValues,
     });
-    this.#plans.saveRevision(next, this.#now().toISOString());
-    this.#ensureSession(plan.slug);
+    await this.#database.transaction().execute(async (transaction) => {
+      await this.#plans.using(transaction).saveRevision(next, this.#now().toISOString());
+    });
+    await this.#ensureSession(plan.slug);
     return declarationResult(current, next);
   }
 
-  admitCheck(input: CheckAttemptAdmissionInput): CheckAttemptAdmissionResult {
+  async admitCheck(input: CheckAttemptAdmissionInput): Promise<CheckAttemptAdmissionResult> {
     if (input.contract !== "trust.check-admission-request@1") {
       return refuse("trust.check-admission@1", input.attemptKey, "invalid-admission-contract", "Unsupported admission contract");
     }
-    const resolved = this.#resolveAdmission(input.attemptKey, input.checkUri);
+    let resolved = await this.#resolveAdmission(input.attemptKey, input.checkUri);
     if ("refusal" in resolved) return { contract: "trust.check-admission@1", ...resolved.refusal };
-    if (resolved.existing && resolved.existing.owner.kind !== "runner") {
-      return refuse("trust.check-admission@1", input.attemptKey, "attempt-owner-mismatch", "Attempt key belongs to a Skill");
+    const creation = await this.#createAttempt(resolved);
+    if (!creation.created && resolved.existing === undefined) {
+      resolved = await this.#resolveAdmission(input.attemptKey, input.checkUri);
+      if ("refusal" in resolved) return { contract: "trust.check-admission@1", ...resolved.refusal };
     }
-    const attempt = this.#createAttempt(resolved, { kind: "runner" });
+    const attempt = creation.attempt;
     return {
       contract: "trust.check-admission@1",
       status: "ADMITTED",
@@ -320,76 +284,24 @@ export class PlanRuntime {
     };
   }
 
-  admitSkill(input: SkillAttemptAdmissionInput): SkillAttemptAdmissionResult {
-    if (input.contract !== "trust.skill-admission-request@1") {
-      return refuse("trust.skill-admission@1", input.attemptKey, "invalid-admission-contract", "Unsupported admission contract");
-    }
-    const resolved = this.#resolveAdmission(input.attemptKey, input.checkUri);
-    if ("refusal" in resolved) return { contract: "trust.skill-admission@1", ...resolved.refusal };
-    if (resolved.plan.environment !== input.environment) {
-      return refuse("trust.skill-admission@1", input.attemptKey, "environment-mismatch", "The Skill environment does not own this Check");
-    }
-    if (resolved.existing && (resolved.existing.owner.kind !== "skill"
-      || resolved.existing.owner.releaseDigest !== input.releaseDigest
-      || resolved.existing.owner.deploymentKey !== input.deploymentKey
-      || resolved.existing.owner.envelope !== input.envelope
-      || resolved.existing.owner.runtimeIdentity !== input.runtimeIdentity
-      || resolved.existing.owner.processIdentity !== input.processIdentity)) {
-      return refuse("trust.skill-admission@1", input.attemptKey, "attempt-owner-mismatch", "Attempt key belongs to another caller");
-    }
-    const decision = this.#skillAdmission.admit({
-      environment: input.environment,
-      requirement: {
-        capability: resolved.check.check.operation,
-        actionContractDigest: resolved.check.check.operationDigest,
-      },
-      releaseDigest: input.releaseDigest,
-      deploymentKey: input.deploymentKey,
-      envelope: input.envelope,
-      runtimeIdentity: input.runtimeIdentity,
-      processIdentity: input.processIdentity,
+  async ingestFacts(input: FactBatchInput): Promise<FactBatchResult> {
+    return this.#database.transaction().execute(async (transaction) => {
+      const attempts = this.#attempts.using(transaction);
+      const attempt = await attempts.lockPending(input.attemptHandle);
+      if (!attempt) {
+        const existing = await attempts.find(input.attemptHandle);
+        if (!existing) {
+          throw new PlanRuntimeError("attempt-not-found", `Runner Attempt ${input.attemptHandle} is unknown`);
+        }
+        throw new PlanRuntimeError("fact-batch-rejected", "Fact batch belongs to a finalized Attempt");
+      }
+      return this.#ingest(attempt, input, transaction);
     });
-    if (decision.status === "REFUSED") {
-      return refuse("trust.skill-admission@1", input.attemptKey, decision.reasonCode, decision.reason);
-    }
-    const attempt = this.#createAttempt(resolved, {
-      kind: "skill",
-      releaseDigest: input.releaseDigest,
-      deploymentKey: input.deploymentKey,
-      envelope: input.envelope,
-      runtimeIdentity: input.runtimeIdentity,
-      processIdentity: input.processIdentity,
-    }, decision.leaseExpiresAt);
-    return {
-      contract: "trust.skill-admission@1",
-      status: "ADMITTED",
-      attemptKey: attempt.attemptKey,
-      attemptHandle: attempt.handle,
-      checkUri: attempt.checkUri,
-      operation: attempt.operation,
-      operationDigest: attempt.operationDigest,
-      actionInput: attempt.actionInput,
-      expiresAt: attempt.expiresAt,
-    };
   }
 
-  ingestFacts(input: FactBatchInput): SkillFactBatchResult {
-    const attempt = this.#attempts.find(input.attemptHandle);
-    if (!attempt) {
-      throw new PlanRuntimeError("attempt-not-found", `Runner Attempt ${input.attemptHandle} is unknown`);
-    }
-    if (attempt.owner.kind !== "runner") {
-      throw new PlanRuntimeError("fact-batch-rejected", "Runner Fact batch does not match a Runner Attempt");
-    }
-    return this.#ingest(attempt, input);
-  }
-
-  #ingest(attempt: Attempt, input: FactBatchInput): SkillFactBatchResult {
+  async #ingest(attempt: Attempt, input: FactBatchInput, database: Database): Promise<FactBatchResult> {
     if (attempt.attemptKey !== input.attemptKey || attempt.checkUri !== input.checkUri) {
       throw new PlanRuntimeError("fact-batch-rejected", "Fact batch does not match its admitted Attempt");
-    }
-    if (attempt.state !== "pending") {
-      throw new PlanRuntimeError("fact-batch-rejected", "Fact batch belongs to a finalized Attempt");
     }
     if (Date.parse(attempt.expiresAt) <= this.#now().getTime()) {
       throw new PlanRuntimeError("fact-batch-rejected", "Fact batch belongs to an expired Attempt");
@@ -397,53 +309,44 @@ export class PlanRuntime {
     if (input.facts.length === 0 || Number.isNaN(Date.parse(input.recordedAt))) {
       throw new PlanRuntimeError("fact-batch-rejected", "Fact batch must contain Facts and a valid recordedAt instant");
     }
-    const check = this.#plans.findCheckAtRevision(attempt.planSlug, attempt.planRevision, attempt.checkUri);
+    const check = await this.#plans.using(database).findCheckAtRevision(
+      attempt.planSlug,
+      attempt.planRevision,
+      attempt.checkUri,
+    );
     if (!check || check.compiledCheckDigest !== attempt.compiledCheckDigest) {
       throw new PlanRuntimeError("fact-batch-rejected", "The admitted Check is unavailable");
     }
     const facts = input.facts.map((payload, index) => fact(attempt, payload, index, input.recordedAt));
     try {
       validateFacts(check, facts);
-      const result = this.#facts.append(facts);
+      const result = await this.#facts.using(database).append(facts);
       return { acceptedFactIds: result.acceptedIds, duplicateFactIds: result.duplicateIds };
     } catch (error) {
       throw new PlanRuntimeError("fact-batch-rejected", message(error), { cause: error });
     }
   }
 
-  ingestSkillFacts(input: SkillFactBatchInput): SkillFactBatchResult {
-    const attempt = this.#attempts.find(input.attemptHandle);
-    if (!attempt || attempt.owner.kind !== "skill"
-      || attempt.owner.releaseDigest !== input.releaseDigest
-      || attempt.environment !== input.environment
-      || attempt.owner.deploymentKey !== input.deploymentKey
-      || attempt.owner.envelope !== input.envelope
-      || attempt.owner.runtimeIdentity !== input.runtimeIdentity
-      || attempt.owner.processIdentity !== input.processIdentity) {
-      throw new PlanRuntimeError("fact-batch-rejected", "Skill Fact batch does not match its admitted Attempt");
-    }
-    return this.#ingest(attempt, input);
-  }
-
-  finalizeCheck(attemptHandle: string): AttemptFinalizationResult {
-    const attempt = this.#attempts.find(attemptHandle);
-    if (!attempt || attempt.owner.kind !== "runner") {
+  async finalizeCheck(attemptHandle: string): Promise<AttemptFinalizationResult> {
+    const attempt = await this.#attempts.find(attemptHandle);
+    if (!attempt) {
       throw new PlanRuntimeError("attempt-not-found", `Runner Attempt ${attemptHandle} is unknown`);
     }
     return this.#finalize(attempt);
   }
 
-  finalizeSkill(attemptHandle: string, caller: { runtimeIdentity: string; processIdentity: string }): AttemptFinalizationResult {
-    const attempt = this.#attempts.find(attemptHandle);
-    if (!attempt || !this.#skillAdmission.ownsAttempt(attempt, caller)) {
-      throw new PlanRuntimeError("attempt-not-found", `Skill Attempt ${attemptHandle} is unknown`);
-    }
-    return this.#finalize(attempt);
-  }
-
-  #finalize(attempt: Attempt): AttemptFinalizationResult {
-    return this.#database.transaction(() => {
-      const currentAttempt = this.#attempts.find(attempt.handle);
+  async #finalize(attempt: Attempt): Promise<AttemptFinalizationResult> {
+    const initialPlan = await this.#plans.findPlan(attempt.planSlug);
+    const published = initialPlan
+      ? await this.#procedures.find(initialPlan.procedure, initialPlan.procedureVersion)
+      : undefined;
+    return this.#database.transaction().execute(async (transaction) => {
+      const attempts = this.#attempts.using(transaction);
+      const factsStore = this.#facts.using(transaction);
+      const plans = this.#plans.using(transaction);
+      const snapshots = this.#snapshots.using(transaction);
+      const lockedAttempt = await attempts.lockPending(attempt.handle);
+      const currentAttempt = lockedAttempt ?? await attempts.find(attempt.handle);
       if (!currentAttempt) {
         throw new PlanRuntimeError("attempt-not-found", `Attempt ${attempt.handle} is unknown`);
       }
@@ -457,14 +360,13 @@ export class PlanRuntime {
           ...currentAttempt.finalization,
         };
       }
-      const facts = this.#facts.list(attempt.handle);
+      const facts = await factsStore.list(attempt.handle);
       if (facts.length === 0) throw new PlanRuntimeError("facts-missing", "The Check is unchanged until TRUST accepts Facts");
-      const check = this.#plans.findCheckAtRevision(attempt.planSlug, attempt.planRevision, attempt.checkUri);
-      const plan = this.#plans.findPlan(attempt.planSlug);
-      const current = plan && this.#plans.readRevision(plan.slug, plan.currentRevision);
-      const published = plan && this.#procedures.find(plan.procedure, plan.procedureVersion);
+      const check = await plans.findCheckAtRevision(attempt.planSlug, attempt.planRevision, attempt.checkUri);
+      const plan = await plans.findPlan(attempt.planSlug);
+      const current = plan ? await plans.readRevision(plan.slug, plan.currentRevision) : undefined;
       const currentCheck = current?.checks.find((candidate) => candidate.uri === attempt.checkUri);
-      const activeBefore = plan ? this.#snapshots.listActive(plan.slug, plan.currentRevision) : [];
+      const activeBefore = plan ? await snapshots.listActive(plan.slug, plan.currentRevision) : [];
       const activeUris = new Set(activeBefore.map((item) => item.checkUri));
       if (!check || !plan || !current || !published || !currentCheck
         || currentCheck.compiledCheckDigest !== attempt.compiledCheckDigest
@@ -560,8 +462,8 @@ export class PlanRuntime {
         calculatedAt,
       };
       const snapshot: CheckSnapshot = { id: digest(snapshotBase), ...snapshotBase };
-      const equivalent = this.#snapshots.findEquivalent(check.uri, check.compiledCheckDigest, factIds);
-      if (!equivalent) this.#snapshots.append(snapshot);
+      const equivalent = await snapshots.findEquivalent(check.uri, check.compiledCheckDigest, factIds);
+      if (!equivalent) await snapshots.append(snapshot);
       const activeSnapshot = equivalent ?? snapshot;
       const activeAfter: ActiveCheckQualification[] = [...retained];
       if (qualification.verdict === "VALIDATED") {
@@ -574,10 +476,10 @@ export class PlanRuntime {
           activationDigest: digest({ plan: plan.slug, revision: nextRevisionNumber, check: check.uri, factIds }),
         });
       }
-      this.#plans.saveRevision(next, calculatedAt);
-      this.#snapshots.saveActiveForRevision(plan.slug, nextRevisionNumber, activeAfter);
+      await plans.saveRevision(next, calculatedAt);
+      await snapshots.saveActiveForRevision(plan.slug, nextRevisionNumber, activeAfter);
       const result = finalization(snapshot);
-      this.#attempts.finalize(attempt.handle, calculatedAt, {
+      await attempts.finalize(attempt.handle, calculatedAt, {
         verdict: result.verdict,
         reasonCode: result.reasonCode,
         reason: result.reason,
@@ -587,8 +489,8 @@ export class PlanRuntime {
     });
   }
 
-  #resolveAdmission(attemptKey: string, checkUri: string): AdmissionResolution | AdmissionFailure {
-    const existing = this.#attempts.findByKey(attemptKey);
+  async #resolveAdmission(attemptKey: string, checkUri: string): Promise<AdmissionResolution | AdmissionFailure> {
+    const existing = await this.#attempts.findByKey(attemptKey);
     if (existing) {
       if (existing.checkUri !== checkUri) {
         return { refusal: refusal(attemptKey, "attempt-key-conflict", "Attempt key is already bound to another Check") };
@@ -599,32 +501,36 @@ export class PlanRuntime {
       if (Date.parse(existing.expiresAt) <= this.#now().getTime()) {
         return { refusal: refusal(attemptKey, "attempt-expired", "Attempt key is expired") };
       }
-      const check = this.#plans.findCheckAtRevision(existing.planSlug, existing.planRevision, existing.checkUri);
-      const plan = this.#plans.findPlan(existing.planSlug);
-      const session = this.#sessions.findById(existing.sessionId);
+      const [check, plan, session] = await Promise.all([
+        this.#plans.findCheckAtRevision(existing.planSlug, existing.planRevision, existing.checkUri),
+        this.#plans.findPlan(existing.planSlug),
+        this.#sessions.findById(existing.sessionId),
+      ]);
       if (!check || !plan || !session) return { refusal: refusal(attemptKey, "check-not-found", "The Check is unavailable") };
       return { attemptKey, check, plan, session, existing };
     }
-    const check = this.#plans.findCurrentCheck(checkUri);
-    const plan = check && this.#plans.findPlan(check.planSlug);
+    const check = await this.#plans.findCurrentCheck(checkUri);
+    const plan = check ? await this.#plans.findPlan(check.planSlug) : undefined;
     if (!check || !plan) return { refusal: refusal(attemptKey, "check-not-found", "The semantic Check URI is unknown") };
-    const active = new Set(this.#snapshots.listActive(plan.slug, plan.currentRevision).map((item) => item.checkUri));
-    if (!checkDependenciesSatisfied(check, this.#plans.listCurrentChecks(plan.slug), (uri) => active.has(uri))) {
+    const [activeQualifications, checks] = await Promise.all([
+      this.#snapshots.listActive(plan.slug, plan.currentRevision),
+      this.#plans.listCurrentChecks(plan.slug),
+    ]);
+    const active = new Set(activeQualifications.map((item) => item.checkUri));
+    if (!checkDependenciesSatisfied(check, checks, (uri) => active.has(uri))) {
       return { refusal: refusal(attemptKey, "check-not-actionable", "The Check dependencies are not satisfied") };
     }
-    const session = this.#sessions.findAvailable(plan.slug, this.#now());
+    const session = await this.#sessions.findAvailable(plan.slug, this.#now());
     if (!session) {
       return { refusal: refusal(attemptKey, "session-unavailable", "The Plan has no active Session") };
     }
     return { attemptKey, check, plan, session };
   }
 
-  #createAttempt(
+  async #createAttempt(
     resolved: AdmissionResolution,
-    owner: Attempt["owner"],
-    leaseExpiresAt?: string,
-  ): Attempt {
-    if (resolved.existing) return resolved.existing;
+  ): Promise<AttemptCreation> {
+    if (resolved.existing) return { attempt: resolved.existing, created: false };
     const now = this.#now();
     const attempt: Attempt = {
       handle: randomUUID(),
@@ -638,23 +544,19 @@ export class PlanRuntime {
       operationDigest: resolved.check.check.operationDigest,
       actionInput: resolved.check.actionInput,
       environment: resolved.plan.environment,
-      owner,
       state: "pending",
       admittedAt: now.toISOString(),
-      expiresAt: leaseExpiresAt === undefined
-        ? resolved.session.expiresAt
-        : new Date(Math.min(Date.parse(resolved.session.expiresAt), Date.parse(leaseExpiresAt))).toISOString(),
+      expiresAt: resolved.session.expiresAt,
     };
-    this.#attempts.create(attempt);
-    return attempt;
+    return this.#attempts.createOrFind(attempt);
   }
 
-  #ensureSession(plan: string): void {
-    const current = this.#sessions.findOpen(plan);
+  async #ensureSession(plan: string): Promise<void> {
+    const current = await this.#sessions.findOpen(plan);
     const now = this.#now();
     if (current && Date.parse(current.expiresAt) > now.getTime()) return;
-    if (current) this.#sessions.changeState(current.id, "expired", now.toISOString());
-    this.#sessions.create({
+    if (current) await this.#sessions.changeState(current.id, "expired", now.toISOString());
+    await this.#sessions.create({
       id: randomUUID(),
       planSlug: plan,
       state: "open",

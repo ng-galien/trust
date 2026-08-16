@@ -10,7 +10,6 @@ const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url))
 
 test("the runtime compiles, publishes and reads one Procedure with its exact Operation", async () => {
   const runtime = await startPublicRuntime("trust-procedure-", {
-    skillPolicy: "local",
     operationsDirectory: path.join(repositoryRoot, "assets/operations"),
     environments: { local: { workspaceRoot: repositoryRoot } },
   });

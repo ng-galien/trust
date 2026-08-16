@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 
 import { spawn } from "node:child_process";
-import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 import { readdir, readFile, rm } from "node:fs/promises";
 import { parse, resolve } from "node:path";
@@ -9,13 +8,11 @@ import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 
 import { publicRpc } from "../infra/server/lib/public-rpc.mjs";
-import { generateServerRuntimeConfig } from "../infra/server/generate-runtime-config.mjs";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
 const stateDirectory = parseStateDirectory(
   process.env.TRUST_SERVER_STATE_DIRECTORY ?? ".trust/server",
 );
-const generated = resolve(stateDirectory, "generated");
 const database = resolve(stateDirectory, "runtime.sqlite");
 const operations = resolve(root, "assets/operations");
 // An Environment's workspaceRoot is the directory that holds the projects; the Check's "project" Input picks one.
@@ -34,7 +31,6 @@ const tmux = Object.freeze({
   session: parseTmuxSession(process.env.TRUST_SERVER_TMUX_SESSION ?? "trust"),
   window: "server",
 });
-const skillPolicy = parseSkillPolicy(process.env.TRUST_SKILL_POLICY);
 const command = process.argv[2];
 
 switch (command) {
@@ -74,14 +70,9 @@ async function start(reset: boolean) {
       await rm(`${database}${suffix}`, { force: true });
     }
   }
-  if (skillPolicy === "verified") {
-    await generateServerRuntimeConfig({ outputDirectory: generated, environment: process.env });
-  }
   await run([
     "tmux", "new-session", "-d", "-s", tmux.session, "-n", tmux.window,
     "-c", root,
-    "-e", `TRUST_SKILL_POLICY=${skillPolicy}`,
-    ...(skillPolicy === "verified" ? ["-e", `TRUST_CONFIG_DIRECTORY=${generated}`] : []),
     "-e", `TRUST_DATABASE_PATH=${database}`,
     "-e", `TRUST_OPERATIONS_DIRECTORY=${operations}`,
     "-e", "TRUST_HOST=127.0.0.1",
@@ -103,9 +94,8 @@ async function stop() {
 
 async function seed() {
   await requireHealth();
-  const publisherToken = policyCredential("TRUST_PUBLISHER_TOKEN");
   for (const [environment, values] of Object.entries(environmentValues)) {
-    await publicRpc(rpcEndpoint, "environment.save", { environment, values }, publisherToken);
+    await publicRpc(rpcEndpoint, "environment.save", { environment, values });
   }
   const procedureDirectory = resolve(root, "assets/procedures");
   const names = (await readdir(procedureDirectory)).filter((name) => name.endsWith(".feature")).sort();
@@ -114,7 +104,7 @@ async function seed() {
     const publication = await publicRpc(rpcEndpoint, "procedure.publish", {
       source: await readFile(resolve(procedureDirectory, name), "utf8"),
       sourceName: name,
-    }, publisherToken);
+    });
     procedures.push(`${publication.procedure.procedure}@${publication.procedure.version}`);
   }
   process.stdout.write(`TRUST seed: ${procedures.join(", ")}\n`);
@@ -123,15 +113,10 @@ async function seed() {
 async function preflight(options: { ticket: string; procedure: string; version: string }) {
   await requireHealth();
   await assertServer();
-  if (skillPolicy === "verified") {
-    await assertCredential("TRUST_SKILL_RUNTIME_IDENTITY", "TRUST_RUNTIME_CREDENTIAL");
-    await assertCredential("TRUST_SKILL_PROCESS_IDENTITY", "TRUST_RUNTIME_PROCESS_CREDENTIAL");
-  }
-
   const published = await publicRpc(rpcEndpoint, "procedure.read", {
     procedure: options.procedure,
     version: options.version,
-  }, policyCredential("TRUST_PUBLISHER_TOKEN"));
+  });
   if (
     published?.procedure?.procedure !== options.procedure
     || published?.procedure?.version !== options.version
@@ -142,7 +127,6 @@ async function preflight(options: { ticket: string; procedure: string; version: 
   const response = await fetch(mcpEndpoint, {
     method: "POST",
     headers: {
-      ...authorizationHeader("TRUST_OPERATOR_TOKEN"),
       "Content-Type": "application/json",
       Accept: "application/json, text/event-stream",
       "MCP-Protocol-Version": "2025-06-18",
@@ -180,7 +164,6 @@ async function mcpTool(name: string, arguments_: Record<string, unknown>) {
   const response = await fetch(mcpEndpoint, {
     method: "POST",
     headers: {
-      ...authorizationHeader("TRUST_OPERATOR_TOKEN"),
       "Content-Type": "application/json",
       Accept: "application/json, text/event-stream",
       "MCP-Protocol-Version": "2025-06-18",
@@ -204,23 +187,9 @@ async function mcpTool(name: string, arguments_: Record<string, unknown>) {
   return text;
 }
 
-async function assertCredential(identityName: string, credentialName: string) {
-  const identity = required(identityName);
-  const credential = required(credentialName);
-  const principals = JSON.parse(await readFile(resolve(generated, "registry-principals.json"), "utf8"));
-  const digest = `sha256:${createHash("sha256").update(credential).digest("hex")}`;
-  if (!Array.isArray(principals) || !principals.some((principal) => (
-    principal?.identity === identity && principal?.credentialSha256 === digest
-  ))) {
-    throw new Error(`${credentialName} does not match the active runtime principal`);
-  }
-}
-
 async function assertServer() {
   if (!await hasSession()) throw new Error("the TRUST server session is not running");
   for (const [name, expected] of [
-    ["TRUST_SKILL_POLICY", skillPolicy],
-    ...(skillPolicy === "verified" ? [["TRUST_CONFIG_DIRECTORY", generated]] : []),
     ["TRUST_DATABASE_PATH", database],
     ["TRUST_OPERATIONS_DIRECTORY", operations],
     ["TRUST_PORT", String(port)],
@@ -313,25 +282,6 @@ function parsePreflight(args: string[]) {
     procedure: requiredValue(values.get("procedure"), "procedure"),
     version: requiredValue(values.get("version"), "version"),
   };
-}
-
-function required(name: string) {
-  return requiredValue(process.env[name], name);
-}
-
-function policyCredential(name: string): string | undefined {
-  return skillPolicy === "verified" ? required(name) : undefined;
-}
-
-function authorizationHeader(name: string): Record<string, string> {
-  const credential = policyCredential(name);
-  return credential === undefined ? {} : { Authorization: `Bearer ${credential}` };
-}
-
-function parseSkillPolicy(value: string | undefined): "local" | "verified" {
-  if (value === undefined || value === "" || value === "local") return "local";
-  if (value === "verified") return "verified";
-  throw new TypeError(`TRUST_SKILL_POLICY must be 'local' or 'verified', received '${value}'`);
 }
 
 function parsePort(value: string): number {

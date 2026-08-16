@@ -20,24 +20,16 @@ import {
   type PlanReader,
 } from "../plan/read.js";
 import type { Procedures } from "../procedure/procedures.js";
-import { ProcedureConflictError } from "../sqlite/procedures.js";
+import { ProcedureConflictError } from "../procedure/store.js";
 import {
   PlanRuntimeError,
   type PlanRuntime,
 } from "../plan/runtime.js";
-import type { SkillPreflight } from "../skill/preflight.js";
-import type { SkillRegistry } from "../skill/registry.js";
-import { SkillRegistryError, type SkillRegistryErrorCode } from "../skill/model.js";
-import type { Clock } from "../time.js";
 import type { EnvironmentService } from "../environment/service.js";
 import type { CredentialService } from "../credential/service.js";
 import { EnvironmentConfigurationError } from "../environment/validation.js";
 import { TrialError, type TrialService } from "../trial/service.js";
 import { executeTrialRpc, InvalidTrialRpcParams, isTrialRpcMethod, TRIAL_ERROR_CONTRACT, type TrialFailureData } from "./trial.js";
-import {
-  RegistryAuthorityError,
-  type RegistryAuthority,
-} from "../skill/authority.js";
 import {
   PLAN_RUNTIME_ERROR_CONTRACT,
   type PlanRuntimeFailureData,
@@ -47,16 +39,6 @@ import {
   InvalidPlanRuntimeRpcParams,
   isPlanRuntimeRpcMethod,
 } from "./plan.js";
-import {
-  executeSkillRegistryRpc,
-  InvalidSkillRegistryRpcParams,
-  isSkillRegistryRpcMethod,
-  REGISTRY_AUTHORITY_ERROR_CONTRACT,
-  type RegistryAuthorityFailureData,
-  SKILL_REGISTRY_ERROR_CONTRACT,
-  type SkillRegistryFailureData,
-  type SkillRegistryFailureReason,
-} from "./skill.js";
 import {
   executeConfigurationRpc,
   InvalidConfigurationRpcParams,
@@ -148,8 +130,6 @@ const METHOD_NOT_FOUND = -32_601;
 const INVALID_PARAMS = -32_602;
 const INTERNAL_ERROR = -32_603;
 const PROCEDURE_COMPILATION_ERROR = -32_010;
-const SKILL_REGISTRY_ERROR = -32_020;
-const REGISTRY_AUTHORITY_ERROR = -32_021;
 const PLAN_RUNTIME_ERROR = -32_030;
 const TRIAL_ERROR = -32_040;
 
@@ -158,13 +138,9 @@ interface RpcHttpDependencies {
   readonly environmentService: EnvironmentService;
   readonly credentialService: CredentialService;
   readonly planReader: PlanReader;
-  readonly clock: Clock;
   readonly procedures: Procedures;
   readonly operations: readonly CompiledOperation[];
   readonly planRuntime: PlanRuntime;
-  readonly registryAuthority: RegistryAuthority;
-  readonly skillPreflight: SkillPreflight;
-  readonly skillRegistry: SkillRegistry;
 }
 
 type RpcErrorData =
@@ -172,8 +148,6 @@ type RpcErrorData =
   | EnvironmentConfigurationFailureData
   | ProcedureCompilationFailureData
   | PlanRuntimeFailureData
-  | RegistryAuthorityFailureData
-  | SkillRegistryFailureData
   | TrialFailureData;
 type RpcResult = JsonRpcResponse<unknown, RpcErrorData>;
 
@@ -275,8 +249,6 @@ const sourceNameFrom = (params: ProcedureCompileParams): string =>
 const processMessage = async (
   message: unknown,
   dependencies: RpcHttpDependencies,
-  authorizationHeader: string | undefined,
-  processAuthorizationHeader: string | undefined,
 ): Promise<RpcResult | undefined> => {
   if (!isRecord(message)) return failure(null, INVALID_REQUEST, "Invalid Request");
 
@@ -302,7 +274,6 @@ const processMessage = async (
     message.method !== OPERATION_READ_METHOD &&
     message.method !== OPERATION_SIMULATE_METHOD &&
     !isPlanRuntimeRpcMethod(message.method) &&
-    !isSkillRegistryRpcMethod(message.method) &&
     !isConfigurationRpcMethod(message.method) &&
     !isTrialRpcMethod(message.method)
   ) {
@@ -311,9 +282,7 @@ const processMessage = async (
 
   if (isConfigurationRpcMethod(message.method)) {
     try {
-      const result = await executeConfigurationRpc(message.method, message.params, dependencies, {
-        ...(authorizationHeader === undefined ? {} : { authorizationHeader }),
-      });
+      const result = await executeConfigurationRpc(message.method, message.params, dependencies);
       return respond({ jsonrpc: "2.0", id, result });
     } catch (error) {
       if (error instanceof InvalidConfigurationRpcParams) {
@@ -325,13 +294,6 @@ const processMessage = async (
           message: error.message,
         } satisfies EnvironmentConfigurationFailureData));
       }
-      if (error instanceof RegistryAuthorityError) {
-        return respond(failure(id, REGISTRY_AUTHORITY_ERROR, "Registry authority denied", {
-          contract: REGISTRY_AUTHORITY_ERROR_CONTRACT,
-          reason: error.reason,
-          message: error.message,
-        } satisfies RegistryAuthorityFailureData));
-      }
       process.stderr.write(`configuration rpc ${message.method} failed: ${error instanceof Error ? (error.stack ?? error.message) : String(error)}\n`);
       return respond(failure(id, INTERNAL_ERROR, "Internal error"));
     }
@@ -339,19 +301,10 @@ const processMessage = async (
 
   if (isTrialRpcMethod(message.method)) {
     try {
-      const result = await executeTrialRpc(message.method, message.params, dependencies, {
-        ...(authorizationHeader === undefined ? {} : { authorizationHeader }),
-      });
+      const result = await executeTrialRpc(message.method, message.params, dependencies);
       return respond({ jsonrpc: "2.0", id, result });
     } catch (error) {
       if (error instanceof InvalidTrialRpcParams) return respond(failure(id, INVALID_PARAMS, "Invalid params"));
-      if (error instanceof RegistryAuthorityError) {
-        return respond(failure(id, REGISTRY_AUTHORITY_ERROR, "Registry authority denied", {
-          contract: REGISTRY_AUTHORITY_ERROR_CONTRACT,
-          reason: error.reason,
-          message: error.message,
-        } satisfies RegistryAuthorityFailureData));
-      }
       if (error instanceof TrialError) {
         const data: TrialFailureData = {
           contract: TRIAL_ERROR_CONTRACT,
@@ -368,29 +321,14 @@ const processMessage = async (
 
   if (message.method === OPERATION_LIST_METHOD) {
     if (!emptyParams(message.params)) return respond(failure(id, INVALID_PARAMS, "Invalid params"));
-    try {
-      dependencies.registryAuthority.authorize({
-        ...(authorizationHeader === undefined ? {} : { authorizationHeader }),
-        anyRoleOf: ["observer", "operator", "publisher"],
-      });
-      return respond({
-        jsonrpc: "2.0",
-        id,
-        result: {
-          contract: "trust.operation-catalog@1",
-          operations: dependencies.operations,
-        },
-      });
-    } catch (error) {
-      if (error instanceof RegistryAuthorityError) {
-        return respond(failure(id, REGISTRY_AUTHORITY_ERROR, "Registry authority denied", {
-          contract: REGISTRY_AUTHORITY_ERROR_CONTRACT,
-          reason: error.reason,
-          message: error.message,
-        } satisfies RegistryAuthorityFailureData));
-      }
-      return respond(failure(id, INTERNAL_ERROR, "Internal error"));
-    }
+    return respond({
+      jsonrpc: "2.0",
+      id,
+      result: {
+        contract: "trust.operation-catalog@1",
+        operations: dependencies.operations,
+      },
+    });
   }
 
   if (message.method === OPERATION_READ_METHOD) {
@@ -454,26 +392,15 @@ const processMessage = async (
   if (message.method === PROCEDURE_LIST_METHOD) {
     if (!emptyParams(message.params)) return respond(failure(id, INVALID_PARAMS, "Invalid params"));
     try {
-      dependencies.registryAuthority.authorize({
-        ...(authorizationHeader === undefined ? {} : { authorizationHeader }),
-        anyRoleOf: ["observer", "operator", "publisher"],
-      });
       return respond({
         jsonrpc: "2.0",
         id,
         result: {
           contract: "trust.procedure-catalog@1",
-          procedures: dependencies.procedures.list(),
+          procedures: await dependencies.procedures.list(),
         },
       });
     } catch (error) {
-      if (error instanceof RegistryAuthorityError) {
-        return respond(failure(id, REGISTRY_AUTHORITY_ERROR, "Registry authority denied", {
-          contract: REGISTRY_AUTHORITY_ERROR_CONTRACT,
-          reason: error.reason,
-          message: error.message,
-        } satisfies RegistryAuthorityFailureData));
-      }
       return respond(failure(id, INTERNAL_ERROR, "Internal error"));
     }
   }
@@ -505,11 +432,7 @@ const processMessage = async (
     const params = compileParams(message.params);
     if (!params) return respond(failure(id, INVALID_PARAMS, "Invalid params"));
     try {
-      const principal = dependencies.registryAuthority.authorize({
-        ...(authorizationHeader === undefined ? {} : { authorizationHeader }),
-        anyRoleOf: ["publisher"],
-      });
-      const published = dependencies.procedures.publish(params, principal.identity);
+      const published = await dependencies.procedures.publish(params, "local-operator");
       return respond({
         jsonrpc: "2.0",
         id,
@@ -532,14 +455,6 @@ const processMessage = async (
         };
         return respond(failure(id, PROCEDURE_COMPILATION_ERROR, "Procedure definition rejected", data));
       }
-      if (error instanceof RegistryAuthorityError) {
-        const data: RegistryAuthorityFailureData = {
-          contract: REGISTRY_AUTHORITY_ERROR_CONTRACT,
-          reason: error.reason,
-          message: error.message,
-        };
-        return respond(failure(id, REGISTRY_AUTHORITY_ERROR, "Registry authority denied", data));
-      }
       if (error instanceof ProcedureConflictError) {
         return respond(failure(id, PROCEDURE_COMPILATION_ERROR, "Procedure publication rejected", {
           contract: PROCEDURE_COMPILATION_ERROR_CONTRACT,
@@ -557,11 +472,7 @@ const processMessage = async (
     const params = readParams(message.params);
     if (!params) return respond(failure(id, INVALID_PARAMS, "Invalid params"));
     try {
-      dependencies.registryAuthority.authorize({
-        ...(authorizationHeader === undefined ? {} : { authorizationHeader }),
-        anyRoleOf: ["observer", "operator", "publisher"],
-      });
-      const published = dependencies.procedures.find(params.procedure, params.version);
+      const published = await dependencies.procedures.find(params.procedure, params.version);
       if (!published) return respond(failure(id, PROCEDURE_COMPILATION_ERROR, "Procedure not found"));
       return respond({
         jsonrpc: "2.0",
@@ -575,51 +486,16 @@ const processMessage = async (
         },
       });
     } catch (error) {
-      if (error instanceof RegistryAuthorityError) {
-        const data: RegistryAuthorityFailureData = {
-          contract: REGISTRY_AUTHORITY_ERROR_CONTRACT,
-          reason: error.reason,
-          message: error.message,
-        };
-        return respond(failure(id, REGISTRY_AUTHORITY_ERROR, "Registry authority denied", data));
-      }
       return respond(failure(id, INTERNAL_ERROR, "Internal error"));
     }
   }
 
   try {
-    const context = {
-      ...(authorizationHeader === undefined ? {} : { authorizationHeader }),
-      ...(processAuthorizationHeader === undefined
-        ? {}
-        : { processAuthorizationHeader }),
-    };
-    const result = isPlanRuntimeRpcMethod(message.method)
-      ? executePlanRuntimeRpc(message.method, message.params, dependencies, context)
-      : executeSkillRegistryRpc(message.method, message.params, dependencies, context);
+    const result = await executePlanRuntimeRpc(message.method, message.params, dependencies);
     return respond({ jsonrpc: "2.0", id, result });
   } catch (error) {
     if (error instanceof InvalidPlanRuntimeRpcParams) {
       return respond(failure(id, INVALID_PARAMS, "Invalid params"));
-    }
-    if (error instanceof InvalidSkillRegistryRpcParams) {
-      return respond(failure(id, INVALID_PARAMS, "Invalid params"));
-    }
-    if (error instanceof RegistryAuthorityError) {
-      const data: RegistryAuthorityFailureData = {
-        contract: REGISTRY_AUTHORITY_ERROR_CONTRACT,
-        reason: error.reason,
-        message: error.message,
-      };
-      return respond(failure(id, REGISTRY_AUTHORITY_ERROR, "Registry authority denied", data));
-    }
-    if (error instanceof SkillRegistryError) {
-      const data: SkillRegistryFailureData = {
-        contract: SKILL_REGISTRY_ERROR_CONTRACT,
-        reason: projectSkillRegistryFailure(error.code),
-        message: error.message,
-      };
-      return respond(failure(id, SKILL_REGISTRY_ERROR, "Skill registry rejected", data));
     }
     if (error instanceof PlanRuntimeError) {
       const data: PlanRuntimeFailureData = {
@@ -644,26 +520,14 @@ const processMessage = async (
 const dispatch = async (
   body: unknown,
   dependencies: RpcHttpDependencies,
-  authorizationHeader: string | undefined,
-  processAuthorizationHeader: string | undefined,
 ): Promise<RpcResult | RpcResult[] | undefined> => {
   if (!Array.isArray(body)) {
-    return await processMessage(
-      body,
-      dependencies,
-      authorizationHeader,
-      processAuthorizationHeader,
-    );
+    return await processMessage(body, dependencies);
   }
   if (body.length === 0) return failure(null, INVALID_REQUEST, "Invalid Request");
   const responses = (await Promise.all(body
     .map((message) =>
-      processMessage(
-        message,
-        dependencies,
-        authorizationHeader,
-        processAuthorizationHeader,
-      ),
+      processMessage(message, dependencies),
     )))
     .filter((response): response is RpcResult => response !== undefined);
   return responses.length > 0 ? responses : undefined;
@@ -693,12 +557,7 @@ const bodyParserFailure: ErrorRequestHandler = (error, _request, response, next)
 export const createRpcHttpHandler = (dependencies: RpcHttpDependencies): Router => {
   const router = express.Router();
   const handle: RequestHandler = (request, response) => {
-    void dispatch(
-        request.body,
-        dependencies,
-        request.get("authorization"),
-        request.get("x-trust-process-authorization"),
-      )
+    void dispatch(request.body, dependencies)
       .then((result) => {
         if (result === undefined) {
           response.status(204).end();
@@ -721,31 +580,3 @@ export const createRpcHttpHandler = (dependencies: RpcHttpDependencies): Router 
   router.use(bodyParserFailure);
   return router;
 };
-
-function projectSkillRegistryFailure(code: SkillRegistryErrorCode): SkillRegistryFailureReason {
-  switch (code) {
-    case "release-digest-collision":
-      return "release-digest-conflict";
-    case "release-version-collision":
-      return "release-version-conflict";
-    case "unknown-release":
-      return "unknown-release";
-    case "distribution-digest-collision":
-      return "untrusted-distribution";
-    case "deployment-already-active":
-      return "deployment-lease-conflict";
-    case "deployment-announcement-future":
-      return "announcement-clock-skew";
-    case "deployment-announcement-non-monotonic":
-      return "announcement-not-monotonic";
-    case "deployment-lease-too-long":
-      return "invalid-lease";
-    case "invalid-release-claim":
-    case "invalid-requirement":
-    case "invalid-distribution":
-    case "invalid-authorization":
-    case "invalid-selection":
-    case "invalid-deployment-announcement":
-      return "invalid-record";
-  }
-}

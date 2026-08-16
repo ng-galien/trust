@@ -1,10 +1,8 @@
 import type { PlanReader } from "../plan/read.js";
 import type { PlanRuntime } from "../plan/runtime.js";
-import type { RegistryAuthority } from "../skill/authority.js";
 import type {
   CheckAttemptAdmissionInput as CheckAttemptAdmissionParams,
   PlanEngagementInput as PlanEngagementParams,
-  SkillAttemptAdmissionInput as SkillAttemptAdmissionParams,
 } from "../plan/runtime.js";
 
 export const PLAN_ENGAGE_METHOD = "plan.engage" as const;
@@ -14,8 +12,6 @@ export const SESSION_READ_METHOD = "session.read" as const;
 export const CHECK_READ_METHOD = "check.read" as const;
 export const CHECK_ATTEMPT_ADMIT_METHOD = "check.attempt.admit" as const;
 export const CHECK_ATTEMPT_FINALIZE_METHOD = "check.attempt.finalize" as const;
-export const SKILL_ATTEMPT_ADMIT_METHOD = "skill.attempt.admit" as const;
-export const SKILL_ATTEMPT_FINALIZE_METHOD = "skill.attempt.finalize" as const;
 export const PLAN_RUNTIME_ERROR_CONTRACT = "trust.plan-runtime-error@1" as const;
 
 interface CheckReadParams {
@@ -27,8 +23,6 @@ interface CheckAttemptFinalizationParams {
   readonly contract: "trust.attempt-finalization-request@1";
   readonly attemptHandle: string;
 }
-
-type SkillAttemptFinalizationParams = CheckAttemptFinalizationParams;
 
 export interface PlanRuntimeFailureData {
   readonly contract: typeof PLAN_RUNTIME_ERROR_CONTRACT;
@@ -44,8 +38,6 @@ export const PLAN_RUNTIME_RPC_METHODS = [
   CHECK_READ_METHOD,
   CHECK_ATTEMPT_ADMIT_METHOD,
   CHECK_ATTEMPT_FINALIZE_METHOD,
-  SKILL_ATTEMPT_ADMIT_METHOD,
-  SKILL_ATTEMPT_FINALIZE_METHOD,
 ] as const;
 
 export type PlanRuntimeRpcMethod = (typeof PLAN_RUNTIME_RPC_METHODS)[number];
@@ -53,12 +45,6 @@ export type PlanRuntimeRpcMethod = (typeof PLAN_RUNTIME_RPC_METHODS)[number];
 export interface PlanRuntimeRpcDependencies {
   readonly planReader: PlanReader;
   readonly planRuntime: PlanRuntime;
-  readonly registryAuthority: RegistryAuthority;
-}
-
-export interface PlanRuntimeRpcContext {
-  readonly authorizationHeader?: string;
-  readonly processAuthorizationHeader?: string;
 }
 
 export class InvalidPlanRuntimeRpcParams extends Error {
@@ -72,47 +58,28 @@ export function isPlanRuntimeRpcMethod(method: string): method is PlanRuntimeRpc
   return (PLAN_RUNTIME_RPC_METHODS as readonly string[]).includes(method);
 }
 
-export function executePlanRuntimeRpc(
+export async function executePlanRuntimeRpc(
   method: PlanRuntimeRpcMethod,
   params: unknown,
   dependencies: PlanRuntimeRpcDependencies,
-  context: PlanRuntimeRpcContext,
-): unknown {
+): Promise<unknown> {
   switch (method) {
     case PLAN_LIST_METHOD:
       parseEmpty(params);
-      dependencies.registryAuthority.authorize({
-        ...(context.authorizationHeader === undefined
-          ? {}
-          : { authorizationHeader: context.authorizationHeader }),
-        anyRoleOf: ["observer", "operator"],
-      });
       return {
         contract: "trust.plan-catalog@1",
-        plans: dependencies.planReader.listPlans(),
+        plans: await dependencies.planReader.listPlans(),
       };
     case PLAN_READ_METHOD: {
       const input = parsePlanRead(params);
-      dependencies.registryAuthority.authorize({
-        ...(context.authorizationHeader === undefined
-          ? {}
-          : { authorizationHeader: context.authorizationHeader }),
-        anyRoleOf: ["observer", "operator"],
-      });
       return {
         contract: "trust.plan-view@1",
-        ...dependencies.planReader.readPlanBySlug(input.plan),
+        ...await dependencies.planReader.readPlanBySlug(input.plan),
       };
     }
     case SESSION_READ_METHOD: {
       const input = parsePlanRead(params);
-      dependencies.registryAuthority.authorize({
-        ...(context.authorizationHeader === undefined
-          ? {}
-          : { authorizationHeader: context.authorizationHeader }),
-        anyRoleOf: ["observer", "operator"],
-      });
-      const plan = dependencies.planReader.readPlanBySlug(input.plan);
+      const plan = await dependencies.planReader.readPlanBySlug(input.plan);
       return {
         contract: "trust.session-view@1",
         plan: plan.plan,
@@ -127,23 +94,11 @@ export function executePlanRuntimeRpc(
     }
     case PLAN_ENGAGE_METHOD: {
       const input = parsePlanEngagement(params);
-      dependencies.registryAuthority.authorize({
-        ...(context.authorizationHeader === undefined
-          ? {}
-          : { authorizationHeader: context.authorizationHeader }),
-        anyRoleOf: ["operator"],
-      });
       return dependencies.planRuntime.engage(input);
     }
     case CHECK_READ_METHOD: {
       const input = parseCheckRead(params);
-      dependencies.registryAuthority.authorize({
-        ...(context.authorizationHeader === undefined
-          ? {}
-          : { authorizationHeader: context.authorizationHeader }),
-        anyRoleOf: ["observer", "operator"],
-      });
-      const view = dependencies.planReader.readCheck(input.checkUri);
+      const view = await dependencies.planReader.readCheck(input.checkUri);
       return { contract: "trust.check-view@1", ...view };
     }
     case CHECK_ATTEMPT_ADMIT_METHOD: {
@@ -153,43 +108,6 @@ export function executePlanRuntimeRpc(
     case CHECK_ATTEMPT_FINALIZE_METHOD: {
       const input = parseCheckFinalization(params);
       return dependencies.planRuntime.finalizeCheck(input.attemptHandle);
-    }
-    case SKILL_ATTEMPT_ADMIT_METHOD: {
-      const input = parseAdmission(params);
-      dependencies.registryAuthority.authorize({
-        ...(context.authorizationHeader === undefined
-          ? {}
-          : { authorizationHeader: context.authorizationHeader }),
-        anyRoleOf: ["runtime"],
-        assertedIdentity: input.runtimeIdentity,
-      });
-      dependencies.registryAuthority.authorize({
-        ...(context.processAuthorizationHeader === undefined
-          ? {}
-          : { authorizationHeader: context.processAuthorizationHeader }),
-        anyRoleOf: ["runtime-process"],
-        assertedIdentity: input.processIdentity,
-      });
-      return dependencies.planRuntime.admitSkill(input);
-    }
-    case SKILL_ATTEMPT_FINALIZE_METHOD: {
-      const input = parseFinalization(params);
-      const runtime = dependencies.registryAuthority.authorize({
-        ...(context.authorizationHeader === undefined
-          ? {}
-          : { authorizationHeader: context.authorizationHeader }),
-        anyRoleOf: ["runtime"],
-      });
-      const process = dependencies.registryAuthority.authorize({
-        ...(context.processAuthorizationHeader === undefined
-          ? {}
-          : { authorizationHeader: context.processAuthorizationHeader }),
-        anyRoleOf: ["runtime-process"],
-      });
-      return dependencies.planRuntime.finalizeSkill(input.attemptHandle, {
-        runtimeIdentity: runtime.identity,
-        processIdentity: process.identity,
-      });
     }
   }
 }
@@ -246,47 +164,6 @@ function parseCheckRead(value: unknown): CheckReadParams {
   return { contract: record.contract, checkUri: record.checkUri };
 }
 
-function parseAdmission(value: unknown): SkillAttemptAdmissionParams {
-  const record = exactRecord(value, [
-    "contract",
-    "attemptKey",
-    "checkUri",
-    "releaseDigest",
-    "environment",
-    "deploymentKey",
-    "envelope",
-    "runtimeIdentity",
-    "processIdentity",
-  ]);
-  if (
-    record.contract !== "trust.skill-admission-request@1"
-    || !boundedString(record.attemptKey, 256)
-    || !boundedString(record.checkUri, 2_048)
-    || typeof record.releaseDigest !== "string"
-    || !/^sha256:[0-9a-f]{64}$/.test(record.releaseDigest)
-    || !boundedString(record.environment)
-    || !boundedString(record.deploymentKey)
-    || (record.envelope !== "cli"
-      && record.envelope !== "mcp-stdio"
-      && record.envelope !== "mcp-http")
-    || !boundedString(record.runtimeIdentity, 2_048)
-    || !boundedString(record.processIdentity, 2_048)
-  ) {
-    throw new InvalidPlanRuntimeRpcParams();
-  }
-  return {
-    contract: record.contract,
-    attemptKey: record.attemptKey,
-    checkUri: record.checkUri,
-    releaseDigest: record.releaseDigest,
-    environment: record.environment,
-    deploymentKey: record.deploymentKey,
-    envelope: record.envelope,
-    runtimeIdentity: record.runtimeIdentity,
-    processIdentity: record.processIdentity,
-  };
-}
-
 function parseCheckAdmission(value: unknown): CheckAttemptAdmissionParams {
   const record = exactRecord(value, ["contract", "attemptKey", "checkUri"]);
   if (
@@ -304,17 +181,6 @@ function parseCheckAdmission(value: unknown): CheckAttemptAdmissionParams {
 }
 
 function parseCheckFinalization(value: unknown): CheckAttemptFinalizationParams {
-  const record = exactRecord(value, ["contract", "attemptHandle"]);
-  if (
-    record.contract !== "trust.attempt-finalization-request@1"
-    || !boundedString(record.attemptHandle, 256)
-  ) {
-    throw new InvalidPlanRuntimeRpcParams();
-  }
-  return { contract: record.contract, attemptHandle: record.attemptHandle };
-}
-
-function parseFinalization(value: unknown): SkillAttemptFinalizationParams {
   const record = exactRecord(value, ["contract", "attemptHandle"]);
   if (
     record.contract !== "trust.attempt-finalization-request@1"

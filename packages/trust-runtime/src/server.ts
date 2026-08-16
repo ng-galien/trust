@@ -1,8 +1,5 @@
 import { createServer, type Server } from "node:http";
 import { createRuntimeContainer } from "./runtime.js";
-import type { SkillOperabilityPolicy } from "./skill/model.js";
-import type { SkillPolicy } from "./skill/admission.js";
-import type { RegistryPrincipalConfiguration } from "./skill/authority.js";
 import type { CompiledOperation } from "@trust/operation";
 
 export interface RuntimeServerOptions {
@@ -10,9 +7,6 @@ export interface RuntimeServerOptions {
   readonly port: number;
   readonly databasePath?: string;
   readonly semanticAuthority?: string;
-  readonly registryPrincipalConfigurations?: readonly RegistryPrincipalConfiguration[];
-  readonly skillPolicy?: SkillPolicy;
-  readonly skillOperabilityPolicy?: SkillOperabilityPolicy;
   readonly operations?: readonly CompiledOperation[];
   readonly sessionDurationMs?: number;
   readonly diagnosticsEndpoint?: string;
@@ -45,9 +39,6 @@ export const startRuntime = async ({
   port,
   databasePath,
   semanticAuthority,
-  registryPrincipalConfigurations,
-  skillPolicy,
-  skillOperabilityPolicy,
   operations,
   sessionDurationMs,
   diagnosticsEndpoint,
@@ -68,11 +59,6 @@ export const startRuntime = async ({
     container = await createRuntimeContainer({
       ...(databasePath ? { databasePath } : {}),
       ...(semanticAuthority ? { semanticAuthority } : {}),
-      ...(registryPrincipalConfigurations
-        ? { registryPrincipalConfigurations }
-        : {}),
-      ...(skillPolicy ? { skillPolicy } : {}),
-      ...(skillOperabilityPolicy ? { skillOperabilityPolicy } : {}),
       ...(operations ? { operations } : {}),
       ...(sessionDurationMs === undefined ? {} : { sessionDurationMs }),
       diagnosticsEndpoint: diagnosticsEndpoint ?? `http://${host}:${address.port}/otlp/diagnostics`,

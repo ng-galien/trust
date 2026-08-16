@@ -1,6 +1,5 @@
 import type { CredentialService } from "../credential/service.js";
 import type { EnvironmentService } from "../environment/service.js";
-import type { RegistryAuthority } from "../skill/authority.js";
 import type { TrialService } from "../trial/service.js";
 
 export const ENVIRONMENT_LIST_METHOD = "environment.list" as const;
@@ -27,11 +26,6 @@ export interface ConfigurationRpcDependencies {
   readonly trialService: TrialService;
   readonly environmentService: EnvironmentService;
   readonly credentialService: CredentialService;
-  readonly registryAuthority: RegistryAuthority;
-}
-
-export interface ConfigurationRpcContext {
-  readonly authorizationHeader?: string;
 }
 
 export class InvalidConfigurationRpcParams extends Error {
@@ -49,23 +43,14 @@ export async function executeConfigurationRpc(
   method: ConfigurationRpcMethod,
   params: unknown,
   dependencies: ConfigurationRpcDependencies,
-  context: ConfigurationRpcContext,
 ): Promise<unknown> {
-  const authorize = (roles: Array<"observer" | "operator" | "publisher">) =>
-    dependencies.registryAuthority.authorize({
-      ...(context.authorizationHeader === undefined ? {} : { authorizationHeader: context.authorizationHeader }),
-      anyRoleOf: roles,
-    });
-
   switch (method) {
     case OPERATION_ENVIRONMENTS_METHOD: {
       if (params !== undefined && !(isRecord(params) && Object.keys(params).length === 0)) invalid();
-      authorize(["observer", "operator", "publisher"]);
       return { contract: "trust.operation-environments@1", operations: dependencies.trialService.catalogEnvironments() };
     }
     case ENVIRONMENT_LIST_METHOD: {
       if (params !== undefined && !isRecord(params)) invalid();
-      authorize(["observer", "operator", "publisher"]);
       const scoped = isRecord(params) && (typeof params.operation === "string" || typeof params.source === "string");
       if (scoped) {
         if (params.version !== undefined && typeof params.version !== "string") invalid();
@@ -88,7 +73,6 @@ export async function executeConfigurationRpc(
         || typeof params.environment !== "string"
         || !stringValues(params.values)
       ) invalid();
-      authorize(["operator", "publisher"]);
       return {
         contract: "trust.environment@1",
         environment: await dependencies.environmentService.save(params.environment, params.values),
@@ -100,7 +84,6 @@ export async function executeConfigurationRpc(
         || !hasOnlyKeys(params, ["environment"])
         || typeof params.environment !== "string"
       ) invalid();
-      authorize(["operator", "publisher"]);
       return {
         contract: "trust.environment-removal@1",
         environment: params.environment,
@@ -114,10 +97,9 @@ export async function executeConfigurationRpc(
         && (!hasOnlyKeys(params, ["environment"])
           || (params.environment !== undefined && typeof params.environment !== "string"))
       ) invalid();
-      authorize(["observer", "operator", "publisher"]);
       return {
         contract: "trust.credential-catalog@1",
-        credentials: dependencies.credentialService.list(
+        credentials: await dependencies.credentialService.list(
           isRecord(params) && typeof params.environment === "string" ? params.environment : undefined,
         ),
       };
@@ -130,7 +112,6 @@ export async function executeConfigurationRpc(
         || typeof params.name !== "string"
         || typeof params.value !== "string"
       ) invalid();
-      authorize(["operator", "publisher"]);
       return {
         contract: "trust.credential@1",
         credential: await dependencies.credentialService.save(params.environment, params.name, params.value),
@@ -143,7 +124,6 @@ export async function executeConfigurationRpc(
         || typeof params.environment !== "string"
         || typeof params.name !== "string"
       ) invalid();
-      authorize(["operator", "publisher"]);
       return {
         contract: "trust.credential-removal@1",
         environment: params.environment,

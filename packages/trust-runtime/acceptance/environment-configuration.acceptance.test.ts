@@ -18,7 +18,6 @@ test("environments and credential references persist without exposing credential
   try {
     const first = await startPublicRuntime("trust-environment-first-", {
       databasePath,
-      skillPolicy: "local",
       operationsDirectory,
     });
     try {
@@ -50,7 +49,6 @@ test("environments and credential references persist without exposing credential
 
     const second = await startPublicRuntime("trust-environment-second-", {
       databasePath,
-      skillPolicy: "local",
       operationsDirectory,
     });
     try {
@@ -100,7 +98,6 @@ test("environments and credential references persist without exposing credential
 
     const third = await startPublicRuntime("trust-environment-third-", {
       databasePath,
-      skillPolicy: "local",
     });
     try {
       assert.deepEqual(await rpc(third.endpoint, "environment.list", {}), {

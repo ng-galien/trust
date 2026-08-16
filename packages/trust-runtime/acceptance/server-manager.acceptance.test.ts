@@ -20,7 +20,6 @@ test("the Node server manager resets, reuses and live-reloads an isolated tmux s
   const port = await availablePort();
   const environment = {
     ...process.env,
-    TRUST_SKILL_POLICY: "local",
     TRUST_SERVER_STATE_DIRECTORY: stateDirectory,
     TRUST_SERVER_TMUX_SESSION: session,
     TRUST_SERVER_PORT: String(port),

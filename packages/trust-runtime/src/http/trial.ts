@@ -1,5 +1,4 @@
 import type { RuntimeJsonObject } from "../model.js";
-import type { RegistryAuthority } from "../skill/authority.js";
 import type { TrialService } from "../trial/service.js";
 
 export const TRIAL_START_METHOD = "operation.trial.start" as const;
@@ -29,11 +28,6 @@ export function isTrialRpcMethod(method: string): method is TrialRpcMethod {
 
 export interface TrialRpcDependencies {
   readonly trialService: TrialService;
-  readonly registryAuthority: RegistryAuthority;
-}
-
-export interface TrialRpcContext {
-  readonly authorizationHeader?: string;
 }
 
 export class InvalidTrialRpcParams extends Error {
@@ -46,13 +40,7 @@ export class InvalidTrialRpcParams extends Error {
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
-export function executeTrialRpc(method: TrialRpcMethod, params: unknown, dependencies: TrialRpcDependencies, context: TrialRpcContext): unknown {
-  const authorize = (roles: Array<"observer" | "operator" | "publisher">) =>
-    dependencies.registryAuthority.authorize({
-      ...(context.authorizationHeader === undefined ? {} : { authorizationHeader: context.authorizationHeader }),
-      anyRoleOf: roles,
-    });
-
+export function executeTrialRpc(method: TrialRpcMethod, params: unknown, dependencies: TrialRpcDependencies): unknown {
   switch (method) {
     case TRIAL_START_METHOD: {
       if (!isRecord(params) || typeof params.environment !== "string" || !isRecord(params.input)) throw new InvalidTrialRpcParams();
@@ -60,23 +48,20 @@ export function executeTrialRpc(method: TrialRpcMethod, params: unknown, depende
       const hasOperation = typeof params.operation === "string";
       if (hasSource === hasOperation) throw new InvalidTrialRpcParams();
       if (params.version !== undefined && typeof params.version !== "string") throw new InvalidTrialRpcParams();
-      const principal = authorize(["operator", "publisher"]);
       const summary = dependencies.trialService.start({
         ...(hasSource ? { source: params.source as string } : { operation: params.operation as string, ...(typeof params.version === "string" ? { version: params.version } : {}) }),
         environment: params.environment,
         input: params.input as RuntimeJsonObject,
-        startedBy: principal.identity,
+        startedBy: "local-operator",
       });
       return { contract: "trust.trial-summary@1", trial: summary };
     }
     case TRIAL_CANCEL_METHOD: {
       if (!isRecord(params) || Object.keys(params).length !== 1 || typeof params.trial !== "string" || params.trial === "") throw new InvalidTrialRpcParams();
-      authorize(["operator", "publisher"]);
       return { contract: "trust.trial-summary@1", trial: dependencies.trialService.cancel(params.trial) };
     }
     case TRIAL_READ_METHOD: {
       if (!isRecord(params) || typeof params.trial !== "string") throw new InvalidTrialRpcParams();
-      authorize(["observer", "operator", "publisher"]);
       const trial = dependencies.trialService.read(params.trial);
       const after = typeof params.after === "number" ? params.after : 0;
       return {
@@ -100,7 +85,6 @@ export function executeTrialRpc(method: TrialRpcMethod, params: unknown, depende
     case TRIAL_LIST_METHOD: {
       if (params !== undefined && !isRecord(params)) throw new InvalidTrialRpcParams();
       if (isRecord(params) && params.operation !== undefined && typeof params.operation !== "string") throw new InvalidTrialRpcParams();
-      authorize(["observer", "operator", "publisher"]);
       return { contract: "trust.trial-catalog@1", trials: dependencies.trialService.list(isRecord(params) ? (params.operation as string | undefined) : undefined) };
     }
   }

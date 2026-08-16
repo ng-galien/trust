@@ -4,7 +4,6 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import type { RegistryPrincipalConfiguration } from "../../src/skill/authority.js";
 import type { EnvironmentValues } from "../../src/environment/service.js";
 
 const buildRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
@@ -16,11 +15,6 @@ export interface PublicRuntimeProcess {
 
 export interface PublicRuntimeOptions {
   readonly databasePath?: string;
-  readonly maxClockSkewMs?: number;
-  readonly maxLeaseDurationMs?: number;
-  readonly maxProbeAgeMs?: number;
-  readonly registryPrincipalConfigurations?: readonly RegistryPrincipalConfiguration[];
-  readonly skillPolicy?: "local" | "verified";
   readonly operationsDirectory?: string;
   readonly environments?: Readonly<Record<string, EnvironmentValues>>;
   readonly sessionDurationMs?: number;
@@ -38,11 +32,6 @@ export async function startPublicRuntime(
       TRUST_HOST: "127.0.0.1",
       TRUST_PORT: "0",
       TRUST_DATABASE_PATH: options.databasePath ?? path.join(dataDirectory, "trust.sqlite"),
-      TRUST_SKILL_POLICY: options.skillPolicy ?? "verified",
-      TRUST_REGISTRY_PRINCIPALS_JSON:
-        options.registryPrincipalConfigurations === undefined
-          ? ""
-          : JSON.stringify(options.registryPrincipalConfigurations),
       ...(options.operationsDirectory === undefined
         ? {}
         : { TRUST_OPERATIONS_DIRECTORY: options.operationsDirectory }),
@@ -52,15 +41,6 @@ export async function startPublicRuntime(
       ...(options.trialTimeoutMs === undefined
         ? {}
         : { TRUST_TRIAL_TIMEOUT_MS: String(options.trialTimeoutMs) }),
-      ...(options.maxClockSkewMs === undefined
-        ? {}
-        : { TRUST_SKILL_MAX_CLOCK_SKEW_MS: String(options.maxClockSkewMs) }),
-      ...(options.maxLeaseDurationMs === undefined
-        ? {}
-        : { TRUST_SKILL_MAX_LEASE_DURATION_MS: String(options.maxLeaseDurationMs) }),
-      ...(options.maxProbeAgeMs === undefined
-        ? {}
-        : { TRUST_SKILL_MAX_PROBE_AGE_MS: String(options.maxProbeAgeMs) }),
     },
     stdio: "pipe",
   });
