@@ -1,5 +1,8 @@
+/** A directory Environment, optionally narrowed to one sub-directory named by a string Input
+    (the Environment is the place where all projects live; the Input picks the project). */
 export interface EnvironmentPath {
   readonly environment: string;
+  readonly appendInput?: string;
 }
 
 export type ShellArgument =

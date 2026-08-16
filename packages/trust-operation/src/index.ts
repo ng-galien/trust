@@ -52,6 +52,11 @@ export type {
   SourcePosition,
   SourceRange,
 } from "./source.js";
+export { simulateOperation } from "./simulate.js";
+export type {
+  OperationSimulationInput,
+  OperationSimulationResult,
+} from "./simulate.js";
 export {
   CompiledOperationValidationError,
   OperationValidationError,

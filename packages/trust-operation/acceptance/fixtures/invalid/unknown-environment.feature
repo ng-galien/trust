@@ -4,8 +4,8 @@ Feature: Unknown environment
 
   Background: Operation interface
     Given Environment
-      | name        | type |
-      | projectRoot | directory |
+      | name          | type      |
+      | workspaceRoot | directory |
     And Produced fields
       | field        | type      | cardinality | domain |
       | headRevision | reference | one         | any    |

@@ -19,13 +19,13 @@
   "environment": {
     "type": "object",
     "properties": {
-      "projectRoot": {
+      "workspaceRoot": {
         "type": "string",
         "format": "trust-directory"
       }
     },
     "required": [
-      "projectRoot"
+      "workspaceRoot"
     ],
     "additionalProperties": false
   },
@@ -41,7 +41,8 @@
           { "kind": "literal", "value": "HEAD" }
         ],
         "cwd": {
-          "environment": "projectRoot"
+          "environment": "workspaceRoot",
+          "appendInput": "project"
         },
         "acceptedExits": [{ "code": 0 }]
       }
@@ -57,7 +58,8 @@
           { "kind": "literal", "value": "--untracked-files=normal" }
         ],
         "cwd": {
-          "environment": "projectRoot"
+          "environment": "workspaceRoot",
+          "appendInput": "project"
         },
         "acceptedExits": [{ "code": 0 }]
       }

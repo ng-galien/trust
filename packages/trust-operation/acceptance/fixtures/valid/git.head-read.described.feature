@@ -2,6 +2,11 @@
 @trust-dsl:1 @operation:git.head-read @version:1.0.0
 Feature: Read Git HEAD and working tree
 
+  Reads the checked-out revision of one project below the workspace and tells whether its
+  working tree carries local changes.
+
+  Exit codes other than 0 interrupt the Operation.
+
   Background: Operation interface
     Given Environment
       | name          | type      |

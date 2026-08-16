@@ -2,6 +2,9 @@
 @trust-dsl:1 @procedure:patient-admission @version:1.0.0
 Feature: Admit one patient with identity, coverage and consent confirmed
 
+  Admits one patient once identity, coverage and consent are confirmed by the simulated
+  healthcare services, then records the admission.
+
   Background: Plan context
     Given one reference "patient"
     And one reference "admission"

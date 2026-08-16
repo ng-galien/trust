@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { readFileSync, readdirSync } from "node:fs";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -33,22 +33,24 @@ describe("Compiled Procedure runner boundary", () => {
     expect(check?.operationDigest).toBe(operation?.digest);
     if (!operation) throw new Error("The Procedure did not embed its Operation");
 
-    const projectRoot = await mkdtemp(join(tmpdir(), "trust-procedure-runner-"));
-    temporaryDirectories.push(projectRoot);
-    await execute("git", ["init", "-q"], { cwd: projectRoot });
-    await writeFile(join(projectRoot, "tracked.txt"), "baseline\n", "utf8");
-    await execute("git", ["add", "tracked.txt"], { cwd: projectRoot });
+    const projectsRoot = await mkdtemp(join(tmpdir(), "trust-procedure-runner-"));
+    temporaryDirectories.push(projectsRoot);
+    const workspaceRoot = join(projectsRoot, "trust-example");
+    await mkdir(workspaceRoot);
+    await execute("git", ["init", "-q"], { cwd: workspaceRoot });
+    await writeFile(join(workspaceRoot, "tracked.txt"), "baseline\n", "utf8");
+    await execute("git", ["add", "tracked.txt"], { cwd: workspaceRoot });
     await execute("git", [
       "-c", "user.name=TRUST Acceptance",
       "-c", "user.email=trust@example.invalid",
       "commit", "-qm", "baseline",
-    ], { cwd: projectRoot });
-    await writeFile(join(projectRoot, "untracked.txt"), "dirty\n", "utf8");
+    ], { cwd: workspaceRoot });
+    await writeFile(join(workspaceRoot, "untracked.txt"), "dirty\n", "utf8");
 
     const result = await runOperation(
       operation.definition,
       { project: "trust-example" },
-      { projectRoot },
+      { workspaceRoot: projectsRoot },
     );
 
     expect(result.produced.workingTree).toBe("dirty");

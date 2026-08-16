@@ -1,8 +1,8 @@
-import { createRequire } from "node:module";
 import { isAbsolute } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 
-import type { ErrorObject, Options, ValidateFunction } from "ajv";
+import Ajv2020Module, { type ErrorObject, type Options, type ValidateFunction } from "ajv/dist/2020.js";
+import addFormatsModule from "ajv-formats";
 
 import type { CompiledOperation, ObjectSchema } from "./operation.js";
 import { compileOperation } from "./compile.js";
@@ -40,14 +40,9 @@ interface AjvCompiler {
 type AjvConstructor = new (options: Options) => AjvCompiler;
 type AddFormats = (ajv: AjvCompiler) => void;
 
-const require = createRequire(import.meta.url);
-const Ajv = (require("ajv/dist/2020.js") as { default: AjvConstructor }).default;
-const addFormatsModule = require("ajv-formats") as { default?: AddFormats } | AddFormats;
-const addFormats: AddFormats = typeof addFormatsModule === "function"
-  ? addFormatsModule
-  : addFormatsModule.default ?? (() => { throw new Error("ajv-formats does not expose a function"); });
-
-const ajv = new Ajv({ allErrors: true, strict: true });
+const Ajv2020 = Ajv2020Module as unknown as AjvConstructor;
+const addFormats = addFormatsModule as unknown as AddFormats;
+const ajv = new Ajv2020({ allErrors: true, strict: true });
 addFormats(ajv);
 ajv.addFormat("trust-directory", {
   type: "string",

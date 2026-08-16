@@ -80,10 +80,14 @@ export interface CompiledOperation {
   readonly operation: string;
   readonly version: string;
   readonly title: string;
+  /** Free-text description written under `Feature:`; absent when the source has none. */
+  readonly description?: string;
   readonly source: string;
   readonly input: ObjectSchema;
   readonly environment: ObjectSchema;
   readonly steps: readonly OperationStep[];
   readonly produce: Produce;
   readonly produced: ObjectSchema;
+  /** Free `@x-<key>:<value>` tags, grouped by key. Absent when the source declares none. */
+  readonly classification?: Readonly<Record<string, readonly string[]>>;
 }

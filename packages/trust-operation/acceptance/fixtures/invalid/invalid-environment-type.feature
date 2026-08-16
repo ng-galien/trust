@@ -4,14 +4,14 @@ Feature: Invalid environment type
 
   Background: Operation interface
     Given Environment
-      | name        | type   |
-      | projectRoot | string |
+      | name          | type   |
+      | workspaceRoot | string |
     And Produced fields
       | field        | type      | cardinality | domain |
       | headRevision | reference | one         | any    |
 
   Scenario: Run
-    When Shell "head" runs "git" with cwd from Environment "projectRoot"
+    When Shell "head" runs "git" with cwd from Environment "workspaceRoot"
       | argument  |
       | rev-parse |
       | HEAD      |

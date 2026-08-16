@@ -2,6 +2,9 @@
 @trust-dsl:1 @procedure:aircraft-departure @version:1.0.0
 Feature: Release one aircraft and flight for departure
 
+  Releases one aircraft and flight for departure once maintenance, fuel, weather and cabin
+  readiness are confirmed by the simulated aviation services.
+
   Background: Plan context
     Given one reference "aircraft"
     And one reference "flight"

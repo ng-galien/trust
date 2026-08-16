@@ -12,13 +12,13 @@
   "environment": {
     "type": "object",
     "properties": {
-      "projectRoot": {
+      "workspaceRoot": {
         "type": "string",
         "format": "trust-directory"
       }
     },
     "required": [
-      "projectRoot"
+      "workspaceRoot"
     ],
     "additionalProperties": false
   },
@@ -29,7 +29,7 @@
       "file": {
         "relativePath": "package.json",
         "root": {
-          "environment": "projectRoot"
+          "environment": "workspaceRoot"
         },
         "format": "json"
       }

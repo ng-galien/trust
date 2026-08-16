@@ -4,14 +4,14 @@ Feature: Invalid number domain
 
   Background: Operation interface
     Given Environment
-      | name        | type |
-      | projectRoot | directory |
+      | name          | type      |
+      | workspaceRoot | directory |
     And Produced fields
       | field       | type   | cardinality | domain        |
       | commitCount | number | one         | enum "1", "2" |
 
   Scenario: Run
-    When Shell "count" runs "git" with cwd from Environment "projectRoot"
+    When Shell "count" runs "git" with cwd from Environment "workspaceRoot"
       | argument   |
       | rev-list   |
       | --count    |

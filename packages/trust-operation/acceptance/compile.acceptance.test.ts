@@ -121,6 +121,45 @@ describe("Operation compiler", () => {
     }
   });
 
+  test("exposes the free-text Feature description without touching the executable contract", () => {
+    const source = fixture("valid/git.head-read.described.feature");
+
+    const described = compileOperation({ source, sourceName: "git.head-read.described.feature" });
+    const plain = compileOperation({ source: fixture("valid/git.head-read.feature"), sourceName: "git.head-read.feature" });
+    const analysis = analyzeOperation({ source, sourceName: "git.head-read.described.feature" });
+
+    expect(described.description).toBe(
+      "Reads the checked-out revision of one project below the workspace and tells whether its\nworking tree carries local changes.\n\nExit codes other than 0 interrupt the Operation.",
+    );
+    expect(plain).not.toHaveProperty("description");
+    expect(analysis.document?.description).toBe(described.description);
+    const { description: _description, source: _source, ...contract } = described;
+    const { source: _plainSource, ...plainContract } = plain;
+    expect(contract).toEqual(plainContract);
+    expect(() => validateCompiledOperation(JSON.parse(JSON.stringify(described)))).not.toThrow();
+  });
+
+  test("keeps free @x-<key>:<value> classification tags out of execution and grouped by key", () => {
+    const source = fixture("valid/git.head-read.classified.feature");
+
+    const compiled = compileOperation({ source, sourceName: "git.head-read.classified.feature" });
+    const plain = compileOperation({
+      source: fixture("valid/git.head-read.feature"),
+      sourceName: "git.head-read.feature",
+    });
+
+    expect(compiled.classification).toEqual({
+      family: ["software-delivery"],
+      nature: ["observe"],
+      team: ["platform", "sre"],
+    });
+    expect(plain).not.toHaveProperty("classification");
+    const { classification: _classification, source: _source, ...contract } = compiled;
+    const { source: _plainSource, ...plainContract } = plain;
+    expect(contract).toEqual(plainContract);
+    expect(() => validateCompiledOperation(JSON.parse(JSON.stringify(compiled)))).not.toThrow();
+  });
+
   test("rejects a CompiledOperation that differs from its source", () => {
     const compiled = compileOperation({
       source: fixture("valid/git.head-read.feature"),

@@ -4,14 +4,14 @@ Feature: Produce is not final
 
   Background: Operation interface
     Given Environment
-      | name        | type |
-      | projectRoot | directory |
+      | name          | type      |
+      | workspaceRoot | directory |
     And Produced fields
       | field        | type      | cardinality | domain |
       | headRevision | reference | one         | any    |
 
   Scenario: Run
-    When Shell "head" runs "git" with cwd from Environment "projectRoot"
+    When Shell "head" runs "git" with cwd from Environment "workspaceRoot"
       | argument  |
       | rev-parse |
       | HEAD      |
@@ -19,6 +19,6 @@ Feature: Produce is not final
       """
       { "headRevision": $trim(steps.head.stdout) }
       """
-    And Shell "status" runs "git" with cwd from Environment "projectRoot"
+    And Shell "status" runs "git" with cwd from Environment "workspaceRoot"
       | argument |
       | status   |

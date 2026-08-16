@@ -39,6 +39,7 @@ export interface OperationDocument {
   readonly operation?: string;
   readonly version?: string;
   readonly title: string;
+  readonly description?: string;
   readonly range: SourceRange;
   readonly selectionRange: SourceRange;
   readonly environment: readonly OperationEnvironmentSource[];

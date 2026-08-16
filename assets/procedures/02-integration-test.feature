@@ -2,6 +2,9 @@
 @trust-dsl:1 @procedure:integration-test @version:1.0.0
 Feature: Run one integration test and confirm its trace markers
 
+  Runs one Karate integration test against a project revision and confirms, through the
+  OpenTelemetry trace it emits, that the expected markers were observed end to end.
+
   Background: Plan context
     Given one reference "test project"
     And one reference "test revision" for "test project"

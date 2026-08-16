@@ -4,8 +4,8 @@ Feature: Duplicate input
 
   Background: Operation interface
     Given Environment
-      | name        | type |
-      | projectRoot | directory |
+      | name          | type      |
+      | workspaceRoot | directory |
     And Input
       | input    | type   | cardinality |
       | revision | string | one         |
@@ -15,7 +15,7 @@ Feature: Duplicate input
       | headRevision | reference | one         | any    |
 
   Scenario: Run
-    When Shell "head" runs "git" with cwd from Environment "projectRoot"
+    When Shell "head" runs "git" with cwd from Environment "workspaceRoot"
       | argument  |
       | rev-parse |
       | HEAD      |

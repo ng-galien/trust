@@ -4,8 +4,8 @@ Feature: Run one Karate test that must reproduce a defect
 
   Background: Operation interface
     Given Environment
-      | name        | type      |
-      | projectRoot | directory |
+      | name          | type      |
+      | workspaceRoot | directory |
     And Input
       | input        | type      | cardinality |
       | project      | reference | one         |
@@ -18,7 +18,7 @@ Feature: Run one Karate test that must reproduce a defect
       | testStatus     | string    | one         | enum "defect-reproduced", "not-reproduced" |
 
   Scenario: Run
-    When Shell "test" runs "mvn" with cwd from Environment "projectRoot"
+    When Shell "test" runs "mvn" with cwd from Environment "workspaceRoot" and Input "project"
       | argument     | source               |
       | -B           | literal              |
       | test         | literal              |

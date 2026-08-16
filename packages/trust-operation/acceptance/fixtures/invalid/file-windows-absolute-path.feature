@@ -4,14 +4,14 @@ Feature: Windows absolute File path
 
   Background: Operation interface
     Given Environment
-      | name        | type      |
-      | projectRoot | directory |
+      | name          | type      |
+      | workspaceRoot | directory |
     And Produced fields
       | field | type   | cardinality | domain |
       | name  | string | one         | any    |
 
   Scenario: Run
-    When File "manifest" reads "C:/Windows/system.ini" as Text from Environment "projectRoot"
+    When File "manifest" reads "C:/Windows/system.ini" as Text from Environment "workspaceRoot"
     Then Produce with JSONata
       """
       { "name": steps.manifest.content }

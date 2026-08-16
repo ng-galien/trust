@@ -4,14 +4,14 @@ Feature: Scenario Outline
 
   Background: Operation interface
     Given Environment
-      | name        | type      |
-      | projectRoot | directory |
+      | name          | type      |
+      | workspaceRoot | directory |
     And Produced fields
       | field        | type      | cardinality | domain |
       | headRevision | reference | one         | any    |
 
   Scenario Outline: Run
-    When Shell "head" runs "git" with cwd from Environment "projectRoot"
+    When Shell "head" runs "git" with cwd from Environment "workspaceRoot"
       | argument  |
       | rev-parse |
       | HEAD      |

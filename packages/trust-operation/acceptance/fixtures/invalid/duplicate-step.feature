@@ -4,18 +4,18 @@ Feature: Duplicate step
 
   Background: Operation interface
     Given Environment
-      | name        | type |
-      | projectRoot | directory |
+      | name          | type      |
+      | workspaceRoot | directory |
     And Produced fields
       | field        | type      | cardinality | domain |
       | headRevision | reference | one         | any    |
 
   Scenario: Run
-    When Shell "head" runs "git" with cwd from Environment "projectRoot"
+    When Shell "head" runs "git" with cwd from Environment "workspaceRoot"
       | argument  |
       | rev-parse |
       | HEAD      |
-    And Shell "head" runs "git" with cwd from Environment "projectRoot"
+    And Shell "head" runs "git" with cwd from Environment "workspaceRoot"
       | argument  |
       | rev-parse |
       | HEAD      |

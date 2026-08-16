@@ -1,5 +1,5 @@
 # language: en
-@trust-dsl:1 @operation:git.head-read @version:1.0.0
+@trust-dsl:1 @operation:git.head-read @version:1.0.0 @x-family:software-delivery @x-nature:observe @x-team:platform @x-team:sre @x-team:platform
 Feature: Read Git HEAD and working tree
 
   Background: Operation interface

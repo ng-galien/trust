@@ -1,11 +1,11 @@
 # language: en
-@trust-dsl:1 @operation:git.head-read @version:1.0.0
-Feature: Invalid table
+@trust-dsl:1 @operation:git.head-read @version:1.0.0 @x-family
+Feature: Unknown tag
 
   Background: Operation interface
     Given Environment
-      | variable    |
-      | workspaceRoot |
+      | name          | type      |
+      | workspaceRoot | directory |
     And Produced fields
       | field        | type      | cardinality | domain |
       | headRevision | reference | one         | any    |

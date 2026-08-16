@@ -2,6 +2,10 @@
 @trust-dsl:1 @procedure:end-to-end-red-green @version:2.0.0
 Feature: Validate a multi-project change through a traced Red-Green deployment cycle
 
+  Full delivery loop for a multi-project change: read the ticket, establish clean baselines,
+  reproduce the defect with a Karate test (red), fix and verify every project, build and
+  load container images, roll them out on Kind and confirm the fix through traces (green).
+
   Background: Plan context
     Given one reference "jira issue"
     And one reference "acceptance project" fixed as "payment-acceptance"

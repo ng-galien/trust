@@ -4,8 +4,8 @@ Feature: Compare Git HEAD with a baseline revision
 
   Background: Operation interface
     Given Environment
-      | name        | type      |
-      | projectRoot | directory |
+      | name          | type      |
+      | workspaceRoot | directory |
     And Input
       | input        | type      | cardinality |
       | project      | reference | one         |
@@ -18,19 +18,19 @@ Feature: Compare Git HEAD with a baseline revision
       | workingTree          | string    | one         | enum "clean", "dirty" |
 
   Scenario: Run
-    When Shell "head" runs "git" with cwd from Environment "projectRoot"
+    When Shell "head" runs "git" with cwd from Environment "workspaceRoot" and Input "project"
       | argument  | source  |
       | rev-parse | literal |
       | --verify  | literal |
       | HEAD      | literal |
-    And Shell "commits" runs "git" with cwd from Environment "projectRoot"
+    And Shell "commits" runs "git" with cwd from Environment "workspaceRoot" and Input "project"
       | argument     | source               |
       | rev-list     | literal              |
       | --count      | literal              |
       | HEAD         | literal              |
       | --not        | literal              |
       | baseRevision | Input "baseRevision" |
-    And Shell "status" runs "git" with cwd from Environment "projectRoot"
+    And Shell "status" runs "git" with cwd from Environment "workspaceRoot" and Input "project"
       | argument       | source  |
       | status         | literal |
       | --porcelain=v1 | literal |

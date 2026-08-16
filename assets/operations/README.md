@@ -11,14 +11,26 @@ one `CompiledOperation`; the runner executes only that compiled object.
 An Operation contains:
 
 - one stable `@operation:<domain>.<action>` name and semantic version;
+- one `Feature:` title and, optionally, a free-text description block right under it (plain
+  Gherkin description): it explains what the Operation observes for humans and is reported by the
+  compiler as `description`, never used by execution;
 - typed `Input` supplied by the Procedure Check;
 - typed `Environment` supplied by execution configuration;
 - ordered Shell, File-read or HTTP-GET steps;
 - one final JSONata expression;
-- the exact typed fields produced by that expression.
+- the exact typed fields produced by that expression;
+- optional free classification tags `@x-<key>:<value>` (for example `@x-family:software-delivery`
+  `@x-nature:observe @x-team:platform`): any lower-case key, repeatable, opaque to execution and
+  reported by the compiler as `classification` grouped by key. Operators classify as they see fit.
 
 The current value types are `string`, `number`, `instant` and `reference`. Cardinality is `one` or
 `many`. Environment values are `directory` or `url`.
+
+A directory Environment names the place where all projects live. A Shell or File step may narrow
+it to one project with `with cwd from Environment "workspaceRoot" and Input "project"` (or `File …
+from Environment "workspaceRoot" and Input "project"`): the Input must be one string naming a
+directory directly below the root — no path separators, no traversal, no symbolic link out of the
+root. Without the `and Input` clause the step runs in the Environment directory itself.
 
 Shell arguments are structured. Each row is either `literal` or comes from one scalar Input. The
 runner never parses a shell command line. Exit code `0` is expected by default. An Operation may

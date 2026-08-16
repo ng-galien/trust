@@ -4,14 +4,14 @@ Feature: Parent File path
 
   Background: Operation interface
     Given Environment
-      | name        | type      |
-      | projectRoot | directory |
+      | name          | type      |
+      | workspaceRoot | directory |
     And Produced fields
       | field | type   | cardinality | domain |
       | name  | string | one         | any    |
 
   Scenario: Run
-    When File "manifest" reads "../package.json" as JSON from Environment "projectRoot"
+    When File "manifest" reads "../package.json" as JSON from Environment "workspaceRoot"
     Then Produce with JSONata
       """
       { "name": steps.manifest.content.name }

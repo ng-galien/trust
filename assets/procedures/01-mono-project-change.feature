@@ -2,6 +2,10 @@
 @trust-dsl:1 @procedure:mono-project-change @version:1.0.0
 Feature: Fix one Jira defect in one Maven project
 
+  Drives the correction of one Jira defect inside one Maven project, from a clean baseline
+  to a verified revision: read the ticket, establish the baseline, verify the fixed revision
+  and confirm the fix is committed.
+
   Background: Plan context
     Given one reference "jira issue"
     And one reference "project"

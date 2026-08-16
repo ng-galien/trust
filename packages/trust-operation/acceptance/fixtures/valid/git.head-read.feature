@@ -4,8 +4,8 @@ Feature: Read Git HEAD and working tree
 
   Background: Operation interface
     Given Environment
-      | name        | type |
-      | projectRoot | directory |
+      | name          | type      |
+      | workspaceRoot | directory |
     And Input
       | input   | type      | cardinality |
       | project | reference | one         |
@@ -15,12 +15,12 @@ Feature: Read Git HEAD and working tree
       | workingTree  | string    | one         | enum "clean", "dirty" |
 
   Scenario: Run
-    When Shell "head" runs "git" with cwd from Environment "projectRoot"
+    When Shell "head" runs "git" with cwd from Environment "workspaceRoot" and Input "project"
       | argument  | source  |
       | rev-parse | literal |
       | --verify  | literal |
       | HEAD      | literal |
-    And Shell "status" runs "git" with cwd from Environment "projectRoot"
+    And Shell "status" runs "git" with cwd from Environment "workspaceRoot" and Input "project"
       | argument                 | source  |
       | status                   | literal |
       | --porcelain=v1           | literal |

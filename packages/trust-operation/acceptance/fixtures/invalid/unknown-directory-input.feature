@@ -15,12 +15,12 @@ Feature: Read Git HEAD and working tree
       | workingTree  | string    | one         | enum "clean", "dirty" |
 
   Scenario: Run
-    When Shell "head" runs "git" with cwd from Environment "workspaceRoot" and Input "project"
+    When Shell "head" runs "git" with cwd from Environment "workspaceRoot" and Input "repository"
       | argument  | source  |
       | rev-parse | literal |
       | --verify  | literal |
       | HEAD      | literal |
-    And Shell "status" runs "git" with cwd from Environment "workspaceRoot" and Input "project"
+    And Shell "status" runs "git" with cwd from Environment "workspaceRoot" and Input "repository"
       | argument                 | source  |
       | status                   | literal |
       | --porcelain=v1           | literal |

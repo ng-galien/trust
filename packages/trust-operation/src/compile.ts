@@ -44,6 +44,8 @@ const OPERATION_TAG = "@operation:";
 const VERSION_TAG = "@version:";
 const TRUST_DSL_TAG = "@trust-dsl:";
 const TRUST_DSL_VERSION = "1";
+const CLASSIFICATION_TAG = "@x-";
+const CLASSIFICATION = /^@x-([a-z][a-z0-9]*(?:-[a-z0-9]+)*):([^\s:]+)$/;
 const OPERATION_NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*\.[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const FIELD_NAME = /^[a-z][A-Za-z0-9]*$/;
 const SEMANTIC_VERSION = /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)$/;
@@ -223,6 +225,7 @@ function compileParsedOperation(
     fail(context, "invalid-operation", "Rules are outside the closed Operation grammar", feature);
   }
 
+  const description = readDescription(feature.description);
   const operation = readUniqueTag(feature.tags, OPERATION_TAG, "Operation", context, feature);
   if (!OPERATION_NAME.test(operation)) {
     fail(
@@ -245,7 +248,8 @@ function compileParsedOperation(
       feature,
     );
   }
-  assertOnlyTags(feature.tags, [OPERATION_TAG, VERSION_TAG, TRUST_DSL_TAG], context, feature);
+  assertOnlyTags(feature.tags, [OPERATION_TAG, VERSION_TAG, TRUST_DSL_TAG, CLASSIFICATION_TAG], context, feature);
+  const classification = readClassification(feature.tags, context, feature);
 
   const backgrounds = feature.children.flatMap((child) => child.background ? [child.background] : []);
   if (backgrounds.length !== 1 || !backgrounds[0]) {
@@ -283,12 +287,14 @@ function compileParsedOperation(
     operation,
     version,
     title: feature.name,
+    ...(description === undefined ? {} : { description }),
     source,
     input: compileInputSchema(operationInterface.input),
     environment: compileEnvironmentSchema(operationInterface.environment),
     steps: run.steps,
     produce: { language: "jsonata", expression: run.expression },
     produced: compileProducedSchema(operationInterface.producedFields),
+    ...(Object.keys(classification).length > 0 ? { classification } : {}),
   };
   if (!document) {
     fail(context, "invalid-operation", "Operation source model is unavailable", feature);
@@ -387,11 +393,13 @@ function readOperationDocument(
     }
   }
 
+  const documentDescription = readDescription(feature.description);
   return {
     kind: "operation",
     ...(operationTag ? { operation: operationTag.name.slice(OPERATION_TAG.length) } : {}),
     ...(versionTag ? { version: versionTag.name.slice(VERSION_TAG.length) } : {}),
     title: feature.name,
+    ...(documentDescription === undefined ? {} : { description: documentDescription }),
     range: documentRange(context.source),
     selectionRange: operationTag
       ? tagValueRange(context.source, operationTag, OPERATION_TAG)
@@ -536,7 +544,7 @@ function parseRun(
       if (expression !== undefined) {
         fail(context, "unknown-step", "Shell cannot run after Produce", step);
       }
-      const { name, executable, environment: environmentName } = parsed;
+      const { name, executable, environment: environmentName, appendInput } = parsed;
       if (names.has(name)) fail(context, "duplicate-step", `Step "${name}" is repeated`, step);
       if (!Object.hasOwn(environment, environmentName)) {
         fail(
@@ -546,6 +554,7 @@ function parseRun(
           step,
         );
       }
+      if (appendInput !== undefined) assertPathInput(`Shell "${name}"`, appendInput, input, context, step);
       if (environment[environmentName]?.type !== "directory") {
         fail(
           context,
@@ -592,7 +601,7 @@ function parseRun(
         shell: {
           executable,
           arguments: arguments_,
-          cwd: { environment: environmentName },
+          cwd: { environment: environmentName, ...(appendInput === undefined ? {} : { appendInput }) },
           acceptedExits: [{ code: 0 }],
         },
       });
@@ -645,7 +654,7 @@ function parseRun(
       if (step.dataTable || step.docString) {
         fail(context, "unknown-step", "File does not accept a table or DocString", step);
       }
-      const { name, path, format, environment: environmentName } = parsed;
+      const { name, path, format, environment: environmentName, appendInput } = parsed;
       if (names.has(name)) fail(context, "duplicate-step", `Step "${name}" is repeated`, step);
       if (!Object.hasOwn(environment, environmentName)) {
         fail(
@@ -655,6 +664,7 @@ function parseRun(
           step,
         );
       }
+      if (appendInput !== undefined) assertPathInput(`File "${name}"`, appendInput, input, context, step);
       if (environment[environmentName]?.type !== "directory") {
         fail(
           context,
@@ -670,7 +680,7 @@ function parseRun(
         type: "file-read",
         file: {
           relativePath: path,
-          root: { environment: environmentName },
+          root: { environment: environmentName, ...(appendInput === undefined ? {} : { appendInput }) },
           format,
         },
       });
@@ -790,6 +800,7 @@ type ParsedRunStepSentence =
       readonly name: string;
       readonly executable: string;
       readonly environment: string;
+      readonly appendInput?: string;
     }
   | {
       readonly type: "shell-exits";
@@ -801,6 +812,7 @@ type ParsedRunStepSentence =
       readonly path: string;
       readonly format: "text" | "json";
       readonly environment: string;
+      readonly appendInput?: string;
     }
   | {
       readonly type: "http";
@@ -843,14 +855,25 @@ function parseRunStepSentence(source: string): ParsedRunStepSentence | undefined
   const shellName = field(1);
   const executable = quoted(3);
   const shellEnvironment = field(8);
-  if (tokens.length === 9 && text(0, "Shell") && shellName && text(2, "runs")
+  const shellCwd = text(0, "Shell") && shellName && text(2, "runs")
     && executable && text(4, "with") && text(5, "cwd") && text(6, "from")
-    && text(7, "Environment") && shellEnvironment) {
+    && text(7, "Environment") && shellEnvironment;
+  if (tokens.length === 9 && shellCwd) {
     return {
       type: "shell",
       name: shellName,
       executable,
       environment: shellEnvironment,
+    };
+  }
+  const shellAppendInput = field(11);
+  if (tokens.length === 12 && shellCwd && text(9, "and") && text(10, "Input") && shellAppendInput) {
+    return {
+      type: "shell",
+      name: shellName,
+      executable,
+      environment: shellEnvironment,
+      appendInput: shellAppendInput,
     };
   }
 
@@ -863,15 +886,27 @@ function parseRunStepSentence(source: string): ParsedRunStepSentence | undefined
   const path = quoted(3);
   const fileFormat = format(5);
   const fileEnvironment = field(8);
-  if (tokens.length === 9 && text(0, "File") && fileName && text(2, "reads") && path
+  const fileRoot = text(0, "File") && fileName && text(2, "reads") && path
     && text(4, "as") && fileFormat && text(6, "from") && text(7, "Environment")
-    && fileEnvironment) {
+    && fileEnvironment;
+  if (tokens.length === 9 && fileRoot) {
     return {
       type: "file-read",
       name: fileName,
       path,
       format: fileFormat,
       environment: fileEnvironment,
+    };
+  }
+  const fileAppendInput = field(11);
+  if (tokens.length === 12 && fileRoot && text(9, "and") && text(10, "Input") && fileAppendInput) {
+    return {
+      type: "file-read",
+      name: fileName,
+      path,
+      format: fileFormat,
+      environment: fileEnvironment,
+      appendInput: fileAppendInput,
     };
   }
 
@@ -1197,6 +1232,36 @@ function assertFieldName(name: string, label: string, context: CompileContext, l
   }
 }
 
+/** Free-text block under `Feature:` — the human description. Lines are de-indented, blank runs kept as paragraphs. */
+function readDescription(raw: string | undefined): string | undefined {
+  if (raw === undefined) return undefined;
+  const lines = raw.replace(/\r\n?/g, "\n").split("\n");
+  const indent = Math.min(...lines.filter((line) => line.trim() !== "").map((line) => line.length - line.trimStart().length));
+  const text = lines
+    .map((line) => (line.trim() === "" ? "" : line.slice(Number.isFinite(indent) ? indent : 0).trimEnd()))
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+  return text === "" ? undefined : text;
+}
+
+/** An Input that narrows a directory Environment must be one declared string Input (a project name). */
+function assertPathInput(
+  label: string,
+  inputName: string,
+  input: Readonly<Record<string, InputField>>,
+  context: CompileContext,
+  located: Located,
+): void {
+  if (!Object.hasOwn(input, inputName)) {
+    fail(context, "invalid-operation", `${label} narrows its directory with unknown Input "${inputName}"`, located);
+  }
+  const schema = compileInputSchema(input).properties[inputName];
+  if (!schema || schema.type !== "string") {
+    fail(context, "invalid-operation", `${label} directory Input "${inputName}" must be one string`, located);
+  }
+}
+
 function requireTable(step: Step, header: readonly string[], context: CompileContext) {
   const rows = step.dataTable?.rows ?? [];
   const actual = rows[0]?.cells.map((cell) => cell.value.trim()) ?? [];
@@ -1218,6 +1283,33 @@ function readUniqueTag(
     fail(context, "invalid-operation", `Operation must declare exactly one ${label} tag`, located);
   }
   return matches[0]?.name.slice(prefix.length) ?? "";
+}
+
+/** Free classification tags: `@x-<key>:<value>`, any key, repeatable; opaque to execution. */
+function readClassification(
+  tags: readonly { readonly name: string }[],
+  context: CompileContext,
+  located: Located,
+): Record<string, readonly string[]> {
+  const classification: Record<string, string[]> = {};
+  for (const tag of tags) {
+    if (!tag.name.startsWith(CLASSIFICATION_TAG)) continue;
+    const match = CLASSIFICATION.exec(tag.name);
+    if (!match) {
+      fail(
+        context,
+        "invalid-identifier",
+        `Classification tag "${tag.name}" must use the @x-<key>:<value> form (lower-case key, value without spaces or colons)`,
+        located,
+      );
+    }
+    const key = match[1]!;
+    const value = match[2]!;
+    const values = classification[key] ?? [];
+    if (!values.includes(value)) values.push(value);
+    classification[key] = values;
+  }
+  return classification;
 }
 
 function assertOnlyTags(

@@ -117,9 +117,10 @@ function operationSymbols(document: OperationDocument): DocumentSymbol[] {
       lspRange(field.selectionRange),
     )),
   ];
+  const firstLine = document.description?.split("\n").find((line) => line.trim() !== "")?.trim();
   return [DocumentSymbol.create(
     document.operation ?? document.title,
-    document.version ? `Operation ${document.version}` : "Operation",
+    `${document.version ? `Operation ${document.version}` : "Operation"}${firstLine ? ` — ${firstLine}` : ""}`,
     SymbolKind.Module,
     lspRange(document.range),
     lspRange(document.selectionRange),

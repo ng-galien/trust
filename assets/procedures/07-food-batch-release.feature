@@ -2,6 +2,9 @@
 @trust-dsl:1 @procedure:food-batch-release @version:1.0.0
 Feature: Release one food batch after traceability, laboratory and cold-chain checks
 
+  Releases one food batch after traceability, laboratory results and cold-chain data have
+  been confirmed by the simulated food-safety services.
+
   Background: Plan context
     Given one reference "batch"
 

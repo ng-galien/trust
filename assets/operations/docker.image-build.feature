@@ -4,8 +4,8 @@ Feature: Build one Docker image from a project revision
 
   Background: Operation interface
     Given Environment
-      | name        | type      |
-      | projectRoot | directory |
+      | name          | type      |
+      | workspaceRoot | directory |
     And Input
       | input         | type      | cardinality |
       | project       | reference | one         |
@@ -20,7 +20,7 @@ Feature: Build one Docker image from a project revision
       | buildStatus    | string    | one         | enum "successful", "failed" |
 
   Scenario: Run
-    When Shell "build" runs "docker" with cwd from Environment "projectRoot"
+    When Shell "build" runs "docker" with cwd from Environment "workspaceRoot" and Input "project"
       | argument | source        |
       | build    | literal       |
       | --tag    | literal       |
