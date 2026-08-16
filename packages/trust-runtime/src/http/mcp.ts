@@ -265,162 +265,309 @@ function callTool(
 }
 
 function renderEngagement(result: PlanEngagementResult, view: PlanView): string {
-  return `${[
-    "Operation: Plan engagement",
-    `Plan: ${result.plan}`,
-    `Status: ${result.status}`,
-    `Procedure: ${result.procedure}@${result.procedureVersion}`,
+  return [
+    "PLAN ENGAGEMENT",
+    `Result: ${result.status}`,
     `Environment: ${result.environment}`,
-    `Revision: ${result.revision}`,
-    `Initial Checks: ${result.checkUris.length}`,
-    ...result.checkUris.map((checkUri) => `- ${checkUri}`),
     "",
-  ].join("\n")}\n--- Current Plan ---\n${renderPlan(view)}`;
+    renderPlan(view),
+  ].join("\n");
 }
 
 function renderProcedurePage(page: { readonly source: string; readonly nextCursor?: string }): string {
   const navigation = page.nextCursor === undefined
     ? [
-        "More pages: no",
-        "Procedure read complete: yes",
+        "Complete: yes",
+        "Next: use trust_plan_read to see the current work.",
       ]
     : [
-        "More pages: yes",
+        "Complete: no",
         `Next cursor: ${page.nextCursor}`,
-        "Call trust_procedure_read again with the same checkUri and this exact cursor.",
+        "Next: call trust_procedure_read again with the same Check URI and this exact cursor.",
       ];
-  return `${page.source}\n\n--- TRUST procedure pagination ---\n${navigation.join("\n")}`;
+  return `PROCEDURE SOURCE\n${page.source}\n\nREAD STATUS\n${navigation.join("\n")}\n`;
 }
 
 function renderDeclarationReplacement(
   result: PlanDeclarationReplacementResult,
   view: PlanView,
 ): string {
-  return `${[
-    "Operation: Plan declaration replacement",
-    `Plan: ${result.plan}`,
-    `Status: ${result.status}`,
+  return [
+    "PLAN DECLARATIONS REPLACED",
+    `Result: ${result.status}`,
     `Revision: ${result.revision}`,
-    `Declarations: ${JSON.stringify(result.declarations)}`,
     `Current Checks: ${result.checkUris.length}`,
-    `Opened Checks: ${result.openedCheckUris.length}`,
-    ...result.openedCheckUris.map((checkUri) => `- ${checkUri}`),
-    `Removed Checks: ${result.removedCheckUris.length}`,
-    ...result.removedCheckUris.map((checkUri) => `- ${checkUri}`),
+    ...(result.openedCheckUris.length === 0
+      ? []
+      : [`Opened Checks: ${result.openedCheckUris.length}`]),
+    ...(result.removedCheckUris.length === 0
+      ? []
+      : [`Removed Checks: ${result.removedCheckUris.length}`]),
     "",
-  ].join("\n")}\n--- Current Plan ---\n${renderPlan(view)}`;
+    renderPlan(view),
+  ].join("\n");
 }
 
 function renderPlan(view: PlanView): string {
-  const lines = [
+  const actionable = view.checks.filter((check) => check.actionable);
+  const blocked = view.checks.filter((check) => check.state === "OPEN" && !check.actionable);
+  const missingRoles = view.declarationRoles.filter(({ role }) => (
+    view.missingDeclarations.includes(role)
+  ));
+  const lines: string[] = [
+    "PLAN",
     `Plan: ${view.plan}`,
     `Procedure: ${view.procedure}@${view.procedureVersion}`,
-    `Status: ${view.state}`,
-    `Session: ${view.sessionState}`,
-    "Session meaning: delegation window for the current Plan",
-    `Work state: ${view.workState}`,
     `Revision: ${view.revision}`,
-    `Declaration roles: ${JSON.stringify(view.declarationRoles)}`,
-    `Declarations: ${JSON.stringify(view.declarations)}`,
-    `Missing declarations: ${JSON.stringify(view.missingDeclarations)}`,
-    `Checklist complete: ${view.checklistComplete ? "yes" : "no"}`,
-    `Satisfied Checks: ${view.satisfiedChecks}`,
-    `Open Checks: ${view.openChecks.length}`,
-    ...view.openChecks.map((checkUri) => `- ${checkUri}`),
-    `Actionable Checks: ${view.actionableChecks.length}`,
-    ...view.actionableChecks.map((checkUri) => `  - ${checkUri}`),
-    `Blocked Checks: ${view.blockedChecks.length}`,
-    ...view.blockedChecks.map((checkUri) => `  - ${checkUri}`),
-    "Current checklist:",
-    ...view.checks.flatMap((check) => [
-      `Check: ${check.checkUri}`,
-      `  Name: ${check.name}`,
-      `  Scenario: ${check.scenario}`,
-      `  Target: ${check.target === null ? "none" : JSON.stringify(check.target)}`,
-      `  Inputs: ${JSON.stringify(check.inputs)}`,
-      `  Operation: ${check.operation}`,
-      `  Status: ${check.state}`,
-      `  Actionable: ${check.actionable ? "yes" : "no"}`,
-      `  Blocked by: ${check.blockedBy.length === 0 ? "none" : JSON.stringify(check.blockedBy)}`,
-      `  Active qualification: ${check.state === "SATISFIED" ? "VALIDATED" : "none"}`,
-      `  Latest accepted attempt verdict: ${check.latestVerdict ?? "none"}`,
-      `  Latest accepted attempt reason code: ${check.latestReasonCode ?? "none"}`,
-      `  Latest accepted attempt reason: ${check.reason ?? "none"}`,
-    ]),
-    `Latest revision change: ${view.latestRevisionChange.fromRevision ?? "none"} -> ${view.latestRevisionChange.toRevision}`,
-    `Added Checks: ${view.latestRevisionChange.added.length}`,
-    ...view.latestRevisionChange.added.map((checkUri) => `  - ${checkUri}`),
-    `Removed Checks: ${view.latestRevisionChange.removed.length}`,
-    ...view.latestRevisionChange.removed.map((checkUri) => `  - ${checkUri}`),
-    `Newly satisfied Checks: ${view.latestRevisionChange.newlySatisfied.length}`,
-    ...view.latestRevisionChange.newlySatisfied.map((checkUri) => `  - ${checkUri}`),
-    `Newly opened Checks: ${view.latestRevisionChange.newlyOpened.length}`,
-    ...view.latestRevisionChange.newlyOpened.map((checkUri) => `  - ${checkUri}`),
-    `Changed Checks: ${view.latestRevisionChange.changed.length}`,
-    ...view.latestRevisionChange.changed.map((checkUri) => `  - ${checkUri}`),
-    `Unchanged Checks: ${view.latestRevisionChange.unchanged.length}`,
-    ...view.latestRevisionChange.unchanged.map((checkUri) => `  - ${checkUri}`),
+    `State: ${view.workState}`,
+    `Session: ${view.sessionState}`,
+    `Progress: ${view.satisfiedChecks}/${view.checks.length} current Checks satisfied`,
+    "",
+    "NEXT",
+    ...planNext(view, actionable.length),
   ];
+
+  if (actionable.length > 0) {
+    lines.push(
+      "",
+      "ACTIONABLE CHECKS",
+      ...actionable.flatMap(renderActionableCheck),
+    );
+  }
+  if (missingRoles.length > 0) {
+    lines.push(
+      "",
+      "MISSING DECLARATIONS",
+      `Replace the complete declaration snapshot for Plan ${view.plan} at revision ${view.revision}.`,
+      ...missingRoles.flatMap(renderDeclarationRole),
+    );
+  }
+  const declarationEntries = Object.entries(view.declarations);
+  if (declarationEntries.length > 0) {
+    lines.push(
+      "",
+      "CURRENT DECLARATIONS",
+      ...declarationEntries.map(([role, value]) => `- ${role} = ${JSON.stringify(value)}`),
+    );
+  }
+  if (blocked.length > 0) {
+    lines.push(
+      "",
+      "BLOCKED CHECKS",
+      ...blocked.flatMap((check) => renderBlockedCheck(check, view.checks)),
+    );
+  }
   lines.push(
-    `Latest current-Check attempt verdict: ${view.latestQualification?.verdict ?? "none"}`,
-    `Latest current-Check attempt Check: ${view.latestQualification?.checkUri ?? "none"}`,
-    `Latest current-Check attempt reason code: ${view.latestQualification?.reasonCode ?? "none"}`,
-    `Latest current-Check attempt reason: ${view.latestQualification?.reason ?? "none"}`,
-    `Latest attempt newly satisfied Checks: ${view.latestQualification?.newlySatisfied.length ?? 0}`,
-    ...(view.latestQualification?.newlySatisfied ?? []).map((checkUri) => `- ${checkUri}`),
-    `Latest attempt newly opened Checks: ${view.latestQualification?.newlyOpened.length ?? 0}`,
-    ...(view.latestQualification?.newlyOpened ?? []).map((checkUri) => `- ${checkUri}`),
-    `Latest attempt unchanged Checks: ${view.latestQualification?.unchanged.length ?? 0}`,
-    ...(view.latestQualification?.unchanged ?? []).map((checkUri) => `- ${checkUri}`),
+    "",
+    "CURRENT CHECKLIST",
+    ...view.checks.map((check) => (
+      `- [${check.state}${check.actionable ? ", ACTIONABLE" : ""}] ${check.name} (${check.scenario})`
+    )),
   );
+  if (view.latestQualification !== null) {
+    lines.push(
+      "",
+      "LATEST ACCEPTED ATTEMPT",
+      `Check URI: ${view.latestQualification.checkUri}`,
+      `Verdict: ${view.latestQualification.verdict}`,
+      `Reason: ${view.latestQualification.reasonCode} — ${view.latestQualification.reason}`,
+      ...renderChecklistDelta(view.latestQualification),
+    );
+  }
+  lines.push("", ...renderRevisionChange(view));
   return `${lines.join("\n")}\n`;
 }
 
 function renderSession(view: SessionView): string {
   return [
+    "SESSION",
     `Plan: ${view.plan}`,
-    `Session: ${view.state}`,
-    "Session meaning: delegation window for the current Plan",
-    `Active revision: ${view.activeRevision}`,
-    `Work state: ${view.workState}`,
-    `Checklist complete: ${view.checklistComplete ? "yes" : "no"}`,
-    `Satisfied Checks: ${view.satisfiedChecks}`,
-    `Open Checks: ${view.openChecks}`,
-    "Resolution: implicit from the Check URI",
+    `Revision: ${view.activeRevision}`,
+    `State: ${view.state}`,
+    `Plan state: ${view.workState}`,
+    `Progress: ${view.satisfiedChecks}/${view.satisfiedChecks + view.openChecks} current Checks satisfied`,
+    "",
+    "NEXT",
+    view.checklistComplete
+      ? "The Plan is complete. No further Check is required."
+      : view.state === "OPEN"
+        ? "Use trust_plan_read with the same Check URI to see the next work."
+        : "The Session is unavailable. Do not run a Check until it is open.",
     "",
   ].join("\n");
 }
 
 function renderCheck(view: CheckView): string {
-  return [
+  const lines = [
+    "CHECK",
     `Check: ${view.checkUri}`,
     `Name: ${view.name}`,
     `Scenario: ${view.scenario}`,
-    `Target: ${view.target === null ? "none" : JSON.stringify(view.target)}`,
-    `Inputs: ${JSON.stringify(view.inputs)}`,
     `Status: ${view.state}`,
-    `Actionable: ${view.actionable ? "yes" : "no"}`,
-    `Blocked by: ${view.blockedBy.length === 0 ? "none" : JSON.stringify(view.blockedBy)}`,
     `Operation: ${view.operation}`,
-    `Active qualification: ${view.state === "SATISFIED" ? "VALIDATED" : "none"}`,
-    `Latest accepted attempt verdict: ${view.latestVerdict ?? "none"}`,
-    `Latest accepted attempt reason code: ${view.latestReasonCode ?? "none"}`,
-    `Latest accepted attempt reason: ${view.reason ?? "none"}`,
-    `Accepted attempt history: ${view.history.length}`,
-    ...view.history.flatMap((attempt, index) => [
-      `Attempt ${index + 1}:`,
-      `  Verdict: ${attempt.verdict}`,
-      `  Reason code: ${attempt.reasonCode}`,
-      `  Reason: ${attempt.reason}`,
-      `  Newly satisfied Checks: ${attempt.checklistDelta.newlySatisfied.length}`,
-      ...attempt.checklistDelta.newlySatisfied.map((checkUri) => `    - ${checkUri}`),
-      `  Newly opened Checks: ${attempt.checklistDelta.newlyOpened.length}`,
-      ...attempt.checklistDelta.newlyOpened.map((checkUri) => `    - ${checkUri}`),
-      `  Unchanged Checks: ${attempt.checklistDelta.unchanged.length}`,
-      ...attempt.checklistDelta.unchanged.map((checkUri) => `    - ${checkUri}`),
-    ]),
+    formatTarget(view),
+    "Inputs:",
+    ...formatInputs(view.inputs),
     "",
-  ].join("\n");
+    "NEXT",
+    view.state === "SATISFIED"
+      ? "This Check is already satisfied. Use trust_plan_read to continue the Plan."
+      : view.actionable
+        ? "Run this Check with the TRUST Skill. Pass only the exact Check URI above."
+        : "Do not run this Check yet. Resolve the blockers below, then read the Plan again.",
+  ];
+  if (view.blockedBy.length > 0) {
+    lines.push("", "BLOCKED BY", ...view.blockedBy.map((blocker) => `- ${renderBlocker(blocker)}`));
+  }
+  if (view.latestVerdict !== null && view.latestReasonCode !== null && view.reason !== null) {
+    lines.push(
+      "",
+      "LATEST ACCEPTED ATTEMPT",
+      `Verdict: ${view.latestVerdict}`,
+      `Reason: ${view.latestReasonCode} — ${view.reason}`,
+    );
+  }
+  if (view.history.length > 0) {
+    lines.push(
+      "",
+      `ACCEPTED ATTEMPT HISTORY (${view.history.length})`,
+      ...view.history.flatMap((attempt, index) => [
+        `${index + 1}. ${attempt.verdict} — ${attempt.reasonCode}: ${attempt.reason}`,
+        ...renderChecklistDelta(attempt.checklistDelta).map((line) => `   ${line}`),
+      ]),
+    );
+  }
+  return `${lines.join("\n")}\n`;
+}
+
+function planNext(view: PlanView, actionableChecks: number): readonly string[] {
+  if (view.checklistComplete) return ["The Plan is complete. Do not run another Check."];
+  if (view.sessionState !== "OPEN") {
+    return ["The Session is unavailable. Do not run a Check until it is open."];
+  }
+  const actions: string[] = [];
+  if (actionableChecks > 0) {
+    actions.push(
+      `Run ${actionableChecks} actionable Check${actionableChecks === 1 ? "" : "s"} with the TRUST Skill. Pass only a Check URI shown below.`,
+    );
+  }
+  if (view.missingDeclarations.length > 0) {
+    actions.push(
+      `Declare ${view.missingDeclarations.length} missing declaration role${view.missingDeclarations.length === 1 ? "" : "s"} with trust_plan_declarations_replace.`,
+    );
+  }
+  if (actions.length === 1 && actionableChecks === 1) {
+    return ["Run this Check with the TRUST Skill. Pass only the exact Check URI shown under ACTIONABLE CHECKS."];
+  }
+  if (actions.length > 0) return ["You can act now:", ...actions.map((action) => `- ${action}`)];
+  return ["No Check is actionable now. Read BLOCKED CHECKS, resolve its prerequisites, then read the Plan again."];
+}
+
+function renderActionableCheck(check: PlanView["checks"][number]): readonly string[] {
+  return [
+    `- ${check.name} (${check.scenario})`,
+    `  Check URI: ${check.checkUri}`,
+    `  Operation: ${check.operation}`,
+    `  ${formatTarget(check)}`,
+    "  Inputs:",
+    ...formatInputs(check.inputs).map((line) => `    ${line}`),
+  ];
+}
+
+function renderBlockedCheck(
+  check: PlanView["checks"][number],
+  checks: PlanView["checks"],
+): readonly string[] {
+  return [
+    `- ${check.name} (${check.scenario})`,
+    `  Check URI: ${check.checkUri}`,
+    ...check.blockedBy.map((blocker) => `  - ${renderBlocker(blocker, checks)}`),
+  ];
+}
+
+function renderBlocker(blocker: string, checks: PlanView["checks"] = []): string {
+  const dependency = checks.find(({ checkUri }) => checkUri === blocker);
+  if (dependency !== undefined) {
+    return `Waiting for ${dependency.name} to be satisfied: ${dependency.checkUri}`;
+  }
+  const scenario = /^scenario (.+) has no current Check$/.exec(blocker)?.[1];
+  if (scenario !== undefined) {
+    return `Scenario "${scenario}" has no current Check yet. Its Checks will appear when their required context exists.`;
+  }
+  if (blocker === "current Plan context is unavailable") {
+    return "The current Plan context is unavailable. Read the Plan and complete its missing declarations first.";
+  }
+  if (blocker === "Plan Session is unavailable") {
+    return "The Plan Session is unavailable. Do not run this Check until a Session is open.";
+  }
+  return blocker;
+}
+
+function renderDeclarationRole(
+  role: PlanView["declarationRoles"][number],
+): readonly string[] {
+  const parents = role.parents.map((parent) => (
+    `${parent.each ? "parent for each" : "parent"}: ${parent.role}`
+  ));
+  const item = `<${role.type}>`;
+  const correlatedParent = role.parents.find(({ each }) => each);
+  const shape = correlatedParent === undefined
+    ? role.cardinality === "many" ? `[${item}, ...]` : item
+    : `[{"value": ${item}, "parents": [{"role": "${correlatedParent.role}", "value": <matching ${correlatedParent.role}>}]}]`;
+  return [
+    `- ${role.role}: ${role.cardinality} ${role.type}${parents.length === 0 ? "" : `; ${parents.join("; ")}`}`,
+    `  Value shape: ${shape}${correlatedParent === undefined ? "" : ` (exactly one entry for each ${correlatedParent.role})`}`,
+  ];
+}
+
+function formatTarget(check: Pick<CheckView, "target">): string {
+  return `Target: ${check.target.role} (${check.target.selection}) = ${JSON.stringify(check.target.value)}`;
+}
+
+function formatInputs(inputs: Readonly<Record<string, unknown>>): readonly string[] {
+  const entries = Object.entries(inputs);
+  return entries.length === 0
+    ? ["- none"]
+    : entries.map(([name, value]) => `- ${name} = ${JSON.stringify(value)}`);
+}
+
+function renderChecklistDelta(delta: {
+  readonly newlySatisfied: readonly string[];
+  readonly newlyOpened: readonly string[];
+}): readonly string[] {
+  return [
+    ...(delta.newlySatisfied.length === 0
+      ? []
+      : [
+          `Newly satisfied Checks: ${delta.newlySatisfied.length}`,
+          ...delta.newlySatisfied.map((checkUri) => `- ${checkUri}`),
+        ]),
+    ...(delta.newlyOpened.length === 0
+      ? []
+      : [
+          `Newly opened Checks: ${delta.newlyOpened.length}`,
+          ...delta.newlyOpened.map((checkUri) => `- ${checkUri}`),
+        ]),
+  ];
+}
+
+function renderRevisionChange(view: PlanView): readonly string[] {
+  const change = view.latestRevisionChange;
+  if (change.fromRevision === null) {
+    return ["REVISION", `Revision ${change.toRevision} created ${change.added.length} current Checks.`];
+  }
+  const details = [
+    ...change.added.map((checkUri) => `- Added: ${checkUri}`),
+    ...change.removed.map((checkUri) => `- Removed: ${checkUri}`),
+    ...change.newlySatisfied.map((checkUri) => `- Newly satisfied: ${checkUri}`),
+    ...change.newlyOpened.map((checkUri) => `- Newly opened: ${checkUri}`),
+    ...change.changed.map((checkUri) => `- Changed: ${checkUri}`),
+  ];
+  return [
+    "REVISION",
+    `Latest change: ${change.fromRevision} -> ${change.toRevision}`,
+    ...(details.length === 0 ? ["No current Check changed."] : details),
+  ];
 }
 
 function tools(canEngagePlan: boolean): readonly unknown[] {
@@ -432,7 +579,7 @@ function tools(canEngagePlan: boolean): readonly unknown[] {
     {
       name: "trust_check_read",
       title: "Read a TRUST Check",
-      description: "Read a Check status, blockers, required Operation, latest verdict, and accepted attempt history.",
+      description: "Read one Check before running it. Returns whether it is actionable, its exact Operation inputs, blockers, and accepted attempt history.",
       inputSchema: {
         type: "object",
         properties: { checkUri },
@@ -443,7 +590,7 @@ function tools(canEngagePlan: boolean): readonly unknown[] {
     {
       name: "trust_plan_read",
       title: "Read a TRUST Plan",
-      description: "Read the active checklist and latest qualified Plan change.",
+      description: "Start here after receiving any Check URI. Returns Plan progress, the next actions, actionable Checks, missing declarations, and explained blockers.",
       inputSchema: {
         type: "object",
         properties: { checkUri },
@@ -454,7 +601,7 @@ function tools(canEngagePlan: boolean): readonly unknown[] {
     {
       name: "trust_procedure_read",
       title: "Read a TRUST procedure",
-      description: "Read the complete Gherkin source through contiguous pages. The text response states whether another page exists and gives the exact next cursor when required.",
+      description: "Read the authoritative Gherkin procedure when the Plan summary is not enough. Read every contiguous page; the response gives the exact next cursor until Complete is yes.",
       inputSchema: {
         type: "object",
         properties: {
@@ -469,7 +616,7 @@ function tools(canEngagePlan: boolean): readonly unknown[] {
     {
       name: "trust_session_read",
       title: "Read a TRUST Session",
-      description: "Read the Session resolved implicitly from the Check.",
+      description: "Read whether the Check URI resolves to an open Session. Use trust_plan_read for the actual work.",
       inputSchema: {
         type: "object",
         properties: { checkUri },

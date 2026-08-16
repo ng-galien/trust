@@ -11,7 +11,7 @@ environment                  trust-test
 ```
 
 There is no server or database per ticket, no retained copy of the disposable database, and no separate
-compiler or Skill server. The six source Skills run as short-lived Bun processes for one Check URI.
+compiler or Skill server. The packaged TRUST Skill runs as a short-lived Node process for one Check URI.
 
 ## Commands
 
@@ -25,17 +25,22 @@ Operate the server through one command:
 
 ```sh
 # Start the server if absent and keep its current disposable database.
-bun scripts/server.ts start
+node scripts/server.ts start
 
 # Delete the database, restart the same server, and seed it.
-bun scripts/server.ts reset
+node scripts/server.ts reset
 
 # Republish all procedures.
-bun scripts/server.ts seed
+node scripts/server.ts seed
 ```
 
 Development mode builds once, watches TypeScript output, and reloads the process on the same
 endpoint. Feature and Skill changes require `seed`, not another server.
+
+The server-manager acceptance isolates its disposable server with
+`TRUST_SERVER_STATE_DIRECTORY`, `TRUST_SERVER_TMUX_SESSION` and `TRUST_SERVER_PORT`. Normal local
+development uses the defaults shown above. `TRUST_SESSION_DURATION_MS` changes the runtime Session
+duration when an explicit environment needs a shorter or longer delegation window.
 
 `reset` removes only this disposable database family:
 
@@ -53,7 +58,7 @@ endpoint. Feature and Skill changes require `seed`, not another server.
 Before delegating a ticket, verify the exact boundary used by the agent:
 
 ```sh
-bun scripts/server.ts preflight \
+node scripts/server.ts preflight \
   --ticket '<TICKET>' \
   --procedure '<PROCEDURE>' \
   --version '<VERSION>'

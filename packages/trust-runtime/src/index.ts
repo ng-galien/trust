@@ -3,10 +3,9 @@ import { normalizeAuthority } from "./check/uri.js";
 import { DEFAULT_SKILL_OPERABILITY_POLICY } from "./skill/model.js";
 import { parseRegistryPrincipalConfigurations } from "./skill/configured-authority.js";
 import type { SkillPolicy } from "./skill/admission.js";
-import {
-  parseEnvironments,
-  readOperations,
-} from "./configuration.js";
+import { readOperations } from "./configuration.js";
+import { DEFAULT_SESSION_DURATION_MS } from "./plan/runtime.js";
+import { DEFAULT_TRIAL_TIMEOUT_MS } from "./trial/service.js";
 
 const host = process.env.TRUST_HOST ?? "127.0.0.1";
 const rawPort = process.env.TRUST_PORT ?? "4318";
@@ -19,8 +18,13 @@ const skillPolicy = parseSkillPolicy(process.env.TRUST_SKILL_POLICY);
 const operations = process.env.TRUST_OPERATIONS_DIRECTORY === undefined
   ? []
   : readOperations(process.env.TRUST_OPERATIONS_DIRECTORY);
-const environments = parseEnvironments(
-  process.env.TRUST_ENVIRONMENTS_JSON,
+const sessionDurationMs = durationFromEnvironment(
+  "TRUST_SESSION_DURATION_MS",
+  DEFAULT_SESSION_DURATION_MS,
+);
+const trialTimeoutMs = durationFromEnvironment(
+  "TRUST_TRIAL_TIMEOUT_MS",
+  DEFAULT_TRIAL_TIMEOUT_MS,
 );
 const registryPrincipalConfigurations = skillPolicy === "verified"
   ? parseRegistryPrincipalConfigurations(process.env.TRUST_REGISTRY_PRINCIPALS_JSON)
@@ -54,7 +58,10 @@ const runtime = await startRuntime({
   skillPolicy,
   skillOperabilityPolicy,
   operations,
-  environments,
+  sessionDurationMs,
+  trialTimeoutMs,
+  ...(process.env.TRUST_DIAGNOSTICS_ENDPOINT ? { diagnosticsEndpoint: process.env.TRUST_DIAGNOSTICS_ENDPOINT } : {}),
+  ...(process.env.TRUST_RUNNER_TRIAL_SCRIPT ? { runnerTrialScript: process.env.TRUST_RUNNER_TRIAL_SCRIPT } : {}),
 });
 process.stdout.write(`TRUST runtime listening on ${runtime.host}:${runtime.port}\n`);
 

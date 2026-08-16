@@ -81,22 +81,16 @@ export class ProcedureStore {
         WHERE procedure_name = ? AND procedure_version = ?`,
     ).get<ProcedureRow>(procedure, version);
     if (!row) return undefined;
-    const compiled = JSON.parse(row.compiled_procedure_json) as CompiledProcedure;
-    if (
-      compiled.contract !== "trust.compiled-procedure@3"
-      || compiled.procedure !== row.procedure_name
-      || compiled.version !== row.procedure_version
-      || compiled.definitionDigest !== row.definition_digest
-      || compiled.source !== row.source
-    ) {
-      throw new Error("Persisted Procedure is inconsistent");
-    }
-    return {
-      procedure: compiled,
-      sourceName: row.source_name,
-      publishedBy: row.published_by,
-      publishedAt: row.published_at,
-    };
+    return toPublishedProcedure(row);
+  }
+
+  list(): PublishedProcedure[] {
+    return this.#database.prepare(
+      `SELECT procedure_name, procedure_version, definition_digest, source_name, source,
+              compiled_procedure_json, published_by, published_at
+         FROM published_procedures
+        ORDER BY procedure_name, procedure_version`,
+    ).all<ProcedureRow>().map(toPublishedProcedure);
   }
 
   findOperation(
@@ -111,6 +105,25 @@ export class ProcedureStore {
       .filter((candidate) => candidate.operation === operation && candidate.digest === digest);
     return matches.length === 0 ? undefined : { operation, digest };
   }
+}
+
+function toPublishedProcedure(row: ProcedureRow): PublishedProcedure {
+  const compiled = JSON.parse(row.compiled_procedure_json) as CompiledProcedure;
+  if (
+    compiled.contract !== "trust.compiled-procedure@3"
+    || compiled.procedure !== row.procedure_name
+    || compiled.version !== row.procedure_version
+    || compiled.definitionDigest !== row.definition_digest
+    || compiled.source !== row.source
+  ) {
+    throw new Error("Persisted Procedure is inconsistent");
+  }
+  return {
+    procedure: compiled,
+    sourceName: row.source_name,
+    publishedBy: row.published_by,
+    publishedAt: row.published_at,
+  };
 }
 
 export class ProcedureConflictError extends Error {

@@ -1,26 +1,39 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
 
+import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
+import { existsSync } from "node:fs";
 import { readdir, readFile, rm } from "node:fs/promises";
-import { resolve } from "node:path";
+import { parse, resolve } from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 
 import { publicRpc } from "../infra/server/lib/public-rpc.mjs";
 import { generateServerRuntimeConfig } from "../infra/server/generate-runtime-config.mjs";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
-const stateDirectory = resolve(root, ".trust/server");
+const stateDirectory = parseStateDirectory(
+  process.env.TRUST_SERVER_STATE_DIRECTORY ?? ".trust/server",
+);
 const generated = resolve(stateDirectory, "generated");
 const database = resolve(stateDirectory, "runtime.sqlite");
 const operations = resolve(root, "assets/operations");
-const environments = JSON.stringify({
-  local: { projectRoot: root },
-  "trust-test": { projectRoot: root },
-});
-const endpoint = "http://127.0.0.1:4318";
+// An Environment's workspaceRoot is the directory that holds the projects; the Check's "project" Input picks one.
+const workspaceRoot = resolve(root, "..");
+const paymentRoot = resolve(process.env.TRUST_PROJECTS_ROOT ?? resolve(root, "../trust-projects"));
+const environmentValues = {
+  local: { workspaceRoot },
+  "trust-test": { workspaceRoot },
+  ...(existsSync(paymentRoot) ? { payment: { workspaceRoot: paymentRoot } } : {}),
+};
+const port = parsePort(process.env.TRUST_SERVER_PORT ?? "4318");
+const endpoint = `http://127.0.0.1:${port}`;
 const rpcEndpoint = `${endpoint}/rpc`;
 const mcpEndpoint = `${endpoint}/mcp`;
-const tmux = Object.freeze({ session: "trust", window: "server" });
+const tmux = Object.freeze({
+  session: parseTmuxSession(process.env.TRUST_SERVER_TMUX_SESSION ?? "trust"),
+  window: "server",
+});
 const skillPolicy = parseSkillPolicy(process.env.TRUST_SKILL_POLICY);
 const command = process.argv[2];
 
@@ -71,10 +84,9 @@ async function start(reset: boolean) {
     ...(skillPolicy === "verified" ? ["-e", `TRUST_CONFIG_DIRECTORY=${generated}`] : []),
     "-e", `TRUST_DATABASE_PATH=${database}`,
     "-e", `TRUST_OPERATIONS_DIRECTORY=${operations}`,
-    "-e", `TRUST_ENVIRONMENTS_JSON=${environments}`,
     "-e", "TRUST_HOST=127.0.0.1",
-    "-e", "TRUST_PORT=4318",
-    "-e", "TRUST_SEMANTIC_AUTHORITY=trust-test:4318",
+    "-e", `TRUST_PORT=${port}`,
+    "-e", `TRUST_SEMANTIC_AUTHORITY=trust-test:${port}`,
     "exec node infra/server/start-runtime.mjs --dev",
   ]);
   await run(["tmux", "set-option", "-t", tmux.session, "remain-on-exit", "on"]);
@@ -92,6 +104,9 @@ async function stop() {
 async function seed() {
   await requireHealth();
   const publisherToken = policyCredential("TRUST_PUBLISHER_TOKEN");
+  for (const [environment, values] of Object.entries(environmentValues)) {
+    await publicRpc(rpcEndpoint, "environment.save", { environment, values }, publisherToken);
+  }
   const procedureDirectory = resolve(root, "assets/procedures");
   const names = (await readdir(procedureDirectory)).filter((name) => name.endsWith(".feature")).sort();
   const procedures = [];
@@ -208,7 +223,8 @@ async function assertServer() {
     ...(skillPolicy === "verified" ? [["TRUST_CONFIG_DIRECTORY", generated]] : []),
     ["TRUST_DATABASE_PATH", database],
     ["TRUST_OPERATIONS_DIRECTORY", operations],
-    ["TRUST_ENVIRONMENTS_JSON", environments],
+    ["TRUST_PORT", String(port)],
+    ["TRUST_SEMANTIC_AUTHORITY", `trust-test:${port}`],
   ] as readonly (readonly [string, string])[]) {
     const output = await capture(["tmux", "show-environment", "-t", tmux.session, name]);
     if (output.trim() !== `${name}=${expected}`) {
@@ -221,7 +237,7 @@ async function waitForHealth() {
   const deadline = Date.now() + 120_000;
   while (Date.now() < deadline) {
     if (await healthy()) return;
-    await Bun.sleep(250);
+    await delay(250);
   }
   throw new Error("TRUST server did not become healthy within 120 seconds");
 }
@@ -244,24 +260,44 @@ async function hasSession() {
 }
 
 async function run(argv: string[]) {
-  const child = Bun.spawn(argv, { cwd: root, env: process.env, stdout: "inherit", stderr: "inherit" });
-  const code = await child.exited;
+  const code = await childExit(argv, "inherit");
   if (code !== 0) throw new Error(`${argv[0]} failed with exit ${code}`);
 }
 
 async function capture(argv: string[]) {
-  const child = Bun.spawn(argv, { cwd: root, env: process.env, stdout: "pipe", stderr: "pipe" });
-  const [code, stdout, stderr] = await Promise.all([
-    child.exited,
-    new Response(child.stdout).text(),
-    new Response(child.stderr).text(),
-  ]);
+  const child = spawn(argv[0]!, argv.slice(1), {
+    cwd: root,
+    env: process.env,
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  child.stdout.setEncoding("utf8");
+  child.stderr.setEncoding("utf8");
+  let stdout = "";
+  let stderr = "";
+  child.stdout.on("data", (chunk: string) => { stdout += chunk; });
+  child.stderr.on("data", (chunk: string) => { stderr += chunk; });
+  const code = await exit(child);
   if (code !== 0) throw new Error(stderr.trim() || `${argv[0]} failed with exit ${code}`);
   return stdout;
 }
 
 async function exitCode(argv: string[]) {
-  return await Bun.spawn(argv, { cwd: root, env: process.env, stdout: "ignore", stderr: "ignore" }).exited;
+  return childExit(argv, "ignore");
+}
+
+function childExit(argv: string[], stdio: "inherit" | "ignore"): Promise<number> {
+  return exit(spawn(argv[0]!, argv.slice(1), {
+    cwd: root,
+    env: process.env,
+    stdio,
+  }));
+}
+
+function exit(child: ReturnType<typeof spawn>): Promise<number> {
+  return new Promise((resolveExit, rejectExit) => {
+    child.once("error", rejectExit);
+    child.once("exit", (code, signal) => resolveExit(code ?? (signal === null ? 1 : 128)));
+  });
 }
 
 function parsePreflight(args: string[]) {
@@ -296,6 +332,29 @@ function parseSkillPolicy(value: string | undefined): "local" | "verified" {
   if (value === undefined || value === "" || value === "local") return "local";
   if (value === "verified") return "verified";
   throw new TypeError(`TRUST_SKILL_POLICY must be 'local' or 'verified', received '${value}'`);
+}
+
+function parsePort(value: string): number {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 1 || parsed > 65_535) {
+    throw new TypeError(`TRUST_SERVER_PORT must be an integer between 1 and 65535, received '${value}'`);
+  }
+  return parsed;
+}
+
+function parseTmuxSession(value: string): string {
+  if (!/^[a-zA-Z0-9_-]{1,64}$/.test(value)) {
+    throw new TypeError("TRUST_SERVER_TMUX_SESSION must contain only letters, numbers, '_' or '-'");
+  }
+  return value;
+}
+
+function parseStateDirectory(value: string): string {
+  const resolved = resolve(root, value);
+  if (resolved === root || resolved === parse(resolved).root) {
+    throw new TypeError("TRUST_SERVER_STATE_DIRECTORY must not be the repository or filesystem root");
+  }
+  return resolved;
 }
 
 function requiredValue(value: string | undefined, name: string) {

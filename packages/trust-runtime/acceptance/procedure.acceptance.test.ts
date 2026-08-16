@@ -12,7 +12,7 @@ test("the runtime compiles, publishes and reads one Procedure with its exact Ope
   const runtime = await startPublicRuntime("trust-procedure-", {
     skillPolicy: "local",
     operationsDirectory: path.join(repositoryRoot, "assets/operations"),
-    environments: { local: { projectRoot: repositoryRoot } },
+    environments: { local: { workspaceRoot: repositoryRoot } },
   });
   try {
     const source = await readFile(

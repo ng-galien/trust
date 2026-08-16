@@ -1,6 +1,11 @@
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
-import { DatabaseSync, type StatementSync } from "node:sqlite";
+import {
+  DatabaseSync,
+  type SQLInputValue,
+  type StatementSync,
+} from "node:sqlite";
+import type { SqliteDatabase } from "kysely";
 
 export type SqlParameter = string | number | bigint | Uint8Array | null;
 export type DatabaseRow = Record<string, string | number | bigint | Uint8Array | null>;
@@ -20,6 +25,7 @@ export interface DatabaseDriver {
   exec(sql: string): void;
   prepare(sql: string): DatabaseStatement;
   transaction<T>(work: () => T): T;
+  kyselyDatabase(): SqliteDatabase;
   close(): void;
 }
 
@@ -82,9 +88,42 @@ export class SqliteDatabaseDriver implements DatabaseDriver {
     }
   }
 
+  kyselyDatabase(): SqliteDatabase {
+    return {
+      prepare: (sql) => {
+        const statement = this.#database.prepare(sql);
+        return {
+          reader: statement.columns().length > 0,
+          all: (parameters) => statement.all(...sqliteParameters(parameters)),
+          run: (parameters) => statement.run(...sqliteParameters(parameters)),
+          iterate: (parameters) => statement.iterate(...sqliteParameters(parameters)),
+        };
+      },
+      // The Awilix-owned DatabaseDriver closes the shared handle. Kysely must
+      // not close it independently while legacy stores still share it.
+      close: () => undefined,
+    };
+  }
+
   close(): void {
     if (this.#database.isOpen) {
       this.#database.close();
     }
   }
+}
+
+function sqliteParameters(parameters: ReadonlyArray<unknown>): SQLInputValue[] {
+  return parameters.map((parameter) => {
+    if (
+      parameter === null
+      || typeof parameter === "string"
+      || typeof parameter === "number"
+      || typeof parameter === "bigint"
+      || parameter instanceof Uint8Array
+    ) {
+      return parameter;
+    }
+    if (typeof parameter === "boolean") return parameter ? 1 : 0;
+    throw new TypeError(`Unsupported SQLite parameter type: ${typeof parameter}`);
+  });
 }

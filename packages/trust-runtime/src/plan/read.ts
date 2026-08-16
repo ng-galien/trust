@@ -1,11 +1,14 @@
 import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 
 import { checkIsActionable } from "../check/actionability.js";
-import type { CheckSnapshot, PlanCheck } from "../model.js";
+import type { Attempt, CheckSnapshot, Fact, PlanCheck } from "../model.js";
+import type { AttemptStore } from "../sqlite/attempts.js";
+import type { FactStore } from "../sqlite/facts.js";
 import type { SnapshotStore } from "../sqlite/snapshots.js";
 import type { PlanStore } from "../sqlite/plans.js";
 import type { SessionStore } from "../sqlite/sessions.js";
 import type { Procedures } from "../procedure/procedures.js";
+import type { Clock } from "../time.js";
 
 const DEFAULT_PROCEDURE_PAGE_SIZE = 49_152;
 const MAX_PROCEDURE_PAGE_SIZE = 65_536;
@@ -42,6 +45,9 @@ export interface PlanView {
   readonly plan: string;
   readonly procedure: string;
   readonly procedureVersion: string;
+  readonly environment: string;
+  readonly rootInputs: Readonly<Record<string, unknown>>;
+  readonly createdAt: string;
   readonly state: "ENGAGED";
   readonly sessionState: "OPEN" | "UNAVAILABLE";
   readonly workState: "IN_PROGRESS" | "COMPLETE";
@@ -79,13 +85,46 @@ export interface PlanView {
     readonly newlyOpened: readonly string[];
     readonly unchanged: readonly string[];
   } | null;
+  readonly revisions: readonly PlanRevisionView[];
+  readonly sessions: readonly SessionRecordView[];
+}
+
+export interface PlanSummaryView {
+  readonly plan: string;
+  readonly procedure: string;
+  readonly procedureVersion: string;
+  readonly environment: string;
+  readonly revision: number;
+  readonly createdAt: string;
+  readonly sessionState: "OPEN" | "UNAVAILABLE";
+  readonly workState: "IN_PROGRESS" | "COMPLETE";
+  readonly satisfiedChecks: number;
+  readonly checkCount: number;
+}
+
+export interface PlanRevisionView {
+  readonly revision: number;
+  readonly definitionDigest: string;
+  readonly source: string;
+  readonly declarations: Readonly<Record<string, unknown>>;
+  readonly roleValues: readonly unknown[];
+  readonly checkValues: readonly unknown[];
+  readonly checkUris: readonly string[];
+}
+
+export interface SessionRecordView {
+  readonly id: string;
+  readonly state: "open" | "closed" | "expired";
+  readonly openedAt: string;
+  readonly expiresAt: string;
+  readonly closedAt?: string;
 }
 
 export interface PlanCheckView {
   readonly checkUri: string;
   readonly name: string;
   readonly scenario: string;
-  readonly target: string | null;
+  readonly target: CheckTargetView;
   readonly inputs: Readonly<Record<string, unknown>>;
   readonly operation: string;
   readonly state: "OPEN" | "SATISFIED";
@@ -104,30 +143,65 @@ export interface SessionView {
   readonly checklistComplete: boolean;
   readonly satisfiedChecks: number;
   readonly openChecks: number;
+  readonly sessions: readonly SessionRecordView[];
+}
+
+export interface CheckAttemptView {
+  readonly handle: string;
+  readonly attemptKey: string;
+  readonly sessionId: string;
+  readonly owner: Attempt["owner"];
+  readonly state: Attempt["state"];
+  readonly admittedAt: string;
+  readonly expiresAt: string;
+  readonly finalizedAt?: string;
+  readonly finalization?: NonNullable<Attempt["finalization"]>;
+  readonly facts: readonly Fact[];
 }
 
 export interface CheckView {
   readonly checkUri: string;
   readonly name: string;
   readonly scenario: string;
-  readonly target: string | null;
+  readonly target: CheckTargetView;
   readonly inputs: Readonly<Record<string, unknown>>;
   readonly state: "OPEN" | "SATISFIED";
   readonly actionable: boolean;
   readonly blockedBy: readonly string[];
   readonly operation: string;
+  readonly context: Readonly<Record<string, unknown>>;
+  readonly scenarioDependencies: readonly string[];
+  readonly checkDependencies: readonly {
+    readonly checkName: string;
+    readonly providerCheckUri: string;
+  }[];
   readonly latestVerdict: "VALIDATED" | "NOT_VALIDATED" | null;
   readonly latestReasonCode: string | null;
   readonly reason: string | null;
   readonly history: readonly {
+    readonly snapshotId: string;
+    readonly attemptHandle: string;
+    readonly state: "open" | "satisfied";
     readonly verdict: "VALIDATED" | "NOT_VALIDATED";
     readonly reasonCode: string;
     readonly reason: string;
     readonly checklistDelta: CheckSnapshot["checklistDelta"];
+    readonly factIds: readonly string[];
+    readonly calculatedAt: string;
   }[];
+  readonly attempts: readonly CheckAttemptView[];
+}
+
+export interface CheckTargetView {
+  readonly role: string;
+  readonly selection: "one" | "each" | "all";
+  readonly value: unknown;
 }
 
 export interface PlanReaderDependencies {
+  readonly clock: Clock;
+  readonly attemptStore: AttemptStore;
+  readonly factStore: FactStore;
   readonly planStore: PlanStore;
   readonly sessionStore: SessionStore;
   readonly snapshotStore: SnapshotStore;
@@ -135,6 +209,9 @@ export interface PlanReaderDependencies {
 }
 
 export class PlanReader {
+  readonly #clock: Clock;
+  readonly #attempts: AttemptStore;
+  readonly #facts: FactStore;
   readonly #plans: PlanStore;
   readonly #sessions: SessionStore;
   readonly #snapshots: SnapshotStore;
@@ -142,11 +219,17 @@ export class PlanReader {
   readonly #cursorSecret = randomBytes(32);
 
   constructor({
+    attemptStore,
+    factStore,
     planStore,
     sessionStore,
     snapshotStore,
     procedures,
+    clock,
   }: PlanReaderDependencies) {
+    this.#clock = clock;
+    this.#attempts = attemptStore;
+    this.#facts = factStore;
     this.#plans = planStore;
     this.#sessions = sessionStore;
     this.#snapshots = snapshotStore;
@@ -180,7 +263,10 @@ export class PlanReader {
         "Procedure cursor is outside the hosted source",
       );
     }
-    const end = Math.min(offset + limit, revision.source.length);
+    const maximumEnd = Math.min(offset + limit, revision.source.length);
+    const end = maximumEnd === revision.source.length
+      ? maximumEnd
+      : pageEndAtLineBoundary(revision.source, offset, maximumEnd);
     return {
       source: revision.source.slice(offset, end),
       ...(end < revision.source.length
@@ -192,6 +278,24 @@ export class PlanReader {
   readPlan(checkUri: string): PlanView {
     const { plan } = this.#resolve(checkUri);
     return this.readPlanBySlug(plan.slug);
+  }
+
+  listPlans(): readonly PlanSummaryView[] {
+    return this.#plans.listPlans().map((plan) => {
+      const view = this.readPlanBySlug(plan.slug);
+      return {
+        plan: view.plan,
+        procedure: view.procedure,
+        procedureVersion: view.procedureVersion,
+        environment: view.environment,
+        revision: view.revision,
+        createdAt: view.createdAt,
+        sessionState: view.sessionState,
+        workState: view.workState,
+        satisfiedChecks: view.satisfiedChecks,
+        checkCount: view.checks.length,
+      };
+    });
   }
 
   readPlanBySlug(planSlug: string): PlanView {
@@ -222,6 +326,7 @@ export class PlanReader {
         parents: role.parents,
       }));
     const checks = this.#plans.listCurrentChecks(plan.slug);
+    const sessionAvailable = this.#sessions.findAvailable(plan.slug, this.#now()) !== undefined;
     const active = new Set(
       this.#snapshots
         .listActive(plan.slug, plan.currentRevision)
@@ -239,7 +344,13 @@ export class PlanReader {
       .map((check) => check.uri)
       .sort();
     const checkViews = checks
-      .map((check) => checkView(check, checks, active, this.#snapshots.findLatest(check.uri)))
+      .map((check) => checkView(
+        check,
+        checks,
+        active,
+        this.#snapshots.findLatest(check.uri),
+        sessionAvailable,
+      ))
       .sort((left, right) => left.checkUri.localeCompare(right.checkUri));
     const actionableChecks = checkViews
       .filter((check) => check.actionable)
@@ -252,8 +363,11 @@ export class PlanReader {
       plan: plan.slug,
       procedure: plan.procedure,
       procedureVersion: plan.procedureVersion,
+      environment: plan.environment,
+      rootInputs: plan.rootInputs,
+      createdAt: plan.createdAt,
       state: "ENGAGED",
-      sessionState: this.#sessions.findOpen(plan.slug) === undefined ? "UNAVAILABLE" : "OPEN",
+      sessionState: sessionAvailable ? "OPEN" : "UNAVAILABLE",
       workState: checklistComplete ? "COMPLETE" : "IN_PROGRESS",
       revision: plan.currentRevision,
       declarations: revision.agentDeclarations,
@@ -277,6 +391,16 @@ export class PlanReader {
             newlyOpened: [...latestQualification.checklistDelta.newlyOpened].sort(),
             unchanged: [...latestQualification.checklistDelta.unchanged].sort(),
           },
+      revisions: this.#plans.listRevisions(plan.slug).map((item) => ({
+        revision: item.revision,
+        definitionDigest: item.definitionDigest,
+        source: item.source,
+        declarations: item.agentDeclarations,
+        roleValues: item.roleValues,
+        checkValues: item.checkValues,
+        checkUris: item.checks.map((check) => check.uri),
+      })),
+      sessions: this.#sessions.listForPlan(plan.slug).map(sessionRecord),
     };
   }
 
@@ -291,6 +415,7 @@ export class PlanReader {
       checklistComplete: view.checklistComplete,
       satisfiedChecks: view.satisfiedChecks,
       openChecks: view.openChecks.length,
+      sessions: view.sessions,
     };
   }
 
@@ -305,7 +430,20 @@ export class PlanReader {
     );
     const state = active.has(checkUri) ? "SATISFIED" : "OPEN";
     const checks = this.#plans.listCurrentChecks(plan.slug);
-    const view = checkView(check, checks, active, latest);
+    const sessionAvailable = this.#sessions.findAvailable(plan.slug, this.#now()) !== undefined;
+    const view = checkView(check, checks, active, latest, sessionAvailable);
+    const attempts = this.#attempts.listByCheck(checkUri).map((attempt) => ({
+      handle: attempt.handle,
+      attemptKey: attempt.attemptKey,
+      sessionId: attempt.sessionId,
+      owner: attempt.owner,
+      state: attempt.state,
+      admittedAt: attempt.admittedAt,
+      expiresAt: attempt.expiresAt,
+      ...(attempt.finalizedAt === undefined ? {} : { finalizedAt: attempt.finalizedAt }),
+      ...(attempt.finalization === undefined ? {} : { finalization: attempt.finalization }),
+      facts: this.#facts.list(attempt.handle),
+    }));
     return {
       checkUri,
       name: view.name,
@@ -316,15 +454,24 @@ export class PlanReader {
       actionable: view.actionable,
       blockedBy: view.blockedBy,
       operation: view.operation,
+      context: check.context,
+      scenarioDependencies: check.scenarioDependencies,
+      checkDependencies: check.checkDependencies,
       latestVerdict: view.latestVerdict,
       latestReasonCode: view.latestReasonCode,
       reason: view.reason,
       history: history.map((snapshot) => ({
+        snapshotId: snapshot.id,
+        attemptHandle: snapshot.attemptHandle,
+        state: snapshot.state,
         verdict: snapshot.verdict,
         reasonCode: snapshot.reasonCode,
         reason: snapshot.reason,
         checklistDelta: snapshot.checklistDelta,
+        factIds: snapshot.factIds,
+        calculatedAt: snapshot.calculatedAt,
       })),
+      attempts,
     };
   }
 
@@ -375,6 +522,12 @@ export class PlanReader {
       changed,
       unchanged,
     };
+  }
+
+  #now(): Date {
+    const now = this.#clock.now();
+    if (Number.isNaN(now.getTime())) throw new Error("Clock returned an invalid instant");
+    return now;
   }
 
   #resolve(checkUri: string): {
@@ -454,17 +607,22 @@ function checkView(
   checks: readonly PlanCheck[],
   active: ReadonlySet<string>,
   latest: CheckSnapshot | undefined,
+  sessionAvailable: boolean,
 ): PlanCheckView {
-  const blockedBy = checkBlockers(check, checks, active);
+  const blockedBy = checkBlockers(check, checks, active, sessionAvailable);
   return {
     checkUri: check.uri,
     name: check.check.name,
     scenario: check.scenario,
-    target: check.expansion[0] ?? null,
+    target: {
+      role: check.scope.role,
+      selection: check.check.target.selection,
+      value: check.scope.value,
+    },
     inputs: check.actionInput,
     operation: check.check.operation,
     state: active.has(check.uri) ? "SATISFIED" : "OPEN",
-    actionable: checkIsActionable(check, checks, (uri) => active.has(uri)),
+    actionable: sessionAvailable && checkIsActionable(check, checks, (uri) => active.has(uri)),
     blockedBy,
     latestVerdict: latest?.verdict ?? null,
     latestReasonCode: latest?.reasonCode ?? null,
@@ -476,6 +634,7 @@ function checkBlockers(
   check: PlanCheck,
   checks: readonly PlanCheck[],
   active: ReadonlySet<string>,
+  sessionAvailable: boolean,
 ): readonly string[] {
   if (active.has(check.uri)) return Object.freeze([]);
   const blockers = new Set<string>();
@@ -500,6 +659,9 @@ function checkBlockers(
   if (check.currentContextDigest === undefined && blockers.size === 0) {
     blockers.add("current Plan context is unavailable");
   }
+  if (!sessionAvailable && blockers.size === 0) {
+    blockers.add("Plan Session is unavailable");
+  }
   return Object.freeze([...blockers].sort());
 }
 
@@ -509,8 +671,29 @@ function compareSnapshots(left: CheckSnapshot, right: CheckSnapshot): number {
   return left.checkUri.localeCompare(right.checkUri);
 }
 
+function sessionRecord(session: {
+  readonly id: string;
+  readonly state: "open" | "closed" | "expired";
+  readonly openedAt: string;
+  readonly expiresAt: string;
+  readonly closedAt?: string;
+}): SessionRecordView {
+  return {
+    id: session.id,
+    state: session.state,
+    openedAt: session.openedAt,
+    expiresAt: session.expiresAt,
+    ...(session.closedAt === undefined ? {} : { closedAt: session.closedAt }),
+  };
+}
+
 function digest(value: string): string {
   return createHash("sha256").update(value, "utf8").digest("hex");
+}
+
+function pageEndAtLineBoundary(source: string, offset: number, maximumEnd: number): number {
+  const newline = source.lastIndexOf("\n", maximumEnd - 1);
+  return newline >= offset ? newline + 1 : maximumEnd;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

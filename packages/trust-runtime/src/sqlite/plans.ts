@@ -24,6 +24,10 @@ interface RevisionRow extends DatabaseRow {
   check_values_json: string;
 }
 
+interface RevisionNumberRow extends DatabaseRow {
+  revision: number;
+}
+
 interface CheckRow extends DatabaseRow {
   check_json: string;
 }
@@ -143,15 +147,34 @@ export class PlanStore {
     if (!row) {
       return undefined;
     }
-    return {
-      slug: row.plan_slug,
-      procedure: row.procedure_name,
-      procedureVersion: row.procedure_version,
-      environment: row.environment,
-      rootInputs: JSON.parse(row.root_inputs_json) as Record<string, unknown>,
-      currentRevision: row.current_revision,
-      createdAt: row.created_at,
-    };
+    return toPlan(row);
+  }
+
+  listPlans(): Plan[] {
+    return this.#database
+      .prepare(
+        `SELECT plan_slug, procedure_name, procedure_version, environment, root_inputs_json,
+                current_revision, created_at
+           FROM plans
+          ORDER BY created_at DESC, plan_slug`,
+      )
+      .all<PlanRow>()
+      .map(toPlan);
+  }
+
+  listRevisions(planSlug: string): PlanRevision[] {
+    return this.#database
+      .prepare(
+        `SELECT revision
+           FROM plan_revisions
+          WHERE plan_slug = ?
+          ORDER BY revision DESC`,
+      )
+      .all<RevisionNumberRow>(planSlug)
+      .flatMap(({ revision }) => {
+        const value = this.readRevision(planSlug, revision);
+        return value === undefined ? [] : [value];
+      });
   }
 
   findCurrentCheck(checkUri: string): PlanCheck | undefined {
@@ -235,6 +258,18 @@ export class PlanStore {
       checks,
     };
   }
+}
+
+function toPlan(row: PlanRow): Plan {
+  return {
+    slug: row.plan_slug,
+    procedure: row.procedure_name,
+    procedureVersion: row.procedure_version,
+    environment: row.environment,
+    rootInputs: JSON.parse(row.root_inputs_json) as Record<string, unknown>,
+    currentRevision: row.current_revision,
+    createdAt: row.created_at,
+  };
 }
 
 function canonicalJson(value: unknown): string {

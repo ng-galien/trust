@@ -20,9 +20,10 @@ import type { PlanStore } from "../sqlite/plans.js";
 import type { SessionStore } from "../sqlite/sessions.js";
 import type { Procedures } from "../procedure/procedures.js";
 import type { SkillAdmission } from "../skill/admission.js";
+import type { EnvironmentService } from "../environment/service.js";
 import { buildPlanRevision, validateAgentDeclarations } from "./build.js";
 
-const SESSION_DURATION_MS = 24 * 60 * 60 * 1_000;
+export const DEFAULT_SESSION_DURATION_MS = 24 * 60 * 60 * 1_000;
 
 export type PlanRuntimeErrorCode =
   | "invalid-plan-engagement"
@@ -168,7 +169,7 @@ export interface PlanRuntimeDependencies {
   readonly clock: Clock;
   readonly databaseDriver: DatabaseDriver;
   readonly semanticAuthority: string;
-  readonly environments: Readonly<Record<string, RuntimeJsonObject>>;
+  readonly environmentService: EnvironmentService;
   readonly procedures: Procedures;
   readonly planStore: PlanStore;
   readonly sessionStore: SessionStore;
@@ -176,13 +177,14 @@ export interface PlanRuntimeDependencies {
   readonly factStore: FactStore;
   readonly snapshotStore: SnapshotStore;
   readonly skillAdmission: SkillAdmission;
+  readonly sessionDurationMs: number;
 }
 
 export class PlanRuntime {
   readonly #clock: Clock;
   readonly #database: DatabaseDriver;
   readonly #authority: string;
-  readonly #environments: Readonly<Record<string, RuntimeJsonObject>>;
+  readonly #environments: EnvironmentService;
   readonly #procedures: Procedures;
   readonly #plans: PlanStore;
   readonly #sessions: SessionStore;
@@ -190,12 +192,16 @@ export class PlanRuntime {
   readonly #facts: FactStore;
   readonly #snapshots: SnapshotStore;
   readonly #skillAdmission: SkillAdmission;
+  readonly #sessionDurationMs: number;
 
   constructor(dependencies: PlanRuntimeDependencies) {
+    if (!Number.isSafeInteger(dependencies.sessionDurationMs) || dependencies.sessionDurationMs <= 0) {
+      throw new TypeError("sessionDurationMs must be a positive integer");
+    }
     this.#clock = dependencies.clock;
     this.#database = dependencies.databaseDriver;
     this.#authority = dependencies.semanticAuthority;
-    this.#environments = dependencies.environments;
+    this.#environments = dependencies.environmentService;
     this.#procedures = dependencies.procedures;
     this.#plans = dependencies.planStore;
     this.#sessions = dependencies.sessionStore;
@@ -203,6 +209,7 @@ export class PlanRuntime {
     this.#facts = dependencies.factStore;
     this.#snapshots = dependencies.snapshotStore;
     this.#skillAdmission = dependencies.skillAdmission;
+    this.#sessionDurationMs = dependencies.sessionDurationMs;
   }
 
   engage(input: PlanEngagementInput): PlanEngagementResult {
@@ -213,7 +220,7 @@ export class PlanRuntime {
     if (!published) {
       throw new PlanRuntimeError("procedure-not-found", `Procedure ${input.procedure}@${input.procedureVersion} is not published`);
     }
-    if (!this.#environments[input.environment]) {
+    if (!this.#environments.resolve(input.environment)) {
       throw new PlanRuntimeError("invalid-plan-engagement", `Environment "${input.environment}" is not configured`);
     }
     let revision: PlanRevision;
@@ -248,7 +255,7 @@ export class PlanRuntime {
         planSlug: input.plan,
         state: "open",
         openedAt: now.toISOString(),
-        expiresAt: new Date(now.getTime() + SESSION_DURATION_MS).toISOString(),
+        expiresAt: new Date(now.getTime() + this.#sessionDurationMs).toISOString(),
       });
     });
     return engagement(1, revision, input);
@@ -308,7 +315,7 @@ export class PlanRuntime {
       checkUri: attempt.checkUri,
       operation: resolved.check.operation,
       actionInput: attempt.actionInput,
-      environment: this.#environments[attempt.environment] ?? {},
+      environment: this.#environments.resolve(attempt.environment) ?? {},
       expiresAt: attempt.expiresAt,
     };
   }
@@ -605,8 +612,8 @@ export class PlanRuntime {
     if (!checkDependenciesSatisfied(check, this.#plans.listCurrentChecks(plan.slug), (uri) => active.has(uri))) {
       return { refusal: refusal(attemptKey, "check-not-actionable", "The Check dependencies are not satisfied") };
     }
-    const session = this.#sessions.findOpen(plan.slug);
-    if (!session || Date.parse(session.expiresAt) <= this.#now().getTime()) {
+    const session = this.#sessions.findAvailable(plan.slug, this.#now());
+    if (!session) {
       return { refusal: refusal(attemptKey, "session-unavailable", "The Plan has no active Session") };
     }
     return { attemptKey, check, plan, session };
@@ -652,7 +659,7 @@ export class PlanRuntime {
       planSlug: plan,
       state: "open",
       openedAt: now.toISOString(),
-      expiresAt: new Date(now.getTime() + SESSION_DURATION_MS).toISOString(),
+      expiresAt: new Date(now.getTime() + this.#sessionDurationMs).toISOString(),
     });
   }
 

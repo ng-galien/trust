@@ -47,6 +47,10 @@ export class Procedures {
     return this.#store.find(procedure, version);
   }
 
+  list(): readonly PublishedProcedure[] {
+    return this.#store.list();
+  }
+
   findOperation(
     operation: string,
     digest: string,

@@ -69,6 +69,18 @@ export class AttemptStore {
     return row ? toAttempt(row) : undefined;
   }
 
+  listByCheck(checkUri: string): Attempt[] {
+    return this.#database
+      .prepare(
+        `SELECT ${COLUMNS}
+           FROM attempts
+          WHERE check_uri = ?
+          ORDER BY admitted_at DESC, attempt_handle`,
+      )
+      .all<AttemptRow>(checkUri)
+      .map(toAttempt);
+  }
+
   finalize(handle: string, finalizedAt: string, finalization: NonNullable<Attempt["finalization"]>): void {
     const result = this.#database.prepare(
       "UPDATE attempts SET state = 'finalized', finalized_at = ?, finalization_json = ? WHERE attempt_handle = ? AND state = 'pending'",

@@ -8,6 +8,9 @@ import type {
 } from "../plan/runtime.js";
 
 export const PLAN_ENGAGE_METHOD = "plan.engage" as const;
+export const PLAN_LIST_METHOD = "plan.list" as const;
+export const PLAN_READ_METHOD = "plan.read" as const;
+export const SESSION_READ_METHOD = "session.read" as const;
 export const CHECK_READ_METHOD = "check.read" as const;
 export const CHECK_ATTEMPT_ADMIT_METHOD = "check.attempt.admit" as const;
 export const CHECK_ATTEMPT_FINALIZE_METHOD = "check.attempt.finalize" as const;
@@ -35,6 +38,9 @@ export interface PlanRuntimeFailureData {
 
 export const PLAN_RUNTIME_RPC_METHODS = [
   PLAN_ENGAGE_METHOD,
+  PLAN_LIST_METHOD,
+  PLAN_READ_METHOD,
+  SESSION_READ_METHOD,
   CHECK_READ_METHOD,
   CHECK_ATTEMPT_ADMIT_METHOD,
   CHECK_ATTEMPT_FINALIZE_METHOD,
@@ -73,6 +79,52 @@ export function executePlanRuntimeRpc(
   context: PlanRuntimeRpcContext,
 ): unknown {
   switch (method) {
+    case PLAN_LIST_METHOD:
+      parseEmpty(params);
+      dependencies.registryAuthority.authorize({
+        ...(context.authorizationHeader === undefined
+          ? {}
+          : { authorizationHeader: context.authorizationHeader }),
+        anyRoleOf: ["observer", "operator"],
+      });
+      return {
+        contract: "trust.plan-catalog@1",
+        plans: dependencies.planReader.listPlans(),
+      };
+    case PLAN_READ_METHOD: {
+      const input = parsePlanRead(params);
+      dependencies.registryAuthority.authorize({
+        ...(context.authorizationHeader === undefined
+          ? {}
+          : { authorizationHeader: context.authorizationHeader }),
+        anyRoleOf: ["observer", "operator"],
+      });
+      return {
+        contract: "trust.plan-view@1",
+        ...dependencies.planReader.readPlanBySlug(input.plan),
+      };
+    }
+    case SESSION_READ_METHOD: {
+      const input = parsePlanRead(params);
+      dependencies.registryAuthority.authorize({
+        ...(context.authorizationHeader === undefined
+          ? {}
+          : { authorizationHeader: context.authorizationHeader }),
+        anyRoleOf: ["observer", "operator"],
+      });
+      const plan = dependencies.planReader.readPlanBySlug(input.plan);
+      return {
+        contract: "trust.session-view@1",
+        plan: plan.plan,
+        state: plan.sessionState,
+        activeRevision: plan.revision,
+        workState: plan.workState,
+        checklistComplete: plan.checklistComplete,
+        satisfiedChecks: plan.satisfiedChecks,
+        openChecks: plan.openChecks.length,
+        sessions: plan.sessions,
+      };
+    }
     case PLAN_ENGAGE_METHOD: {
       const input = parsePlanEngagement(params);
       dependencies.registryAuthority.authorize({
@@ -92,12 +144,7 @@ export function executePlanRuntimeRpc(
         anyRoleOf: ["observer", "operator"],
       });
       const view = dependencies.planReader.readCheck(input.checkUri);
-      return {
-        contract: "trust.check-view@1",
-        checkUri: view.checkUri,
-        state: view.state,
-        history: view.history,
-      };
+      return { contract: "trust.check-view@1", ...view };
     }
     case CHECK_ATTEMPT_ADMIT_METHOD: {
       const input = parseCheckAdmission(params);
@@ -145,6 +192,18 @@ export function executePlanRuntimeRpc(
       });
     }
   }
+}
+
+function parseEmpty(value: unknown): void {
+  if (!isRecord(value) || Object.keys(value).length !== 0) {
+    throw new InvalidPlanRuntimeRpcParams();
+  }
+}
+
+function parsePlanRead(value: unknown): { readonly plan: string } {
+  const record = exactRecord(value, ["plan"]);
+  if (!boundedString(record.plan)) throw new InvalidPlanRuntimeRpcParams();
+  return { plan: record.plan };
 }
 
 function parsePlanEngagement(value: unknown): PlanEngagementParams {

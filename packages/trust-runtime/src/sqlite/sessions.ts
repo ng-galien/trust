@@ -41,6 +41,17 @@ export class SessionStore {
     return row ? toSession(row) : undefined;
   }
 
+  findAvailable(planSlug: string, now: Date): Session | undefined {
+    const row = this.dependencies.databaseDriver
+      .prepare(
+        `SELECT session_id, plan_slug, state, opened_at, expires_at, closed_at
+           FROM sessions
+          WHERE plan_slug = ? AND state = 'open' AND expires_at > ?`,
+      )
+      .get<SessionRow>(planSlug, now.toISOString());
+    return row ? toSession(row) : undefined;
+  }
+
   findById(sessionId: string): Session | undefined {
     const row = this.dependencies.databaseDriver
       .prepare(
@@ -50,6 +61,18 @@ export class SessionStore {
       )
       .get<SessionRow>(sessionId);
     return row ? toSession(row) : undefined;
+  }
+
+  listForPlan(planSlug: string): Session[] {
+    return this.dependencies.databaseDriver
+      .prepare(
+        `SELECT session_id, plan_slug, state, opened_at, expires_at, closed_at
+           FROM sessions
+          WHERE plan_slug = ?
+          ORDER BY opened_at DESC`,
+      )
+      .all<SessionRow>(planSlug)
+      .map(toSession);
   }
 
   changeState(sessionId: string, state: Session["state"], closedAt?: string): void {

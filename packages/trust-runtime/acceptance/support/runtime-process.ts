@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { RegistryPrincipalConfiguration } from "../../src/skill/authority.js";
-import type { RuntimeJsonObject } from "../../src/model.js";
+import type { EnvironmentValues } from "../../src/environment/service.js";
 
 const buildRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 
@@ -22,7 +22,9 @@ export interface PublicRuntimeOptions {
   readonly registryPrincipalConfigurations?: readonly RegistryPrincipalConfiguration[];
   readonly skillPolicy?: "local" | "verified";
   readonly operationsDirectory?: string;
-  readonly environments?: Readonly<Record<string, RuntimeJsonObject>>;
+  readonly environments?: Readonly<Record<string, EnvironmentValues>>;
+  readonly sessionDurationMs?: number;
+  readonly trialTimeoutMs?: number;
 }
 
 export async function startPublicRuntime(
@@ -44,9 +46,12 @@ export async function startPublicRuntime(
       ...(options.operationsDirectory === undefined
         ? {}
         : { TRUST_OPERATIONS_DIRECTORY: options.operationsDirectory }),
-      ...(options.environments === undefined
+      ...(options.sessionDurationMs === undefined
         ? {}
-        : { TRUST_ENVIRONMENTS_JSON: JSON.stringify(options.environments) }),
+        : { TRUST_SESSION_DURATION_MS: String(options.sessionDurationMs) }),
+      ...(options.trialTimeoutMs === undefined
+        ? {}
+        : { TRUST_TRIAL_TIMEOUT_MS: String(options.trialTimeoutMs) }),
       ...(options.maxClockSkewMs === undefined
         ? {}
         : { TRUST_SKILL_MAX_CLOCK_SKEW_MS: String(options.maxClockSkewMs) }),
@@ -62,6 +67,9 @@ export async function startPublicRuntime(
 
   try {
     const endpoint = await listeningEndpoint(runtime);
+    for (const [environment, values] of Object.entries(options.environments ?? {})) {
+      await configureEnvironment(endpoint, environment, values);
+    }
     return {
       endpoint,
       close: async () => {
@@ -76,6 +84,27 @@ export async function startPublicRuntime(
     runtime.kill("SIGTERM");
     await rm(dataDirectory, { recursive: true, force: true });
     throw error;
+  }
+}
+
+async function configureEnvironment(
+  endpoint: string,
+  environment: string,
+  values: EnvironmentValues,
+): Promise<void> {
+  const response = await fetch(`${endpoint}/rpc`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      jsonrpc: "2.0",
+      id: `environment-${environment}`,
+      method: "environment.save",
+      params: { environment, values },
+    }),
+  });
+  const envelope = await response.json() as { readonly error?: unknown };
+  if (!response.ok || envelope.error !== undefined) {
+    throw new Error(`TRUST runtime rejected Environment "${environment}": ${JSON.stringify(envelope.error)}`);
   }
 }
 

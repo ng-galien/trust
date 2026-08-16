@@ -13,10 +13,12 @@ const operationsDirectory = path.join(repositoryRoot, "assets/operations");
 test("a Plan engages before future agent declarations exist", async () => {
   const runtime = await startRuntime("trust-future-declarations-");
   try {
-    await publish(runtime.endpoint, path.join(
+    const procedureFile = path.join(
       repositoryRoot,
       "assets/procedures/04-end-to-end-red-green.feature",
-    ));
+    );
+    const procedureSource = await readFile(procedureFile, "utf8");
+    await publish(runtime.endpoint, procedureFile);
     const engagement = await rpc(runtime.endpoint, "plan.engage", {
       contract: "trust.plan-engagement-request@1",
       procedure: "end-to-end-red-green",
@@ -31,6 +33,141 @@ test("a Plan engages before future agent declarations exist", async () => {
     assert.ok(engagement.checkUris.some((uri) => uri.includes("git-head-read")));
     assert.ok(engagement.checkUris.some((uri) => uri.includes("jira-issue-read")));
     assert.ok(engagement.checkUris.some((uri) => uri.includes("telemetry-trace-read")));
+
+    const plan = await mcpTool(runtime.endpoint, "trust_plan_read", {
+      checkUri: engagement.checkUris[0],
+    });
+    assert.match(plan, /NEXT\nYou can act now:/);
+    assert.match(plan, /Run 1 actionable Check with the TRUST Skill/);
+    assert.match(plan, /Declare 5 missing declaration roles with trust_plan_declarations_replace/);
+    assert.match(plan, /- affected project: many reference; parent: jira issue/);
+    assert.match(plan, /Scenario "green" has no current Check yet/);
+    assert.match(plan, /Its Checks will appear when their required context exists/);
+    assert.doesNotMatch(plan, /Declaration roles: \[/);
+
+    const firstPageText = await mcpTool(runtime.endpoint, "trust_procedure_read", {
+      checkUri: engagement.checkUris[0],
+      limit: 900,
+    });
+    assert.match(firstPageText, /\n\n\nREAD STATUS\nComplete: no/);
+    const firstPage = parseProcedurePage(firstPageText);
+    assert.equal(firstPage.complete, false);
+    assert.ok(firstPage.nextCursor);
+
+    const alteredCursor = `${firstPage.nextCursor.slice(0, -1)}${
+      firstPage.nextCursor.endsWith("a") ? "b" : "a"
+    }`;
+    assert.match(
+      await mcpToolFailure(runtime.endpoint, "trust_procedure_read", {
+        checkUri: engagement.checkUris[0],
+        cursor: alteredCursor,
+        limit: 900,
+      }),
+      /cursor is invalid/,
+    );
+    assert.match(
+      await mcpToolFailure(runtime.endpoint, "trust_procedure_read", {
+        checkUri: engagement.checkUris[1],
+        cursor: firstPage.nextCursor,
+        limit: 900,
+      }),
+      /cursor is invalid/,
+    );
+
+    let reconstructed = firstPage.source;
+    let cursor: string | undefined = firstPage.nextCursor;
+    while (cursor !== undefined) {
+      const page = parseProcedurePage(await mcpTool(runtime.endpoint, "trust_procedure_read", {
+        checkUri: engagement.checkUris[0],
+        cursor,
+        limit: 900,
+      }));
+      reconstructed += page.source;
+      cursor = page.nextCursor;
+      if (cursor === undefined) assert.equal(page.complete, true);
+    }
+    assert.equal(reconstructed, procedureSource);
+  } finally {
+    await runtime.close();
+  }
+});
+
+test("MCP never presents a Check as actionable after its Session expires", async () => {
+  const runtime = await startPublicRuntime("trust-expired-session-", {
+    skillPolicy: "local",
+    operationsDirectory,
+    environments: { local: { workspaceRoot: repositoryRoot } },
+    sessionDurationMs: 100,
+  });
+  try {
+    await publish(runtime.endpoint, path.join(repositoryRoot, "assets/procedures/00-git-status.feature"));
+    const engagement = await rpc(runtime.endpoint, "plan.engage", {
+      contract: "trust.plan-engagement-request@1",
+      procedure: "git-status",
+      procedureVersion: "2.0.0",
+      plan: "expired-session",
+      environment: "local",
+      rootInputs: { repository: "repository" },
+    }) as { checkUris: readonly string[] };
+    await new Promise((resolve) => setTimeout(resolve, 150));
+
+    const plan = await mcpTool(runtime.endpoint, "trust_plan_read", {
+      checkUri: engagement.checkUris[0],
+    });
+    assert.match(plan, /Session: UNAVAILABLE/);
+    assert.match(plan, /Do not run a Check until it is open/);
+    assert.doesNotMatch(plan, /ACTIONABLE CHECKS/);
+    assert.match(plan, /The Plan Session is unavailable/);
+
+    const check = await mcpTool(runtime.endpoint, "trust_check_read", {
+      checkUri: engagement.checkUris[0],
+    });
+    assert.match(check, /Do not run this Check yet/);
+    assert.match(check, /The Plan Session is unavailable/);
+
+    const admission = await rpc(runtime.endpoint, "check.attempt.admit", {
+      contract: "trust.check-admission-request@1",
+      attemptKey: "expired-session-attempt",
+      checkUri: engagement.checkUris[0],
+    }) as { status: string; reasonCode: string };
+    assert.equal(admission.status, "REFUSED");
+    assert.equal(admission.reasonCode, "session-unavailable");
+  } finally {
+    await runtime.close();
+  }
+});
+
+test("MCP gives the accepted array shape for one declaration per parent", async () => {
+  const runtime = await startRuntime("trust-one-for-each-");
+  try {
+    await publish(runtime.endpoint, fixture("one-for-each-declaration.feature"));
+    const engagement = await rpc(runtime.endpoint, "plan.engage", {
+      contract: "trust.plan-engagement-request@1",
+      procedure: "one-for-each-declaration",
+      procedureVersion: "1.0.0",
+      plan: "one-for-each-declaration",
+      environment: "local",
+      rootInputs: { repository: ["repository-a", "repository-b"] },
+    }) as { checkUris: readonly string[] };
+
+    const plan = await mcpTool(runtime.endpoint, "trust_plan_read", {
+      checkUri: engagement.checkUris[0],
+    });
+    assert.match(plan, /- branch: one string; parent for each: repository/);
+    assert.match(plan, /Value shape: \[\{"value": <string>/);
+    assert.match(plan, /exactly one entry for each repository/);
+
+    const replacement = await mcpTool(runtime.endpoint, "trust_plan_declarations_replace", {
+      plan: "one-for-each-declaration",
+      expectedRevision: 1,
+      declarations: {
+        branch: [
+          { value: "main", parents: [{ role: "repository", value: "repository-a" }] },
+          { value: "main", parents: [{ role: "repository", value: "repository-b" }] },
+        ],
+      },
+    });
+    assert.match(replacement, /Revision: 2/);
   } finally {
     await runtime.close();
   }
@@ -241,7 +378,7 @@ async function startRuntime(prefix: string) {
   return startPublicRuntime(prefix, {
     skillPolicy: "local",
     operationsDirectory,
-    environments: { local: { projectRoot: repositoryRoot } },
+    environments: { local: { workspaceRoot: repositoryRoot } },
   });
 }
 
@@ -330,6 +467,58 @@ async function mcpTool(
   const text = envelope.result?.content?.find((item) => item.type === "text")?.text;
   assert.equal(typeof text, "string");
   return text!;
+}
+
+async function mcpToolFailure(
+  endpoint: string,
+  name: string,
+  arguments_: Readonly<Record<string, unknown>>,
+): Promise<string> {
+  const response = await fetch(`${endpoint}/mcp`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      accept: "application/json",
+      "mcp-protocol-version": "2025-06-18",
+    },
+    body: JSON.stringify({
+      jsonrpc: "2.0",
+      id: name,
+      method: "tools/call",
+      params: { name, arguments: arguments_ },
+    }),
+  });
+  assert.equal(response.status, 200);
+  const envelope = await response.json() as {
+    result?: { content?: readonly { type?: string; text?: string }[]; isError?: boolean };
+    error?: unknown;
+  };
+  assert.equal(envelope.error, undefined, JSON.stringify(envelope.error));
+  assert.equal(envelope.result?.isError, true);
+  const text = envelope.result?.content?.find((item) => item.type === "text")?.text;
+  assert.equal(typeof text, "string");
+  return text!;
+}
+
+function parseProcedurePage(text: string): {
+  readonly source: string;
+  readonly complete: boolean;
+  readonly nextCursor?: string;
+} {
+  const prefix = "PROCEDURE SOURCE\n";
+  const marker = "\n\nREAD STATUS\n";
+  assert.ok(text.startsWith(prefix));
+  const markerIndex = text.lastIndexOf(marker);
+  assert.notEqual(markerIndex, -1);
+  const status = text.slice(markerIndex + marker.length);
+  const complete = /^Complete: yes$/m.test(status);
+  const nextCursor = /^Next cursor: (.+)$/m.exec(status)?.[1];
+  assert.equal(complete, nextCursor === undefined);
+  return {
+    source: text.slice(prefix.length, markerIndex),
+    complete,
+    ...(nextCursor === undefined ? {} : { nextCursor }),
+  };
 }
 
 function uniqueUris(text: string): string[] {

@@ -1,6 +1,28 @@
 import type { DatabaseDriver } from "./database.js";
 
 const CURRENT_SCHEMA = `
+  CREATE TABLE IF NOT EXISTS environments (
+    name TEXT PRIMARY KEY,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  ) STRICT;
+
+  CREATE TABLE IF NOT EXISTS environment_variables (
+    environment TEXT NOT NULL REFERENCES environments(name) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    value TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY (environment, name)
+  ) STRICT;
+
+  CREATE TABLE IF NOT EXISTS environment_credentials (
+    environment TEXT NOT NULL REFERENCES environments(name) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    value TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY (environment, name)
+  ) STRICT;
+
   CREATE TABLE IF NOT EXISTS published_procedures (
     procedure_name TEXT NOT NULL,
     procedure_version TEXT NOT NULL,
@@ -319,6 +341,9 @@ export function recreateCurrentSchema(databaseDriver: DatabaseDriver): void {
     DROP TABLE IF EXISTS skill_verified_distributions;
     DROP TABLE IF EXISTS skill_conformance_attestations;
     DROP TABLE IF EXISTS skill_release_claims;
+    DROP TABLE IF EXISTS environment_credentials;
+    DROP TABLE IF EXISTS environment_variables;
+    DROP TABLE IF EXISTS environments;
   `);
   initializeCurrentSchema(databaseDriver);
 }

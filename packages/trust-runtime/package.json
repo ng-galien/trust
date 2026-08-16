@@ -11,14 +11,16 @@
     "build": "npm run clean && tsc -p tsconfig.json",
     "clean": "node --input-type=module -e \"import { rmSync } from 'node:fs'; rmSync('dist', { recursive: true, force: true })\"",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test:acceptance": "npm run build && node --test dist/acceptance/*.acceptance.test.js",
+    "pretest:acceptance": "npm run package:skill --workspace=@trust/runner",
+    "test:acceptance": "npm run build && node --test --test-concurrency=1 dist/acceptance/*.acceptance.test.js",
     "start": "node dist/src/index.js"
   },
   "dependencies": {
     "@trust/operation": "file:../trust-operation",
     "@trust/procedure": "file:../trust-procedure",
     "awilix": "^13.0.5",
-    "express": "^4.21.2"
+    "express": "^4.21.2",
+    "kysely": "^0.29.5"
   },
   "devDependencies": {
     "@types/express": "^5.0.0",

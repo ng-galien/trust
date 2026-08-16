@@ -10,7 +10,7 @@ import type { Express, Router } from "express";
 import type { CompiledOperation } from "@trust/operation";
 import { PlanReader } from "./plan/read.js";
 import { Health } from "./health.js";
-import { PlanRuntime } from "./plan/runtime.js";
+import { DEFAULT_SESSION_DURATION_MS, PlanRuntime } from "./plan/runtime.js";
 import { Procedures } from "./procedure/procedures.js";
 import { SkillPreflight } from "./skill/preflight.js";
 import {
@@ -35,7 +35,6 @@ import { SystemClock, type Clock } from "./time.js";
 import { ConfiguredRegistryAuthority } from "./skill/configured-authority.js";
 import { LocalRegistryAuthority } from "./skill/local-authority.js";
 import type { DatabaseDriver } from "./sqlite/database.js";
-import type { RuntimeJsonObject } from "./model.js";
 import type {
   RegistryAuthority,
   RegistryPrincipalConfiguration,
@@ -46,17 +45,29 @@ import {
 } from "./skill/model.js";
 import { createHttpApp } from "./http/app.js";
 import { createMcpHttpHandler } from "./http/mcp.js";
+import { createDiagnosticsHttpHandler } from "./http/diagnostics.js";
 import { createOtlpHttpHandler } from "./http/otlp.js";
 import { createRpcHttpHandler } from "./http/rpc.js";
+import { TrialRegistry } from "./trial/registry.js";
+import { DEFAULT_TRIAL_TIMEOUT_MS, defaultRunnerTrialScript, TrialService } from "./trial/service.js";
+import { createDatabase, type Database } from "./database/database.js";
+import { EnvironmentStore } from "./environment/store.js";
+import { EnvironmentService } from "./environment/service.js";
+import { CredentialStore } from "./credential/store.js";
+import { CredentialService } from "./credential/service.js";
 
 export interface RuntimeComponents {
   readonly databasePath: string;
   readonly semanticAuthority: string;
   readonly databaseDriver: DatabaseDriver;
+  readonly database: Database;
   readonly clock: Clock;
   readonly health: Health;
   readonly operations: readonly CompiledOperation[];
-  readonly environments: Readonly<Record<string, RuntimeJsonObject>>;
+  readonly environmentStore: EnvironmentStore;
+  readonly environmentService: EnvironmentService;
+  readonly credentialStore: CredentialStore;
+  readonly credentialService: CredentialService;
   readonly planStore: PlanStore;
   readonly procedureStore: ProcedureStore;
   readonly procedures: Procedures;
@@ -75,9 +86,16 @@ export interface RuntimeComponents {
   readonly registryAuthority: RegistryAuthority;
   readonly skillPolicy: SkillPolicy;
   readonly skillOperabilityPolicy: SkillOperabilityPolicy;
+  readonly sessionDurationMs: number;
   readonly rpcHttpHandler: Router;
   readonly mcpHttpHandler: Router;
   readonly otlpHttpHandler: Router;
+  readonly diagnosticsHttpHandler: Router;
+  readonly trialRegistry: TrialRegistry;
+  readonly trialService: TrialService;
+  readonly diagnosticsEndpoint: string;
+  readonly runnerTrialScript: string;
+  readonly trialTimeoutMs: number;
   readonly httpApp: Express;
 }
 
@@ -87,13 +105,17 @@ export interface RuntimeContainerOptions {
   registryPrincipalConfigurations?: readonly RegistryPrincipalConfiguration[];
   skillPolicy?: SkillPolicy;
   skillOperabilityPolicy?: SkillOperabilityPolicy;
+  sessionDurationMs?: number;
   operations?: readonly CompiledOperation[];
-  environments?: Readonly<Record<string, RuntimeJsonObject>>;
+  /** Base URL trial runners post their diagnostics to (this runtime's own diagnostic receiver). */
+  diagnosticsEndpoint?: string;
+  runnerTrialScript?: string;
+  trialTimeoutMs?: number;
 }
 
-export const createRuntimeContainer = (
+export const createRuntimeContainer = async (
   options: RuntimeContainerOptions = {},
-): AwilixContainer<RuntimeComponents> => {
+): Promise<AwilixContainer<RuntimeComponents>> => {
   const skillPolicy = options.skillPolicy ?? "local";
   const container = createContainer<RuntimeComponents>({
     injectionMode: InjectionMode.PROXY,
@@ -105,14 +127,17 @@ export const createRuntimeContainer = (
     semanticAuthority: asValue(options.semanticAuthority ?? "localhost:4318"),
     registryPrincipalConfigurations: asValue(options.registryPrincipalConfigurations ?? []),
     operations: asValue(options.operations ?? []),
-    environments: asValue(options.environments ?? {}),
     skillPolicy: asValue(skillPolicy),
     skillOperabilityPolicy: asValue(
       options.skillOperabilityPolicy ?? DEFAULT_SKILL_OPERABILITY_POLICY,
     ),
+    sessionDurationMs: asValue(options.sessionDurationMs ?? DEFAULT_SESSION_DURATION_MS),
     databaseDriver: asClass(SqliteDatabaseDriver)
       .singleton()
       .disposer((databaseDriver) => databaseDriver.close()),
+    database: asFunction(createDatabase)
+      .singleton()
+      .disposer((database) => database.destroy()),
     clock: asClass(SystemClock).singleton(),
     registryAuthority: asFunction(createRegistryAuthority).singleton(),
     health: asClass(Health).singleton(),
@@ -123,6 +148,10 @@ export const createRuntimeContainer = (
     attemptStore: asClass(AttemptStore).singleton(),
     factStore: asClass(FactStore).singleton(),
     snapshotStore: asClass(SnapshotStore).singleton(),
+    environmentStore: asClass(EnvironmentStore).singleton(),
+    environmentService: asClass(EnvironmentService).singleton(),
+    credentialStore: asClass(CredentialStore).singleton(),
+    credentialService: asClass(CredentialService).singleton(),
     skillStore: asClass(SkillStore).singleton(),
     skillRegistry: asClass(SkillRegistry).singleton(),
     skillCompatibility: asClass(SkillCompatibility).singleton(),
@@ -133,13 +162,26 @@ export const createRuntimeContainer = (
     rpcHttpHandler: asFunction(createRpcHttpHandler).singleton(),
     mcpHttpHandler: asFunction(createMcpHttpHandler).singleton(),
     otlpHttpHandler: asFunction(createOtlpHttpHandler).singleton(),
+    diagnosticsHttpHandler: asFunction(createDiagnosticsHttpHandler).singleton(),
+    trialRegistry: asFunction(() => new TrialRegistry()).singleton(),
+    trialService: asClass(TrialService).singleton(),
+    diagnosticsEndpoint: asValue(options.diagnosticsEndpoint ?? "http://127.0.0.1:4318/otlp/diagnostics"),
+    runnerTrialScript: asValue(options.runnerTrialScript ?? defaultRunnerTrialScript()),
+    trialTimeoutMs: asValue(options.trialTimeoutMs ?? DEFAULT_TRIAL_TIMEOUT_MS),
     httpApp: asFunction(createHttpApp).singleton(),
   });
 
-  // Fail closed before opening the public listener when authority configuration is malformed.
-  container.resolve("registryAuthority");
-  initializeCurrentSchema(container.resolve("databaseDriver"));
-  return container;
+  try {
+    // Fail closed before opening the public listener when authority configuration is malformed.
+    container.resolve("registryAuthority");
+    initializeCurrentSchema(container.resolve("databaseDriver"));
+    await container.resolve("credentialService").initialize();
+    await container.resolve("environmentService").initialize();
+    return container;
+  } catch (error) {
+    await container.dispose();
+    throw error;
+  }
 };
 
 function createRegistryAuthority({

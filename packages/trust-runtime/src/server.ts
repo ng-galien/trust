@@ -3,7 +3,6 @@ import { createRuntimeContainer } from "./runtime.js";
 import type { SkillOperabilityPolicy } from "./skill/model.js";
 import type { SkillPolicy } from "./skill/admission.js";
 import type { RegistryPrincipalConfiguration } from "./skill/authority.js";
-import type { RuntimeJsonObject } from "./model.js";
 import type { CompiledOperation } from "@trust/operation";
 
 export interface RuntimeServerOptions {
@@ -15,7 +14,10 @@ export interface RuntimeServerOptions {
   readonly skillPolicy?: SkillPolicy;
   readonly skillOperabilityPolicy?: SkillOperabilityPolicy;
   readonly operations?: readonly CompiledOperation[];
-  readonly environments?: Readonly<Record<string, RuntimeJsonObject>>;
+  readonly sessionDurationMs?: number;
+  readonly diagnosticsEndpoint?: string;
+  readonly runnerTrialScript?: string;
+  readonly trialTimeoutMs?: number;
 }
 
 export interface RunningRuntime {
@@ -33,6 +35,11 @@ const listen = (server: Server, host: string, port: number): Promise<void> =>
     });
   });
 
+const close = (server: Server): Promise<void> =>
+  new Promise((resolve, reject) => {
+    server.close((error) => (error ? reject(error) : resolve()));
+  });
+
 export const startRuntime = async ({
   host,
   port,
@@ -42,34 +49,47 @@ export const startRuntime = async ({
   skillPolicy,
   skillOperabilityPolicy,
   operations,
-  environments,
+  sessionDurationMs,
+  diagnosticsEndpoint,
+  runnerTrialScript,
+  trialTimeoutMs,
 }: RuntimeServerOptions): Promise<RunningRuntime> => {
-  const container = createRuntimeContainer({
-    ...(databasePath ? { databasePath } : {}),
-    ...(semanticAuthority ? { semanticAuthority } : {}),
-    ...(registryPrincipalConfigurations
-      ? { registryPrincipalConfigurations }
-      : {}),
-    ...(skillPolicy ? { skillPolicy } : {}),
-    ...(skillOperabilityPolicy ? { skillOperabilityPolicy } : {}),
-    ...(operations ? { operations } : {}),
-    ...(environments ? { environments } : {}),
-  });
-  const server = createServer(container.resolve("httpApp"));
+  const server = createServer();
   await listen(server, host, port);
 
   const address = server.address();
   if (address === null || typeof address === "string") {
+    server.close();
     throw new Error("TRUST runtime did not bind a TCP address.");
   }
+
+  let container: Awaited<ReturnType<typeof createRuntimeContainer>>;
+  try {
+    container = await createRuntimeContainer({
+      ...(databasePath ? { databasePath } : {}),
+      ...(semanticAuthority ? { semanticAuthority } : {}),
+      ...(registryPrincipalConfigurations
+        ? { registryPrincipalConfigurations }
+        : {}),
+      ...(skillPolicy ? { skillPolicy } : {}),
+      ...(skillOperabilityPolicy ? { skillOperabilityPolicy } : {}),
+      ...(operations ? { operations } : {}),
+      ...(sessionDurationMs === undefined ? {} : { sessionDurationMs }),
+      diagnosticsEndpoint: diagnosticsEndpoint ?? `http://${host}:${address.port}/otlp/diagnostics`,
+      ...(runnerTrialScript ? { runnerTrialScript } : {}),
+      ...(trialTimeoutMs === undefined ? {} : { trialTimeoutMs }),
+    });
+  } catch (error) {
+    await close(server);
+    throw error;
+  }
+  server.on("request", container.resolve("httpApp"));
 
   return {
     host,
     port: address.port,
     close: async () => {
-      await new Promise<void>((resolve, reject) => {
-        server.close((error) => (error ? reject(error) : resolve()));
-      });
+      await close(server);
       await container.dispose();
     },
   };
