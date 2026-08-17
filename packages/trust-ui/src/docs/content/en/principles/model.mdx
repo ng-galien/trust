@@ -1,0 +1,42 @@
+---
+title: "The model — from Operation to verdict"
+summary: "Operations, Procedures, Scenarios, Checks, Plans, Attempts, Facts, verdicts, revisions — what each is and how they fit."
+order: 2
+---
+
+<Figure caption="Authored objects (top) and what a running Plan produces (bottom).">
+  <ModelFigure />
+</Figure>
+
+## Design lane — authored, immutable once published
+
+| Object | Is | Lives |
+| --- | --- | --- |
+| <Term id="operation" /> | how to call one external system and the typed fields it returns | in the catalog, one file per version — [Operations](/docs/operations) |
+| <Term id="procedure" /> | typed context roles, Scenarios, Checks; each Check runs one Operation on a target and states its expectations | published as `procedure@version`, embedding its Operations — [Procedures](/docs/procedures) |
+| <Term id="scenario" /> | a group of Checks with prerequisites; satisfied when every Check is validated | inside a Procedure |
+| <Term id="check" /> | one Operation on one target role, Input bindings, expectations, reasons | inside a Scenario |
+
+## Run lane — one Plan, revision after revision
+
+| Object | Is | Produced by |
+| --- | --- | --- |
+| <Term id="plan" /> | a Procedure engaged with concrete inputs in one Environment; carries the current revision of its Checks | engagement — [Plans](/docs/plans) |
+| <Term id="session" /> | the open work on a Plan | opened at engagement, closed by the operator |
+| <Term id="attempt" /> | one admitted execution of one Check | the Runner (live) or the operator (dry-run) |
+| <Term id="fact" /> | one typed observation — a produced field with its value | the execution |
+| <Term id="verdict" /> | validated or not, with a reason | TRUST, from a complete Fact batch |
+| <Term id="revision" /> | the state of the Plan after one accepted batch | every acceptance |
+| <Term id="snapshot" /> | the immutable record of one qualification | every acceptance — the [history](/docs/plans/history) |
+
+## Cardinality
+
+- One Operation, many Checks (in one or several Procedures).
+- One Procedure version, many Plans.
+- One Check of a Procedure, one or many Check instances in a Plan (`on each`), each with one active verdict and many Attempts over time.
+- One Plan, one Session, many revisions.
+
+## Two objects that are not in the model
+
+- **Proof, evidence, binding**: there is none. A Check is validated by Facts qualified against expectations, nothing else is stored as "proof".
+- **A manual override**: an operator cannot mark a live Check validated by hand. On a dry-run the operator plays the agent and enters Facts; the same rules apply.

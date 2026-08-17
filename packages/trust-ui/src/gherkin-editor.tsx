@@ -198,9 +198,9 @@ export function GherkinEditor({ kind, value, onChange, theme, operations = [], r
   };
 
   return (
-    <div className="relative h-full">
+    <div className="relative h-full" data-doc="editor">
     {!readOnly ? (
-      <div className="absolute top-2 right-4 z-10">
+      <div className="absolute top-2 right-4 z-10" data-doc="editor.format">
         <IconButton size="sm" label={t("shared.gherkinEditor.format")} title={t("shared.gherkinEditor.formatHint")} onClick={() => void editorRef.current?.getAction("editor.action.formatDocument")?.run()}>
           <WrapText size={14} />
         </IconButton>
@@ -331,13 +331,21 @@ function completionItems(kind: LanguageKind, operations: string[], t: TFunction)
       : [
           snippet(
             t("shared.gherkinEditor.snippets.procedureFeature"),
-            'Feature: ${1:procedure name}\n  Version: ${2:1.0.0}\n\n  Background:\n    Given Plan input ${3:project} is a reference\n\n  Scenario: ${4:First stage}\n    Given no prerequisite scenario\n    When Check ${5:check name} uses operation ${6:operation}\n    Then ${7:result} equals "${8:value}"\n    And success reason is "${9:Requirement is satisfied}"',
+            '# language: en\n@trust-dsl:1 @procedure:${1:my-procedure} @version:${2:1.0.0}\nFeature: ${3:What this procedure establishes}\n\n  Background: Plan context\n    Given one reference "${4:project}"\n\n  @scenario:${5:first}\n  Scenario: ${6:First scenario}\n    Then Check "${7:check name}" runs Operation "${8:git.head-read}"\n        on "${4:project}" as Input "${9:project}"\n        and must establish "${10:the requirement is met}"\n      | field | relation | expectation | failure reason |\n      | ${11:workingTree} | equals | value "${12:clean}" | "${13:the requirement is not met}" |\n    And the Scenario is satisfied when every Check is validated',
+          ),
+          snippet(
+            t("shared.gherkinEditor.snippets.role"),
+            'And ${1|one,many|} ${2|reference,string,number,instant|} "${3:role}"',
           ),
           snippet(
             t("shared.gherkinEditor.snippets.scenario"),
-            'Scenario: ${1:Stage}\n  Given scenario ${2:previous-stage} is satisfied\n  When Check ${3:check name} uses operation ${4:operation}\n  Then ${5:field} equals "${6:value}"\n  And success reason is "${7:Requirement is satisfied}"',
+            '@scenario:${1:slug}\nScenario: ${2:Title}\n  Given scenario "${3:previous}" is validated\n  Then Check "${4:check name}" runs Operation "${5:operation}"\n      on "${6:role}" as Input "${7:input}"\n      and must establish "${8:the requirement is met}"\n    | field | relation | expectation | failure reason |\n    | ${9:field} | equals | value "${10:value}" | "${11:the requirement is not met}" |\n  And the Scenario is satisfied when every Check is validated',
           ),
-          ...operations.map((operation) => snippet(t("shared.gherkinEditor.snippets.useOperation", { operation }), `When Check \${1:check name} uses operation ${operation}`)),
+          snippet(
+            t("shared.gherkinEditor.snippets.check"),
+            'Then Check "${1:check name}" runs Operation "${2:operation}"\n    on "${3:role}" as Input "${4:input}"\n    and must establish "${5:the requirement is met}"\n  | field | relation | expectation | failure reason |\n  | ${6:field} | equals | value "${7:value}" | "${8:the requirement is not met}" |',
+          ),
+          ...operations.map((operation) => snippet(t("shared.gherkinEditor.snippets.useOperation", { operation }), `Then Check "\${1:check name}" runs Operation "${operation}"\n    on "\${2:role}" as Input "\${3:input}"\n    and must establish "\${4:the requirement is met}"`)),
         ];
   return [
     ...commonKeywords.map((keyword) => ({ label: keyword, insertText: `${keyword}: `, detail: t("shared.gherkinEditor.gherkinKeyword") })),

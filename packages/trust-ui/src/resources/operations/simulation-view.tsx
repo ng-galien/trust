@@ -6,6 +6,7 @@ import { useTranslation } from "react-i18next";
 
 import { useRuntime } from "../../lib/runtime-context.js";
 import { mutationError } from "../../lib/mutations.js";
+import { useExpert } from "../../lib/preferences.js";
 import type { CompiledOperation, JsonObject, OperationStep } from "../../types.js";
 import { Badge } from "../../ui/badge.js";
 import { Button } from "../../ui/button.js";
@@ -20,10 +21,13 @@ interface SimulationValues { input: JsonObject; environment: JsonObject; steps: 
 export function SimulationView({ source, compiled }: { source: string; compiled: CompiledOperation | undefined }) {
   const { t } = useTranslation();
   const runtime = useRuntime();
+  const expert = useExpert();
   const skeleton = useMemo(() => simulationSkeleton(compiled), [compiled]);
   const stepSchemas = useMemo(() => new Map((compiled?.steps ?? []).map((step) => [step.name, stepResultSchema(step, t)])), [compiled, t]);
   const [values, setValues] = useState<SimulationValues>(skeleton);
-  const [mode, setMode] = useState<"form" | "json">("form");
+  const [chosenMode, setMode] = useState<"form" | "json">("form");
+  // The JSON mode is an expert affordance: leaving expert mode brings the form back.
+  const mode = expert ? chosenMode : "form";
   const [issues, setIssues] = useState<Record<string, FieldIssue[]>>({});
   const issueCount = Object.values(issues).reduce((total, list) => total + list.length, 0);
   const validity = useMemo(() => {
@@ -45,20 +49,17 @@ export function SimulationView({ source, compiled }: { source: string; compiled:
   const error = mutationError(simulate.error);
 
   if (!compiled) {
-    return <div className="p-6"><EmptyState icon={<Play />} title={t("operations.simulation.emptyTitle")} body={t("operations.simulation.emptyBody")} /></div>;
+    return <div className="p-6"><EmptyState icon={<Play />} title={t("operations.simulation.emptyTitle")} /></div>;
   }
 
   return (
     <div className="grid h-full min-h-0 grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
       <section className="flex min-h-0 flex-col border-r border-border">
-        <div className="flex shrink-0 items-center gap-2 border-b border-border px-4 py-2">
-          <div className="min-w-0 flex-1">
-            <strong className="block text-body-lg font-semibold">{t("operations.simulation.title")}</strong>
-            <span className="block truncate-1 text-label text-muted">{t("operations.simulation.subtitle")}</span>
-          </div>
-          <SegmentedControl ariaLabel={t("operations.simulation.modeLabel")} size="sm" value={mode} onChange={setMode} options={[{ value: "form", label: t("operations.simulation.modeForm") }, { value: "json", label: t("operations.simulation.modeJson") }]} />
+        <div className="flex h-11 shrink-0 items-center gap-2 border-b border-border px-4">
+          <strong className="min-w-0 flex-1 truncate-1 text-body-lg font-semibold">{t("operations.simulation.title")}</strong>
+          {expert ? <SegmentedControl ariaLabel={t("operations.simulation.modeLabel")} size="sm" value={mode} onChange={setMode} options={[{ value: "form", label: t("operations.simulation.modeForm") }, { value: "json", label: t("operations.simulation.modeJson") }]} /> : null}
           <Button size="sm" icon={<RotateCcw size={12} />} onClick={() => setValues(skeleton)}>{t("operations.simulation.reset")}</Button>
-          <Button size="sm" variant="primary" icon={<Play size={13} />} onClick={() => simulate.mutate()} disabled={simulate.isPending || (mode === "form" && issueCount > 0)} title={issueCount ? t("operations.simulation.fieldsToComplete", { count: issueCount }) : undefined}>
+          <Button data-doc="simulation.run" size="sm" variant="primary" icon={<Play size={13} />} onClick={() => simulate.mutate()} disabled={simulate.isPending || (mode === "form" && issueCount > 0)} title={issueCount ? t("operations.simulation.fieldsToComplete", { count: issueCount }) : undefined}>
             {simulate.isPending ? t("operations.simulation.simulating") : mode === "form" && issueCount ? t("operations.simulation.completeFields", { count: issueCount }) : t("operations.simulation.run")}
           </Button>
         </div>
@@ -67,12 +68,13 @@ export function SimulationView({ source, compiled }: { source: string; compiled:
             <JsonField id="simulation-json" value={values} onChange={(next) => next && typeof next === "object" ? setValues(mergeSkeleton(skeleton, next as Partial<SimulationValues>)) : undefined} rows={24} />
           ) : (
             <>
-              <Disclosure title={t("operations.simulation.input")} meta={t("operations.simulation.inputMeta", { count: schemaProperties(compiled.input).length })}>
+              <div data-doc="simulation.input"><Disclosure title={t("operations.simulation.input")} meta={t("operations.simulation.inputMeta", { count: schemaProperties(compiled.input).length })}>
                 <SchemaForm idPrefix="sim-input" schema={compiled.input} value={values.input} onChange={(input) => setValues({ ...values, input })} onValidity={validity("input")} empty={t("operations.simulation.inputEmpty")} />
-              </Disclosure>
+              </Disclosure></div>
               <Disclosure title={t("operations.simulation.environment")} meta={t("operations.simulation.environmentMeta", { count: schemaProperties(compiled.environment).length })}>
                 <SchemaForm idPrefix="sim-env" schema={compiled.environment} value={values.environment} onChange={(environment) => setValues({ ...values, environment })} onValidity={validity("environment")} empty={t("operations.simulation.environmentEmpty")} />
               </Disclosure>
+              <div data-doc="simulation.steps" className="flex flex-col gap-3">
               {compiled.steps.map((step, index) => (
                 <Disclosure
                   key={step.name}
@@ -82,19 +84,19 @@ export function SimulationView({ source, compiled }: { source: string; compiled:
                   <SchemaForm idPrefix={`sim-step-${step.name}`} schema={stepSchemas.get(step.name)} value={values.steps[step.name] ?? {}} onChange={(result) => setValues({ ...values, steps: { ...values.steps, [step.name]: result } })} onValidity={validity(`step:${step.name}`)} />
                 </Disclosure>
               ))}
+              </div>
             </>
           )}
         </div>
       </section>
-      <section className="flex min-h-0 flex-col">
-        <div className="shrink-0 border-b border-border px-4 py-2">
-          <strong className="block text-body-lg font-semibold">{t("operations.simulation.producedTitle")}</strong>
-          <span className="block text-label text-muted">{t("operations.simulation.producedSubtitle")}</span>
+      <section className="flex min-h-0 flex-col" data-doc="simulation.result">
+        <div className="flex h-11 shrink-0 items-center border-b border-border px-4">
+          <strong className="text-body-lg font-semibold">{t("operations.simulation.producedTitle")}</strong>
         </div>
         <div className="min-h-0 flex-1 overflow-auto p-4">
           {error ? <ErrorBox message={error} /> : null}
           {!error && simulate.data ? <ProducedTable compiled={compiled} produced={simulate.data.produced} /> : null}
-          {!error && !simulate.data ? <p className="text-body text-faint">{t("operations.simulation.fillThenRun")}</p> : null}
+          {!error && !simulate.data ? <p className="text-body text-faint">{t("operations.simulation.noSimulationYet")}</p> : null}
         </div>
       </section>
     </div>
@@ -150,7 +152,7 @@ function stepResultSchema(step: OperationStep, t: TFunction): ObjectSchema {
   if (step.type === "shell") {
     return {
       properties: {
-        exitCode: { type: "integer", description: t("operations.simulation.schema.exitCode"), minimum: 0, maximum: 255 },
+        exitCode: { type: "integer", minimum: 0, maximum: 255 },
         stdout: { type: "string", description: t("operations.simulation.schema.mayBeEmpty") },
         stderr: { type: "string", description: t("operations.simulation.schema.mayBeEmpty") },
       },
@@ -161,7 +163,7 @@ function stepResultSchema(step: OperationStep, t: TFunction): ObjectSchema {
     const format = (step.http as { format?: string } | undefined)?.format;
     return {
       properties: {
-        status: { type: "integer", description: t("operations.simulation.schema.httpStatus"), minimum: 100, maximum: 599 },
+        status: { type: "integer", minimum: 100, maximum: 599 },
         headers: { type: "object" },
         body: format === "text" ? { type: "string" } : { type: "object" },
       },

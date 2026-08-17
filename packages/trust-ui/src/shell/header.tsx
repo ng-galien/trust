@@ -1,15 +1,15 @@
-import { Moon, PanelLeftClose, PanelLeftOpen, Search, Server, Sun } from "lucide-react";
+import { CircleHelp, Moon, PanelLeftClose, PanelLeftOpen, Search, Server, Sun } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useNavigate } from "react-router";
+import { Link, useLocation, useNavigate } from "react-router";
 
 import { cx } from "../lib/format.js";
-import { updatePreferences, usePreference, useResolvedTheme } from "../lib/preferences.js";
+import { type Density, updatePreferences, usePreference, useResolvedTheme } from "../lib/preferences.js";
 import { useCurrentEnvironment } from "../lib/environment.js";
 import { useLiveMode } from "../lib/plan-events.js";
 import { useHealth } from "../lib/runtime-context.js";
 import { IconButton } from "../ui/button.js";
-import { Kbd } from "../ui/controls.js";
+import { Kbd, SegmentedControl } from "../ui/controls.js";
 import { Select } from "../ui/select.js";
 import { resourceAnchors, useAnchorItems } from "./resources.js";
 
@@ -39,6 +39,7 @@ export function Header() {
       <GlobalSearch />
       <div className="ml-auto flex items-center gap-2">
         <EnvironmentSwitcher />
+        <DensitySwitch />
         <button
           onClick={() => void health.refetch()}
           className="flex items-center gap-2 rounded-(--radius-2) px-2 py-1 text-body font-medium text-muted hover:bg-surface-2 hover:text-text"
@@ -52,11 +53,54 @@ export function Header() {
           />
           {status === "healthy" ? (live ? t("shell.runtime.live") : t("shell.runtime.healthy")) : status === "checking" ? t("shell.runtime.checking") : t("shell.runtime.unavailable")}
         </button>
+        <HelpLink />
         <IconButton label={theme === "dark" ? t("shell.theme.useLight") : t("shell.theme.useDark")} onClick={() => updatePreferences({ theme: theme === "dark" ? "light" : "dark" })}>
           {theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}
         </IconButton>
       </div>
     </header>
+  );
+}
+
+/** The documentation page of the current screen (route prefix → page below /docs). Kept static: the docs are their own chunk. */
+const helpPages: Array<[string, string]> = [
+  ["/operations", "operations/authoring"],
+  ["/procedures", "procedures/authoring"],
+  ["/environments", "environments"],
+  ["/dry-runs", "plans/dry-run"],
+  ["/plans", "plans/follow"],
+  ["/history", "plans/history"],
+  ["/settings", "screens"],
+  ["/overview", "screens"],
+];
+
+function HelpLink() {
+  const { t } = useTranslation();
+  const { pathname } = useLocation();
+  if (pathname.startsWith("/docs")) return null;
+  const page = helpPages.find(([prefix]) => pathname === prefix || pathname.startsWith(`${prefix}/`))?.[1] ?? "";
+  return (
+    <Link to={`/docs/${page}`} aria-label={t("shell.help")} title={t("shell.help")} className="inline-flex h-8 w-8 items-center justify-center rounded-(--radius-2) text-muted hover:bg-surface-2 hover:text-text">
+      <CircleHelp size={16} />
+    </Link>
+  );
+}
+
+/** Operator / expert: how much the interface shows (a preference, never in the URL). */
+function DensitySwitch() {
+  const { t } = useTranslation();
+  const density = usePreference("density");
+  return (
+    <span data-doc="shell.density"><SegmentedControl<Density>
+      ariaLabel={t("shell.density.label")}
+      size="sm"
+      value={density}
+      onChange={(next) => updatePreferences({ density: next })}
+      options={[
+        { value: "operator", label: t("shell.density.operator"), title: t("shell.density.operatorHint") },
+        { value: "expert", label: t("shell.density.expert"), title: t("shell.density.expertHint") },
+      ]}
+    /></span>
   );
 }
 
@@ -66,7 +110,7 @@ function EnvironmentSwitcher() {
   const navigate = useNavigate();
   const current = useCurrentEnvironment();
   return (
-    <div className="flex items-center gap-1" title={t("shell.environment.hint")}>
+    <div className="flex items-center gap-1" title={t("shell.environment.label")} data-doc="shell.environment">
       <Server size={14} className="text-muted" />
       <Select
         ariaLabel={t("shell.environment.label")}
@@ -121,16 +165,16 @@ function GlobalSearch() {
     if (!needle) return [];
     const match = (label: string) => label.toLowerCase().includes(needle);
     return [
-      { anchor: resourceAnchors[0]!, items: operations.items.filter((item) => match(item.label)).slice(0, 5) },
-      { anchor: resourceAnchors[1]!, items: procedures.items.filter((item) => match(item.label)).slice(0, 5) },
-      { anchor: resourceAnchors[2]!, items: plans.items.filter((item) => match(item.label)).slice(0, 5) },
+      { anchor: resourceAnchors.find((anchor) => anchor.id === "operations")!, items: operations.items.filter((item) => match(item.label)).slice(0, 5) },
+      { anchor: resourceAnchors.find((anchor) => anchor.id === "procedures")!, items: procedures.items.filter((item) => match(item.label)).slice(0, 5) },
+      { anchor: resourceAnchors.find((anchor) => anchor.id === "plans")!, items: plans.items.filter((item) => match(item.label)).slice(0, 5) },
     ].filter((group) => group.items.length > 0);
   }, [query, operations.items, procedures.items, plans.items]);
 
   const first = groups[0]?.items[0];
 
   return (
-    <div ref={root} className="relative w-full max-w-xl">
+    <div ref={root} className="relative w-full max-w-xl" data-doc="shell.search">
       <label className="relative flex items-center">
         <Search size={14} className="pointer-events-none absolute left-2.5 text-faint" />
         <input

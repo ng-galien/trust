@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { useMemo } from "react";
+import { lazy, Suspense, useMemo } from "react";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router";
 
 import { OverviewHome } from "./resources/overview/overview-home.js";
@@ -14,7 +14,11 @@ import { PlansHome } from "./resources/plans/plans-home.js";
 import { ProcedureOverlay } from "./resources/procedures/procedure-overlay.js";
 import { ProceduresHome } from "./resources/procedures/procedures-home.js";
 import { TrustRuntimeClient } from "./runtime.js";
+import { LoadingState } from "./ui/states.js";
 import { AppShell } from "./shell/app-shell.js";
+
+// The documentation (MDX pages, mermaid) is its own chunk, loaded on first visit.
+const DocsArea = lazy(() => import("./docs/docs-area.js").then((module) => ({ default: module.DocsArea })));
 
 const queryClient = new QueryClient({ defaultOptions: { queries: { retry: 1, staleTime: 2_000 } } });
 
@@ -50,6 +54,7 @@ export function TrustApplication({ runtimeUrl }: { runtimeUrl: string }) {
               <Route path="/checklists" element={<Navigate to="/plans" replace />} />
               <Route path="/history" element={<HistoryHome />} />
               <Route path="/settings" element={<SettingsHome />} />
+              <Route path="/docs/*" element={<Suspense fallback={<LoadingState />}><DocsArea /></Suspense>} />
               <Route path="*" element={<Navigate to="/overview" replace />} />
             </Route>
           </Routes>

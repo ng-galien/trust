@@ -1,0 +1,88 @@
+---
+title: "Operations in the interface"
+summary: "The catalog, the Operation page and its tabs — Overview, Source, Simulate, Run, Contract — and the save, duplicate and delete actions."
+order: 6
+screen: /operations
+---
+
+The **Operations** entry of the sidebar opens the catalog. Selecting an Operation opens its page over the catalog; the tab and the selection are in the URL, so a page can be shared and reopened as it was.
+
+## The catalog
+
+<Screenshot id="operations-catalog" caption="The Operations catalog, cards view." legend={{
+  "home.header": "Title and count of visible Operations; New operation opens an empty source.",
+  "home.filters": "Search (name, title, produced fields…) and facets: family, domain, kind of step, nature, usage by Procedures, runnable.",
+  "home.display": "Cards or list; group by domain or family; sort by name, version, steps or usage.",
+  "home.card": "One Operation: kinds of steps, domain, version, title, description, what it needs and produces, which Procedures use it.",
+  "operations.runnable": "Whether the current Environment can run it (it declares every Environment value the Operation needs).",
+  "shell.environment": "The current Environment — the context of Run and of the runnable marks.",
+}} />
+
+The same list appears in the sidebar under **Operations**: each item opens the Operation, and its menu offers **Duplicate** and **Delete**. Delete is refused for an Operation a published Procedure uses.
+
+## The Operation page
+
+<Screenshot id="operation-overview" caption="An Operation, Overview tab." legend={{
+  "overlay.header": "Version, compile status, runnable mark, title. In expert mode the identifier is repeated here.",
+  "overlay.actions": "Duplicate · Simulate · Run · Edit source · Delete (when unused) · Save (when the source compiles and changed).",
+  "overlay.tabs": "Overview, Source, Simulate, Run — and Contract JSON in expert mode.",
+  "overlay.status": "The compile status: the diagnostic and its line, or the count of steps and produced fields.",
+  "operation.summary": "Description, then Needs (Input and Environment), Does (the steps in words), Produces (the fields and their enumerations).",
+  "overlay.inspector": "Used by: the Procedures embedding this Operation. In expert mode: Interface (the three tables) and Steps. The panel folds with the button at the right of the tabs.",
+}} />
+
+### Overview
+
+The Operation in words: its description, what it needs, what it does step by step, what it produces. In expert mode two more blocks open: the contract of each step (executable and arguments, path, URL, accepted exits) and the projection.
+
+### Source
+
+<Screenshot id="operation-source" caption="Source tab: the editor with live compilation." legend={{
+  "editor": "The Gherkin source. Compiled on every change; a diagnostic underlines its line and is repeated in the status line.",
+  "editor.format": "Format source: re-flows long steps onto continuation lines (also Shift+Alt+F).",
+  "overlay.status": "Compiles / does not compile, with the message and the line.",
+}} />
+
+- The editor knows the language: colouring, folding, completions for every sentence and table (⌃Space), and the **Operation feature** template.
+- Lines never wrap; a long step is formatted onto continuation lines instead.
+- **Save** (or ⌘S) writes `<operation>.feature` in the runtime catalog and reloads it. Save is available only when the source compiles and differs from the catalog copy. A source that renames the Operation saves under the new name; the old file stays until deleted.
+
+### Simulate
+
+<Screenshot id="operation-simulate" caption="Simulate tab: step results typed by hand, projection evaluated for real." legend={{
+  "simulation.input": "The Input values, one field per declared Input, validated as you type.",
+  "simulation.steps": "One block per step, with the fields of its result shape (exit code and outputs, file content, HTTP status and body).",
+  "simulation.run": "Run simulation — enabled when every required field is filled.",
+  "simulation.result": "The produced fields, typed, and the raw JSON.",
+}} />
+
+Simulate **executes nothing**: it evaluates the projection of the current source on the step results you provide, and validates the result against the produced fields. Use it to check a projection before running, or to see what an Operation would produce in a case that is hard to reproduce (a failing build, a 404). Expert mode adds a JSON view of the whole simulation input.
+
+### Run
+
+<Screenshot id="operation-run" caption="Run tab: one execution on the current Environment." legend={{
+  "run.environment": "The Environment of the run: the current one when it declares every needed value, otherwise a compatible one to pick — with the values it provides.",
+  "run.input": "The Input, one field per declared Input.",
+  "run.start": "Run for real: the runtime executes the Operation with its Runner and streams the progress. Stop cancels a running one.",
+  "run.recent": "Recent runs of this Operation, with their state.",
+  "run.report": "The report of the selected run: each step with its outcome and output, then the produced values.",
+}} />
+
+Run executes the Operation on the chosen Environment **outside any Plan**: no Check, no Facts, no verdict — a way to try an Operation against a real system. The report shows each step (command or request, exit or status, output) and the produced fields, or the point where the Operation was interrupted. An unsaved source can be run; the page warns before starting.
+
+<Callout kind="note" title="Runnable, or not">
+  An Operation is runnable on an Environment when the Environment declares every value of its `Environment` table. When the current Environment does not, the Run tab says which values are missing and links to that Environment; the catalog and the Environment screen show the same information as ✓ / ✗ marks.
+</Callout>
+
+### Contract JSON (expert)
+
+The compiled Operation: identity, schemas of the interface, steps, projection, classification. It is what a Procedure embeds and what the Runner receives.
+
+## Creating, duplicating, deleting
+
+<Steps>
+  <Step title="New operation">From the catalog header or the sidebar. The Source tab opens on a template; the status line shows the first diagnostic until the source compiles.</Step>
+  <Step title="Duplicate">Opens a new source pre-filled with the current one; change the `@operation` name before saving.</Step>
+  <Step title="Save">Enabled once the source compiles. Writes the file in the catalog; the catalog reloads; the page reopens on the saved Operation.</Step>
+  <Step title="Delete">Removes the file from the catalog. Refused while a published Procedure uses the Operation; Procedures keep their embedded copy in any case.</Step>
+</Steps>

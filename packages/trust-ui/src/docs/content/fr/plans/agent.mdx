@@ -1,0 +1,58 @@
+---
+title: "Ce que fait l'agent"
+summary: "Le skill, le Runner, ce que l'agent lit et reçoit, pourquoi une admission peut être refusée, comment l'agent se rétablit."
+order: 4
+---
+
+Un agent suit un Plan en direct avec le **skill** TRUST : un fichier d'instructions, l'exécutable **Runner**, et une référence des résultats. Il lit le Plan par les outils MCP du runtime et confie chaque Check au Runner. Le principe est sur [Délégation](/docs/principles/delegation) ; cette page est la pratique.
+
+## La boucle
+
+<Steps>
+  <Step title="Lire le Plan">`trust_plan_read` avec n'importe quelle URI de Check du Plan : révision courante, progression, les Checks actionnables (nom, URI, Opération, cible, entrées), les déclarations manquantes, les Checks bloqués avec la raison, la dernière tentative acceptée.</Step>
+  <Step title="Déclarer quand c'est demandé">Si le Plan liste des déclarations manquantes, `trust_plan_declarations_replace` avec le Plan, la révision qui vient d'être lue et l'ensemble complet des valeurs déclarées. Une révision périmée est refusée ; relire.</Step>
+  <Step title="Exécuter un Check">Donner au Runner exactement l'URI fournie par TRUST : `node <skill>/scripts/run.js 'trust://…' --json` (ou l'outil MCP propre au Runner `trust_check_run`). Ne pas reconstruire l'Opération, ne pas exécuter ses commandes, ne pas fabriquer de Facts.</Step>
+  <Step title="Lire le résultat">`COMPLETED` + `VALIDATED` : le Check est satisfait. `COMPLETED` + `NOT_VALIDATED` : le Check reste ouvert — traiter la raison. `REFUSED` : rien ne s'est exécuté — suivre la raison. Une erreur : rien n'a été établi — relire le Check, réessayer est normal.</Step>
+  <Step title="Relire le Plan">Un verdict peut avoir ouvert, rouvert ou retiré des Checks. Choisir le prochain Check actionnable.</Step>
+</Steps>
+
+## Ce que fait le Runner avec un Check
+
+1. Demande à TRUST l'**admission** avec une clé de tentative neuve. Un refus s'arrête là.
+2. Reçoit l'**accord** : l'Opération compilée, l'Input admis résolu depuis le contexte du Plan, les valeurs d'Environnement.
+3. Exécute les étapes de l'Opération et évalue sa projection.
+4. Rapporte **un Fact** — les champs produits — à TRUST.
+5. Demande à TRUST de **finaliser** la tentative et renvoie le verdict, sa raison et le delta de checklist.
+
+Le rapport du Runner porte aussi les sorties brutes des étapes (`actionOutcome`) pour l'information de l'agent ; elles ne participent jamais à la qualification.
+
+## Pourquoi une admission est refusée
+
+| Raison | Signification | Ce que fait l'agent |
+| --- | --- | --- |
+| le Check est inconnu ou n'est pas courant | le Plan est passé à une nouvelle révision, ou l'URI est fausse | relire le Plan, choisir un Check courant |
+| le Check est déjà satisfait | rien à faire | choisir un autre Check |
+| les dépendances du Check ne sont pas satisfaites | un Scénario prérequis ou un Check référencé est ouvert | exécuter d'abord les prérequis |
+| le Plan n'a pas de Session active | fermée ou expirée | l'opérateur engage le Plan à nouveau |
+| la clé de tentative est liée à un autre Check, finalisée ou expirée | une clé réutilisée | utiliser une clé neuve |
+
+## Résultats du Runner en un coup d'œil
+
+| Statut | Verdict | Code de sortie | Signification |
+| --- | --- | --- | --- |
+| `COMPLETED` | `VALIDATED` | 0 | Opération exécutée, Facts acceptés, Check satisfait |
+| `COMPLETED` | `NOT_VALIDATED` | 4 | Opération exécutée, Facts acceptés, attentes non remplies (raison) |
+| `REFUSED` | — | 3 | rien ne s'est exécuté (code de raison et raison) |
+| erreur | — | 1 | admission, exécution, rapport ou finalisation interrompus ; rien d'établi |
+
+<Callout kind="rule">
+  Réessayer après une erreur est normal : un lot de Facts incomplet a été rejeté en bloc et a laissé le Check inchangé ; le Runner peut exécuter l'Opération à nouveau. Ce qui ne peut pas être rejoué sans risque après une issue inconnue relève de l'opérateur, pas du Runner.
+</Callout>
+
+## Mise en place
+
+Le skill est empaqueté avec `npm run package:skill` (dans `packages/trust-runner/dist/skill/trust`) : `SKILL.md`, `references/results.md`, `agents/openai.yaml`, `scripts/run.js`, `scripts/mcp-stdio.js`. Le Runner lit `TRUST_RPC_ENDPOINT` (par défaut `http://127.0.0.1:4318/rpc`) et `TRUST_OTLP_ENDPOINT` (par défaut `http://127.0.0.1:4318/v1/traces`) ; chaque valeur d'exécution vient de l'Environnement renvoyé à l'admission — rien n'est injecté dans le skill. Voir [Connecter un agent](/docs/guides/connect-an-agent).
+
+<Details title="Contrats et canaux" expert>
+MCP (`POST /mcp`, serveur `trust-runtime`) : `trust_plan_read`, `trust_check_read`, `trust_procedure_read` (paginé), `trust_session_read`, `trust_plan_engage` (en direct seulement), `trust_plan_declarations_replace` — tous prennent une `checkUri` ou un Plan ; les résultats sont des blocs de texte. Runner ↔ runtime : `check.attempt.admit` (`trust.check-admission-request@1`, `attemptKey`, `checkUri`) → `ADMITTED` (`attemptHandle`, `operation`, `actionInput`, `environment`, `expiresAt`) ou `REFUSED` (`reasonCode` ∈ `check-not-found`, `check-not-actionable`, `session-unavailable`, `attempt-key-conflict`, `attempt-finalized`, `attempt-expired`) ; Facts via OTLP `POST /v1/traces` — un span `trust.runner.facts` avec des événements `trust.runner.fact` (`trust.fact.kind`, `trust.fact.observed_at`, `trust.fact.values`) ; `check.attempt.finalize { attemptHandle }` → verdict, `reasonCode` (`check-qualified` / `predicate-not-satisfied`), raison, `checklistDelta`. Admission et finalisation sont idempotentes par clé de tentative / handle. L'accord remet au Runner les valeurs de l'Environnement ; les credentials ne sont pas délégués.
+</Details>

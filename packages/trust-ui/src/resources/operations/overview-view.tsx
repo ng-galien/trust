@@ -1,20 +1,17 @@
 import type { TFunction } from "i18next";
-import { ArrowRight, GitBranch } from "lucide-react";
 import type { ReactNode } from "react";
 import { Trans, useTranslation } from "react-i18next";
-import { Link } from "react-router";
 
-import type { CompiledOperation, OperationStep, PublishedProcedure } from "../../types.js";
-import { Disclosure, SchemaTable, schemaProperties } from "../../ui/schema.js";
+import type { CompiledOperation, OperationStep } from "../../types.js";
+import { Description } from "../../ui/description.js";
+import { Expert } from "../../ui/expert.js";
+import { Disclosure, schemaProperties } from "../../ui/schema.js";
 import { EmptyState } from "../../ui/states.js";
 import { StepCard } from "./contract-view.js";
-import { useOrigin } from "../shared/origin.js";
-import { Description } from "../../ui/description.js";
 
-/** Plain-language reading of an operation: needs → does → produces, then the detailed contract. */
-export function OverviewView({ compiled, usedBy, error }: { compiled: CompiledOperation | undefined; usedBy: PublishedProcedure[]; error?: string | undefined }) {
+/** Plain-language reading of an operation: description, then needs → does → produces; step contracts and projection in expert mode. */
+export function OverviewView({ compiled, error }: { compiled: CompiledOperation | undefined; error?: string | undefined }) {
   const { t } = useTranslation();
-  const origin = useOrigin();
   if (!compiled) {
     return <div className="p-6"><EmptyState title={t("operations.overview.emptyTitle")} body={error ?? t("operations.overview.emptyBody")} /></div>;
   }
@@ -24,10 +21,9 @@ export function OverviewView({ compiled, usedBy, error }: { compiled: CompiledOp
 
   return (
     <div className="flex h-full flex-col gap-3 overflow-y-auto bg-bg p-4 [&>*]:shrink-0">
-      <section className="rounded-(--radius-3) border border-border bg-surface p-4">
-        <h2 className="text-lead font-semibold">{compiled.title}</h2>
-        {compiled.description ? <Description text={compiled.description} className="mt-1.5 max-w-3xl text-ui leading-relaxed text-muted" /> : null}
-        <div className="mt-3 grid gap-3 md:grid-cols-[max-content_1fr] md:gap-x-6">
+      <section className="rounded-(--radius-3) border border-border bg-surface p-4" data-doc="operation.summary">
+        {compiled.description ? <Description text={compiled.description} className="mb-3 max-w-3xl text-ui leading-relaxed" /> : null}
+        <div className="grid gap-3 md:grid-cols-[max-content_1fr] md:gap-x-6">
           <SummaryTerm>{t("operations.overview.needs")}</SummaryTerm>
           <p className="text-ui leading-relaxed">
             {inputs.length ? <>{t("operations.overview.input", { count: inputs.length })} {inputs.map((field, index) => <Chip key={field.name} last={index === inputs.length - 1}>{field.name}</Chip>)}</> : t("operations.overview.noInput")}
@@ -48,35 +44,22 @@ export function OverviewView({ compiled, usedBy, error }: { compiled: CompiledOp
             {produced.length ? produced.map((field, index) => <Chip key={field.name} last={index === produced.length - 1}>{field.name}</Chip>) : t("operations.overview.noField")}
             {produced.some(({ spec }) => spec.enum) ? <span className="text-muted"> — {produced.filter(({ spec }) => spec.enum).map(({ name, spec }) => t("operations.overview.isOneOf", { name, values: spec.enum!.map((value) => JSON.stringify(value)).join(", ") })).join("; ")}.</span> : "."}
           </p>
-          <SummaryTerm>{t("operations.overview.usedBy")}</SummaryTerm>
-          <div className="text-ui leading-relaxed">
-            {usedBy.length === 0 ? <span className="text-muted">{t("operations.overview.noProcedureYet")}</span> : null}
-            {usedBy.map(({ procedure }) => (
-              <Link state={origin} key={`${procedure.procedure}@${procedure.version}`} to={`/procedures/${encodeURIComponent(procedure.procedure)}`} className="mr-3 inline-flex items-center gap-1 text-accent hover:underline">
-                <GitBranch size={12} /> {procedure.title} <span className="text-muted">{t("operations.overview.procedureVersion", { version: procedure.version })}</span> <ArrowRight size={11} />
-              </Link>
-            ))}
-          </div>
         </div>
       </section>
 
-      <Disclosure title={t("operations.overview.inputSection")} meta={t("operations.overview.inputMeta")} defaultOpen={false}>
-        <SchemaTable schema={compiled.input} empty={t("operations.overview.inputEmpty")} />
-      </Disclosure>
-      <Disclosure title={t("operations.overview.environmentSection")} meta={t("operations.overview.environmentMeta")} defaultOpen={false}>
-        <SchemaTable schema={compiled.environment} empty={t("operations.overview.environmentEmpty")} />
-      </Disclosure>
-      <Disclosure title={t("operations.overview.stepsSection", { count: compiled.steps.length })} meta={t("operations.overview.stepsMeta")} defaultOpen={false}>
-        <div className="flex flex-col gap-2">
-          {compiled.steps.map((step, index) => (
-            <StepCard key={step.name} step={step} index={index} />
-          ))}
-        </div>
-      </Disclosure>
-      <Disclosure title={t("operations.overview.producedSection")} meta={t("operations.overview.producedMeta")} defaultOpen={false}>
-        <SchemaTable schema={compiled.produced} />
-        <pre className="mt-3 rounded-(--radius-2) border border-border bg-surface-2 p-3 text-body leading-relaxed">{compiled.produce.expression}</pre>
-      </Disclosure>
+      {/* Schemas live in the inspector (Interface); here the expert gets each step's contract and the projection. */}
+      <Expert>
+        <Disclosure title={t("operations.overview.stepsSection")} defaultOpen={false}>
+          <div className="flex flex-col gap-2">
+            {compiled.steps.map((step, index) => (
+              <StepCard key={step.name} step={step} index={index} />
+            ))}
+          </div>
+        </Disclosure>
+        <Disclosure title={t("operations.overview.projectionSection")} defaultOpen={false}>
+          <pre className="rounded-(--radius-2) border border-border bg-surface-2 p-3 text-body leading-relaxed">{compiled.produce.expression}</pre>
+        </Disclosure>
+      </Expert>
     </div>
   );
 }

@@ -1,0 +1,32 @@
+---
+title: "Check history"
+summary: "Every verdict ever computed — across Plans and dry-runs — with its reason, its Facts and the Checks it reopened; and the revisions of a Plan."
+order: 5
+screen: /history
+---
+
+Every accepted execution leaves a **snapshot**: the Check, its Facts, the verdict, the reason, and the checklist delta it caused (newly satisfied, reopened, unchanged). Snapshots are immutable and deduplicated; the history is the audit trail of what was established, when, from what.
+
+<Screenshot id="history" caption="Check history." legend={{
+  "home.filters": "Facets applied by the runtime: Verdict, Mode (live plans / dry-runs), Procedure, Plan; the search narrows the loaded rows.",
+  "home.display": "Group by Plan or by day; newest first.",
+  "home.content": "One row per verdict: when, verdict, Check (and its Operation), Plan (and its Procedure, mode), reason and reopened Checks, number of Facts. The Plan link opens the Plan on that Check. Load more appends older rows.",
+}} />
+
+## Where else the history shows
+
+- **Overview** — the latest verdicts.
+- **Plan page → History** — the latest revision change (added, removed, satisfied, reopened) and, in expert mode, the revisions.
+- **Check details** (Plan page) — the verdicts of one Check, newest first; in expert mode its attempts.
+
+## Revisions
+
+A Plan revision is created by an accepted execution (a verdict) or by an agent declaration. A revision may add Checks (a declared collection expands `on each` Checks), remove Checks (their context disappeared), satisfy one, reopen dependents. Revisions are numbered from 1 and never rewritten.
+
+<Callout kind="rule">
+  Deleting a dry-run erases its revisions and verdicts; a live Plan is never deleted. Facts themselves are content-addressed and kept.
+</Callout>
+
+<Details title="What a row is" expert>
+`history.list { filter?: { plan, procedure, mode, verdict, since, until }, cursor?, limit? }` → snapshots newest first: `snapshotId`, `calculatedAt`, `plan`, `mode`, `procedure`, `checkUri`, `checkName`, `target`, `operation`, `attemptHandle`, `verdict`, `reasonCode`, `reason`, `factCount`, `checklistDelta`. Cursors are signed and bound to their filter. In expert mode the row shows `reasonCode · attempt <handle>`.
+</Details>

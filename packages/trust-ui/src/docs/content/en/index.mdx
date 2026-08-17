@@ -1,0 +1,31 @@
+---
+title: "Introduction"
+summary: "What TRUST does, how this documentation is organised, where to start."
+order: 0
+---
+
+TRUST runs software tasks operated by agents under a compliance rule: **the agent acts, TRUST decides what was established.** The work is written as a Procedure — a checklist of typed <Term id="check">Checks</Term>. Each Check is validated from observed <Term id="fact">Facts</Term> only. The agent never produces its own proof and never infers its own progress.
+
+<Figure caption="Authored objects (top) and what a running Plan produces (bottom).">
+  <ModelFigure />
+</Figure>
+
+## In short
+
+- An <Term id="operation">Operation</Term> describes one call to an external system and the typed fields it returns.
+- A <Term id="procedure">Procedure</Term> assembles Operations into Scenarios and Checks, each Check with the expectations that make it validated.
+- Engaging a Procedure with concrete inputs in an <Term id="environment">Environment</Term> creates a <Term id="plan">Plan</Term>.
+- The agent reads the Plan and hands one Check at a time to the <Term id="runner">Runner</Term> shipped with the TRUST skill. The Runner performs the Operation and reports the Facts.
+- TRUST qualifies the Facts and returns a <Term id="verdict">verdict</Term> with a reason. New Facts on a Check reopen every Check that depends on it; the agent resumes from a consistent state.
+
+> The Runner never qualifies. The agent never asserts. Only TRUST turns Facts into a verdict.
+
+## Reading this documentation
+
+Sections go from principles to details: a short hub page, then detailed pages (cards below). A term with a dotted underline opens its definition in place. Blocks marked **Expert** hold detail the operator does not need first; they open by default when the interface is in expert mode.
+
+<PageCards />
+
+<Callout kind="tip" title="Where to start">
+  [Principles](/docs/principles), then [Operations](/docs/operations) — and try one in the interface with **Simulate**. To write a Procedure: the [language reference](/docs/language) and the [guides](/docs/guides).
+</Callout>

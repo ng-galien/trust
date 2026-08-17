@@ -1,0 +1,45 @@
+---
+title: "Répéter avec un dry-run"
+summary: "Le cockpit de répétition — déclarer le contexte, choisir un Check, saisir les valeurs que l'Opération produirait, soumettre comme l'agent, lire le verdict et la cascade."
+order: 3
+screen: /dry-runs
+---
+
+Un dry-run est un Plan dont les Facts viennent de l'opérateur. Même Procédure, mêmes Checks, même admission et même qualification, même cascade, même historique — rien d'externe ne s'exécute, aucune valeur d'Environnement n'est déléguée. C'est ainsi qu'une Procédure se répète avant qu'un agent ne l'exécute.
+
+<Screenshot id="dryrun-cockpit" caption="Un dry-run avec son cockpit de répétition." legend={{
+  "cockpit": "Le cockpit, accolé à chaque onglet du Plan ; redimensionnable, refermable (Cockpit / Répéter dans la barre d'onglets).",
+  "cockpit.todo": "À faire maintenant : les Checks actionnables — choisissez-en un. Faits liste les Checks satisfaits (choisissez-en un pour l'observer à nouveau) ; En attente, les Checks bloqués.",
+  "cockpit.workbench": "Valeurs que l'opération produirait : un champ par champ produit de l'Opération du Check, pré-rempli avec ce que le Check a observé en dernier. Remplir en succès / Remplir en échec proposent des valeurs qui satisfont chaque attente, ou brisent la première.",
+  "cockpit.submit": "Soumettre comme l'agent : admission, Facts, verdict — la vraie séquence.",
+}} />
+
+## Les étapes du cockpit
+
+<Steps>
+  <Step title="Déclarer le contexte (quand la Procédure a des déclarations de l'agent)">Un champ par rôle déclaré, délimité par valeur du parent quand le rôle est `for each` un parent ; **Appliquer les déclarations** remplace tout l'ensemble et crée une nouvelle révision. Tant que les déclarations manquantes ne sont pas appliquées, les Checks qui en ont besoin ne sont pas actionnables.</Step>
+  <Step title="Exécuter les Checks">Trois listes : **Faits**, **À faire maintenant** (actionnables — choisissez-en un), **En attente d'un prérequis**. La sélection est partagée avec la checklist et le graphe (`?sel=`).</Step>
+  <Step title="Répéter le Check sélectionné">L'établi : en mode expert, le contrat du Check (Opération, cible, entrées, raison de succès, attentes) ; le formulaire des champs produits ; **Remplir en succès** / **Remplir en échec** ; **Soumettre comme l'agent**.</Step>
+  <Step title="Lire le résultat">Le verdict et sa raison ; ce qui est devenu satisfait, ce qui a été rouvert en aval, ce qui est inchangé. Une admission refusée dit pourquoi (un Check qui n'est plus courant, un prérequis ouvert, pas de Session).</Step>
+</Steps>
+
+## Ce que fait Soumettre
+
+Exactement ce que fait le Runner sur un Plan en direct, avec les valeurs de l'opérateur à la place d'une exécution : **admettre** le Check (TRUST vérifie qu'il est courant, actionnable, sa Session ouverte), **rapporter les Facts** (le lot doit être complet : chaque champ produit dont les attentes ou les matérialisations ont besoin), **finaliser** (TRUST qualifie, enregistre, cascade). Le Plan passe à sa révision suivante ; la checklist, le graphe et l'historique se mettent à jour.
+
+## Observer à nouveau un Check satisfait
+
+Seul un dry-run peut ré-observer un Check satisfait : choisissez-le dans **Faits** — le titre de l'établi devient *Observer à nouveau le Check sélectionné*. De nouveaux Facts remplacent son verdict et rouvrent chaque Check qui en dépend ; le verdict précédent reste dans l'historique. Sur un Plan en direct, un Check satisfait n'est pas admis à nouveau.
+
+## Réinitialiser et supprimer
+
+- **Réinitialiser** efface les révisions, tentatives et verdicts du dry-run, puis l'engage à nouveau avec la même Procédure, le même Environnement et les mêmes entrées racines, à partir de la révision 1.
+- **Supprimer** efface le dry-run (ses révisions, tentatives, verdicts, sessions). Les Facts sont un historique adressé par contenu et restent stockés, mais rien du Plan effacé n'est accessible.
+
+<Callout kind="rule">
+  Un dry-run refuse les Facts du Runner et un Plan en direct refuse les Facts de l'opérateur : le mode fait partie de l'identité du Plan, et le canal des Facts le suit.
+</Callout>
+
+<Details title="Les appels du cockpit" expert>
+`check.attempt.admit { attemptKey: "rehearse-<check>-<time>", checkUri, reobserve? }` → accord (`environment: {}` sur un dry-run) ou refus (`check-not-actionable`, `session-unavailable`, `check-not-found`, `attempt-key-conflict`) ; `check.attempt.facts { attemptKey, attemptHandle, checkUri, recordedAt, facts: [{ kind: <operation>, observedAt, values }] }` → accepté ou `fact-batch-rejected` ; `check.attempt.finalize { attemptHandle }` → `{ verdict, reasonCode: "check-qualified" | "predicate-not-satisfied", reason, checklistDelta: { newlySatisfied, newlyOpened, unchanged } }`. `plan.remove` efface un dry-run ; un Plan en direct est refusé (`plan-conflict`).
+</Details>

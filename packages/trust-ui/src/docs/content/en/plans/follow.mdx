@@ -1,0 +1,47 @@
+---
+title: "Following a Plan"
+summary: "The Plan page — summary, checklist, Check details, live graph, hydrated source, revisions — and the Session."
+order: 2
+screen: /plans
+---
+
+The Plan page shows the **current revision**: what is satisfied, what is actionable, what is blocked and why, and the latest verdict. It updates live while the runtime streams events, and polls otherwise.
+
+<Screenshot id="plan-page" caption="A live Plan, Checklist tab, one Check selected." legend={{
+  "overlay.header": "Live / Dry-run, state (In progress, Complete, Unavailable when the Session is closed), title; on <environment> when the Plan's Environment is not the current one. Actions: Close session (live), Reset and Delete (dry-run), Procedure.",
+  "overlay.tabs": "Checklist, Graph, Source, History. On a dry-run: the Cockpit / Rehearse toggle.",
+  "plan.summary": "Progress and engagement time; the Procedure title and description; Latest verdict with its Check and reason; Next: what is actionable now, what the agent must declare, what a not-validated verdict left open.",
+  "plan.checklist": "Every Check in Procedure order — grouped × N on each for expanded targets — with its state, its target value, its latest verdict and reason, and what it waits for.",
+  "plan.checkDetail": "The selected Check: history of its verdicts; in expert mode its URI, inputs and attempts.",
+}} />
+
+## States
+
+| On | Values | Meaning |
+| --- | --- | --- |
+| Plan | **In progress** · **Complete** · **Unavailable** | Complete when every Check is satisfied and nothing is left to declare; Unavailable when the Session is closed or expired |
+| Check | **Open** · **Actionable** · **Satisfied** | Actionable = open, prerequisites validated, context complete, Session open |
+| Verdict | **Validated** · **Not validated** | the latest qualification of the Check, with its reason |
+
+A Check *left open by a not-validated verdict* stays actionable: the agent addresses the reason and executes it again.
+
+## The tabs
+
+- **Checklist** — the summary strip and the list. Click a Check to open its details; the selection is in the URL (`?sel=`), so a history row or a link lands directly on the Check.
+- **Graph** — the Procedure graph with the live state of each Check (satisfied, actionable, blocked, failed, open); a selection shows what it needs and what a new verdict would reset. See [Procedures in the interface](/docs/procedures/authoring#graph).
+- **Source** — the published Procedure source, read-only, annotated line by line with the Plan: `✓ satisfied — reason`, `✗ not validated — reason`, `▶ actionable`, `○ waits for …`, role values, `not declared yet`.
+- **History** — the latest revision change (added, removed, satisfied, reopened) and, in expert mode, the list of revisions.
+
+## The Session
+
+- Open at engagement; **Close session** closes it: the Plan and its history stay, nothing can be admitted until the Plan is engaged again with the same identity.
+- Expired Sessions are renewed at re-engagement or when declarations are applied.
+- A live Plan is never deleted — it is audit history. A dry-run can be reset (erased and engaged again with the same inputs, from revision 1) or deleted.
+
+<Callout kind="note" title="Not on the current Environment">
+  The header shows **on `<environment>`** when the Plan runs on another Environment than the current one of the interface. It is a reminder, not a blocker: a live Plan always uses its own Environment.
+</Callout>
+
+<Details title="What the page reads" expert>
+`plan.read { plan }` — `PlanView`: `revision`, `sessionState`, `workState`, `checks[]` (`state`, `actionable`, `blockedBy[]`, `latestVerdict`, `reason`), `missingDeclarations`, `latestQualification` (with its `checklistDelta`), `latestRevisionChange`, `revisions`, `sessions`. `check.read { checkUri }` — `CheckView`: the same plus `context`, dependencies, `history[]` (snapshots) and `attempts[]`. Live updates: `GET /events/plans` — `plan.engaged`, `plan.revision` (cause `declarations` or `verdict`, with the delta), `session.changed`, `plan.removed`, `runtime.changed` (resync).
+</Details>

@@ -40,6 +40,8 @@ export const shared: Translation<typeof en> = {
       produceWithJsonata: "Produire avec JSONata",
       procedureFeature: "Feature de Procedure",
       scenario: "Scenario",
+      role: "Rôle de contexte",
+      check: "Check",
       useOperation: "Utiliser {{operation}}",
     },
   },

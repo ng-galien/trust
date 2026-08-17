@@ -33,7 +33,6 @@ export function OperationsHome() {
     <ResourceHome
       crumbs={[{ label: "TRUST", to: "/overview" }, { label: t("operations.home.title") }]}
       title={t("operations.home.title")}
-      subtitle={t("operations.home.subtitle")}
       total={rows.length}
       visible={visible.length}
       createTo={`/operations/new${location.search}`}
@@ -202,7 +201,7 @@ function CardsView({ rows, search, q }: { rows: OperationRow[]; search: string; 
               {row.usedBy.length ? t("operations.home.usedByProcedures", { procedures: plural(row.usedBy.length, "procedure") }) : t("operations.home.notUsedYet")}
             </span>
           }
-          footerRight={<RunnableMark environments={row.runnableOn} />}
+          footerRight={<span data-doc="operations.runnable"><RunnableMark environments={row.runnableOn} /></span>}
         />
       ))}
     </CardGrid>

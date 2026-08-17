@@ -12,6 +12,7 @@ import { Badge } from "../../ui/badge.js";
 import { Button, IconButton } from "../../ui/button.js";
 import { ConfirmDialog } from "../../ui/confirm.js";
 import { Field, TextInput } from "../../ui/controls.js";
+import { Expert } from "../../ui/expert.js";
 import { FilterBox } from "../../ui/filter-box.js";
 import { EmptyState, ErrorBox, LoadingState } from "../../ui/states.js";
 import { EmptyRelation, InspectorSection, RelationLink } from "../shared/inspector.js";
@@ -72,7 +73,6 @@ export function EnvironmentsHome() {
     <ResourceHome
       crumbs={[{ label: "TRUST", to: "/overview" }, { label: t("environments.home.crumb") }]}
       title={t("environments.home.title")}
-      subtitle={t("environments.home.subtitle")}
       total={rows.length}
       visible={visible.length}
       filterBox={<FilterBox query={filters.q} onQuery={(q) => update({ q })} groups={[]} placeholder={t("environments.home.searchPlaceholder")} onClearAll={() => update({ q: "" })} />}
@@ -82,16 +82,16 @@ export function EnvironmentsHome() {
       emptyTitle={rows.length ? t("environments.home.emptyTitleNoMatch") : t("environments.home.emptyTitleNone")}
       createTo="/environments/new"
       createLabel={t("environments.home.create")}
-      emptyBody={rows.length ? t("environments.home.emptyBodyNoMatch") : t("environments.home.emptyBodyNone")}
+      emptyBody={rows.length ? t("environments.home.emptyBodyNoMatch") : undefined}
       onClearFilters={() => update({ q: "" })}
       groups={[{ key: "all", label: "", rows: visible }]}
       renderCards={(list) => (
         <CardGrid>
           {list.map((row) => (
-            <ResourceCard key={row.id} to={`/environments/${encodeURIComponent(row.id)}${location.search}`} marks={<>{row.id === current.name ? <Badge tone="success">{t("shell.environment.current")}</Badge> : null}<Badge tone="neutral" className="inline-flex items-center gap-1"><Server size={11} /> {t("environments.home.kind")}</Badge>{row.plans ? <Badge tone="info">{plural(row.plans, "plan")}</Badge> : null}{row.dryRuns ? <Badge tone="warning">{plural(row.dryRuns, "dryRun")}</Badge> : null}</>} title={row.id} id={`${plural(row.values.length, "value")} · ${plural(row.runnable, "runnableOperation")}`}
+            <ResourceCard key={row.id} to={`/environments/${encodeURIComponent(row.id)}${location.search}`} marks={<>{row.id === current.name ? <Badge tone="success">{t("shell.environment.current")}</Badge> : null}{row.plans ? <Badge tone="info">{plural(row.plans, "plan")}</Badge> : null}{row.dryRuns ? <Badge tone="warning">{plural(row.dryRuns, "dryRun")}</Badge> : null}</>} title={row.id} id={plural(row.values.length, "value")}
               facts={row.values.slice(0, 3).map(([key, value]) => ({ label: key, value: <span className="mono truncate" title={value}>{value}</span> }))}
               footerLeft={<span className="inline-flex items-center gap-1 text-label text-muted"><KeyRound size={12} /> {plural(row.credentials, "credential")}</span>}
-              footerRight={<span className="inline-flex items-center gap-1 text-label text-muted"><TerminalSquare size={12} /> {row.runnable}</span>} />
+              footerRight={<span className="inline-flex items-center gap-1 text-label text-muted"><TerminalSquare size={12} /> {plural(row.runnable, "runnableOperation")}</span>} />
           ))}
         </CardGrid>
       )}
@@ -164,7 +164,6 @@ export function EnvironmentOverlay({ mode = "item" }: { mode?: "item" | "new" })
       tabs={[{ value: "overview", label: <>{t("environments.overlay.tabOverview")}</> }]}
       tab={view.tab}
       onTab={view.setTab}
-      tabMeta={row ? `${plural(operations.length, "runnableOperation")} · ${plural(onIt.length, "plan")}` : ""}
       inspector={row ? (
         <>
           <InspectorSection title={t("environments.overlay.plansOnIt")} count={onIt.length}>
@@ -186,8 +185,8 @@ export function EnvironmentOverlay({ mode = "item" }: { mode?: "item" | "new" })
             </Field>
           </section>
         ) : null}
-        <section className="rounded-(--radius-3) border border-border bg-surface p-4">
-          <div className="flex items-center justify-between"><span className="kicker">{t("environments.overlay.valuesKicker")}</span><span className="text-caption text-faint">{t("environments.overlay.valuesHint")}</span></div>
+        <section className="rounded-(--radius-3) border border-border bg-surface p-4" data-doc="environment.values">
+          <div className="flex items-center justify-between"><span className="kicker">{t("environments.overlay.valuesKicker")}</span><Expert><span className="text-caption text-faint">{t("environments.overlay.valuesHint")}</span></Expert></div>
           <KeyValueEditor rows={values} onChange={setValues} keyPlaceholder={t("environments.overlay.valueKeyPlaceholder")} valuePlaceholder={t("environments.overlay.valueValuePlaceholder")} />
         </section>
         {row ? <CredentialsSection environment={name} /> : (
@@ -231,8 +230,8 @@ function CredentialsSection({ environment }: { environment: string }) {
   const error = mutationError(save.error ?? remove.error);
   const submit = () => save.mutate({ environment, name, value }, { onSuccess: () => { setName(""); setValue(""); } });
   return (
-    <section className="rounded-(--radius-3) border border-border bg-surface p-4">
-      <div className="flex items-center justify-between"><span className="kicker">{t("environments.credentials.kicker")}</span><span className="text-caption text-faint"><KeyRound size={11} className="mr-1 inline" /> {t("environments.credentials.hint")}</span></div>
+    <section className="rounded-(--radius-3) border border-border bg-surface p-4" data-doc="environment.credentials">
+      <div className="flex items-center justify-between"><span className="kicker">{t("environments.credentials.kicker")}</span><Expert><span className="text-caption text-faint"><KeyRound size={11} className="mr-1 inline" /> {t("environments.credentials.hint")}</span></Expert></div>
       <ul className="mt-2 flex flex-col gap-1">
         {(credentials.data ?? []).map((credential) => (
           <li key={credential.name} className="flex items-center gap-2 text-body-lg">
@@ -266,7 +265,7 @@ function OperationCoverage({ values }: { values: string[] }) {
   }).sort((a, b) => Number(a.missing.length > 0) - Number(b.missing.length > 0) || a.operation.operation.localeCompare(b.operation.operation));
   const ok = rows.filter((row) => row.missing.length === 0).length;
   return (
-    <section className="rounded-(--radius-3) border border-border bg-surface">
+    <section className="rounded-(--radius-3) border border-border bg-surface" data-doc="environment.coverage">
       <div className="flex items-center justify-between border-b border-border px-4 py-2">
         <span className="kicker">{t("environments.coverage.kicker")}</span>
         <span className="text-caption text-faint">{t("environments.coverage.summary", { ok: String(ok), total: String(rows.length) })}</span>

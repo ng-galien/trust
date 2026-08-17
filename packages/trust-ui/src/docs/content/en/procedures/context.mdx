@@ -1,0 +1,72 @@
+---
+title: "Plan context — roles"
+summary: "The typed roles of a Plan and their four sources: Plan input, agent declaration, fixed value, materialized field — and the parent scope that relates them."
+order: 2
+---
+
+The `Background: Plan context` declares every value a Plan carries: **roles**, typed and named. A Check binds roles to the Input of its Operation; a Check can also fill a role from a produced field. Nothing else holds Plan data.
+
+> A role is declared once, with its type, its cardinality and where its value comes from.
+
+```gherkin fragment title="One role per line"
+  Background: Plan context
+    Given one reference "jira issue"
+    And many reference "affected project" declared by agent for "jira issue"
+    And many reference "fix revision" for each "affected project"
+    And one reference "acceptance project" fixed as "payment-acceptance"
+```
+
+## The sentence
+
+```text
+Given|And one|many string|number|instant|reference "<role>" [declared by agent] [fixed as "<value>"] [for "<parent>"]… [for each "<parent>"]…
+```
+
+| Part | Rule |
+| --- | --- |
+| `Given` / `And` | either keyword, any order; no table, no doc string |
+| `one` / `many` | cardinality: a scalar, or a collection of the type |
+| `string` `number` `instant` `reference` | the same four types as Operation Inputs and produced fields |
+| `"<role>"` | free quoted name, non-empty, unique in the Procedure — a readable label (`"jira issue"`, `"fix revision"`), not an identifier |
+| `declared by agent` | the agent supplies the value after engagement |
+| `fixed as "<value>"` | the value is written here; only for `one string` or `one reference`; cannot be combined with `declared by agent` |
+| `for "<parent>"` / `for each "<parent>"` | parent scope, see below; repeatable, combinable with the two clauses above |
+
+## The four sources
+
+The source of a role is not a keyword: it follows from the clauses and from the Checks.
+
+| Source | How | Filled | Example |
+| --- | --- | --- | --- |
+| **Fixed value** | `fixed as "<value>"` | by the Procedure itself | `And one reference "Kind cluster" fixed as "trust"` |
+| **Agent declaration** | `declared by agent` | after engagement, by the agent, through the closed declaration operation | `And many reference "affected project" declared by agent for "jira issue"` |
+| **Materialized field** | a Check of the Procedure `materializes "<role>" from field "<field>"` | by that Check, from one of its produced fields, once validated | `And one reference "baseline revision" for "project"` + `… and materializes "baseline revision" from field "headRevision"` |
+| **Plan input** | none of the above | at engagement, by whoever engages the Plan (root inputs) | `Given one reference "repository"` |
+
+Engagement accepts **exactly** the Plan inputs — no fixed, declared or materialized role. Adding a `materializes` clause on a Check turns a would-be Plan input into a materialized role.
+
+## Parent scope
+
+`for "<parent>"` and `for each "<parent>"` attach a role to another role: a revision belongs to a project, a record time belongs to a document.
+
+- The parent must be a declared role; parent relations form an acyclic graph.
+- `for "<parent>"`: one shared parent value. `for each "<parent>"`: one value per value of the parent — the relation keeps **which value belongs to which parent**. When a Check runs `on each "affected project"`, a `using "fix revision"` selects the revision of *that* project, not the whole collection — the selection follows the scope, never an array position.
+- Two roles are in the **same scope** when one is `for each` the other, or when they share the same parents. Same scope is what allows a `many` role to feed a `one` Input under `on each`, a produced scalar to compare with `context "<many role>"`, and a scalar field to materialize a `many` role.
+
+```gherkin fragment title="From the aircraft departure Procedure: values scoped to one flight"
+    Given one reference "flight"
+    And one reference "aircraft" for "flight"
+    And many reference "cabin item" declared by agent for "flight"
+```
+
+## What a role feeds
+
+- **A Check target**: `on "<role>"` — one Check (`on "project"`), one Check per value (`on each "affected project"`), or one Check with the whole collection (`on all "…"`).
+- **Other Inputs**: `using "<role>" as Input "<input>"` (`using all` for a collection).
+- **An expectation**: `context "<role>"` compares a produced field with the value of a role — see [Expectations](/docs/procedures/expectations).
+
+Types and cardinalities must match the Operation's Input at each binding: a `many reference` role cannot feed a `one` Input without `each`; a `string` role cannot feed a `reference` Input.
+
+<Details title="Compiled roles" expert>
+Each role compiles to `{ name, type, cardinality, source, parent? }` where `source.kind` is `plan-input`, `agent-declaration`, `fixed` (with `value`) or `materialized` (with the Check and field). The Procedure page lists Plan inputs in its inspector; a Plan's engagement form is generated from them.
+</Details>

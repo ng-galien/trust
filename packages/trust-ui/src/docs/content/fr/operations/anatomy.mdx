@@ -1,0 +1,109 @@
+---
+title: "Anatomie d'une Opération"
+summary: "Une Opération complète lue ligne par ligne — tags, interface, étapes, projection — avec les règles que le compilateur applique à chaque ligne."
+order: 1
+---
+
+L'Opération ci-dessous construit une image Docker et rapporte si le build a réussi. Elle utilise un Input comme argument Shell, tolère un code de sortie, concatène des chaînes et renvoie un statut énuméré. Chaque ligne numérotée est expliquée sous la source.
+
+```gherkin operation id="docker.image-build" title="docker.image-build" marks="2,3,6,9,15,23,29,33"
+# language: en
+@trust-dsl:1 @operation:docker.image-build @version:1.0.0
+Feature: Build one Docker image from a project revision
+
+  Background: Operation interface
+    Given Environment
+      | name          | type      |
+      | workspaceRoot | directory |
+    And Input
+      | input          | type      | cardinality |
+      | project        | reference | one         |
+      | sourceRevision | reference | one         |
+      | image          | reference | one         |
+      | containerName  | string    | one         |
+    And Produced fields
+      | field          | type      | cardinality | domain                      |
+      | image          | reference | one         | any                         |
+      | builtRevision  | reference | one         | any                         |
+      | containerImage | reference | one         | any                         |
+      | buildStatus    | string    | one         | enum "successful", "failed" |
+
+  Scenario: Run
+    When Shell "build" runs "docker" with cwd from Environment "workspaceRoot" and Input "project"
+      | argument | source        |
+      | build    | literal       |
+      | --tag    | literal       |
+      | image    | Input "image" |
+      | .        | literal       |
+    And Shell "build" accepts exits
+      | exit code | stdout contains | stderr contains |
+      | 0         |                 |                 |
+      | 1         |                 |                 |
+    Then Produce with JSONata
+      """
+      {
+        "image": input.image,
+        "builtRevision": input.sourceRevision,
+        "containerImage": input.containerName & "=" & input.image,
+        "buildStatus": steps.build.exitCode = 0 ? "successful" : "failed"
+      }
+      """
+```
+
+<Legend items={[
+  <>**Tags d'identité.** Exactement un <code>@operation:</code> sous la forme <code>domain.action</code> (minuscules, tirets autorisés), une <code>@version:</code> sémantique, et <code>@trust-dsl:1</code>. Tout autre tag doit être une classification <code>@x-</code>. Voir [Classification, versions et réutilisation](/docs/operations/classification-and-versions).</>,
+  <>**Titre.** Texte libre, copié tel quel comme titre de l'Opération. Un bloc de description peut suivre sur les lignes suivantes ; il est rapporté, jamais exécuté.</>,
+  <>**Environment.** Les valeurs dont l'Opération a besoin depuis le contexte d'exécution : un <code>directory</code> ou une <code>url</code>. Les noms sont en lower camel case. Voir [Interface](/docs/operations/interface).</>,
+  <>**Input.** Les valeurs typées que le Check fournira : <code>string</code>, <code>number</code>, <code>instant</code> ou <code>reference</code>, cardinalité <code>one</code> ou <code>many</code>. Chaque Input est requis — il n'y a pas d'Input optionnel.</>,
+  <>**Produced fields.** Les champs exacts que l'Opération renvoie, typés, avec un domaine : <code>any</code>, ou un <code>enum</code> pour les chaînes. Rien d'autre ne peut être produit.</>,
+  <>**Étapes.** Ordonnées, chacune avec un nom unique en lower camel case utilisé ensuite dans la projection. Les arguments Shell sont structurés : un <code>literal</code> ou un <code>Input</code> scalaire par ligne — le Runner n'analyse jamais une ligne de commande. Voir [Étapes](/docs/operations/steps).</>,
+  <>**Sorties acceptées.** Par défaut seule la sortie <code>0</code> est un résultat. Déclarer <code>accepts exits</code> remplace ce défaut : ici <code>1</code> devient une observation (<code>buildStatus: failed</code>) au lieu d'une erreur. Toute autre sortie interrompt l'Opération avant que les champs soient produits.</>,
+  <>**Produce with JSONata.** Toujours en dernier, toujours <code>Then</code>, une doc string. Elle voit <code>input</code>, <code>environment</code> et <code>steps.&lt;name&gt;</code>, et doit renvoyer exactement les champs déclarés. Voir [Produire des champs](/docs/operations/produce).</>,
+]} />
+
+## La forme du document
+
+Le compilateur accepte une seule forme et rien d'autre :
+
+```text
+# language: en                                  optional (English is the only dialect)
+@trust-dsl:1 @operation:<domain>.<action> @version:<x.y.z> [@x-key:value …]
+Feature: <title>
+  [free-text description]
+
+  Background: <any name>                        exactly one
+    Given Environment      + table              required, once
+    And   Input            + table              optional, at most once
+    And   Produced fields  + table              required, once, at least one row
+
+  Scenario: Run                                 exactly one, named "Run"
+    When/And <step sentence> [+ table]          at least one step
+    …
+    Then Produce with JSONata                   required, once, last
+      """ … """
+```
+
+<Details title="Règles que le compilateur applique à l'enveloppe du document" expert>
+- La Feature doit être du Gherkin anglais ; `Rule:`, `Scenario Outline`, `Examples` et les tags sur le Scenario sont hors de la grammaire fermée.
+- Exactement un `Background` (son nom est libre — le catalogue écrit `Operation interface`) et exactement un `Scenario` nommé `Run`.
+- Les étapes du Background utilisent `Given` / `And` ; les trois déclarations peuvent venir dans n'importe quel ordre mais aucune ne peut se répéter.
+- Les étapes de `Run` utilisent `When` / `And` ; seul `Produce with JSONata` utilise `Then`, et il doit être la dernière étape.
+- La source entière est refusée si elle contient une **valeur ressemblant à un secret** (une clé `sk-…`, un token GitHub, un en-tête `Bearer …`). Il n'existe aucun moyen de rédiger un credential dans une Opération — voir [Interface](/docs/operations/interface#no-secrets-in-the-source).
+- Les fins de ligne sont normalisées et la source est stockée telle quelle dans l'Opération compilée.
+</Details>
+
+## Lignes de continuation
+
+Une étape longue peut continuer sur les lignes suivantes quand elles sont indentées plus profondément que son mot-clé et ne sont ni une ligne de table, ni une doc string, ni un commentaire, ni un tag, ni une ligne de mot-clé. L'éditeur formate une source de cette manière à la demande (**Formater la source**, ou *Shift+Alt+F*) ; les diagnostics pointent toujours vers la ligne physique.
+
+```gherkin fragment
+    When Shell "verify" runs "mvn"
+        with cwd from Environment "workspaceRoot" and Input "project"
+      | argument | source  |
+      | -B       | literal |
+      | verify   | literal |
+```
+
+<Callout kind="tip">
+  Partez d'un modèle : une nouvelle Opération s'ouvre sur un squelette complet, et la complétion **Operation feature** (⌃Espace dans l'éditeur de source) en insère un avec des espaces réservés où que vous soyez. Le compilateur s'exécute à chaque frappe ; la ligne d'état sous les onglets vous dit quand la source compile et ce qu'elle produit.
+</Callout>

@@ -7,6 +7,7 @@ import { useHistory, usePlans, useProcedures } from "../../lib/runtime-context.j
 import type { HistoryFilter, HistorySnapshot, PlanMode } from "../../types.js";
 import { StatusBadge } from "../../ui/badge.js";
 import { Button } from "../../ui/button.js";
+import { Expert } from "../../ui/expert.js";
 import { type FacetGroupSpec, FilterBox } from "../../ui/filter-box.js";
 import { ModeBadge } from "../plans/parts.js";
 import { ResourceHome } from "../shared/resource-home.js";
@@ -77,7 +78,6 @@ export function HistoryHome() {
     <ResourceHome
       crumbs={[{ label: "TRUST", to: "/overview" }, { label: t("history.home.crumb") }]}
       title={t("history.home.title")}
-      subtitle={t("history.home.subtitle")}
       total={history.rows.length}
       visible={visible.length}
       filterBox={<FilterBox query={filters.q} onQuery={(q) => update({ q })} groups={facetGroups} placeholder={t("history.home.searchPlaceholder")} onClearAll={() => update(emptyFilters)} />}
@@ -89,7 +89,7 @@ export function HistoryHome() {
       loading={history.isLoading}
       error={history.error?.message}
       emptyTitle={history.rows.length ? t("history.home.emptyTitleNoMatch") : t("history.home.emptyTitleNone")}
-      emptyBody={history.rows.length ? t("history.home.emptyBodyNoMatch") : t("history.home.emptyBodyNone")}
+      emptyBody={history.rows.length ? t("history.home.emptyBodyNoMatch") : undefined}
       onClearFilters={() => update(emptyFilters)}
       groups={groups}
       renderCards={(list) => <HistoryTable rows={list} />}
@@ -135,7 +135,7 @@ export function HistoryTable({ rows, stickyHeader }: { rows: HistorySnapshot[]; 
           <Link to={`/${row.mode === "dry-run" ? "dry-runs" : "plans"}/${encodeURIComponent(row.plan)}?sel=${encodeURIComponent(`check:${row.checkUri}`)}`} className="mono block truncate text-body text-accent hover:underline">{row.plan}</Link>
           <span className="flex items-center gap-1 text-caption text-muted"><ModeBadge mode={row.mode} /> {row.procedure}</span>
         </div>,
-        <span key="r" className="text-body">{row.reason}{row.checklistDelta.newlyOpened.length ? <span className="text-graph-data">{t("history.table.reopened", { checks: plural(row.checklistDelta.newlyOpened.length, "check") })}</span> : null}<span className="block text-meta text-faint">{t("history.table.attempt", { reasonCode: row.reasonCode, handle: row.attemptHandle.slice(0, 8) })}</span></span>,
+        <span key="r" className="text-body">{row.reason}{row.checklistDelta.newlyOpened.length ? <span className="text-graph-data">{t("history.table.reopened", { checks: plural(row.checklistDelta.newlyOpened.length, "check") })}</span> : null}<Expert><span className="block text-meta text-faint">{t("history.table.attempt", { reasonCode: row.reasonCode, handle: row.attemptHandle.slice(0, 8) })}</span></Expert></span>,
         <span key="f" className="text-body text-muted">{row.factCount}</span>,
       ]}
     />

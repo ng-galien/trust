@@ -1,0 +1,142 @@
+---
+title: "Shell step"
+summary: "Run one executable with structured arguments in an Environment directory, and decide which exit codes are observations."
+order: 1
+---
+
+```gherkin fragment title="Sentence + argument table"
+    When Shell "<name>" runs "<executable>" with cwd from Environment "<directory>" and Input "<input>"
+      | argument   | source          |
+      | <literal>  | literal         |
+      | <any text> | Input "<input>" |
+```
+
+## The sentence
+
+| Part | Rule |
+| --- | --- |
+| `"<name>"` | lower camel case, unique in the Operation |
+| `"<executable>"` | the program to run, as the Runner would type it (`git`, `mvn`, `docker`, `kubectl`). Not validated at compile time; resolved on the Runner's `PATH` |
+| `with cwd from Environment "<directory>"` | required; the Environment value must be of type `directory` |
+| `and Input "<input>"` | optional; narrows the directory to **one project below it**. The Input must be one string (`string`, `instant` or `reference`, cardinality `one`) naming a direct sub-directory — no separator, no `..`, no link out of the root |
+
+Without `and Input`, the command runs in the Environment directory itself.
+
+## The argument table
+
+The table is **required** (a header alone is legal and means "no argument"). Its header is either `| argument |` or `| argument | source |`.
+
+| `source` | Meaning |
+| --- | --- |
+| `literal` (or the one-column form) | the `argument` cell is passed as-is, one argument |
+| `Input "<name>"` | the value of that Input is passed as one argument; the `argument` cell is only a label for the reader. The Input must be one string |
+
+The Runner **never parses a command line**: each row is exactly one argument, whatever it contains (spaces included). There is no shell, no quoting, no glob expansion, no environment-variable substitution.
+
+```gherkin fragment title="git rev-list --count HEAD --not <baseRevision>"
+    And Shell "commits" runs "git" with cwd from Environment "workspaceRoot" and Input "project"
+      | argument     | source               |
+      | rev-list     | literal              |
+      | --count      | literal              |
+      | HEAD         | literal              |
+      | --not        | literal              |
+      | baseRevision | Input "baseRevision" |
+```
+
+## Accepted exits — what counts as a result
+
+By default only exit code `0` is a result. Any other exit **interrupts the Operation**: no field is produced. When another exit is a legitimate observation, declare it:
+
+```gherkin fragment
+    And Shell "test" accepts exits
+      | exit code | stdout contains | stderr contains |
+      | 0         |                 |                 |
+      | 1         | Tests run:      |                 |
+```
+
+- The `And Shell "<name>" accepts exits` sentence follows the Shell step it qualifies (any later position before `Produce` works). The header is exactly `| exit code | stdout contains | stderr contains |`, at least one row.
+- `exit code` is an integer from 0 to 255. `stdout contains` / `stderr contains` are optional substrings that must appear in the corresponding stream for the row to match — here exit `1` is only accepted if the output looks like a test report, so a Maven that could not start (also exit `1`, no `Tests run:`) stays an error.
+- **The declared list replaces the default.** If `0` must remain accepted, list it.
+- Rows must be non-empty and distinct.
+
+An accepted exit is a normal step result: the projection reads `steps.test.exitCode` and turns it into a typed field.
+
+```gherkin fragment
+      """
+      { "testStatus": steps.test.exitCode = 1 ? "defect-reproduced" : "not-reproduced" }
+      """
+```
+
+## Result
+
+| Field | Type |
+| --- | --- |
+| `steps.<name>.exitCode` | number |
+| `steps.<name>.stdout` | string (whole standard output) |
+| `steps.<name>.stderr` | string (whole standard error) |
+
+Only these three keys exist and none can be traversed further (`steps.head.stdout.something` is refused). Use `$trim`, `$number`, comparisons and the conditional to turn them into fields — see [Producing fields](/docs/operations/produce).
+
+## Complete example
+
+```gherkin operation id="maven.project-verify" title="maven.project-verify"
+# language: en
+@trust-dsl:1 @operation:maven.project-verify @version:1.0.0
+Feature: Verify one Maven project revision
+
+  Runs `mvn -B verify` in the project checked out below the workspace and reports whether
+  the build and its tests pass. Exit code 1 is an observation (`verificationStatus: failed`),
+  not an error; any other exit interrupts the Operation.
+
+  Background: Operation interface
+    Given Environment
+      | name          | type      |
+      | workspaceRoot | directory |
+    And Input
+      | input    | type      | cardinality |
+      | project  | reference | one         |
+      | revision | reference | one         |
+    And Produced fields
+      | field              | type      | cardinality | domain                      |
+      | verifiedProject    | reference | one         | any                         |
+      | verifiedRevision   | reference | one         | any                         |
+      | verificationStatus | string    | one         | enum "successful", "failed" |
+
+  Scenario: Run
+    When Shell "head" runs "git" with cwd from Environment "workspaceRoot" and Input "project"
+      | argument  | source  |
+      | rev-parse | literal |
+      | --verify  | literal |
+      | HEAD      | literal |
+    And Shell "verify" runs "mvn" with cwd from Environment "workspaceRoot" and Input "project"
+      | argument | source  |
+      | -B       | literal |
+      | verify   | literal |
+    And Shell "verify" accepts exits
+      | exit code | stdout contains | stderr contains |
+      | 0         |                 |                 |
+      | 1         |                 |                 |
+    Then Produce with JSONata
+      """
+      {
+        "verifiedProject": input.project,
+        "verifiedRevision": $trim(steps.head.stdout),
+        "verificationStatus": steps.verify.exitCode = 0 ? "successful" : "failed"
+      }
+      """
+```
+
+<Details title="Diagnostics specific to Shell steps" expert>
+| Message | Cause |
+| --- | --- |
+| `Shell "x" requires Environment "e" to be a directory` | the `cwd` Environment is a `url` |
+| `Shell "x" uses undeclared Environment "e"` | the name is not in the Environment table |
+| `Shell "x" requires an argument table` | the step has no data table |
+| `Shell "x" argument table must use argument or argument \| source` | wrong header |
+| `Shell "x" argument row has the wrong number of cells` | a row does not match the header |
+| `Shell "x" argument references unknown Input "i"` / `… must be one string` | the `Input "…"` source is undeclared, or is a `number` / `many` |
+| `Shell "x" narrows its directory with unknown Input "i"` / `… directory Input "i" must be one string` | same rules for `and Input` |
+| `Shell "x" is unknown` | `accepts exits` names a step that does not exist |
+| `Shell exit code "n" must be an integer from 0 to 255` · `Shell "x" accepted exits must be non-empty and unique` | malformed exit table |
+| `Shell accepted exits must follow a Shell step` · `Shell cannot run after Produce` | ordering |
+</Details>

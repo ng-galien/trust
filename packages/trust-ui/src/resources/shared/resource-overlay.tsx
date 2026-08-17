@@ -16,7 +16,7 @@ import { Overlay } from "../../ui/overlay.js";
 /** Compact item header shared by every overlay: kicker · badges · id / title / actions. */
 export function OverlayHeader({ labelledBy, kicker, badges, id, title, actions }: { labelledBy: string; kicker: string; badges?: ReactNode; id: string; title: string; actions?: ReactNode }) {
   return (
-    <header className="flex shrink-0 items-center justify-between gap-6 border-b border-border px-4 py-2">
+    <header className="flex shrink-0 items-center justify-between gap-6 border-b border-border px-4 py-2" data-doc="overlay.header">
       <div className="min-w-0">
         <div className="flex items-center gap-2 text-label">
           <span className="kicker">{kicker}</span>
@@ -25,7 +25,7 @@ export function OverlayHeader({ labelledBy, kicker, badges, id, title, actions }
         </div>
         <h1 id={labelledBy} className="mt-0.5 truncate-1 text-title leading-tight font-semibold tracking-tight">{title}</h1>
       </div>
-      {actions ? <div className="flex shrink-0 items-center gap-2">{actions}</div> : null}
+      {actions ? <div className="flex shrink-0 items-center gap-2" data-doc="overlay.actions">{actions}</div> : null}
     </header>
   );
 }
@@ -79,9 +79,9 @@ export function ResourceOverlay<T extends string>({
           <div className={inspectorOpen ? "grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_var(--inspector-w)]" : "flex min-h-0 flex-1 flex-col"}>
             <section className={inspectorOpen ? "flex min-h-0 min-w-0 flex-col border-r border-border" : "flex min-h-0 min-w-0 flex-1 flex-col"}>
               <div className="flex shrink-0 items-center justify-between gap-4 border-b border-border px-3 py-1.5">
-                <SegmentedControl ariaLabel={t("shared.resourceOverlay.views")} size="sm" value={tab} onChange={onTab} options={tabs} />
+                <span data-doc="overlay.tabs"><SegmentedControl ariaLabel={t("shared.resourceOverlay.views")} size="sm" value={tab} onChange={onTab} options={tabs} /></span>
                 <div className="flex min-w-0 items-center gap-2">
-                  {tabMeta ? <span className="truncate-1 text-label text-muted">{tabMeta}</span> : null}
+                  {tabMeta ? <span className="truncate-1 text-label text-muted" data-doc="overlay.status">{tabMeta}</span> : null}
                   {tabActions}
                   {inspector ? (
                     <IconButton size="sm" label={inspectorOpen ? t("shared.resourceOverlay.hideDetails") : t("shared.resourceOverlay.showDetails")} active={inspectorOpen} onClick={toggleInspector}>
@@ -90,9 +90,9 @@ export function ResourceOverlay<T extends string>({
                   ) : null}
                 </div>
               </div>
-              <div className="min-h-0 flex-1">{children}</div>
+              <div className="min-h-0 flex-1" data-doc="overlay.body">{children}</div>
             </section>
-            {inspectorOpen ? <aside className="min-h-0 overflow-y-auto">{inspector}</aside> : null}
+            {inspectorOpen ? <aside className="min-h-0 overflow-y-auto" data-doc="overlay.inspector">{inspector}</aside> : null}
           </div>
         </>
       )}

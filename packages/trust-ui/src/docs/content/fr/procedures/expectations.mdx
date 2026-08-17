@@ -1,0 +1,62 @@
+---
+title: "Attentes"
+summary: "La table qui transforme les champs produits en verdict — relations, formes d'attente, raisons d'échec — et comment un Check est qualifié."
+order: 4
+---
+
+La table sous un Check liste des **prédicats** sur les champs produits de son Opération. Un Check est **validé** quand chaque ligne tient ; sinon il est **non validé** avec la raison d'échec de la première ligne qui ne tient pas. Seules ces lignes décident.
+
+```gherkin fragment
+      | field                | relation | expectation                           | failure reason                       |
+      | workingTree          | equals   | value "clean"                         | "the project has uncommitted changes" |
+      | commitsAhead         | at least | number 1                              | "the fix is not committed"            |
+      | comparedBaseRevision | equals   | context "baseline revision"           | "the fix uses another baseline"       |
+      | admittedAt           | after    | field "signedAt" from Check "consent" | "the admission predates its consent"  |
+```
+
+## Les colonnes
+
+| Colonne | Contenu |
+| --- | --- |
+| `field` | un champ produit de l'Opération du Check (doit exister dans ses `Produced fields`) |
+| `relation` | `equals` · `at least` · `has at least` · `is in` · `before` · `after` |
+| `expectation` | ce avec quoi le champ est comparé — l'une des cinq formes ci-dessous |
+| `failure reason` | non vide ; renvoyée avec un verdict non validé. Entre guillemets par convention (les guillemets englobants sont retirés) |
+
+L'en-tête est exactement `| field | relation | expectation | failure reason |` ; au moins une ligne ; quatre cellules par ligne.
+
+## Formes d'attente
+
+| Forme | Compare avec | Règle | Exemple |
+| --- | --- | --- | --- |
+| `value "<text>"` | une chaîne littérale | le champ est un `string` ; quand le champ a un domaine `enum`, le littéral doit être l'une de ses valeurs | `workingTree \| equals \| value "clean"` |
+| `number <n>` | un nombre littéral (sans guillemets ; décimales et négatifs autorisés) | le champ est un `number` | `commitsAhead \| at least \| number 1` |
+| `valid rfc3339` | — | le champ est un `instant` de cardinalité `one` ; tient quand il se parse en RFC 3339 | `admittedAt \| equals \| valid rfc3339` |
+| `context "<role>"` | la valeur d'un rôle de contexte du Plan | même type et même cardinalité que le champ (ou un rôle `many` du scope de la cible sous `on each`) ; un rôle matérialisé doit venir d'un Scénario prérequis | `verifiedRevision \| equals \| context "fix revision"` |
+| `field "<field>" from Check "<check>"` | un champ produit d'un autre Check | le Check existe, produit le champ, appartient à un Scénario prérequis ; même type et même cardinalité | `admittedAt \| after \| field "signedAt" from Check "consent"` |
+
+## Relations
+
+| Relation | Requiert | Tient quand |
+| --- | --- | --- |
+| `equals` | même type et même cardinalité des deux côtés (`valid rfc3339` : un champ `instant` de cardinalité `one`) | le champ est égal à l'attente |
+| `at least` | un champ `number` de cardinalité `one`, une attente `number` | champ ≥ attente |
+| `has at least` | un champ `many`, une attente `number` | la collection a au moins ce nombre de valeurs |
+| `is in` | un champ de cardinalité `one`, une attente collection du même type (`context` d'un rôle `many`, ou un champ `many` d'un autre Check) | le champ est l'une des valeurs |
+| `before` / `after` | un champ `instant` de cardinalité `one`, une attente `instant` | strictement avant / après |
+
+## Comment un Check est qualifié
+
+1. Le Runner (ou l'opérateur, sur un dry-run) rapporte les Facts : les champs produits de l'Opération.
+2. Le lot n'est complet que si chaque champ nommé dans la table (et chaque champ matérialisé) est présent ; un lot incomplet est rejeté en bloc et rien n'est enregistré.
+3. Chaque ligne est évaluée dans l'ordre contre les Facts et le contexte courant du Plan.
+4. Toutes les lignes tiennent → **validé**, avec la raison de succès du Check. Une ligne échoue → **non validé**, avec la raison d'échec de cette ligne.
+5. Le verdict remplace le verdict actif du Check ; les Checks dépendants rouvrent.
+
+<Callout kind="note" title="Formulation des raisons">
+  Les raisons sont lues par l'agent et affichées dans l'interface et l'historique : écrivez-les comme un fait sur l'observation (`"the fix is not committed"`), pas comme une instruction. La raison de succès appartient à la phrase de Check, les raisons d'échec aux lignes.
+</Callout>
+
+<Details title="Prédicats compilés" expert>
+Chaque ligne compile en `{ field, relation, expectation, failureReason }` avec `expectation.kind` parmi `value`, `number`, `valid-rfc3339`, `context` (`role`), `check-field` (`check`, `field`). `equals` compare du JSON canonique ; `before`/`after` comparent des instants parsés ; une référence `check-field` doit résoudre vers exactement une valeur amont. La forme `check-field` et les rôles de `context` créent les dépendances de données affichées en liens pointillés sur le graphe.
+</Details>

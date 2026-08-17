@@ -1,0 +1,49 @@
+{
+  "width": 2160,
+  "height": 1350,
+  "density": "operator",
+  "callouts": [
+    {
+      "key": "overlay.header",
+      "x": 19.79,
+      "y": 10.33,
+      "w": 79.31,
+      "h": 6.83
+    },
+    {
+      "key": "overlay.actions",
+      "x": 66.5,
+      "y": 12.14,
+      "w": 31.48,
+      "h": 3.11
+    },
+    {
+      "key": "overlay.tabs",
+      "x": 20.63,
+      "y": 17.83,
+      "w": 22.83,
+      "h": 3.11
+    },
+    {
+      "key": "overlay.status",
+      "x": 63.41,
+      "y": 18.46,
+      "w": 10.07,
+      "h": 1.85
+    },
+    {
+      "key": "operation.summary",
+      "x": 20.9,
+      "y": 23.5,
+      "w": 54.79,
+      "h": 16.44
+    },
+    {
+      "key": "overlay.inspector",
+      "x": 76.88,
+      "y": 17.16,
+      "w": 22.22,
+      "h": 81.39
+    }
+  ]
+}

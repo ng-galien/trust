@@ -1,25 +1,26 @@
 import { expect, test } from "@playwright/test";
 
+/* The interface keeps Operations, Procedures, Plans and Checks connected, in operator mode (default) and expert mode. */
+
 test("the interface keeps Operations, Procedures, Plans and Checks connected", async ({ page }) => {
   await page.goto("/overview");
-
   await expect(page.getByRole("heading", { name: "Overview" })).toBeVisible();
-  await expect(page.getByRole("region", { name: "TRUST resource relationships" })).toContainText("Operations");
-  await expect(page.getByRole("region", { name: "TRUST resource relationships" })).toContainText("Procedures");
-  await expect(page.getByRole("region", { name: "TRUST resource relationships" })).toContainText("Plans");
 
   await page.goto("/procedures/git-status");
-  await expect(page.getByRole("heading", { name: "Establish whether a Git repository has local changes" })).toBeVisible();
-  await page.getByRole("tab", { name: "Compiled DAG" }).click();
-  await expect(page.getByLabel("Compiled DAG for Establish whether a Git repository has local changes")).toContainText("repository status");
+  await expect(page.locator("#procedure-title")).toHaveText("Establish whether a Git repository has local changes");
+  await page.getByRole("tab", { name: "Graph" }).click();
+  await expect(page).toHaveURL(/tab=dag/);
+  // The operator mode has no Contract JSON tab; the expert mode has it.
+  await expect(page.getByRole("tab", { name: "Contract JSON" })).toHaveCount(0);
+  await page.getByRole("tab", { name: "Expert" }).click();
+  await expect(page.getByRole("tab", { name: "Contract JSON" })).toBeVisible();
+  await page.getByRole("tab", { name: "Operator" }).click();
 
   await page.goto("/plans/interface-acceptance");
-  await expect(page.getByRole("heading", { name: "interface-acceptance" })).toBeVisible();
-  await page.getByRole("tab", { name: "Checklist" }).click();
-  await page.getByRole("button", { name: /repository status/i }).first().click();
-  await expect(page.getByText("Check detail")).toBeVisible();
-  await expect(page.getByRole("heading", { name: "repository status" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Attempts (0)" })).toBeVisible();
+  await expect(page.locator("#plan-title")).toHaveText("interface-acceptance");
+  await page.getByRole("button", { name: /repository status/ }).first().click();
+  await expect(page).toHaveURL(/sel=check/);
+  await expect(page.getByRole("button", { name: "Close the Check details" })).toBeVisible();
 
   await page.getByRole("button", { name: "Use dark theme" }).click();
   await expect(page.locator("html")).toHaveClass(/dark/);

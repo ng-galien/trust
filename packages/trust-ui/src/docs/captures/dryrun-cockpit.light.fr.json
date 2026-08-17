@@ -1,0 +1,35 @@
+{
+  "width": 2160,
+  "height": 1350,
+  "density": "operator",
+  "callouts": [
+    {
+      "key": "cockpit",
+      "x": 71.32,
+      "y": 21.58,
+      "w": 27.78,
+      "h": 76.97
+    },
+    {
+      "key": "cockpit.todo",
+      "x": 71.39,
+      "y": 33.21,
+      "w": 27.71,
+      "h": 9.05
+    },
+    {
+      "key": "cockpit.workbench",
+      "x": 72.22,
+      "y": 56.88,
+      "w": 26.04,
+      "h": 40.4
+    },
+    {
+      "key": "cockpit.submit",
+      "x": 73.13,
+      "y": 92.28,
+      "w": 14.77,
+      "h": 3.56
+    }
+  ]
+}

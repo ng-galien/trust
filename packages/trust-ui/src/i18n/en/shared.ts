@@ -37,6 +37,8 @@ export const shared = {
       produceWithJsonata: "Produce with JSONata",
       procedureFeature: "Procedure feature",
       scenario: "Scenario",
+      role: "Context role",
+      check: "Check",
       useOperation: "Use {{operation}}",
     },
   },

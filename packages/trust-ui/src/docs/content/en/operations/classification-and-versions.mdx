@@ -1,0 +1,51 @@
+---
+title: "Identity, classification and versions"
+summary: "The tags of an Operation, its description, how versions and digests work, and what a Procedure keeps of it."
+order: 5
+---
+
+```gherkin fragment
+# language: en
+@trust-dsl:1 @operation:git.head-read @version:1.0.0 @x-family:software-delivery @x-nature:observe
+Feature: Read Git HEAD and working tree
+
+  Reads the current revision and whether the working tree is clean.
+```
+
+## Identity tags
+
+| Tag | Rule |
+| --- | --- |
+| `@operation:<domain>.<action>` | exactly one. Two lower-case segments separated by one dot; each segment is alphanumeric with optional hyphens (`git.head-compare`, `docker.image-build`). The domain groups the catalog; the action names what is done |
+| `@version:<major>.<minor>.<patch>` | exactly one, semantic, numeric only (`1.0.0`; no `1.0`, no `-rc1`) |
+| `@trust-dsl:1` | exactly one, value `1` — the version of the language |
+| anything else | must be an `@x-` classification tag; otherwise `Tag "…" is outside the closed Operation grammar` |
+
+Tag order is free. The catalog writes `@trust-dsl:1 @operation:… @version:…`.
+
+## Classification `@x-<key>:<value>`
+
+Free, repeatable, opaque to execution: `@x-family:software-delivery`, `@x-nature:observe`, `@x-team:platform @x-team:sre`. The key starts with a lower-case letter (hyphenated segments allowed); the value has no space and no colon. The compiler groups them by key (`classification: { family: ["software-delivery"], nature: ["observe"], team: ["platform", "sre"] }`), duplicates removed.
+
+The catalog screen uses `family` and `nature` for its facets; anything else is yours to define.
+
+## Title and description
+
+`Feature: <title>` is the human title, copied verbatim. The free-text block under it is the **description**: what the Operation observes, its assumptions, what an accepted exit means. It is shown on the Operation overview and in the graph of the Procedures that use it. It is never executed. Indentation and repeated blank lines are normalised.
+
+## Versions
+
+- The identity of a catalog entry is `name@version` (`git.head-read@1.0.0`). The catalog is a directory of `.feature` files, one entry per file; the same `name@version` in two files is refused.
+- The interface saves an Operation into `<name>.feature`. Raising `@version` and saving replaces that file: the catalog then holds the new version. Two versions of one Operation coexist only as two files with different names.
+- A Procedure names an Operation by name **and** version, and embeds the exact compiled form it was published with. Changing or removing an Operation in the catalog does not touch a published Procedure. The interface refuses to delete an Operation a published Procedure uses.
+- Runnable marks (✓ on the catalog, on the Environment screen) are computed per catalog entry against the values each Environment declares.
+
+<Callout kind="rule">
+  A published Procedure revision is autonomous: it carries the compiled Operations it needs. The catalog is where you author; the Procedure is where the Operation lives once published.
+</Callout>
+
+<Details title="Compiled Operation and digest" expert>
+The compiler emits `trust.compiled-operation@1` with: `operation`, `version`, `title`, `description?`, `source` (the normalised Gherkin), `input`, `environment`, `produced` (JSON Schemas), `steps` (ordered, typed), `produce` (`{ language: "jsonata", expression }`) and `classification?`. The **Contract JSON** tab of the interface shows this object.
+
+The Procedure compiler computes a SHA-256 **digest** of the semantics of each embedded Operation: everything above except `source`, with the projection replaced by its abstract syntax tree stripped of positions. Comments, indentation and JSONata formatting therefore do not change the digest; the title, description, classification, interface, steps and the meaning of the projection do.
+</Details>

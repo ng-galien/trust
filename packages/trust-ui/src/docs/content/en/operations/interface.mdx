@@ -1,0 +1,93 @@
+---
+title: "Interface — Input, Environment, Produced fields"
+summary: "The three tables of the Background: what a Check gives the Operation, what the Environment gives it, and exactly what it returns."
+order: 2
+---
+
+The `Background` of an Operation is its contract: what a Procedure binds (Input), what an <Term id="environment">Environment</Term> provides (Environment), what a Check can test (Produced fields). Everything is typed, named in lower camel case and closed — no optional value, no free-form key.
+
+> Input comes from the Check, Environment from the execution context, Produced fields go to the Check.
+
+```gherkin fragment title="The three declarations"
+  Background: Operation interface
+    Given Environment
+      | name          | type      |
+      | workspaceRoot | directory |
+    And Input
+      | input   | type      | cardinality |
+      | project | reference | one         |
+    And Produced fields
+      | field        | type      | cardinality | domain                |
+      | headRevision | reference | one         | any                   |
+      | workingTree  | string    | one         | enum "clean", "dirty" |
+```
+
+## Value types
+
+The same four types serve Input and Produced fields; Environment has its own two.
+
+| Type | Meaning | Validated as |
+| --- | --- | --- |
+| `string` | free text | a JSON string |
+| `number` | a number | a JSON number |
+| `instant` | a point in time | an RFC 3339 date-time string |
+| `reference` | an identifier of something outside TRUST (a revision, an issue key, a project name) | a non-empty string |
+| `directory` *(Environment only)* | the place where projects live | an absolute filesystem path |
+| `url` *(Environment only)* | the base URL of a service | an `http(s)` URL without embedded credentials |
+
+**Cardinality** is `one` (a scalar) or `many` (an array of the type). There is no optional value: every declared Input and Environment value is required, and the Operation must produce every declared field.
+
+## Environment
+
+```gherkin fragment
+    Given Environment
+      | name          | type      |
+      | workspaceRoot | directory |
+      | serviceUrl    | url       |
+```
+
+- Required, once, at least one row. The header is exactly `| name | type |`.
+- A `directory` names **the place where all projects live**, not one project. A Shell or File step narrows it to one project with `and Input "<name>"`: the Input must be one string naming a directory directly below the root — no path separator, no `..`, no symbolic link out of the root. Without that clause the step runs in the directory itself.
+- A `url` is used as-is by an HTTP GET, or with one Input appended as a single encoded path segment.
+- The values come from the Environment chosen at admission (live) or from the current Environment of the interface (**Run** tab). An Operation is *runnable* on an Environment when the Environment declares every name it needs — that is what the ✓ marks of the catalog and of the Environment screen show.
+
+## Input
+
+```gherkin fragment
+    And Input
+      | input        | type      | cardinality |
+      | project      | reference | one         |
+      | baseRevision | reference | one         |
+      | documents    | reference | many        |
+```
+
+- Optional (an Operation may need no Input), at most once. The header is exactly `| input | type | cardinality |`.
+- Where the values come from: in a Plan, the Check sentence binds each Input to a Plan context role (`on "project" as Input "project"`, `using "baseline" as Input "baseRevision"`). Every Input must be bound exactly once. In the interface, **Simulate** and **Run** ask you for them.
+- What an Input may feed: a Shell argument (`Input "issue"` in the argument table), the directory narrowing (`and Input "project"`), an HTTP path segment (`appending Input "issue"`), the whole body of an HTTP POST, and the `input.<name>` root of the projection.
+- Wherever a step needs **one string**, the Input must be cardinality `one` and of type `string`, `instant` or `reference` — a `number` or a `many` Input is refused there.
+
+## Produced fields
+
+```gherkin fragment
+    And Produced fields
+      | field              | type      | cardinality | domain                      |
+      | verifiedRevision   | reference | one         | any                         |
+      | verificationStatus | string    | one         | enum "successful", "failed" |
+```
+
+- Required, once, at least one row. The header is exactly `| field | type | cardinality | domain |`.
+- `domain` is `any`, or — for `string` fields only — an enumeration written exactly `enum "a", "b"` (comma and one space; values non-empty and distinct).
+- The projection must return **exactly** this set of fields: same names, nothing missing, nothing extra. Values are validated against the type and the enumeration when the Operation runs (and when you simulate it).
+- These fields are the Facts a Check qualifies. A Check predicate names one of them: `| verificationStatus | equals | value "successful" | "the build failed" |`. A materialization also names one: `and materializes "fix revision" from field "verifiedRevision"`.
+
+<Callout kind="note" title="What a produced field attests">
+  A field copied from `input` (for example `"verifiedRevision": input.revision`) attests the **admitted context** the action ran with — it does not claim the external system re-observed that value. A field derived from a step result attests the **action result** itself.
+</Callout>
+
+## No secrets in the source
+
+There is no credential, header, token or authentication step in the language. The compiler refuses a source that contains a secret-like value (an `sk-…` key, a `gh…_` token, a `Bearer …` header) — code `secret-like-value` — and the Runner refuses URLs with embedded credentials. Secrets belong to Environments (as write-only credential references), never to Operations. See [Environments and credentials](/docs/principles/environments).
+
+<Details title="Compiled form of the interface" expert>
+The compiler emits three JSON Schemas (`input`, `environment`, `produced`), each `type: "object"`, every declared name `required`, `additionalProperties: false`. Type mapping: `string → { type: "string" }`, `number → { type: "number" }`, `instant → { type: "string", format: "date-time" }`, `reference → { type: "string", minLength: 1 }`, `directory → { type: "string", format: "trust-directory" }`, `url → { type: "string", format: "trust-url" }`; `many` wraps the item schema in an array; an enum domain adds `enum: [...]`. Runtime values are validated with these schemas — which is why the **Simulate** and **Run** forms know which fields are required, which are enumerations and which are lists.
+</Details>

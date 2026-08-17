@@ -1,0 +1,51 @@
+---
+title: "Identité, classification et versions"
+summary: "Les tags d'une Opération, sa description, comment fonctionnent les versions et les digests, et ce qu'une Procédure en garde."
+order: 5
+---
+
+```gherkin fragment
+# language: en
+@trust-dsl:1 @operation:git.head-read @version:1.0.0 @x-family:software-delivery @x-nature:observe
+Feature: Read Git HEAD and working tree
+
+  Reads the current revision and whether the working tree is clean.
+```
+
+## Tags d'identité
+
+| Tag | Règle |
+| --- | --- |
+| `@operation:<domain>.<action>` | exactement un. Deux segments en minuscules séparés par un point ; chaque segment est alphanumérique avec tirets optionnels (`git.head-compare`, `docker.image-build`). Le domaine regroupe le catalogue ; l'action nomme ce qui est fait |
+| `@version:<major>.<minor>.<patch>` | exactement un, sémantique, numérique seulement (`1.0.0` ; pas `1.0`, pas `-rc1`) |
+| `@trust-dsl:1` | exactement un, valeur `1` — la version du langage |
+| tout le reste | doit être un tag de classification `@x-` ; sinon `Tag "…" is outside the closed Operation grammar` |
+
+L'ordre des tags est libre. Le catalogue écrit `@trust-dsl:1 @operation:… @version:…`.
+
+## Classification `@x-<key>:<value>`
+
+Libre, répétable, opaque pour l'exécution : `@x-family:software-delivery`, `@x-nature:observe`, `@x-team:platform @x-team:sre`. La clé commence par une lettre minuscule (segments avec tirets autorisés) ; la valeur n'a ni espace ni deux-points. Le compilateur les regroupe par clé (`classification: { family: ["software-delivery"], nature: ["observe"], team: ["platform", "sre"] }`), doublons supprimés.
+
+L'écran du catalogue utilise `family` et `nature` pour ses facettes ; tout le reste est à vous de le définir.
+
+## Titre et description
+
+`Feature: <title>` est le titre humain, copié tel quel. Le bloc de texte libre en dessous est la **description** : ce que l'Opération observe, ses hypothèses, ce que signifie une sortie acceptée. Elle est affichée sur l'aperçu de l'Opération et dans le graphe des Procédures qui l'utilisent. Elle n'est jamais exécutée. L'indentation et les lignes vides répétées sont normalisées.
+
+## Versions
+
+- L'identité d'une entrée de catalogue est `name@version` (`git.head-read@1.0.0`). Le catalogue est un répertoire de fichiers `.feature`, une entrée par fichier ; le même `name@version` dans deux fichiers est refusé.
+- L'interface enregistre une Opération dans `<name>.feature`. Augmenter `@version` et enregistrer remplace ce fichier : le catalogue contient alors la nouvelle version. Deux versions d'une même Opération ne coexistent que sous forme de deux fichiers de noms différents.
+- Une Procédure nomme une Opération par nom **et** version, et embarque la forme compilée exacte avec laquelle elle a été publiée. Modifier ou retirer une Opération du catalogue ne touche pas une Procédure publiée. L'interface refuse de supprimer une Opération qu'une Procédure publiée utilise.
+- Les marques « exécutable » (✓ sur le catalogue, sur l'écran Environnement) sont calculées par entrée de catalogue contre les valeurs que chaque Environnement déclare.
+
+<Callout kind="rule">
+  Une révision de Procédure publiée est autonome : elle porte les Opérations compilées dont elle a besoin. Le catalogue est l'endroit où vous rédigez ; la Procédure est l'endroit où l'Opération vit une fois publiée.
+</Callout>
+
+<Details title="Opération compilée et digest" expert>
+Le compilateur émet `trust.compiled-operation@1` avec : `operation`, `version`, `title`, `description?`, `source` (le Gherkin normalisé), `input`, `environment`, `produced` (JSON Schemas), `steps` (ordonnées, typées), `produce` (`{ language: "jsonata", expression }`) et `classification?`. L'onglet **Contrat JSON** de l'interface montre cet objet.
+
+Le compilateur de Procédure calcule un **digest** SHA-256 de la sémantique de chaque Opération embarquée : tout ce qui précède sauf `source`, avec la projection remplacée par son arbre syntaxique abstrait dépouillé des positions. Les commentaires, l'indentation et le formatage JSONata ne changent donc pas le digest ; le titre, la description, la classification, l'interface, les étapes et le sens de la projection, si.
+</Details>

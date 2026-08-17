@@ -1,0 +1,28 @@
+{
+  "width": 2160,
+  "height": 1350,
+  "density": "operator",
+  "callouts": [
+    {
+      "key": "editor",
+      "x": 19.79,
+      "y": 21.58,
+      "w": 57.01,
+      "h": 76.97
+    },
+    {
+      "key": "editor.format",
+      "x": 73.75,
+      "y": 22.47,
+      "w": 1.94,
+      "h": 3.11
+    },
+    {
+      "key": "overlay.status",
+      "x": 65.02,
+      "y": 18.32,
+      "w": 8.45,
+      "h": 1.85
+    }
+  ]
+}

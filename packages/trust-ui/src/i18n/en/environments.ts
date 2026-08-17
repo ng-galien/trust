@@ -2,7 +2,6 @@ export const environments = {
   home: {
     crumb: "Environments",
     title: "Environments",
-    subtitle: "Where Plans run: named contexts with their values and credential references. Selected explicitly at engagement, resolved by TRUST at each admission — never by the interface.",
     searchPlaceholder: "Search environment or value…",
     groupNone: "None",
     sortName: "Name",
@@ -10,9 +9,7 @@ export const environments = {
     emptyTitleNoMatch: "No environment matches",
     emptyTitleNone: "No environment configured",
     emptyBodyNoMatch: "Adjust the search.",
-    emptyBodyNone: "Create one: a name and the values operations need (workspaceRoot, URLs…), then its credentials.",
     create: "New environment",
-    kind: "environment",
     columns: {
       environment: "Environment",
       values: "Values",
@@ -40,7 +37,7 @@ export const environments = {
     nameHint: "Lowercase slug, unique",
     namePlaceholder: "staging",
     valuesKicker: "Values",
-    valuesHint: "What operations read from the environment (paths, URLs, names) — not secrets",
+    valuesHint: "Paths, URLs, names — never secrets",
     valueKeyPlaceholder: "workspaceRoot",
     valueValuePlaceholder: "/Users/me/projects",
     credentialsLater: "Credentials are added once the environment exists.",
@@ -54,7 +51,7 @@ export const environments = {
   },
   credentials: {
     kicker: "Credentials",
-    hint: "Sent once to the runtime, never read back — this interface only lists names",
+    hint: "Write-only",
     heldByRuntime: "Value held by the runtime",
     remove: "Remove credential {{name}}",
     none: "No credential.",
@@ -68,7 +65,7 @@ export const environments = {
   },
   coverage: {
     kicker: "Operations on this environment",
-    summary: "{{ok}} of {{total}} runnable · missing values are highlighted",
+    summary: "{{ok}} of {{total}} runnable",
     columnOperation: "Operation",
     columnNeeds: "Needs from the environment",
     runnableHere: "Runnable here",

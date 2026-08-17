@@ -1,17 +1,18 @@
 import { BookOpen, Braces, Copy, FileCode2, FlaskConical, GitBranch, Pencil, Play, Save, Trash2 } from "lucide-react";
-import { type ReactNode, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useParams } from "react-router";
 
 import { GherkinEditor } from "../../gherkin-editor.js";
 import { plural } from "../../lib/format.js";
 import { mutationError, useRemoveOperation, useSaveOperation } from "../../lib/mutations.js";
-import { usePreference, useResolvedTheme } from "../../lib/preferences.js";
+import { useExpert, usePreference, useResolvedTheme } from "../../lib/preferences.js";
 import { useOperationEnvironments, useOperations, useProcedures, useRuntime } from "../../lib/runtime-context.js";
 import type { CompiledOperation, JsonObject } from "../../types.js";
 import { Badge, StatusBadge } from "../../ui/badge.js";
 import { Button } from "../../ui/button.js";
 import { ConfirmDialog } from "../../ui/confirm.js";
+import { Expert } from "../../ui/expert.js";
 import { constraintLabel, schemaProperties, typeLabel } from "../../ui/schema.js";
 import { EmptyState, ErrorBox, LoadingState } from "../../ui/states.js";
 import { EmptyRelation, InspectorSection, RelationLink } from "../shared/inspector.js";
@@ -28,6 +29,8 @@ import { SimulationView } from "./simulation-view.js";
 
 type Tab = "overview" | "source" | "simulation" | "run" | "contract";
 const TABS: readonly Tab[] = ["overview", "source", "simulation", "run", "contract"];
+/** The Contract JSON tab is expert-only; a `?tab=contract` URL falls back to the default tab in operator mode. */
+const OPERATOR_TABS: readonly Tab[] = TABS.filter((tab) => tab !== "contract");
 
 export function OperationOverlay({ mode = "item" }: { mode?: "item" | "new" }) {
   const { t } = useTranslation();
@@ -35,6 +38,7 @@ export function OperationOverlay({ mode = "item" }: { mode?: "item" | "new" }) {
   const navigate = useNavigate();
   const runtime = useRuntime();
   const theme = useResolvedTheme();
+  const expert = useExpert();
   const editorFontSize = usePreference("editorFontSize");
   const operations = useOperations();
   const procedures = useProcedures();
@@ -49,7 +53,7 @@ export function OperationOverlay({ mode = "item" }: { mode?: "item" | "new" }) {
   });
   const { source, setDraft, authoring, listSearch, compileError, markers } = draft;
   const seed = draft.from ? operations.data?.find((operation) => operation.operation === draft.from) : undefined;
-  const { tab, setTab } = useOverlayViewState<Tab>(TABS, mode === "new" ? "source" : "overview");
+  const { tab, setTab } = useOverlayViewState<Tab>(expert ? TABS : OPERATOR_TABS, mode === "new" ? "source" : "overview");
   const close = useCloseTo(`/operations${listSearch}`);
   // While authoring, the live compilation is the truth; otherwise the catalog copy is.
   const compiled: CompiledOperation | undefined = authoring ? draft.compiled : catalog;
@@ -85,12 +89,13 @@ export function OperationOverlay({ mode = "item" }: { mode?: "item" | "new" }) {
       labelledBy="operation-title"
       kicker={version ? t("operations.overlay.kickerVersion", { version }) : t("operations.overlay.kicker")}
       badges={<><StatusBadge state={status} />{catalog ? <RunnableMark environments={runnableOn} /> : null}</>}
-      id={seed ? t("operations.overlay.duplicatedFrom", { id: displayId, from: seed.operation }) : displayId}
+      // The crumb already carries the id: the header repeats it in expert mode only (the duplication origin is an authoring fact, shown in both).
+      id={seed ? t("operations.overlay.duplicatedFrom", { id: displayId, from: seed.operation }) : expert ? displayId : ""}
       title={title}
       loading={
         operations.isLoading ? <LoadingState /> : notFound ? (
           <div className="p-8">
-            <EmptyState title={t("operations.overlay.notFoundTitle", { id: id ?? "" })} body={t("operations.overlay.notFoundBody")} action={<Button onClick={close}>{t("operations.overlay.backToList")}</Button>} />
+            <EmptyState title={t("operations.overlay.notFoundTitle", { id: id ?? "" })} action={<Button onClick={close}>{t("operations.overlay.backToList")}</Button>} />
           </div>
         ) : undefined
       }
@@ -101,7 +106,7 @@ export function OperationOverlay({ mode = "item" }: { mode?: "item" | "new" }) {
           <Button size="sm" icon={<Play size={13} />} onClick={() => setTab("run")}>{t("operations.overlay.run")}</Button>
           <Button size="sm" icon={<Pencil size={13} />} onClick={() => setTab("source")}>{t("operations.overlay.editSource")}</Button>
           {catalog && usedBy.length === 0 ? <Button size="sm" icon={<Trash2 size={13} />} onClick={() => setConfirmDelete(true)} disabled={remove.isPending}>{t("common.actions.delete")}</Button> : null}
-          <Button size="sm" variant="primary" icon={<Save size={13} />} disabled={!canSave} onClick={onSave} title={mode === "new" ? t("operations.overlay.saveNewHint") : t("operations.overlay.saveEditHint")}>{save.isPending ? t("common.actions.saving") : t("common.actions.save")}</Button>
+          <Button size="sm" variant="primary" icon={<Save size={13} />} disabled={!canSave} onClick={onSave}>{save.isPending ? t("common.actions.saving") : t("common.actions.save")}</Button>
           <ConfirmDialog
             open={confirmDelete}
             title={t("operations.overlay.deleteTitle", { operation: catalog?.operation ?? "" })}
@@ -119,7 +124,7 @@ export function OperationOverlay({ mode = "item" }: { mode?: "item" | "new" }) {
         { value: "source", label: <><FileCode2 size={13} /> {t("operations.overlay.tabs.source")}</> },
         { value: "simulation", label: <><FlaskConical size={13} /> {t("operations.overlay.tabs.simulate")}</> },
         { value: "run", label: <><Play size={13} /> {t("operations.overlay.tabs.run")}</> },
-        { value: "contract", label: <><Braces size={13} /> {t("operations.overlay.tabs.contract")}</> },
+        ...(expert ? [{ value: "contract" as const, label: <><Braces size={13} /> {t("operations.overlay.tabs.contract")}</> }] : []),
       ]}
       tab={tab}
       onTab={setTab}
@@ -133,13 +138,14 @@ export function OperationOverlay({ mode = "item" }: { mode?: "item" | "new" }) {
             ))}
           </InspectorSection>
           {compiled ? (
-            <>
+            <Expert>
               <InspectorSection title={t("operations.overlay.interface")}>
                 <SchemaList label={t("operations.overlay.input")} schema={compiled.input} />
                 <SchemaList label={t("operations.overlay.environment")} schema={compiled.environment} />
                 <SchemaList label={t("operations.overlay.produced")} schema={compiled.produced} />
               </InspectorSection>
-              <InspectorSection title={t("operations.overlay.steps")} count={compiled.steps.length}>
+              {/* The step count already sits in the tab meta line. */}
+              <InspectorSection title={t("operations.overlay.steps")}>
                 {compiled.steps.map((step, index) => (
                   <div key={step.name} className="flex items-center gap-2 py-1">
                     <span className="w-4 text-right text-caption text-faint">{index + 1}</span>
@@ -148,13 +154,13 @@ export function OperationOverlay({ mode = "item" }: { mode?: "item" | "new" }) {
                   </div>
                 ))}
               </InspectorSection>
-            </>
+            </Expert>
           ) : null}
         </>
       }
     >
       {saveError && tab !== "source" ? <div className="p-4"><ErrorBox message={saveError} /></div> : null}
-      {tab === "overview" ? <OverviewView compiled={compiled} usedBy={usedBy} error={compileError?.detail} /> : null}
+      {tab === "overview" ? <OverviewView compiled={compiled} error={compileError?.detail} /> : null}
       {tab === "source" ? <GherkinEditor kind="operation" value={source} onChange={setDraft} theme={theme} markers={markers} fontSize={editorFontSize} /> : null}
       {tab === "contract" ? <ContractView compiled={compiled} error={compileError?.detail} /> : null}
       {tab === "simulation" ? <SimulationView source={source} compiled={compiled} /> : null}

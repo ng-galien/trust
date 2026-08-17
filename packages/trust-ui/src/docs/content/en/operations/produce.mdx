@@ -1,0 +1,105 @@
+---
+title: "Producing fields with JSONata"
+summary: "The last step of every Operation — one closed expression that turns Input, Environment and step results into exactly the declared fields."
+order: 4
+---
+
+```gherkin fragment
+    Then Produce with JSONata
+      """
+      {
+        "headRevision": $trim(steps.head.stdout),
+        "workingTree": $trim(steps.status.stdout) = "" ? "clean" : "dirty"
+      }
+      """
+```
+
+The projection is a <Term id="jsonata">JSONata</Term> expression in a doc string. It is evaluated once, after the last step, and must return **one object with exactly the declared produced fields**. The Runner evaluates it after a real run; **Simulate** evaluates it on step results you type; the compiler checks it statically in both cases.
+
+> The projection is checked before anything runs: unknown step, unknown field, disallowed function — the Operation does not compile.
+
+## What the expression sees
+
+Three roots, and nothing else:
+
+| Root | Content | Depth |
+| --- | --- | --- |
+| `input.<name>` | the validated Input values | one level (`input.project`; `input.a.b` is refused) |
+| `environment.<name>` | the Environment values | one level |
+| `steps.<stepName>.<result>` | the result of the step of that name | see below |
+
+Step results, by step kind:
+
+| Step | Keys | Traversable |
+| --- | --- | --- |
+| Shell | `exitCode`, `stdout`, `stderr` | no — `steps.head.stdout` is a whole string |
+| File `as Text` | `relativePath`, `content` | no |
+| File `as JSON` | `relativePath`, `content` | `content` yes — `steps.manifest.content.name` |
+| HTTP `as Text` | `status`, `headers`, `body` | no |
+| HTTP `as JSON` (GET and POST) | `status`, `headers`, `body` | `body` yes — `steps.issue.body.summary` |
+
+Steps are addressed **by name**, never by position.
+
+## The closed subset
+
+The compiler accepts a small, predictable part of JSONata:
+
+| Kind | Accepted |
+| --- | --- |
+| Literals | strings, numbers, `true`, `false`, `null` |
+| Paths | `input.x`, `environment.y`, `steps.name.result[.deeper]` within the depth rules above |
+| Object | one object literal at the top, with fixed string keys |
+| Conditional | `condition ? a : b` |
+| Binary operators | `=` `!=` `<` `<=` `>` `>=` `+` `-` `*` `/` `%` `&` (concatenation) `and` `or` |
+| Functions | `$boolean` `$count` `$exists` `$lowercase` `$number` `$string` `$trim` `$uppercase` |
+| Grouping | parentheses |
+
+Refused: any other function (`$map`, `$filter`, `$sum`, `$now`, `$eval`…), lambdas, the `~>` chain, regular expressions, sorting and transform operators, wildcards and descendants, array constructors `[…]`, unary minus, path filters and index selectors (`items[0]`, `items[status = "ok"]`), variable binding.
+
+<Callout kind="note" title="Why a subset">
+  The projection is part of what makes a Fact trustworthy: it must do the same thing on the Runner and in Simulate, terminate, and be readable in a review. Computation that does not fit belongs in the external system (a script, an endpoint) whose result the Operation then reads.
+</Callout>
+
+## Typical shapes
+
+```jsonata title="Copy an Input, trim a Shell output"
+{ "verifiedProject": input.project, "verifiedRevision": $trim(steps.head.stdout) }
+```
+
+```jsonata title="Exit code to an enumerated status"
+{ "verificationStatus": steps.verify.exitCode = 0 ? "successful" : "failed" }
+```
+
+```jsonata title="Empty output to a status"
+{ "workingTree": $trim(steps.status.stdout) = "" ? "clean" : "dirty" }
+```
+
+```jsonata title="Number from text, concatenation"
+{ "commitsAhead": $number($trim(steps.commits.stdout)), "containerImage": input.containerName & "=" & input.image }
+```
+
+```jsonata title="Fields of a JSON response"
+{ "service": steps.response.body.service, "status": steps.response.status }
+```
+
+## What is checked
+
+At compile time:
+- syntax; every root, step name and result key exists; depth rules;
+- the top node is one object literal with fixed keys;
+- the key set equals the `Produced fields` set — nothing missing, nothing extra (`Produce fields must be exactly: a, b, c`).
+
+At run time (Runner and Simulate): the returned values are validated against the produced-field types and enumerations. A `buildStatus` outside `enum "successful", "failed"` is a validation error, and the Operation produces no Facts.
+
+<Details title="Diagnostics of the projection" expert>
+| Message | Cause |
+| --- | --- |
+| `Produce with JSONata is invalid: …` | JSONata syntax error |
+| `Produce uses unsupported JSONata form "…"` / `… function "$…"` / `… operator "…"` / `… unary operator` | outside the subset |
+| `Produce does not allow dynamic JSONata path stages` | a filter or index selector on a path |
+| `Produce with JSONata must return one object literal` · `… must use fixed field names` | wrong top node |
+| `Produce fields must be exactly: …` | key set differs from the produced fields |
+| `Produce references unknown root "…"` / `unknown Operation step "…"` / `unknown <kind> result "…"` / `unknown Input field "…"` / `unknown Environment field "…"` | name does not exist |
+| `Produce cannot traverse Shell result "…"` / `Text File content` / `File relativePath` / `HTTP result "…"` / `Text HTTP body` / `Input field "…"` / `Environment field "…"` | path goes below an opaque value |
+| `Produce with JSONata cannot be empty` · `… must use Then and one DocString` · `… must be the final step` · `Operation repeats Produce with JSONata` | shape and position |
+</Details>

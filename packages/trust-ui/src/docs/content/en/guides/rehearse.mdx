@@ -1,0 +1,18 @@
+---
+title: "Rehearse a Procedure with a dry-run"
+summary: "Engage a dry-run, play the agent from the cockpit, read verdicts and cascades, observe again, reset."
+order: 3
+---
+
+<Steps>
+  <Step title="Start the dry-run">Sidebar → **Dry-runs** → **New dry-run**. Choose the Procedure, keep the current Environment (nothing is delegated to it), give an identifier (`rehearsal-pay-42`), fill the root inputs, **Start the dry-run**.</Step>
+  <Step title="Open the cockpit">The Plan opens with the **Rehearsal cockpit** docked on the right (**Rehearse** in the tab bar if it is hidden). Progress, Next and the actionable Checks are in the summary strip.</Step>
+  <Step title="Declare the context if asked">When the Procedure has `declared by agent` roles, the cockpit starts with *Declare the context*: one field per role, per parent value when scoped. **Apply declarations**.</Step>
+  <Step title="Pick a Check">In **To do now**, pick one. The workbench shows the values its Operation would produce; **Fill passing** proposes values that satisfy every expectation, **Fill failing** values that break the first one.</Step>
+  <Step title="Submit as the agent">Read the outcome: the verdict, its reason, what became satisfied, what was reopened. The checklist and the graph moved to the next revision.</Step>
+  <Step title="Rehearse a failure">On the next Check, **Fill failing** then submit: the Check stays open with the failure reason you wrote in the Procedure. Fix the values, submit again.</Step>
+  <Step title="Observe again">In **Done**, pick a satisfied Check and submit new values: it is re-qualified and every Check depending on it reopens — the cascade you will see live.</Step>
+  <Step title="Reset or delete">**Reset** starts the same rehearsal again from revision 1; **Delete** erases it. Every verdict stays in the Check history.</Step>
+</Steps>
+
+Details: [Rehearsing with a dry-run](/docs/plans/dry-run) · [Facts, verdicts and the cascade](/docs/principles/facts-and-verdicts).

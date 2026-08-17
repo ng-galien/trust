@@ -4,7 +4,8 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.tsx"
+    ".": "./src/index.tsx",
+    "./docs": "./src/docs/docs-site.tsx"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json --noEmit",
@@ -13,12 +14,14 @@
   "dependencies": {
     "@fontsource-variable/inter": "^5.3.0",
     "@fontsource-variable/jetbrains-mono": "^5.3.0",
+    "@mdx-js/react": "^3.1.1",
     "@monaco-editor/react": "^4.7.0",
     "@tanstack/react-query": "^5.101.4",
     "@trust/gherkin": "file:../trust-gherkin",
     "@xyflow/react": "^12.11.3",
     "i18next": "^25.10.10",
     "lucide-react": "^1.31.0",
+    "mermaid": "^11.16.1",
     "monaco-editor": "^0.56.0",
     "react-i18next": "^16.6.6",
     "react-router": "^8.3.0",

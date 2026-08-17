@@ -1,0 +1,93 @@
+---
+title: "Interface — Input, Environment, Produced fields"
+summary: "Les trois tables du Background : ce qu'un Check donne à l'Opération, ce que l'Environnement lui donne, et exactement ce qu'elle renvoie."
+order: 2
+---
+
+Le `Background` d'une Opération est son contrat : ce qu'une Procédure lie (Input), ce qu'un <Term id="environment">Environnement</Term> fournit (Environment), ce qu'un Check peut tester (Produced fields). Tout est typé, nommé en lower camel case et fermé — aucune valeur optionnelle, aucune clé libre.
+
+> L'Input vient du Check, l'Environment du contexte d'exécution, les Produced fields vont au Check.
+
+```gherkin fragment title="Les trois déclarations"
+  Background: Operation interface
+    Given Environment
+      | name          | type      |
+      | workspaceRoot | directory |
+    And Input
+      | input   | type      | cardinality |
+      | project | reference | one         |
+    And Produced fields
+      | field        | type      | cardinality | domain                |
+      | headRevision | reference | one         | any                   |
+      | workingTree  | string    | one         | enum "clean", "dirty" |
+```
+
+## Types de valeur
+
+Les quatre mêmes types servent pour Input et Produced fields ; Environment a ses deux types propres.
+
+| Type | Signification | Validé comme |
+| --- | --- | --- |
+| `string` | texte libre | une chaîne JSON |
+| `number` | un nombre | un nombre JSON |
+| `instant` | un point dans le temps | une chaîne date-time RFC 3339 |
+| `reference` | un identifiant de quelque chose hors de TRUST (une révision, une clé de ticket, un nom de projet) | une chaîne non vide |
+| `directory` *(Environment seulement)* | l'endroit où vivent les projets | un chemin absolu du système de fichiers |
+| `url` *(Environment seulement)* | l'URL de base d'un service | une URL `http(s)` sans credentials embarqués |
+
+La **cardinalité** est `one` (un scalaire) ou `many` (un tableau du type). Il n'y a pas de valeur optionnelle : chaque valeur Input et Environment déclarée est requise, et l'Opération doit produire chaque champ déclaré.
+
+## Environment
+
+```gherkin fragment
+    Given Environment
+      | name          | type      |
+      | workspaceRoot | directory |
+      | serviceUrl    | url       |
+```
+
+- Requis, une fois, au moins une ligne. L'en-tête est exactement `| name | type |`.
+- Un `directory` nomme **l'endroit où vivent tous les projets**, pas un projet. Une étape Shell ou File le restreint à un projet avec `and Input "<name>"` : l'Input doit être une chaîne nommant un répertoire directement sous la racine — pas de séparateur de chemin, pas de `..`, pas de lien symbolique hors de la racine. Sans cette clause, l'étape s'exécute dans le répertoire lui-même.
+- Une `url` est utilisée telle quelle par un HTTP GET, ou avec un Input ajouté comme un seul segment de chemin encodé.
+- Les valeurs viennent de l'Environnement choisi à l'admission (en réel) ou de l'environnement courant de l'interface (onglet **Exécuter**). Une Opération est *exécutable* sur un Environnement quand l'Environnement déclare chaque nom dont elle a besoin — c'est ce que montrent les marques ✓ du catalogue et de l'écran Environnement.
+
+## Input
+
+```gherkin fragment
+    And Input
+      | input        | type      | cardinality |
+      | project      | reference | one         |
+      | baseRevision | reference | one         |
+      | documents    | reference | many        |
+```
+
+- Optionnel (une Opération peut n'avoir besoin d'aucun Input), au plus une fois. L'en-tête est exactement `| input | type | cardinality |`.
+- D'où viennent les valeurs : dans un Plan, la phrase du Check lie chaque Input à un rôle de contexte du Plan (`on "project" as Input "project"`, `using "baseline" as Input "baseRevision"`). Chaque Input doit être lié exactement une fois. Dans l'interface, **Simuler** et **Exécuter** vous les demandent.
+- Ce qu'un Input peut alimenter : un argument Shell (`Input "issue"` dans la table d'arguments), la restriction de répertoire (`and Input "project"`), un segment de chemin HTTP (`appending Input "issue"`), le corps entier d'un HTTP POST, et la racine `input.<name>` de la projection.
+- Partout où une étape a besoin d'**une chaîne**, l'Input doit être de cardinalité `one` et de type `string`, `instant` ou `reference` — un Input `number` ou `many` y est refusé.
+
+## Produced fields
+
+```gherkin fragment
+    And Produced fields
+      | field              | type      | cardinality | domain                      |
+      | verifiedRevision   | reference | one         | any                         |
+      | verificationStatus | string    | one         | enum "successful", "failed" |
+```
+
+- Requis, une fois, au moins une ligne. L'en-tête est exactement `| field | type | cardinality | domain |`.
+- `domain` vaut `any`, ou — pour les champs `string` seulement — une énumération écrite exactement `enum "a", "b"` (virgule et une espace ; valeurs non vides et distinctes).
+- La projection doit renvoyer **exactement** cet ensemble de champs : mêmes noms, rien de manquant, rien en trop. Les valeurs sont validées contre le type et l'énumération quand l'Opération s'exécute (et quand vous la simulez).
+- Ces champs sont les Facts qu'un Check qualifie. Un prédicat de Check nomme l'un d'eux : `| verificationStatus | equals | value "successful" | "the build failed" |`. Une matérialisation en nomme un aussi : `and materializes "fix revision" from field "verifiedRevision"`.
+
+<Callout kind="note" title="Ce qu'atteste un champ produit">
+  Un champ copié depuis `input` (par exemple `"verifiedRevision": input.revision`) atteste le **contexte admis** avec lequel l'action s'est exécutée — il n'affirme pas que le système externe a ré-observé cette valeur. Un champ dérivé d'un résultat d'étape atteste le **résultat de l'action** lui-même.
+</Callout>
+
+## Pas de secrets dans la source
+
+Il n'existe ni credential, ni en-tête, ni token, ni étape d'authentification dans le langage. Le compilateur refuse une source qui contient une valeur ressemblant à un secret (une clé `sk-…`, un token `gh…_`, un en-tête `Bearer …`) — code `secret-like-value` — et le Runner refuse les URL avec credentials embarqués. Les secrets appartiennent aux Environnements (comme références de credential en écriture seule), jamais aux Opérations. Voir [Environnements et credentials](/docs/principles/environments).
+
+<Details title="Forme compilée de l'interface" expert>
+Le compilateur émet trois JSON Schemas (`input`, `environment`, `produced`), chacun `type: "object"`, chaque nom déclaré `required`, `additionalProperties: false`. Correspondance des types : `string → { type: "string" }`, `number → { type: "number" }`, `instant → { type: "string", format: "date-time" }`, `reference → { type: "string", minLength: 1 }`, `directory → { type: "string", format: "trust-directory" }`, `url → { type: "string", format: "trust-url" }` ; `many` enveloppe le schéma de l'élément dans un tableau ; un domaine enum ajoute `enum: [...]`. Les valeurs à l'exécution sont validées avec ces schémas — c'est pourquoi les formulaires **Simuler** et **Exécuter** savent quels champs sont requis, lesquels sont des énumérations et lesquels sont des listes.
+</Details>

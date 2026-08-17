@@ -1,0 +1,47 @@
+---
+title: "Suivre un Plan"
+summary: "La page du Plan — résumé, checklist, détail des Checks, graphe en direct, source hydratée, révisions — et la Session."
+order: 2
+screen: /plans
+---
+
+La page du Plan montre la **révision courante** : ce qui est satisfait, ce qui est actionnable, ce qui est bloqué et pourquoi, et le dernier verdict. Elle se met à jour en direct tant que le runtime diffuse des événements, et interroge le serveur sinon.
+
+<Screenshot id="plan-page" caption="Un Plan en direct, onglet Checklist, un Check sélectionné." legend={{
+  "overlay.header": "En direct / Dry-run, état (En cours, Terminé, Indisponible quand la Session est fermée), titre ; sur <environnement> quand l'Environnement du Plan n'est pas l'environnement courant. Actions : Fermer la session (en direct), Réinitialiser et Supprimer (dry-run), Procédure.",
+  "overlay.tabs": "Checklist, Graphe, Source, Historique. Sur un dry-run : la bascule Cockpit / Répéter.",
+  "plan.summary": "Progression et heure d'engagement ; titre et description de la Procédure ; Dernier verdict avec son Check et sa raison ; Suite : ce qui est actionnable maintenant, ce que l'agent doit déclarer, ce qu'un verdict non validé a laissé ouvert.",
+  "plan.checklist": "Chaque Check dans l'ordre de la Procédure — groupé × N sur chacune pour les cibles expansées — avec son état, sa valeur cible, son dernier verdict et sa raison, et ce qu'il attend.",
+  "plan.checkDetail": "Le Check sélectionné : historique de ses verdicts ; en mode expert son URI, ses entrées et ses tentatives.",
+}} />
+
+## États
+
+| Sur | Valeurs | Signification |
+| --- | --- | --- |
+| Plan | **En cours** · **Terminé** · **Indisponible** | Terminé quand chaque Check est satisfait et qu'il ne reste rien à déclarer ; Indisponible quand la Session est fermée ou expirée |
+| Check | **Ouvert** · **Actionnable** · **Satisfait** | Actionnable = ouvert, prérequis validés, contexte complet, Session ouverte |
+| Verdict | **Validé** · **Non validé** | la dernière qualification du Check, avec sa raison |
+
+Un Check *laissé ouvert par un verdict non validé* reste actionnable : l'agent traite la raison et l'exécute à nouveau.
+
+## Les onglets
+
+- **Checklist** — le bandeau de résumé et la liste. Cliquer sur un Check ouvre son détail ; la sélection est dans l'URL (`?sel=`), si bien qu'une ligne d'historique ou un lien arrive directement sur le Check.
+- **Graphe** — le graphe de la Procédure avec l'état en direct de chaque Check (satisfait, actionnable, bloqué, échoué, ouvert) ; une sélection montre ce dont il a besoin et ce qu'un nouveau verdict réinitialiserait. Voir [Les Procédures dans l'interface](/docs/procedures/authoring#graph).
+- **Source** — la source publiée de la Procédure, en lecture seule, annotée ligne par ligne avec le Plan : `✓ satisfait — raison`, `✗ non validé — raison`, `▶ actionnable`, `○ attend …`, valeurs des rôles, `pas encore déclaré`.
+- **Historique** — le dernier changement de révision (ajouté, retiré, satisfait, rouvert) et, en mode expert, la liste des révisions.
+
+## La Session
+
+- Ouverte à l'engagement ; **Fermer la session** la ferme : le Plan et son historique restent, rien ne peut être admis tant que le Plan n'est pas engagé à nouveau avec la même identité.
+- Les Sessions expirées sont renouvelées au ré-engagement ou quand des déclarations sont appliquées.
+- Un Plan en direct n'est jamais supprimé — c'est de l'historique d'audit. Un dry-run peut être réinitialisé (effacé et engagé à nouveau avec les mêmes entrées, à partir de la révision 1) ou supprimé.
+
+<Callout kind="note" title="Pas sur l'environnement courant">
+  L'en-tête affiche **sur `<environnement>`** quand le Plan s'exécute sur un autre Environnement que l'environnement courant de l'interface. C'est un rappel, pas un blocage : un Plan en direct utilise toujours son propre Environnement.
+</Callout>
+
+<Details title="Ce que lit la page" expert>
+`plan.read { plan }` — `PlanView` : `revision`, `sessionState`, `workState`, `checks[]` (`state`, `actionable`, `blockedBy[]`, `latestVerdict`, `reason`), `missingDeclarations`, `latestQualification` (avec son `checklistDelta`), `latestRevisionChange`, `revisions`, `sessions`. `check.read { checkUri }` — `CheckView` : la même chose plus `context`, dépendances, `history[]` (snapshots) et `attempts[]`. Mises à jour en direct : `GET /events/plans` — `plan.engaged`, `plan.revision` (cause `declarations` ou `verdict`, avec le delta), `session.changed`, `plan.removed`, `runtime.changed` (resynchronisation).
+</Details>

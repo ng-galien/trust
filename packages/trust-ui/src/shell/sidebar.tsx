@@ -1,4 +1,4 @@
-import { ChevronRight, Plus, Settings } from "lucide-react";
+import { BookOpen, ChevronRight, Plus, Settings } from "lucide-react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { NavLink, useLocation, useNavigate } from "react-router";
@@ -21,7 +21,7 @@ function ExtendedSidebar() {
   const { t } = useTranslation();
   const expandedAnchors = usePreference("expandedAnchors");
   return (
-    <aside aria-label={t("shell.nav.label")} className="flex h-full w-(--sidebar-w) shrink-0 flex-col overflow-hidden border-r border-border bg-surface">
+    <aside aria-label={t("shell.nav.label")} className="flex h-full w-(--sidebar-w) shrink-0 flex-col overflow-hidden border-r border-border bg-surface" data-doc="shell.sidebar">
       <nav className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-2 pt-3 pb-2">
         <NavRow to={overviewAnchor.to} icon={<overviewAnchor.icon size={16} strokeWidth={1.8} />} label={t(overviewAnchor.label)} />
         {sections.map((section) => (
@@ -36,6 +36,7 @@ function ExtendedSidebar() {
         ))}
       </nav>
       <div className="flex flex-col gap-0.5 border-t border-border px-2 py-2">
+        <NavRow to="/docs" icon={<BookOpen size={16} strokeWidth={1.8} />} label={t("shell.nav.docs")} />
         <NavRow to="/settings" icon={<Settings size={16} strokeWidth={1.8} />} label={t("shell.nav.settings")} />
       </div>
     </aside>
@@ -178,6 +179,7 @@ function CompactSidebar() {
         ))}
       </nav>
       <div className="flex flex-col items-center gap-1 border-t border-border py-2">
+        <RailLink to="/docs" label={t("shell.nav.docs")} icon={<BookOpen size={17} strokeWidth={1.8} />} onPointerEnter={() => setFlyout(null)} />
         <RailLink to="/settings" label={t("shell.nav.settings")} icon={<Settings size={17} strokeWidth={1.8} />} onPointerEnter={() => setFlyout(null)} />
       </div>
       {flyout ? (

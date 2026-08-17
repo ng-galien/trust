@@ -1,0 +1,62 @@
+---
+title: "Expectations"
+summary: "The table that turns produced fields into a verdict — relations, expectation forms, failure reasons — and how a Check is qualified."
+order: 4
+---
+
+The table under a Check lists **predicates** on the produced fields of its Operation. A Check is **validated** when every row holds; otherwise it is **not validated** with the failure reason of the first row that does not hold. Only these rows decide.
+
+```gherkin fragment
+      | field                | relation | expectation                           | failure reason                       |
+      | workingTree          | equals   | value "clean"                         | "the project has uncommitted changes" |
+      | commitsAhead         | at least | number 1                              | "the fix is not committed"            |
+      | comparedBaseRevision | equals   | context "baseline revision"           | "the fix uses another baseline"       |
+      | admittedAt           | after    | field "signedAt" from Check "consent" | "the admission predates its consent"  |
+```
+
+## The columns
+
+| Column | Content |
+| --- | --- |
+| `field` | a produced field of the Check's Operation (must exist in its `Produced fields`) |
+| `relation` | `equals` · `at least` · `has at least` · `is in` · `before` · `after` |
+| `expectation` | what the field is compared with — one of the five forms below |
+| `failure reason` | non-empty; returned with a not-validated verdict. Quoted by convention (surrounding quotes are removed) |
+
+The header is exactly `| field | relation | expectation | failure reason |`; at least one row; four cells per row.
+
+## Expectation forms
+
+| Form | Compares with | Rule | Example |
+| --- | --- | --- | --- |
+| `value "<text>"` | a literal string | the field is a `string`; when the field has an `enum` domain the literal must be one of its values | `workingTree \| equals \| value "clean"` |
+| `number <n>` | a literal number (unquoted; decimals and negatives allowed) | the field is a `number` | `commitsAhead \| at least \| number 1` |
+| `valid rfc3339` | — | the field is one `instant`; holds when it parses as RFC 3339 | `admittedAt \| equals \| valid rfc3339` |
+| `context "<role>"` | the value of a context role of the Plan | same type and cardinality as the field (or a `many` role of the target's scope under `on each`); a materialized role must come from a prerequisite Scenario | `verifiedRevision \| equals \| context "fix revision"` |
+| `field "<field>" from Check "<check>"` | a produced field of another Check | the Check exists, produces the field, belongs to a prerequisite Scenario; same type and cardinality | `admittedAt \| after \| field "signedAt" from Check "consent"` |
+
+## Relations
+
+| Relation | Requires | Holds when |
+| --- | --- | --- |
+| `equals` | same type and cardinality on both sides (`valid rfc3339`: one `instant` field) | the field equals the expectation |
+| `at least` | one `number` field, a `number` expectation | field ≥ expectation |
+| `has at least` | a `many` field, a `number` expectation | the collection has at least that many values |
+| `is in` | one field, a collection expectation of the same type (`context` of a `many` role, or a `many` field of another Check) | the field is one of the values |
+| `before` / `after` | one `instant` field, an `instant` expectation | strictly before / after |
+
+## How a Check is qualified
+
+1. The Runner (or the operator, on a dry-run) reports the Facts: the produced fields of the Operation.
+2. The batch is complete only if every field named in the table (and every materialized field) is present; an incomplete batch is rejected as a whole and nothing is recorded.
+3. Each row is evaluated in order against the Facts and the current Plan context.
+4. All rows hold → **validated**, with the success reason of the Check. A row fails → **not validated**, with that row's failure reason.
+5. The verdict replaces the Check's active one; dependent Checks reopen.
+
+<Callout kind="note" title="Reason wording">
+  Reasons are read by the agent and shown in the interface and the history: write them as a fact about the observation (`"the fix is not committed"`), not as an instruction. The success reason belongs to the Check sentence, the failure reasons to the rows.
+</Callout>
+
+<Details title="Compiled predicates" expert>
+Each row compiles to `{ field, relation, expectation, failureReason }` with `expectation.kind` among `value`, `number`, `valid-rfc3339`, `context` (`role`), `check-field` (`check`, `field`). `equals` compares canonical JSON; `before`/`after` compare parsed instants; a `check-field` reference must resolve to exactly one upstream value. The `check-field` form and the roles of `context` create the data dependencies shown as dashed links on the graph.
+</Details>

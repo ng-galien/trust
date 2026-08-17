@@ -1,0 +1,42 @@
+{
+  "width": 2160,
+  "height": 1350,
+  "density": "operator",
+  "callouts": [
+    {
+      "key": "overlay.header",
+      "x": 19.79,
+      "y": 10.33,
+      "w": 79.31,
+      "h": 6.69
+    },
+    {
+      "key": "overlay.tabs",
+      "x": 20.63,
+      "y": 17.69,
+      "w": 24.8,
+      "h": 3.11
+    },
+    {
+      "key": "plan.summary",
+      "x": 19.79,
+      "y": 21.58,
+      "w": 79.31,
+      "h": 15.44
+    },
+    {
+      "key": "plan.checklist",
+      "x": 19.79,
+      "y": 37.02,
+      "w": 58.47,
+      "h": 61.53
+    },
+    {
+      "key": "plan.checkDetail",
+      "x": 78.26,
+      "y": 37.02,
+      "w": 20.83,
+      "h": 61.53
+    }
+  ]
+}

@@ -1,0 +1,42 @@
+---
+title: "Steps"
+summary: "What an Operation does — ordered Shell, File-read and HTTP steps, each named, each with a fixed result shape."
+order: 3
+---
+
+The `Scenario: Run` lists what the Runner does, in order. There are three kinds of step, and every step has a **name** — the handle the projection uses to read its result.
+
+| Step | Sentence | Result seen by the projection |
+| --- | --- | --- |
+| **Shell** | `Shell "<name>" runs "<executable>" with cwd from Environment "<dir>" [and Input "<in>"]` + argument table | `exitCode`, `stdout`, `stderr` |
+| **File** | `File "<name>" reads "<path>" as Text\|JSON from Environment "<dir>" [and Input "<in>"]` | `relativePath`, `content` |
+| **HTTP GET** | `HTTP "<name>" gets Environment "<url>" [appending Input "<in>"] as Text\|JSON` | `status`, `headers`, `body` |
+| **HTTP POST** | `HTTP "<name>" posts Input as JSON to Environment "<url>" and reads JSON` | `status`, `headers`, `body` |
+
+```gherkin fragment title="Three kinds of step, then the projection"
+  Scenario: Run
+    When Shell "head" runs "git" with cwd from Environment "workspaceRoot" and Input "project"
+      | argument  | source  |
+      | rev-parse | literal |
+      | HEAD      | literal |
+    And File "manifest" reads "package.json" as JSON from Environment "workspaceRoot" and Input "project"
+    And HTTP "issue" gets Environment "jiraIssueUrl" appending Input "issue" as JSON
+    Then Produce with JSONata
+      """
+      { "revision": $trim(steps.head.stdout), "name": steps.manifest.content.name, "summary": steps.issue.body.summary }
+      """
+```
+
+## Rules common to every step
+
+- Steps use `When` for the first and `And` for the following ones (`When` is accepted anywhere). `Then` is reserved to `Produce with JSONata`, which is always last.
+- **Names** are lower camel case (`head`, `verifyBuild`) and unique within the Operation. The projection addresses a step by name — never by position — so reordering steps does not break it.
+- Steps run **in order**, one after the other. When a step ends in a way that is not an accepted result (a Shell exit that is not accepted, an unreadable file, an HTTP transport error), the Operation is **interrupted before any field is produced**: no Facts, no verdict — the Check stays as it was and the agent may try again.
+- A step reads its directory or URL from the **Environment**, never from a literal in the source. This is what makes the same Operation runnable on several Environments.
+- Nothing in a step is interpolated from free text: Shell arguments are rows, HTTP paths are one encoded segment, file paths are fixed relative paths, POST bodies are the whole typed Input.
+
+<Callout kind="rule" title="Result versus error">
+  An Operation distinguishes an **observation** from an **error**. A failing test suite that exits `1` can be a legitimate observation (`status: failed`) if the Operation says so with `accepts exits`; a compiler that cannot start, a missing directory or a network failure are errors that interrupt the Operation. This distinction is what lets a Procedure ask *"does the build pass?"* without confusing *"the build failed"* with *"we could not build"*.
+</Callout>
+
+<PageCards />

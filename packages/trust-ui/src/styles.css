@@ -149,3 +149,64 @@
 .trust-inline-actionable { color: var(--color-accent); font-style: italic; opacity: 0.9; }
 .trust-inline-open { color: var(--color-text-muted); font-style: italic; opacity: 0.9; }
 .trust-inline-info { color: var(--color-info); font-style: italic; opacity: 0.9; }
+
+/* Documentation article — MDX output typography on the token layer (layered like the components). */
+@layer components {
+  .docs-article p, .docs-article ul, .docs-article ol { font-size: var(--text-ui); line-height: 1.6; }
+  .docs-article > div > p, .docs-article > div > ul, .docs-article > div > ol { margin: 0 0 0.9rem; }
+  .docs-article ul, .docs-article ol { padding-left: 1.4rem; }
+  .docs-article ul { list-style: disc; }
+  .docs-article ol { list-style: decimal; }
+  .docs-article li { margin: 0.25rem 0; }
+  .docs-article li > p { margin: 0.25rem 0; }
+  .docs-article li > ul, .docs-article li > ol { margin: 0.25rem 0; }
+  .docs-article h2 { margin: 2.2rem 0 0.7rem; font-size: var(--text-title); font-weight: 600; letter-spacing: -0.01em; }
+  .docs-article h3 { margin: 1.6rem 0 0.5rem; font-size: var(--text-lead); font-weight: 600; }
+  .docs-article h4 { margin: 1.2rem 0 0.4rem; font-size: var(--text-ui); font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--color-text-muted); }
+  .docs-article h2:first-child, .docs-article h3:first-child { margin-top: 0; }
+  .docs-article a:not(.docs-cards a):not(nav a):not(footer a) { color: var(--color-accent); }
+  .docs-article a:not(.docs-cards a):not(nav a):not(footer a):hover { text-decoration: underline; }
+  .docs-article strong { font-weight: 600; }
+  .docs-article :not(pre) > code { font-size: 0.92em; padding: 0.1em 0.35em; border-radius: var(--radius-1); background: var(--color-surface-3); }
+  .docs-article blockquote { margin: 1rem 0; padding: 0.2rem 1rem; border-left: 3px solid var(--color-border-strong); color: var(--color-text-muted); }
+  .docs-article hr { margin: 2rem 0; border: 0; border-top: 1px solid var(--color-border); }
+  .docs-article table { width: 100%; border-collapse: collapse; font-size: var(--text-body-lg); }
+  .docs-article th { text-align: left; padding: 0.4rem 0.6rem; border-bottom: 1px solid var(--color-border-strong); font-weight: 600; font-size: var(--text-caption); text-transform: uppercase; letter-spacing: 0.05em; color: var(--color-text-muted); white-space: nowrap; }
+  .docs-article td { padding: 0.4rem 0.6rem; border-bottom: 1px solid var(--color-border); vertical-align: top; line-height: 1.5; }
+  .docs-article tr:last-child td { border-bottom: 0; }
+  .docs-article kbd { font-size: 0.85em; padding: 0.05em 0.35em; border: 1px solid var(--color-border-strong); border-bottom-width: 2px; border-radius: var(--radius-1); background: var(--color-surface); }
+  .docs-article .docs-callout-body > p:last-child, .docs-article .docs-details-body > p:last-child, .docs-article .docs-step-body > p:last-child { margin-bottom: 0; }
+  .docs-article .docs-callout-body > p, .docs-article .docs-details-body > p, .docs-article .docs-step-body > p { margin: 0 0 0.6rem; }
+  .docs-article .docs-details-body > :first-child { margin-top: 0; }
+  .docs-article .docs-legend { list-style: none; padding: 0; }
+  .docs-article .docs-steps { list-style: none; padding: 0; counter-reset: docs-step; }
+  .docs-article .docs-step { counter-increment: docs-step; }
+  .docs-step-number::before { content: counter(docs-step); position: absolute; left: 0; top: 0; width: 1.5rem; height: 1.5rem; display: grid; place-items: center; border-radius: 999px; background: var(--color-accent); color: var(--color-accent-contrast); font-size: var(--text-caption); font-weight: 700; }
+  .docs-step:not(:last-child)::after { content: ""; position: absolute; left: 0.72rem; top: 1.7rem; bottom: -0.9rem; border-left: 1px solid var(--color-border); }
+  .docs-mark { display: inline-grid; place-items: center; width: 1.15rem; height: 1.15rem; flex-shrink: 0; border-radius: 999px; background: var(--color-accent); color: var(--color-accent-contrast); font-size: var(--text-micro); font-weight: 700; font-family: var(--font-sans); line-height: 1; margin-top: 0.15rem; }
+  .docs-mark-float { position: absolute; top: -0.6rem; left: -0.6rem; box-shadow: 0 0 0 2px var(--color-surface); }
+  .docs-callout-box { position: absolute; border: 2px solid var(--color-accent); border-radius: var(--radius-1); box-shadow: 0 0 0 1px var(--color-surface); transition: background 120ms; }
+  .docs-callout-box-active { background: color-mix(in srgb, var(--color-accent) 14%, transparent); }
+  .docs-snippet .docs-line { display: block; padding: 0 0.25rem; margin: 0 -0.25rem; }
+  .docs-snippet .docs-line-highlight { background: color-mix(in srgb, var(--color-accent) 10%, transparent); box-shadow: inset 2px 0 0 var(--color-accent); }
+  .docs-snippet .docs-line-mark { display: inline-grid; place-items: center; width: 1.1rem; height: 1.1rem; margin-right: 0.6rem; vertical-align: -0.15rem; border-radius: 999px; font-family: var(--font-sans); font-size: var(--text-micro); font-weight: 700; color: var(--color-accent-contrast); background: transparent; }
+  .docs-snippet .docs-line-marked .docs-line-mark { background: var(--color-accent); }
+  .docs-snippet .docs-line-number { display: inline-block; width: 2ch; margin-right: 1rem; text-align: right; color: var(--color-text-faint); user-select: none; }
+  /* Token colours: the same palette as the Monaco theme */
+  .tk-comment { color: var(--color-editor-comment); font-style: italic; }
+  .tk-tag { color: var(--color-editor-keyword-control); }
+  .tk-keyword { color: var(--color-editor-keyword); font-weight: 600; }
+  .tk-keyword-control { color: var(--color-editor-keyword-control); font-weight: 600; }
+  .tk-title { color: var(--color-text); font-weight: 600; }
+  .tk-type { color: var(--color-editor-type); }
+  .tk-verb { color: var(--color-editor-verb); }
+  .tk-string { color: var(--color-editor-string); }
+  .tk-number { color: var(--color-editor-number); }
+  .tk-delimiter { color: var(--color-editor-table-line); }
+  .tk-table-header { color: var(--color-editor-table-header); font-weight: 600; }
+  .tk-table-cell { color: var(--color-text); }
+  .tk-function { color: var(--color-editor-keyword-control); }
+  .tk-root { color: var(--color-editor-keyword); font-weight: 600; }
+  .tk-operator { color: var(--color-editor-verb); }
+  .tk-variable { color: var(--color-editor-number); font-style: italic; }
+}

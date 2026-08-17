@@ -1,0 +1,72 @@
+---
+title: "Contexte du Plan — rôles"
+summary: "Les rôles typés d'un Plan et leurs quatre sources : entrée de Plan, déclaration de l'agent, valeur fixe, champ matérialisé — et le scope parent qui les relie."
+order: 2
+---
+
+Le `Background: Plan context` déclare chaque valeur qu'un Plan porte : des **rôles**, typés et nommés. Un Check lie des rôles à l'Input de son Opération ; un Check peut aussi remplir un rôle à partir d'un champ produit. Rien d'autre ne porte de données de Plan.
+
+> Un rôle est déclaré une fois, avec son type, sa cardinalité et l'origine de sa valeur.
+
+```gherkin fragment title="Un rôle par ligne"
+  Background: Plan context
+    Given one reference "jira issue"
+    And many reference "affected project" declared by agent for "jira issue"
+    And many reference "fix revision" for each "affected project"
+    And one reference "acceptance project" fixed as "payment-acceptance"
+```
+
+## La phrase
+
+```text
+Given|And one|many string|number|instant|reference "<role>" [declared by agent] [fixed as "<value>"] [for "<parent>"]… [for each "<parent>"]…
+```
+
+| Partie | Règle |
+| --- | --- |
+| `Given` / `And` | l'un ou l'autre mot-clé, dans n'importe quel ordre ; pas de table, pas de doc string |
+| `one` / `many` | cardinalité : un scalaire, ou une collection du type |
+| `string` `number` `instant` `reference` | les quatre mêmes types que les Inputs d'Opération et les champs produits |
+| `"<role>"` | nom libre entre guillemets, non vide, unique dans la Procédure — un libellé lisible (`"jira issue"`, `"fix revision"`), pas un identifiant |
+| `declared by agent` | l'agent fournit la valeur après l'engagement |
+| `fixed as "<value>"` | la valeur est écrite ici ; seulement pour `one string` ou `one reference` ; ne se combine pas avec `declared by agent` |
+| `for "<parent>"` / `for each "<parent>"` | scope parent, voir plus bas ; répétable, combinable avec les deux clauses ci-dessus |
+
+## Les quatre sources
+
+La source d'un rôle n'est pas un mot-clé : elle découle des clauses et des Checks.
+
+| Source | Comment | Remplie | Exemple |
+| --- | --- | --- | --- |
+| **Valeur fixe** | `fixed as "<value>"` | par la Procédure elle-même | `And one reference "Kind cluster" fixed as "trust"` |
+| **Déclaration de l'agent** | `declared by agent` | après l'engagement, par l'agent, via l'opération de déclaration fermée | `And many reference "affected project" declared by agent for "jira issue"` |
+| **Champ matérialisé** | un Check de la Procédure `materializes "<role>" from field "<field>"` | par ce Check, à partir d'un de ses champs produits, une fois validé | `And one reference "baseline revision" for "project"` + `… and materializes "baseline revision" from field "headRevision"` |
+| **Entrée de Plan** | aucune des précédentes | à l'engagement, par qui engage le Plan (entrées racines) | `Given one reference "repository"` |
+
+L'engagement accepte **exactement** les entrées de Plan — aucun rôle fixe, déclaré ou matérialisé. Ajouter une clause `materializes` sur un Check transforme ce qui aurait été une entrée de Plan en rôle matérialisé.
+
+## Scope parent
+
+`for "<parent>"` et `for each "<parent>"` rattachent un rôle à un autre rôle : une révision appartient à un projet, une heure d'enregistrement appartient à un document.
+
+- Le parent doit être un rôle déclaré ; les relations de parenté forment un graphe acyclique.
+- `for "<parent>"` : une valeur parente partagée. `for each "<parent>"` : une valeur par valeur du parent — la relation retient **quelle valeur appartient à quel parent**. Quand un Check s'exécute `on each "affected project"`, un `using "fix revision"` sélectionne la révision de *ce* projet, pas la collection entière — la sélection suit le scope, jamais une position dans un tableau.
+- Deux rôles sont dans le **même scope** quand l'un est `for each` l'autre, ou quand ils partagent les mêmes parents. C'est le même scope qui permet à un rôle `many` d'alimenter un Input `one` sous `on each`, à un scalaire produit d'être comparé avec `context "<many role>"`, et à un champ scalaire de matérialiser un rôle `many`.
+
+```gherkin fragment title="Extrait de la Procédure de départ d'avion : valeurs scopées à un vol"
+    Given one reference "flight"
+    And one reference "aircraft" for "flight"
+    And many reference "cabin item" declared by agent for "flight"
+```
+
+## Ce qu'un rôle alimente
+
+- **Une cible de Check** : `on "<role>"` — un Check (`on "project"`), un Check par valeur (`on each "affected project"`), ou un Check avec la collection entière (`on all "…"`).
+- **D'autres Inputs** : `using "<role>" as Input "<input>"` (`using all` pour une collection).
+- **Une attente** : `context "<role>"` compare un champ produit avec la valeur d'un rôle — voir [Attentes](/docs/procedures/expectations).
+
+Types et cardinalités doivent correspondre à l'Input de l'Opération à chaque liaison : un rôle `many reference` ne peut pas alimenter un Input `one` sans `each` ; un rôle `string` ne peut pas alimenter un Input `reference`.
+
+<Details title="Rôles compilés" expert>
+Chaque rôle compile en `{ name, type, cardinality, source, parent? }` où `source.kind` vaut `plan-input`, `agent-declaration`, `fixed` (avec `value`) ou `materialized` (avec le Check et le champ). La page de la Procédure liste les entrées de Plan dans son inspecteur ; le formulaire d'engagement d'un Plan est généré à partir d'elles.
+</Details>

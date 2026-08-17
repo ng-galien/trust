@@ -17,7 +17,7 @@ export function ProcedureSimulation({ compiled, error }: { compiled: CompiledPro
   const [complete, setComplete] = useState<string[]>([]);
   useEffect(() => setComplete([]), [compiled?.definitionDigest]);
   if (!compiled) {
-    return <div className="p-6"><EmptyState icon={<Play />} title={t("procedures.simulation.emptyTitle")} body={error ?? t("procedures.simulation.emptyBody")} /></div>;
+    return <div className="p-6"><EmptyState icon={<Play />} title={t("procedures.simulation.emptyTitle")} body={error ?? t("procedures.overlay.mustCompile")} /></div>;
   }
   const scenarios = orderedScenarios(compiled);
   const actionable = scenarios.filter((scenario) => !complete.includes(scenario.slug) && scenario.dependencies.every((dependency) => complete.includes(dependency)));
@@ -29,11 +29,7 @@ export function ProcedureSimulation({ compiled, error }: { compiled: CompiledPro
 
   return (
     <div className="grid h-full min-h-0 grid-cols-[320px_minmax(0,1fr)]">
-      <section className="flex min-h-0 flex-col gap-3 overflow-y-auto border-r border-border bg-bg p-3 [&>*]:shrink-0">
-        <div>
-          <strong className="block text-body-lg font-semibold">{t("procedures.simulation.heading")}</strong>
-          <p className="mt-1 text-label leading-snug text-muted">{t("procedures.simulation.intro")}</p>
-        </div>
+      <section className="flex min-h-0 flex-col gap-3 overflow-y-auto border-r border-border bg-bg p-3 [&>*]:shrink-0" data-doc="walk.controls">
         <div className="flex gap-2">
           <Button variant="primary" icon={<Play size={13} />} onClick={() => advance()} disabled={done || actionable.length === 0}>{done ? t("procedures.simulation.complete") : actionable[0] ? t("procedures.simulation.advanceTo", { title: actionable[0].title }) : t("procedures.simulation.advance")}</Button>
           <Button icon={<RotateCcw size={12} />} onClick={() => setComplete([])} disabled={complete.length === 0}>{t("procedures.simulation.reset")}</Button>
@@ -41,7 +37,7 @@ export function ProcedureSimulation({ compiled, error }: { compiled: CompiledPro
         <p className="text-label text-muted">{t("procedures.simulation.progress", { complete: String(complete.length), total: String(scenarios.length), actionable: String(actionable.length) })}</p>
         <div className="h-1 overflow-hidden rounded-full bg-surface-3"><div className="h-full rounded-full bg-accent transition-[width]" style={{ width: `${scenarios.length ? (complete.length / scenarios.length) * 100 : 0}%` }} /></div>
       </section>
-      <section className="flex min-h-0 flex-col gap-2 overflow-y-auto bg-bg p-3 [&>*]:shrink-0">
+      <section className="flex min-h-0 flex-col gap-2 overflow-y-auto bg-bg p-3 [&>*]:shrink-0" data-doc="walk.scenarios">
         {scenarios.map((scenario, index) => {
           const isComplete = complete.includes(scenario.slug);
           const isActionable = actionable.some((entry) => entry.slug === scenario.slug);

@@ -7,6 +7,8 @@ import type { Language } from "../i18n/index.js";
 /* User preferences — one persisted Zustand store (localStorage), read through selectors. */
 
 export type ThemePreference = "light" | "dark" | "system";
+/** Interface density: the operator mode shows the essentials and the actions, the expert mode everything. */
+export type Density = "operator" | "expert";
 type SidebarMode = "extended" | "compact";
 
 export interface Preferences {
@@ -15,6 +17,7 @@ export interface Preferences {
   language: Language;
   /** Current environment: the context every run, engagement and "runnable" mark refers to. Never in the URL. */
   environment: string | null;
+  density: Density;
   sidebarMode: SidebarMode;
   expandedAnchors: string[];
   editorFontSize: number;
@@ -23,6 +26,8 @@ export interface Preferences {
   /** Dry-run cockpit: shown or not, and its width in px — resized by the user. */
   cockpitOpen: boolean;
   cockpitWidth: number;
+  /** Documentation: whether the contents tree is shown. */
+  docsNavOpen: boolean;
 }
 
 const storageKey = "trust.ui.preferences";
@@ -31,12 +36,14 @@ const defaults: Preferences = {
   theme: "system",
   language: "en",
   environment: null,
+  density: "operator",
   sidebarMode: "extended",
   expandedAnchors: [],
   editorFontSize: 13,
   inspectorOpen: true,
   cockpitOpen: true,
   cockpitWidth: 400,
+  docsNavOpen: true,
 };
 
 /** Reads a value written before the store existed (a bare Preferences object) as a versioned record. */
@@ -92,4 +99,9 @@ export function useResolvedTheme(): "light" | "dark" {
     () => false,
   );
   return theme === "system" ? (prefersDark ? "dark" : "light") : theme;
+}
+
+/** True in expert mode — the only switch the views use to reveal technical detail. */
+export function useExpert(): boolean {
+  return usePreferencesStore((state) => state.density === "expert");
 }

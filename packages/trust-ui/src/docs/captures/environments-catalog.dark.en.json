@@ -1,0 +1,35 @@
+{
+  "width": 2160,
+  "height": 1350,
+  "density": "operator",
+  "callouts": [
+    {
+      "key": "home.header",
+      "x": 18.89,
+      "y": 5.33,
+      "w": 81.11,
+      "h": 9.6
+    },
+    {
+      "key": "home.filters",
+      "x": 20.56,
+      "y": 16.04,
+      "w": 66.78,
+      "h": 3.56
+    },
+    {
+      "key": "home.card",
+      "x": 20.56,
+      "y": 22.6,
+      "w": 25.37,
+      "h": 18.79
+    },
+    {
+      "key": "shell.environment",
+      "x": 69.5,
+      "y": 1.06,
+      "w": 6.74,
+      "h": 3.11
+    }
+  ]
+}

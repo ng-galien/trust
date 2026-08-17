@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
 import { cx } from "../lib/format.js";
+import { Expert } from "./expert.js";
 
 export function EmptyState({ icon, title, body, action, className }: { icon?: ReactNode; title: string; body?: string; action?: ReactNode; className?: string }) {
   return (
@@ -33,10 +34,12 @@ export function ErrorBox({ message, details, className }: { message: string; det
       <div className="min-w-0 flex-1">
         <span className="break-words">{message}</span>
         {details ? (
-          <details className="mt-1">
-            <summary className="cursor-pointer text-caption text-danger/80">{t("common.states.technicalDetails")}</summary>
-            <pre className="mono mt-1 max-h-48 overflow-auto whitespace-pre-wrap break-all rounded-(--radius-1) bg-surface p-2 text-caption text-text">{details}</pre>
-          </details>
+          <Expert>
+            <details className="mt-1">
+              <summary className="cursor-pointer text-caption text-danger/80">{t("common.states.technicalDetails")}</summary>
+              <pre className="mono mt-1 max-h-48 overflow-auto whitespace-pre-wrap break-all rounded-(--radius-1) bg-surface p-2 text-caption text-text">{details}</pre>
+            </details>
+          </Expert>
         ) : null}
       </div>
     </div>

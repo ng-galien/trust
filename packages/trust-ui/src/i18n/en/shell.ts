@@ -1,5 +1,6 @@
 export const shell = {
   brand: "TRUST",
+  help: "Documentation of this screen",
   nav: {
     label: "Navigation",
     expand: "Expand navigation",
@@ -9,6 +10,7 @@ export const shell = {
     home: "TRUST home",
     overview: "Overview",
     settings: "Settings",
+    docs: "Documentation",
     design: "Design",
     run: "Run",
     operations: "Operations",
@@ -36,7 +38,7 @@ export const shell = {
   },
   managementNote: {
     procedures: "Published versions are immutable",
-    plans: "A live Plan is the agent's — close its Session from the Plan instead",
+    plans: "Close its Session from the Plan instead",
   },
   explorer: {
     noMatch: "No match.",
@@ -51,7 +53,6 @@ export const shell = {
   },
   environment: {
     label: "Current environment",
-    hint: "Current environment — runs, engagements and runnable marks refer to it (a preference, not part of any address)",
     none: "No environment",
     manage: "Manage environments…",
     current: "Current",
@@ -62,9 +63,16 @@ export const shell = {
     healthy: "Runtime healthy",
     checking: "Checking runtime…",
     unavailable: "Runtime unavailable",
-    liveHint: "Runtime healthy — live updates over the event stream",
-    pollingHint: "Runtime healthy — event stream down, polling",
+    liveHint: "Live updates",
+    pollingHint: "Event stream down — polling",
     refresh: "Refresh runtime health",
+  },
+  density: {
+    label: "Interface mode",
+    operator: "Operator",
+    expert: "Expert",
+    operatorHint: "Operator mode: the essentials and the actions",
+    expertHint: "Expert mode: every identifier, relation and technical view",
   },
   search: {
     placeholder: "Search operations, procedures, plans…",

@@ -1,0 +1,31 @@
+---
+title: "Introduction"
+summary: "Ce que fait TRUST, comment cette documentation est organisée, par où commencer."
+order: 0
+---
+
+TRUST exécute des tâches logicielles opérées par des agents sous une règle de conformité : **l'agent agit, TRUST décide de ce qui a été établi.** Le travail s'écrit sous forme de Procédure — une checklist de <Term id="check">Checks</Term> typés. Chaque Check est validé uniquement à partir de <Term id="fact">Facts</Term> observés. L'agent ne produit jamais sa propre preuve et n'infère jamais sa propre progression.
+
+<Figure caption="Objets rédigés (en haut) et ce qu'un Plan en cours produit (en bas).">
+  <ModelFigure />
+</Figure>
+
+## En bref
+
+- Une <Term id="operation">Opération</Term> décrit un appel à un système externe et les champs typés qu'il renvoie.
+- Une <Term id="procedure">Procédure</Term> assemble des Opérations en Scénarios et en Checks, chaque Check avec les attentes qui le rendent validé.
+- Engager une Procédure avec des entrées concrètes dans un <Term id="environment">Environnement</Term> crée un <Term id="plan">Plan</Term>.
+- L'agent lit le Plan et confie un Check à la fois au <Term id="runner">Runner</Term> livré avec le skill TRUST. Le Runner exécute l'Opération et rapporte les Facts.
+- TRUST qualifie les Facts et renvoie un <Term id="verdict">verdict</Term> avec une raison. De nouveaux Facts sur un Check rouvrent chaque Check qui en dépend ; l'agent reprend depuis un état cohérent.
+
+> Le Runner ne qualifie jamais. L'agent n'affirme jamais. Seul TRUST transforme des Facts en verdict.
+
+## Lire cette documentation
+
+Les sections vont des principes aux détails : une courte page d'accueil, puis des pages détaillées (cartes ci-dessous). Un terme souligné en pointillés ouvre sa définition sur place. Les blocs marqués **Expert** contiennent le détail dont l'opérateur n'a pas besoin d'abord ; ils s'ouvrent par défaut quand l'interface est en mode expert.
+
+<PageCards />
+
+<Callout kind="tip" title="Par où commencer">
+  [Principes](/docs/principles), puis [Opérations](/docs/operations) — et essayez-en une dans l'interface avec **Simuler**. Pour écrire une Procédure : la [référence du langage](/docs/language) et les [guides](/docs/guides).
+</Callout>

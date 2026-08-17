@@ -1,0 +1,55 @@
+---
+title: "Screens"
+summary: "The interface screen by screen — navigation, the two modes, the current Environment, the shell, Overview, Check history, Settings."
+order: 8
+---
+
+The interface is a local web application talking to one runtime. Every object of TRUST has a **catalog** page and an **item** page that opens over it; the item, its tab and its selection are in the URL, so an address can be shared and reopened as it was. Language, theme, mode and current Environment are preferences of the browser, never in the URL.
+
+<Screenshot id="shell" caption="The shell: header, sidebar with the resource explorer, and the current page." legend={{
+  "shell.sidebar": "Design (Operations, Procedures) and Run (Environments, Plans, Dry-runs, Check history); each anchor expands into the list of its items with their actions; Documentation and Settings at the bottom.",
+  "shell.search": "⌘K: search Operations, Procedures and Plans by name.",
+  "shell.environment": "The current Environment; Manage environments… opens the catalog.",
+  "shell.density": "Operator / Expert mode.",
+}} />
+
+## Navigation
+
+- **Design**: [Operations](/docs/operations/authoring), [Procedures](/docs/procedures/authoring). **Run**: [Environments](/docs/environments), [Plans](/docs/plans), [Dry-runs](/docs/plans), [Check history](#check-history). Overview at the top; Documentation and Settings at the bottom.
+- The sidebar toggle in the header collapses it to a rail of icons; hovering an icon opens the same list in a flyout.
+- Each anchor of the sidebar has a count and, on hover, **New**; expanding it lists the items (filter box, item menu with **Duplicate** / **Delete** when the runtime offers them).
+- The header pill shows the runtime state: **Runtime live** (events stream), **Runtime healthy** (polling), **Runtime unavailable**. Click to refresh.
+
+## Operator and expert modes
+
+<Compare leftTitle="Operator (default)" rightTitle="Expert"
+  left="The essentials and every action. Identifiers, schemas, contracts, digests, attempts and technical detail are hidden."
+  right="Everything, each fact once: identifiers repeated in headers, Contract JSON tabs, step contracts and projections, Plan inputs and Scenario lists in inspectors, attempts and reason codes, the DSL reading of the cockpit, technical hints." />
+
+The switch is in the header. It is a preference, never in the URL; a `?tab=contract` address opened in operator mode falls back to the default tab. The documentation follows it: **Expert** blocks are open by default in expert mode.
+
+## The current Environment
+
+The header holds the current Environment. Operation runs, Plan engagements and runnable marks (✓ / ✗) refer to it. **Use as current** on an Environment page, or the header selector, changes it. See [Environments](/docs/environments).
+
+## Overview
+
+`/overview` — the landing page: counts of Operations, Procedures, Plans (with the number in progress) and Dry-runs; **In flight** (the running Plans with their Procedure, Environment and progress); **Runtime** (Environments, open Sessions, Live or Polling updates); **Latest verdicts** with a link to the history.
+
+## Check history
+
+`/history` — every verdict ever computed, across Plans and dry-runs, newest first, served by the runtime with server-side facets.
+
+<Screenshot id="history" caption="Check history." legend={{
+  "home.filters": "Search the loaded rows; facets Verdict (validated / not validated), Mode (live / dry-run), Procedure, Plan.",
+  "home.display": "Group by Plan or by day.",
+  "home.content": "One row per verdict: when, verdict, Check and its Operation, Plan and Procedure, reason (and the Checks it reopened), Fact count. The Plan link opens the Plan on that Check. Load more appends older rows.",
+}} />
+
+## Settings
+
+`/settings` — **Appearance** (light, dark, system), **Language** (English, Français — flags), **Gherkin editor** (font size), **Runtime** (its address and state).
+
+## Screens by section
+
+<PageCards />

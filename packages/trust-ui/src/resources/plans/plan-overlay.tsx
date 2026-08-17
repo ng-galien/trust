@@ -1,4 +1,4 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import { FileCode2, FlaskConical, History, ListChecks, LockKeyhole, Network, RotateCcw, Server, Trash2, Workflow, X } from "lucide-react";
 import type { TFunction } from "i18next";
 import { type ReactNode, useMemo, useState } from "react";
@@ -13,8 +13,10 @@ import type { CompiledProcedure, PlanCheck, PlanMode, PlanView } from "../../typ
 import { Badge, StatusBadge } from "../../ui/badge.js";
 import { Button, IconButton } from "../../ui/button.js";
 import { type EditorDecoration, GherkinEditor } from "../../gherkin-editor.js";
-import { updatePreferences, usePreference, useResolvedTheme } from "../../lib/preferences.js";
+import { updatePreferences, useExpert, usePreference, useResolvedTheme } from "../../lib/preferences.js";
 import { ConfirmDialog } from "../../ui/confirm.js";
+import { Description } from "../../ui/description.js";
+import { Expert } from "../../ui/expert.js";
 import { EmptyState, ErrorBox, LoadingState } from "../../ui/states.js";
 import { useCloseTo, useOrigin } from "../shared/origin.js";
 import { stripEphemeral, useOverlayViewState } from "../shared/overlay-state.js";
@@ -58,6 +60,7 @@ function PlanItem({ slug, planMode, base, onClose, listSearch }: { slug: string;
   );
   const invalidate = () => Promise.all([queryClient.invalidateQueries({ queryKey: ["plan", slug] }), queryClient.invalidateQueries({ queryKey: ["plans"] })]);
   const dryRun = data?.mode === "dry-run";
+  const expert = useExpert();
   const cockpitOpen = usePreference("cockpitOpen");
   const cockpitWidth = usePreference("cockpitWidth");
   const setCockpitOpen = (open: boolean) => updatePreferences({ cockpitOpen: open });
@@ -88,9 +91,9 @@ function PlanItem({ slug, planMode, base, onClose, listSearch }: { slug: string;
       onClose={onClose}
       crumbs={crumbs}
       labelledBy="plan-title"
-      kicker={data ? t("plans.overlay.kickerRev", { revision: data.revision }) : t("plans.overlay.kicker")}
+      kicker={t("plans.overlay.kicker")}
       badges={data ? <><ModeBadge mode={data.mode} /><StatusBadge state={data.sessionState === "UNAVAILABLE" ? "UNAVAILABLE" : data.workState} />{currentEnvironment && data.environment !== currentEnvironment ? <span title={t("plans.overlay.otherEnvironmentHint", { environment: data.environment, current: currentEnvironment })}><Badge tone="warning" className="inline-flex items-center gap-1"><Server size={11} /> {t("plans.overlay.otherEnvironment", { environment: data.environment })}</Badge></span> : null}</> : null}
-      id={data ? `${data.procedure}@${data.procedureVersion} · ${data.environment}` : slug}
+      id={expert && data ? `${data.procedure}@${data.procedureVersion} · ${data.environment}` : ""}
       title={slug}
       loading={plan.isLoading ? <LoadingState /> : notFound ? (
         <div className="p-8"><EmptyState title={t("plans.overlay.unknown", { slug })} body={plan.error?.message} action={<Button onClick={onClose}>{t("plans.overlay.backToPlans")}</Button>} /></div>
@@ -116,11 +119,11 @@ function PlanItem({ slug, planMode, base, onClose, listSearch }: { slug: string;
           {cockpitOpen ? t("plans.overlay.cockpit") : actionable.length ? t("plans.overlay.rehearseCount", { count: actionable.length }) : t("plans.overlay.rehearse")}
         </Button>
       ) : undefined}
-      tabMeta={data
+      tabMeta={expert && data
         ? data.missingDeclarations.length
           ? t("plans.overlay.tabMetaMissing", { checks: plural(data.checks.length, "check"), satisfied: data.satisfiedChecks, actionable: actionable.length, missing: plural(data.missingDeclarations.length, "missingDeclaration") })
           : t("plans.overlay.tabMeta", { checks: plural(data.checks.length, "check"), satisfied: data.satisfiedChecks, actionable: actionable.length })
-        : ""}
+        : undefined}
       // No inspector on Plans / dry-runs: the checklist, the summary strip and the cockpit carry everything.
     >
       <ConfirmDialog
@@ -162,7 +165,7 @@ function PlanItem({ slug, planMode, base, onClose, listSearch }: { slug: string;
           {tab === "history" ? <PlanHistory plan={ordered} /> : null}
         </div>
         {dryRun && cockpitOpen ? (
-          <aside className="relative shrink-0 border-l border-border bg-surface" style={{ width: cockpitWidth }}>
+          <aside className="relative shrink-0 border-l border-border bg-surface" style={{ width: cockpitWidth }} data-doc="cockpit">
             <ResizeHandle width={cockpitWidth} onResize={(width) => updatePreferences({ cockpitWidth: width })} />
             <PlanCockpit plan={ordered} compiled={compiled} onChanged={invalidate} runtime={runtime} selected={sel} onSelect={setSel} onClose={() => setCockpitOpen(false)} />
           </aside>
@@ -176,21 +179,18 @@ function PlanItem({ slug, planMode, base, onClose, listSearch }: { slug: string;
 /** Compact reading of the plan above its checklist: progress, latest verdict, what is next. */
 function PlanSummaryStrip({ plan, compiled, onRehearse, onSelectCheck }: { plan: PlanView; compiled: CompiledProcedure | undefined; onRehearse?: (() => void) | undefined; onSelectCheck: (uri: string) => void }) {
   const { t } = useTranslation();
+  const expert = useExpert();
   const actionable = plan.checks.filter((check) => check.actionable);
   const failed = plan.checks.filter((check) => check.state === "OPEN" && check.latestVerdict === "NOT_VALIDATED");
   return (
-    <div className="flex shrink-0 flex-col gap-2 border-b border-border bg-surface px-4 py-3">
+    <div className="flex shrink-0 flex-col gap-2 border-b border-border bg-surface px-4 py-3" data-doc="plan.summary">
       <section>
         <div className="flex flex-wrap items-center gap-3">
           <ProgressBar satisfied={plan.satisfiedChecks} total={plan.checks.length} />
-          <StatusBadge state={plan.workState} />
-          {plan.sessionState === "UNAVAILABLE" ? <Badge tone="danger">{t("plans.summary.sessionUnavailable")}</Badge> : null}
-          <span className="text-body text-muted">{t("plans.summary.revisionEngaged", { revision: plan.revision, when: relativeTime(plan.createdAt) })}</span>
+          <span className="text-body text-muted">{expert ? t("plans.summary.revisionEngaged", { revision: plan.revision, when: relativeTime(plan.createdAt) }) : t("plans.summary.engaged", { when: relativeTime(plan.createdAt) })}</span>
         </div>
-        <p className="mt-2 text-ui leading-relaxed">
-          {compiled?.title ?? plan.procedure}
-          {plan.mode === "dry-run" ? <span className="text-muted"> {t("plans.summary.rehearsedByYou")}</span> : <span className="text-muted"> {t("plans.summary.executedByAgent")}</span>}
-        </p>
+        <p className="mt-2 text-ui leading-relaxed">{compiled?.title ?? plan.procedure}</p>
+        {compiled?.description ? <Description text={compiled.description} className="mt-1 text-body text-muted" /> : null}
         {plan.latestQualification ? (
           <p className="mt-2 text-body-lg">
             <span className="kicker mr-2">{t("plans.summary.latestVerdict")}</span>
@@ -218,11 +218,11 @@ function PlanChecks({ plan, selected, onSelect }: { plan: PlanView; selected: st
   const check = plan.checks.find((entry) => entry.checkUri === selectedUri);
   return (
     <div className={check ? "grid h-full min-h-0 grid-cols-[minmax(0,1fr)_300px]" : "flex h-full min-h-0 flex-col"}>
-      <ul className="flex min-h-0 flex-col overflow-y-auto">
+      <ul className="flex min-h-0 flex-col overflow-y-auto" data-doc="plan.checklist">
         {groupExpanded(plan.checks).map((group) => (
           <li key={group.key} className="border-b border-border">
             {group.checks.length > 1 ? (
-              <div className="flex items-baseline gap-2 bg-surface-2 px-3 py-1.5 text-label" title={t("plans.checklist.parallelTitle")}>
+              <div className="flex items-baseline gap-2 bg-surface-2 px-3 py-1.5 text-label">
                 <span className="mono font-medium">{group.checks[0]!.name}</span>
                 <span className="text-muted">{t("plans.checklist.timesOnEach", { count: group.checks.length })} <span className="mono text-text">{group.checks[0]!.target.role}</span></span>
                 <span className="ml-auto text-faint">{t("plans.checklist.satisfiedRatio", { satisfied: group.checks.filter((check) => check.state === "SATISFIED").length, total: group.checks.length })}</span>
@@ -237,7 +237,7 @@ function PlanChecks({ plan, selected, onSelect }: { plan: PlanView; selected: st
         ))}
       </ul>
       {check ? (
-        <aside className="flex min-h-0 flex-col border-l border-border bg-surface">
+        <aside className="flex min-h-0 flex-col border-l border-border bg-surface" data-doc="plan.checkDetail">
           <div className="flex items-center gap-2 border-b border-border px-3 py-1.5"><span className="kicker">{t("plans.checklist.check")}</span><IconButton size="sm" label={t("plans.checklist.closeDetails")} className="ml-auto" onClick={() => onSelect(undefined)}><X size={14} /></IconButton></div>
           <div className="min-h-0 flex-1 overflow-y-auto p-3"><CheckDetail checkUri={check.checkUri} /></div>
         </aside>
@@ -248,11 +248,12 @@ function PlanChecks({ plan, selected, onSelect }: { plan: PlanView; selected: st
 
 export function CheckLine({ check, selected, compact = false, onClick }: { check: PlanCheck; selected?: boolean; compact?: boolean; onClick: () => void }) {
   const { t } = useTranslation();
+  const expert = useExpert();
   return (
     <button type="button" onClick={onClick} className={`flex w-full items-start gap-3 px-3 py-2 text-left hover:bg-surface-2 ${selected ? "bg-accent-soft" : ""}`}>
       {compact ? null : <span className="mt-0.5 w-24 shrink-0"><StatusBadge state={check.state === "SATISFIED" ? "SATISFIED" : check.actionable ? "ACTIONABLE" : "OPEN"} /></span>}
       <span className="min-w-0 flex-1">
-        <span className="flex items-baseline gap-2"><span className="mono text-body-lg font-medium">{check.name}</span>{compact ? null : <span className="text-caption text-muted">{check.scenario}</span>}<span className="mono ml-auto shrink-0 text-caption text-accent">{check.operation}</span></span>
+        <span className="flex items-baseline gap-2"><span className="mono text-body-lg font-medium">{check.name}</span>{compact || !expert ? null : <span className="text-caption text-muted">{check.scenario}</span>}{expert ? <span className="mono ml-auto shrink-0 text-caption text-accent">{check.operation}</span> : null}</span>
         <span className="block truncate text-label text-muted">{t("plans.checkLine.on")} <span className="mono text-text">{check.target.role}</span> = <span className="mono">{JSON.stringify(check.target.value)}</span></span>
         {check.latestVerdict && !compact ? <span className="block text-label"><StatusBadge state={check.latestVerdict} /> <span className="text-muted">{check.reason}</span></span> : null}
         {!check.actionable && check.state === "OPEN" && check.blockedBy.length && !compact ? <span className="block text-caption text-faint">{t("plans.checkLine.waitsFor", { checks: plural(check.blockedBy.length, "check") })}</span> : null}
@@ -268,42 +269,52 @@ function CheckDetail({ checkUri }: { checkUri: string }) {
   const view = check.data;
   return (
     <div className="flex flex-col gap-3 text-body">
-      <div><span className="kicker">{t("plans.checkDetail.check")}</span><strong className="mono block text-ui">{view.name}</strong><span className="mono block break-all text-meta text-faint">{view.checkUri}</span></div>
-      <div><span className="kicker">{t("plans.checkDetail.inputs")}</span>{Object.entries(view.inputs).map(([key, value]) => <div key={key} className="flex justify-between gap-2"><span className="mono">{key}</span><span className="mono truncate text-muted">{JSON.stringify(value)}</span></div>)}</div>
+      <div><strong className="mono block text-ui">{view.name}</strong><Expert><span className="mono block break-all text-meta text-faint">{view.checkUri}</span></Expert></div>
+      <Expert>
+        <div><span className="kicker">{t("plans.checkDetail.inputs")}</span>{Object.entries(view.inputs).map(([key, value]) => <div key={key} className="flex justify-between gap-2"><span className="mono">{key}</span><span className="mono truncate text-muted">{JSON.stringify(value)}</span></div>)}</div>
+      </Expert>
       <div><span className="kicker">{t("plans.checkDetail.history")}</span>{view.history.length === 0 ? <p className="text-muted">{t("plans.checkDetail.noVerdict")}</p> : null}
         <ul className="flex flex-col gap-1">{[...view.history].reverse().map((entry) => <li key={entry.snapshotId}><StatusBadge state={entry.verdict} /> <span className="text-muted">{entry.reason}</span> <span className="text-caption text-faint">{relativeTime(entry.calculatedAt)}</span></li>)}</ul>
       </div>
-      <div><span className="kicker">{t("plans.checkDetail.attempts")}</span>{view.attempts.length === 0 ? <p className="text-muted">{t("plans.checkDetail.noAttempt")}</p> : null}
-        <ul className="flex flex-col gap-1">{[...view.attempts].reverse().map((attempt) => <li key={attempt.handle} className="flex justify-between gap-2"><span className="mono truncate">{attempt.attemptKey}</span><span className="text-faint">{attempt.state} · {plural(attempt.facts.length, "fact")}</span></li>)}</ul>
-      </div>
+      <Expert>
+        <div><span className="kicker">{t("plans.checkDetail.attempts")}</span>{view.attempts.length === 0 ? <p className="text-muted">{t("plans.checkDetail.noAttempt")}</p> : null}
+          <ul className="flex flex-col gap-1">{[...view.attempts].reverse().map((attempt) => <li key={attempt.handle} className="flex justify-between gap-2"><span className="mono truncate">{attempt.attemptKey}</span><span className="text-faint">{attempt.state} · {plural(attempt.facts.length, "fact")}</span></li>)}</ul>
+        </div>
+      </Expert>
     </div>
   );
 }
 
 function PlanHistory({ plan }: { plan: PlanView }) {
   const { t } = useTranslation();
+  const expert = useExpert();
+  const change = plan.latestRevisionChange;
+  const parts: ReactNode[] = [
+    expert ? <span key="rev">{t("plans.history.revChange", { from: String(change.fromRevision ?? "—"), to: change.toRevision })}</span> : null,
+    change.added.length ? <span key="added" className="text-muted">{t("plans.history.added", { count: change.added.length })}</span> : null,
+    change.removed.length ? <span key="removed" className="text-muted">{t("plans.history.removed", { count: change.removed.length })}</span> : null,
+    change.newlySatisfied.length ? <span key="satisfied" className="text-success">{t("plans.history.satisfied", { count: change.newlySatisfied.length })}</span> : null,
+    change.newlyOpened.length ? <span key="reopened" className="text-graph-data">{t("plans.history.reopened", { count: change.newlyOpened.length })}</span> : null,
+  ].filter(Boolean);
   return (
     <div className="flex h-full flex-col gap-3 overflow-y-auto bg-bg p-4 [&>*]:shrink-0">
       <section className="rounded-(--radius-3) border border-border bg-surface p-4">
         <span className="kicker">{t("plans.history.latestChange")}</span>
-        <p className="mt-1 text-body-lg">{t("plans.history.revChange", { from: String(plan.latestRevisionChange.fromRevision ?? "—"), to: plan.latestRevisionChange.toRevision })}
-          {plan.latestRevisionChange.added.length ? <span className="text-muted"> · {t("plans.history.added", { count: plan.latestRevisionChange.added.length })}</span> : null}
-          {plan.latestRevisionChange.removed.length ? <span className="text-muted"> · {t("plans.history.removed", { count: plan.latestRevisionChange.removed.length })}</span> : null}
-          {plan.latestRevisionChange.newlySatisfied.length ? <span className="text-success"> · {t("plans.history.satisfied", { count: plan.latestRevisionChange.newlySatisfied.length })}</span> : null}
-          {plan.latestRevisionChange.newlyOpened.length ? <span className="text-graph-data"> · {t("plans.history.reopened", { count: plan.latestRevisionChange.newlyOpened.length })}</span> : null}
-        </p>
+        <p className="mt-1 text-body-lg">{parts.length ? parts.map((part, index) => <span key={index}>{index ? " · " : ""}{part}</span>) : <span className="text-faint">—</span>}</p>
       </section>
       <section className="rounded-(--radius-3) border border-border bg-surface">
-        <div className="border-b border-border px-4 py-2"><span className="kicker">{t("plans.history.revisions")}</span> <span className="text-caption text-faint">{plan.revisions.length}</span></div>
-        <ul>
-          {[...plan.revisions].reverse().map((revision) => (
-            <li key={revision.revision} className="flex items-baseline gap-3 border-b border-border px-4 py-1.5 text-body last:border-b-0">
-              <span className="w-12 shrink-0 font-medium">{t("plans.history.rev", { revision: revision.revision })}</span>
-              <span className="text-muted">{plural(revision.checkUris.length, "check")}</span>
-              <span className="mono truncate text-caption text-faint">{revision.definitionDigest.slice(0, 12)}</span>
-            </li>
-          ))}
-        </ul>
+        <div className="border-b border-border px-4 py-2 last:border-b-0"><span className="kicker">{t("plans.history.revisions")}</span> <span className="text-caption text-faint">{plan.revisions.length}</span></div>
+        <Expert>
+          <ul>
+            {[...plan.revisions].reverse().map((revision) => (
+              <li key={revision.revision} className="flex items-baseline gap-3 border-b border-border px-4 py-1.5 text-body last:border-b-0">
+                <span className="w-12 shrink-0 font-medium">{t("plans.history.rev", { revision: revision.revision })}</span>
+                <span className="text-muted">{plural(revision.checkUris.length, "check")}</span>
+                <span className="mono truncate text-caption text-faint">{revision.definitionDigest.slice(0, 12)}</span>
+              </li>
+            ))}
+          </ul>
+        </Expert>
       </section>
     </div>
   );

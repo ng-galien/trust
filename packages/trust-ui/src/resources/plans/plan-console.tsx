@@ -5,6 +5,7 @@ import { Trans, useTranslation } from "react-i18next";
 
 import { plural } from "../../lib/format.js";
 import { mutationError, mutationErrorDetails } from "../../lib/mutations.js";
+import { useExpert } from "../../lib/preferences.js";
 import { useCheck } from "../../lib/runtime-context.js";
 import type { TrustRuntimeClient } from "../../runtime.js";
 import type { AttemptFinalization, CompiledOperation, CompiledProcedure, DeclarationRole, JsonObject, PlanCheck, PlanView, ProcedureCheck } from "../../types.js";
@@ -12,6 +13,7 @@ import { Badge, StatusBadge } from "../../ui/badge.js";
 import { Button, IconButton } from "../../ui/button.js";
 import { TextInput } from "../../ui/controls.js";
 import { blankObject, ListEditor, SchemaForm } from "../../ui/schema.js";
+import { Expert } from "../../ui/expert.js";
 import { ErrorBox } from "../../ui/states.js";
 import { CheckLine } from "./plan-overlay.js";
 
@@ -42,8 +44,7 @@ export function PlanCockpit({ plan, compiled, onChanged, runtime, selected: sele
       <div className="flex items-center gap-2 border-b border-border px-3 py-2">
         <FlaskConical size={13} className="text-graph-data" />
         <span className="kicker">{t("plans.cockpit.title")}</span>
-        <span className="ml-auto text-caption text-faint">{t("plans.cockpit.progress", { revision: plan.revision, done: done.length, total: plan.checks.length })}</span>
-        <IconButton size="sm" label={t("plans.cockpit.hide")} onClick={onClose}><PanelRightClose size={14} /></IconButton>
+        <IconButton size="sm" label={t("plans.cockpit.hide")} className="ml-auto" onClick={onClose}><PanelRightClose size={14} /></IconButton>
       </div>
       {plan.sessionState === "UNAVAILABLE" ? <ErrorBox message={t("plans.cockpit.noSession")} className="m-3" /> : null}
       {plan.declarationRoles.length ? (
@@ -59,7 +60,7 @@ export function PlanCockpit({ plan, compiled, onChanged, runtime, selected: sele
             </button>
             {showDone ? <ul>{done.map((check) => <li key={check.checkUri} className="border-t border-border"><CheckLine check={check} compact selected={check.checkUri === selected?.checkUri} onClick={() => onSelect(`check:${check.checkUri}`)} /></li>)}</ul> : null}
           </li>
-          <li className="border-t border-border bg-accent-soft/40">
+          <li className="border-t border-border bg-accent-soft/40" data-doc="cockpit.todo">
             <div className="flex items-center gap-2 px-3 py-1.5 text-label font-medium"><FlaskConical size={12} className="text-accent" /> {t("plans.cockpit.toDoNow")} <span className="text-faint">{actionable.length}</span><span className="ml-auto text-caption font-normal text-faint">{t("plans.cockpit.pickOne")}</span></div>
             {actionable.length === 0 ? <p className="px-3 pb-2 text-body text-muted">{plan.missingDeclarations.length ? t("plans.cockpit.declareFirst") : plan.workState === "COMPLETE" ? t("plans.cockpit.rehearsalComplete") : t("plans.cockpit.nothingActionable")}</p> : null}
             <ul>{actionable.map((check) => <li key={check.checkUri} className="border-t border-border"><CheckLine check={check} compact selected={check.checkUri === selected?.checkUri} onClick={() => onSelect(`check:${check.checkUri}`)} /></li>)}</ul>
@@ -76,8 +77,7 @@ export function PlanCockpit({ plan, compiled, onChanged, runtime, selected: sele
       </Step>
       <div className="flex flex-col gap-3 p-3">
         {selected ? <div className="flex items-center gap-2"><StepNumber number={plan.declarationRoles.length ? 3 : 2} state="todo" /><span className="text-body font-medium">{reobserve ? t("plans.cockpit.reobserveSelected") : t("plans.cockpit.rehearseSelected")}</span></div> : null}
-        {reobserve ? <p className="text-caption text-muted">{t("plans.cockpit.reobserveHint")}</p> : null}
-        {last ? <OutcomeBanner check={last.check} outcome={last.outcome} /> : null}
+        {last ? <div data-doc="cockpit.outcome"><OutcomeBanner check={last.check} outcome={last.outcome} /></div> : null}
         {selected ? <CheckWorkbench key={`${selected.checkUri}@${plan.revision}`} plan={plan} check={selected} compiled={compiled} onChanged={onChanged} runtime={runtime} reobserve={reobserve} onOutcome={(outcome) => setLast({ check: selected.name, outcome })} /> : null}
       </div>
     </div>
@@ -135,7 +135,7 @@ function Declarations({ plan, onChanged, runtime }: { plan: PlanView; onChanged:
         {error ? <ErrorBox message={error} details={errorDetails} /> : null}
         <div className="flex items-center gap-2">
           <Button size="sm" variant="primary" icon={<Send size={12} />} disabled={!dirty || apply.isPending} onClick={() => apply.mutate()}>{apply.isPending ? t("plans.declarations.applying") : t("plans.declarations.apply")}</Button>
-          <span className="text-caption text-faint">{t("plans.declarations.replacesSnapshot", { revision: plan.revision })} <span className="mono">trust_plan_declarations_replace</span></span>
+          <Expert><span className="text-caption text-faint">{t("plans.declarations.replacesSnapshot", { revision: plan.revision })} <span className="mono">trust_plan_declarations_replace</span></span></Expert>
         </div>
       </div>
     </section>
@@ -220,7 +220,7 @@ function OutcomeBanner({ check, outcome }: { check: string; outcome: Outcome }) 
         <span className="mono font-medium">{check}</span>
         <StatusBadge state={outcome.verdict} />
         <span>{outcome.reason}</span>
-        <span className="text-faint">({outcome.reasonCode})</span>
+        <Expert><span className="text-faint">({outcome.reasonCode})</span></Expert>
       </div>
       <p className="mt-1 text-label text-muted">
         {outcome.checklistDelta.newlySatisfied.length ? t("plans.outcome.newlySatisfied", { checks: plural(outcome.checklistDelta.newlySatisfied.length, "check") }) : t("plans.outcome.nothingSatisfied")}
@@ -265,21 +265,26 @@ function CheckWorkbench({ plan, check, compiled, onChanged, runtime, reobserve =
   });
   const error = mutationError(submit.error);
   const errorDetails = mutationErrorDetails(submit.error);
+  const expert = useExpert();
 
   return (
     <div className="flex flex-col gap-3">
       <section className="rounded-(--radius-3) border border-border bg-bg p-3">
-        <div className="flex items-baseline gap-2"><span className="kicker">{t("plans.workbench.next")}</span><strong className="mono text-ui">{check.name}</strong><span className="text-caption text-muted">{check.scenario}</span></div>
-        <p className="mt-1 text-body text-muted">{t("plans.workbench.runs")} <span className="mono text-accent">{check.operation}</span> {t("plans.workbench.on")} <span className="mono text-text">{check.target.role}</span> = <span className="mono text-text">{JSON.stringify(check.target.value)}</span></p>
-        {Object.keys(check.inputs).length ? <p className="mt-1 text-label text-muted">{t("plans.workbench.inputs")} {Object.entries(check.inputs).map(([key, value], index) => <span key={key}>{index ? " · " : ""}<span className="mono">{key}</span> = <span className="mono text-text">{JSON.stringify(value)}</span></span>)}</p> : null}
-        {compiledCheck?.successReason ? <p className="mt-1 text-body">{t("plans.workbench.mustEstablish")} <em>“{compiledCheck.successReason}”</em></p> : null}
-        {compiledCheck?.predicates.length ? (
-          <ul className="mt-1 flex flex-col gap-0.5 text-label text-muted">
-            {compiledCheck.predicates.map((predicate, index) => <li key={index}><span className="mono text-text">{predicate.field}</span> {predicate.relation} <span className="mono">{JSON.stringify((predicate.expectation as { value?: unknown; role?: unknown; check?: unknown }).value ?? (predicate.expectation as { role?: unknown }).role ?? (predicate.expectation as { check?: unknown }).check ?? predicate.expectation.kind)}</span> <span className="text-faint">{t("plans.workbench.elseReason", { reason: predicate.failureReason })}</span></li>)}
-          </ul>
+        <div className="flex items-baseline gap-2"><span className="kicker">{t("plans.workbench.next")}</span><strong className="mono text-ui">{check.name}</strong>{expert ? <span className="text-caption text-muted">{check.scenario}</span> : null}</div>
+        {expert ? (
+          <>
+            <p className="mt-1 text-body text-muted">{t("plans.workbench.runs")} <span className="mono text-accent">{check.operation}</span> {t("plans.workbench.on")} <span className="mono text-text">{check.target.role}</span> = <span className="mono text-text">{JSON.stringify(check.target.value)}</span></p>
+            {Object.keys(check.inputs).length ? <p className="mt-1 text-label text-muted">{t("plans.workbench.inputs")} {Object.entries(check.inputs).map(([key, value], index) => <span key={key}>{index ? " · " : ""}<span className="mono">{key}</span> = <span className="mono text-text">{JSON.stringify(value)}</span></span>)}</p> : null}
+            {compiledCheck?.successReason ? <p className="mt-1 text-body">{t("plans.workbench.mustEstablish")} <em>“{compiledCheck.successReason}”</em></p> : null}
+            {compiledCheck?.predicates.length ? (
+              <ul className="mt-1 flex flex-col gap-0.5 text-label text-muted">
+                {compiledCheck.predicates.map((predicate, index) => <li key={index}><span className="mono text-text">{predicate.field}</span> {predicate.relation} <span className="mono">{JSON.stringify((predicate.expectation as { value?: unknown; role?: unknown; check?: unknown }).value ?? (predicate.expectation as { role?: unknown }).role ?? (predicate.expectation as { check?: unknown }).check ?? predicate.expectation.kind)}</span> <span className="text-faint">{t("plans.workbench.elseReason", { reason: predicate.failureReason })}</span></li>)}
+              </ul>
+            ) : null}
+          </>
         ) : null}
       </section>
-      <section className="rounded-(--radius-3) border border-border bg-bg p-3">
+      <section className="rounded-(--radius-3) border border-border bg-bg p-3" data-doc="cockpit.workbench">
         <div className="mb-2 flex flex-wrap items-center gap-2">
           <span className="kicker">{t("plans.workbench.producedValues")}</span>
           <span className="ml-auto flex items-center gap-1">
@@ -288,9 +293,8 @@ function CheckWorkbench({ plan, check, compiled, onChanged, runtime, reobserve =
           </span>
         </div>
         {schema ? <SchemaForm idPrefix={`facts-${check.name}`} schema={schema} value={values} onChange={setValues} onValidity={setValid} showSummary={false} /> : <p className="text-body text-faint">{t("plans.workbench.needsProcedure")}</p>}
-        <div className="mt-3 flex flex-col gap-1">
-          <Button variant="primary" icon={<FlaskConical size={13} />} disabled={!valid || submit.isPending || plan.sessionState === "UNAVAILABLE"} onClick={() => submit.mutate()}>{submit.isPending ? t("plans.workbench.submitting") : t("plans.workbench.submit")}</Button>
-          <span className="text-caption text-faint">{t("plans.workbench.pipeline")}</span>
+        <div className="mt-3">
+          <Button data-doc="cockpit.submit" variant="primary" icon={<FlaskConical size={13} />} disabled={!valid || submit.isPending || plan.sessionState === "UNAVAILABLE"} onClick={() => submit.mutate()}>{submit.isPending ? t("plans.workbench.submitting") : t("plans.workbench.submit")}</Button>
         </div>
         {error ? <ErrorBox message={error} details={errorDetails} className="mt-2" /> : null}
       </section>

@@ -1,0 +1,93 @@
+---
+title: "Scénarios et Checks"
+summary: "Regrouper les Checks en Scénarios, déclarer des prérequis, lier l'Input d'une Opération depuis le contexte, matérialiser des champs produits."
+order: 3
+---
+
+Un **Scénario** regroupe des Checks et les ordonne : il est satisfait quand chaque Check est validé, et ses Checks ne sont actionnables qu'une fois ses Scénarios prérequis validés. Un **Check** exécute une Opération sur une cible et énonce ce que ses champs produits doivent établir.
+
+```gherkin fragment title="Un Scénario"
+  @scenario:verification
+  Scenario: Verify the committed fix
+    Given scenario "fix" is validated
+    Then Check "Maven verification" runs Operation "maven.project-verify"
+        on "project" as Input "project"
+        using "fix revision" as Input "revision"
+        and must establish "the committed fix passes Maven verification"
+      | field              | relation | expectation            | failure reason                    |
+      | verifiedRevision   | equals   | context "fix revision" | "Maven verified another revision" |
+      | verificationStatus | equals   | value "successful"     | "Maven verification failed"       |
+    And the Scenario is satisfied when every Check is validated
+```
+
+## Scénario
+
+| Partie | Règle |
+| --- | --- |
+| `@scenario:<slug>` | exactement un tag par Scénario, un slug en minuscules, unique dans la Procédure |
+| `Scenario: <title>` | titre libre, affiché dans l'interface |
+| `Given scenario "<slug>" is validated` | zéro ou plusieurs prérequis (`Given` ou `And`), **avant** les Checks ; le slug doit exister ; pas de dépendance à soi-même ni circulaire ; les diamants sont acceptés |
+| Checks | un ou plusieurs |
+| `And the Scenario is satisfied when every Check is validated` | obligatoire, formulation exacte (`And`, `S` et `C` majuscules), une fois, en dernier |
+
+`Scenario Outline`, `Examples`, `Rule` et les étapes libres sont hors grammaire.
+
+## Check
+
+```text
+Then|And Check "<name>" runs Operation "<domain.action>"
+    on [each|all] "<role>" as Input "<input>"
+    [using [all] "<role>" as Input "<input>"]…
+    [and materializes "<role>" from field "<field>"]…
+    and must establish "<success reason>"
+  | field | relation | expectation | failure reason |
+```
+
+| Clause | Règle |
+| --- | --- |
+| `Then` / `And` | le mot-clé d'une étape de Check |
+| `Check "<name>"` | nom libre entre guillemets, non vide, unique dans la Procédure — il nomme le Check dans les Plans, les verdicts et l'historique |
+| `runs Operation "<domain.action>"` | une Opération du catalogue, par son nom ; la version embarquée est la version courante à la publication |
+| `on [each\|all] "<role>" as Input "<input>"` | la **cible** : un rôle lié à un Input de l'Opération. `on "r"` — un Check ; `on each "r"` — un Check par valeur d'un rôle `many` ; `on all "r"` — un Check recevant la collection entière |
+| `using [all] "<role>" as Input "<input>"` | lie un autre Input (pas de `and` avant `using`) ; `all` passe une collection. Chaque Input de l'Opération est lié **exactement une fois**, entre `on` et `using` |
+| `and materializes "<role>" from field "<field>"` | une fois le Check validé, la valeur du champ produit remplit le rôle. Le rôle doit être déclaré, ni fixe ni déclaré par l'agent ; son type doit correspondre à celui du champ ; un rôle a **un** Check fournisseur ; un Check peut matérialiser plusieurs rôles |
+| `and must establish "<success reason>"` | obligatoire, **dernière** clause (les mots qui suivent sont refusés) ; la raison renvoyée avec un verdict validé |
+| table | les attentes, voir [Attentes](/docs/procedures/expectations) — une ligne par prédicat ; la table est obligatoire |
+
+`using` et `and materializes` peuvent s'entremêler dans n'importe quel ordre entre `on` et `and must establish`. Les mots-clés sont sensibles à la casse.
+
+Cardinalité à chaque liaison : un Input scalaire prend `on`/`using` d'un rôle `one`, ou `each` d'un rôle `many` (une valeur par Check) ; un Input collection prend `all` d'un rôle `many`. Un rôle `many` sans `each` ni `all` n'est accepté que dans un `using` du même scope qu'une cible `each` (la valeur reliée). Les types doivent correspondre exactement (`reference` ≠ `string`).
+
+## `each` et `all`
+
+```gherkin fragment title="Extrait de la Procédure d'admission d'un patient"
+    Then Check "document" runs Operation "healthcare.document-read"
+        on each "required document" as Input "document"
+        and materializes "document record time" from field "recordedAt"
+        and must establish "every admission document is confirmed"
+      | field          | relation | expectation       | failure reason                           |
+      | documentStatus | equals   | value "confirmed" | "an admission document is not confirmed" |
+    And the Scenario is satisfied when every Check is validated
+```
+
+- `on each "required document"` crée **un Check par document** — le Plan montre `document` une fois par valeur, chacun avec son propre verdict ; le Scénario est satisfait quand tous sont validés. Une matérialisation sur un Check `each` remplit un rôle scopé `for each` cette cible : une heure d'enregistrement par document.
+- `using all "required document" as Input "documents"` passe **la collection** à un Input `many`, en un seul Check.
+- Un rôle `many` déclaré par l'agent (`declared by agent`) n'a pas de valeurs à l'engagement : les Checks `each` apparaissent une fois que l'agent les déclare.
+
+## Dépendances entre Checks
+
+Un Check dépend de :
+
+- les Scénarios que son Scénario requiert (`Given scenario … is validated`), directement ou transitivement ;
+- chaque Check dont il référence un champ produit dans une attente (`field "…" from Check "…"`) ;
+- chaque Check qui matérialise un rôle qu'il utilise (`on`/`using "fix revision"`, `context "fix revision"`).
+
+Le Check référencé, ou le fournisseur du rôle, doit appartenir à un **Scénario prérequis** (directement ou transitivement) — pas le même Scénario, pas un Scénario ultérieur. Ces dépendances sont le graphe de l'onglet **Graphe** et la cascade : un nouveau verdict sur un Check rouvre chaque Check qui en dépend, directement ou via une valeur matérialisée.
+
+<Callout kind="rule">
+  Rien d'implicite ne circule entre les Checks. Une valeur passe d'un Check à un autre uniquement par un rôle matérialisé ou une attente `field … from Check`, tous deux écrits dans la source.
+</Callout>
+
+<Details title="Checks compilés et instances de Check" expert>
+Chaque Check compile en `{ name, scenario, operation, operationVersion, operationDigest, target { role, selection: "one" | "each" | "all" }, inputBindings [{ input, role, selection }] (target first), materializes [{ role, field }], predicates [...], successReason }`. À l'engagement, le runtime l'instancie : une instance pour `one` et `all`, une par valeur cible pour `each` (aucune tant qu'une collection déclarée par l'agent est vide). Chaque instance a une URI `trust://…/<procedure>@<version>/<plan>/<scenario>/<check>/<domain>-<action>[/<value>]` — le nom du Check est utilisé tel quel quand c'est un slug, haché sinon ; le dernier segment n'existe que pour `each`. Les dépendances de l'instance (Scénarios prérequis, références `field … from Check`, fournisseurs des rôles qu'elle lie) et le contexte qu'elle consomme sont ce que suit la cascade : une valeur qu'elle n'utilise pas ne peut pas la rouvrir.
+</Details>

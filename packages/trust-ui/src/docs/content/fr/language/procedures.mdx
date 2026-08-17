@@ -1,0 +1,39 @@
+---
+title: "Grammaire des Procédures"
+summary: "L'ensemble complet des phrases d'une Procédure, en une page — avec des liens vers les pages détaillées."
+order: 2
+---
+
+```text
+@trust-dsl:1 @procedure:<slug> @version:<x.y.z>
+Feature: <title>
+  [description]
+
+  Background: Plan context
+    Given|And one|many string|number|instant|reference "<role>"
+        [declared by agent for "<parent>" | for "<parent>" | for each "<parent>" | fixed as "<value>"]
+
+  @scenario:<slug>
+  Scenario: <title>
+    [Given|And scenario "<slug>" is validated]…
+    Then|And Check "<name>" runs Operation "<domain.action>"
+        on [each|all] "<role>" as Input "<input>"
+        [using [all] "<role>" as Input "<input>"]…
+        [and materializes "<role>" from field "<field>"]…
+        and must establish "<success reason>"
+      | field | relation | expectation | failure reason |
+    And the Scenario is satisfied when every Check is validated
+```
+
+| | |
+| --- | --- |
+| **Relations** | `equals` · `at least` · `has at least` · `is in` · `before` · `after` |
+| **Attentes** | `value "<text>"` · `number <n>` · `valid rfc3339` · `context "<role>"` · `field "<field>" from Check "<check>"` |
+
+| Sujet | Page |
+| --- | --- |
+| Tags, titre, description, publication, versions | [Compiler et publier](/docs/procedures/publishing) |
+| Rôles et leurs sources, portée parente | [Contexte du Plan](/docs/procedures/context) |
+| Scénarios, prérequis, phrase de Check, `each` / `all`, matérialisation | [Scénarios et Checks](/docs/procedures/scenarios-and-checks) |
+| Relations et formes d'attentes, qualification | [Attentes](/docs/procedures/expectations) |
+| Erreurs | [Diagnostics](/docs/procedures/diagnostics) |

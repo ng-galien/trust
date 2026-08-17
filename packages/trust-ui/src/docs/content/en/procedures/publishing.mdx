@@ -1,0 +1,39 @@
+---
+title: "Compiling and publishing"
+summary: "What the compiler checks, what a published revision contains, why it never changes, and how versions coexist."
+order: 5
+---
+
+## Compilation
+
+`compileProcedure` receives one source and the catalog of compiled Operations. It:
+
+- checks the document shape (exactly the three tags, one `Background: Plan context`, at least one tagged Scenario, closing sentences, no `Rule`/`Scenario Outline`);
+- reads the roles; validates fixed roles (`one string`/`reference`), parent scopes (declared, acyclic), unique names;
+- resolves every `runs Operation` in the catalog; validates each `on` / `using` binding (existing Input, type, cardinality, every Input bound once) and each `materializes` (existing role and field, matching shape, one provider per role, no fixed or declared role);
+- validates every expectation row (existing field, relation applicable to the shape, expectation form and type, enum domain, referenced role or Check reachable from a prerequisite Scenario);
+- checks the Scenario prerequisites form an acyclic graph and that every materialized role is used only after its provider Scenario;
+- embeds the exact compiled Operations used (sorted by name), computes the digests.
+
+The interface compiles on every keystroke (Source tab); publication compiles again on the runtime.
+
+## The published revision
+
+A published Procedure is `procedure@version`, immutable, containing: roles, Scenarios (with prerequisites), Checks (target, bindings, materializations, predicates, success reason), the embedded Operations with their digests, and a digest of the whole definition.
+
+- The revision is autonomous: it depends on no catalog state after publication.
+- Publishing again the same `procedure@version` with a different definition is refused (`already published with another immutable definition`); the same definition is accepted as-is. Raise `@version` to publish a change.
+- Two versions of a Procedure coexist; a Plan names the version it was engaged from.
+- There is no delete: a published version stays for the Plans and history that reference it.
+
+<Callout kind="rule">
+  Source formatting, comments, continuation lines and the description do not change the digest; the title, a role, a Scenario title, a binding, a row, a reason, the order of roles, Scenarios or Checks, or an Operation used, do.
+</Callout>
+
+## Versions and Operations
+
+A Procedure names an Operation without version; the compiler embeds the version currently in the catalog. A later change of the Operation in the catalog does not affect the published Procedure; republishing the Procedure (new version) embeds the new Operation.
+
+<Details title="Contract" expert>
+The compiled contract is `trust.compiled-procedure@3`: `{ procedure, version, title, description?, operations [{ operation, version, digest, definition }], roles [{ name, type, cardinality, parents [{ role, each }], source }], scenarios [{ slug, title, dependencies, checks }], checks [...], source, definitionDigest }`. `definitionDigest` = SHA-256 of the canonical JSON of `{ procedure, version, title, operations, roles, scenarios, checks }` with each embedded Operation reduced to its semantics (source excluded, JSONata reduced to its syntax tree without positions). The runtime refuses a Check whose `operationDigest` does not match an embedded Operation.
+</Details>

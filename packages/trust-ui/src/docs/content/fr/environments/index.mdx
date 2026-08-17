@@ -1,0 +1,55 @@
+---
+title: "Environnements"
+summary: "Des contextes d'exécution nommés — valeurs et credentials en écriture seule — quelles Opérations chacun peut exécuter, et l'Environnement courant de l'interface."
+order: 5
+screen: /environments
+---
+
+Un <Term id="environment">Environnement</Term> est un ensemble nommé de **valeurs** qu'une Opération lit à l'exécution — répertoires où vivent les projets, URL de base des services — et de **credentials** que le runtime détient pour lui. Un Plan en direct est engagé sur un Environnement ; une Opération est *exécutable* sur un Environnement quand l'Environnement déclare chaque valeur dont sa table `Environment` a besoin.
+
+> Un Environnement répond « où et contre quoi » pour chaque Opération ; l'Opération ne le dit jamais elle-même.
+
+## Le catalogue
+
+<Screenshot id="environments-catalog" caption="Le catalogue des Environnements." legend={{
+  "home.header": "Titre et compteur ; Nouvel environnement.",
+  "home.filters": "Recherche par nom ou valeur ; tri par nom ou usage.",
+  "home.card": "Un Environnement : ses valeurs, les Plans et dry-runs qui s'y trouvent, les Opérations qu'il peut exécuter ; Courant quand c'est l'environnement courant.",
+  "shell.environment": "L'Environnement courant de l'interface — la même liste, depuis n'importe où.",
+}} />
+
+## La page d'un Environnement
+
+<Screenshot id="environment-page" caption="Un Environnement." legend={{
+  "overlay.header": "Nom, badge Courant, état (configuré, modifié, brouillon).",
+  "overlay.actions": "Utiliser comme environnement courant · Supprimer · Enregistrer (quand une valeur a changé).",
+  "environment.values": "Les valeurs : nom et valeur, une ligne chacune — chemins, URL, noms. Jamais un secret.",
+  "environment.credentials": "Les credentials : noms seulement, avec Valeur détenue par le runtime. Ajouter donne un nom et une valeur ; la valeur est écrite et jamais plus affichée.",
+  "environment.coverage": "Chaque Opération du catalogue : exécutable ici, ou les noms des valeurs manquantes.",
+  "overlay.inspector": "Plans sur cet environnement ; Opérations exécutables.",
+}} />
+
+### Valeurs
+
+- Une valeur a un **nom** (celui que les Opérations déclarent : `workspaceRoot`, `jiraIssueUrl`) et une valeur : un répertoire absolu, une URL `http(s)` sans credentials embarqués, ou un nom.
+- Les noms sont comparés exactement aux tables `Environment` des Opérations. Le tableau de couverture sous les valeurs montre, pour chaque Opération, ✓ ou les noms manquants — il se met à jour pendant la saisie, avant l'enregistrement.
+- **Enregistrer** écrit tout l'Environnement (nom et valeurs). Supprimer retire ses valeurs et ses credentials ; les Plans engagés dessus gardent le nom, mais plus rien ne peut y être admis.
+
+### Credentials
+
+- Un credential est un **secret nommé** stocké par le runtime pour un Environnement. L'interface peut en ajouter un (nom + valeur) ou en retirer un ; elle ne peut jamais relire une valeur — la liste affiche les noms et *Valeur détenue par le runtime*.
+- Les Opérations ne portent jamais de credentials ; le compilateur refuse tout texte ressemblant à un secret dans une source.
+- Aujourd'hui les credentials sont stockés et listés par nom seulement : aucune exécution ne les reçoit — une exécution reçoit des **valeurs** d'Environnement. Comment et quand un credential atteint une Opération est une décision produit encore ouverte ; d'ici là, une valeur dont une Opération a besoin à l'exécution est une valeur d'Environnement.
+- Retirer un Environnement retire ses credentials.
+
+### Environnement courant
+
+L'en-tête de l'interface porte l'**environnement courant**. C'est le défaut de chaque exécution d'Opération et de chaque engagement de Plan, et la référence des marques « exécutable » (✓ / ✗ dans le catalogue des Opérations, « pas sur l'environnement courant » sur l'onglet Exécuter). **Utiliser comme environnement courant** sur la page d'un Environnement le change ; le choix est une préférence du navigateur, jamais dans l'URL. Quand aucun Environnement n'est configuré, le premier enregistré devient courant.
+
+<Callout kind="rule">
+  Un dry-run ne délègue aucune valeur d'Environnement : répéter ne touche jamais un système externe. Un Plan en direct reçoit les valeurs de son Environnement à chaque admission.
+</Callout>
+
+<Details title="Derrière l'écran" expert>
+Les Environnements et les credentials sont des objets du runtime : `environment.list` / `environment.save` / `environment.remove` et `credential.list` / `credential.save` / `credential.remove` (références seulement en lecture). `operation.environments` renvoie, par version d'Opération, les Environnements compatibles et les noms manquants — la source de chaque marque « exécutable ». Les valeurs sont validées à l'admission contre le schéma d'Environnement de l'Opération (répertoire absolu, URL `http(s)`).
+</Details>

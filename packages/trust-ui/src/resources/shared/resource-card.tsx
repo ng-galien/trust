@@ -34,7 +34,7 @@ export function ResourceCard({
   className?: string;
 }) {
   return (
-    <Link to={to} className={cx("card-link flex flex-col rounded-(--radius-3) border border-border bg-surface transition-[border-color,box-shadow]", className)}>
+    <Link to={to} data-doc="home.card" className={cx("card-link flex flex-col rounded-(--radius-3) border border-border bg-surface transition-[border-color,box-shadow]", className)}>
       <div className="flex items-center gap-1.5 px-4 pt-3.5">
         {marks}
         {version ? <span className="mono ml-auto text-caption text-faint">v{version}</span> : null}

@@ -5,7 +5,6 @@ export const environments: Translation<typeof en> = {
   home: {
     crumb: "Environnements",
     title: "Environnements",
-    subtitle: "Là où s'exécutent les Plans : des contextes nommés avec leurs valeurs et leurs références de credentials. Sélectionnés explicitement à l'engagement, résolus par TRUST à chaque admission — jamais par l'interface.",
     searchPlaceholder: "Rechercher un environnement ou une valeur…",
     groupNone: "Aucun",
     sortName: "Nom",
@@ -13,9 +12,7 @@ export const environments: Translation<typeof en> = {
     emptyTitleNoMatch: "Aucun environnement ne correspond",
     emptyTitleNone: "Aucun environnement configuré",
     emptyBodyNoMatch: "Ajustez la recherche.",
-    emptyBodyNone: "Créez-en un : un nom et les valeurs dont les opérations ont besoin (workspaceRoot, URLs…), puis ses credentials.",
     create: "Nouvel environnement",
-    kind: "environnement",
     columns: {
       environment: "Environment",
       values: "Valeurs",
@@ -43,7 +40,7 @@ export const environments: Translation<typeof en> = {
     nameHint: "Slug en minuscules, unique",
     namePlaceholder: "staging",
     valuesKicker: "Valeurs",
-    valuesHint: "Ce que les opérations lisent dans l'environnement (chemins, URLs, noms) — pas de secrets",
+    valuesHint: "Chemins, URLs, noms — jamais de secrets",
     valueKeyPlaceholder: "workspaceRoot",
     valueValuePlaceholder: "/Users/me/projects",
     credentialsLater: "Les credentials s'ajoutent une fois l'environnement créé.",
@@ -57,7 +54,7 @@ export const environments: Translation<typeof en> = {
   },
   credentials: {
     kicker: "Credentials",
-    hint: "Envoyés une seule fois au runtime, jamais relus — cette interface n'en liste que les noms",
+    hint: "Écriture seule",
     heldByRuntime: "Valeur détenue par le runtime",
     remove: "Retirer le credential {{name}}",
     none: "Aucun credential.",
@@ -71,7 +68,7 @@ export const environments: Translation<typeof en> = {
   },
   coverage: {
     kicker: "Opérations sur cet environnement",
-    summary: "{{ok}} exécutables sur {{total}} · les valeurs manquantes sont mises en évidence",
+    summary: "{{ok}} exécutables sur {{total}}",
     columnOperation: "Operation",
     columnNeeds: "Attend de l'environnement",
     runnableHere: "Exécutable ici",

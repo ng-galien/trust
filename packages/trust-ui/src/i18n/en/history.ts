@@ -2,8 +2,7 @@ export const history = {
   home: {
     crumb: "Check history",
     title: "Check history",
-    subtitle: "Every verdict TRUST ever computed, across Plans and dry-runs — immutable snapshots, newest first. Dig, filter, audit.",
-    searchPlaceholder: "Search the loaded verdicts, or pick filters…",
+    searchPlaceholder: "Search loaded verdicts…",
     facets: {
       verdict: "Verdict",
       validated: "Validated",
@@ -21,7 +20,6 @@ export const history = {
     emptyTitleNoMatch: "No loaded verdict matches the search",
     emptyTitleNone: "No verdict yet",
     emptyBodyNoMatch: "Adjust the search, or load more pages.",
-    emptyBodyNone: "Verdicts appear as soon as a Check is finalized in a Plan or a dry-run.",
     loaded: "{{verdicts}} loaded",
   },
   table: {

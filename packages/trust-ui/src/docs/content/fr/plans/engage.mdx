@@ -1,0 +1,44 @@
+---
+title: "Engager un Plan"
+summary: "Ce que demande un engagement — version de Procédure, Environnement, identifiant, entrées racines — ce qu'il construit, et comment le contexte se complète ensuite."
+order: 1
+---
+
+Engager crée un Plan à partir d'une version **publiée** de Procédure. Cela demande exactement ce que les entrées de Plan de la Procédure exigent, rien d'autre ; les rôles fixes viennent de la Procédure, les déclarations de l'agent viennent plus tard, les rôles matérialisés viennent des Checks.
+
+<Screenshot id="plan-engage" caption="Engager un plan / Nouveau dry-run — le même formulaire, le mode donné par l'endroit d'où vous venez." legend={{
+  "overlay.header": "En direct ou dry-run ; Engager / Lancer le dry-run une fois le formulaire complet.",
+  "engage.form": "Procédure (versions publiées), Environnement (par défaut l'environnement courant), identifiant du Plan (slug en minuscules, unique), puis un champ par entrée racine de la Procédure choisie.",
+}} />
+
+## Ce que demande un engagement
+
+| Champ | Règle |
+| --- | --- |
+| **Procédure** | une `procedure@version` publiée ; la version fige la définition pour toute la vie du Plan |
+| **Environnement** | un Environnement configuré ; par défaut l'environnement courant. Même un dry-run en nomme un (rien ne lui est délégué) |
+| **Identifiant du Plan** | un slug en minuscules, unique parmi les Plans et les dry-runs ; il apparaît dans chaque URI de Check et dans l'historique |
+| **Entrées racines** | exactement les rôles que la Procédure a compilés comme entrées de Plan — ni plus, ni moins ; typées comme déclarées (`string`, `number`, `instant`, `reference` ; `many` = une liste non vide) |
+| **Mode** | en direct depuis **Plans → Engager un plan**, dry-run depuis **Dry-runs → Nouveau dry-run**. Fait partie de l'identité du Plan |
+
+## Ce qu'il construit
+
+- **La révision 1** : les Checks de la Procédure instanciés sur le contexte — un par Check, un par valeur pour les cibles `on each` dont le rôle a déjà des valeurs. Les rôles déclarés par l'agent n'ont pas encore de valeur : leurs Checks `each` apparaissent une fois déclarés.
+- **Une Session**, ouverte, avec une expiration (24 heures par défaut). Les admissions exigent une Session ouverte et non expirée.
+- Les Checks dont les prérequis sont réunis et dont le contexte est complet sont **actionnables** ; les autres sont bloqués, avec la raison (un Scénario prérequis, une déclaration manquante).
+
+La page s'ouvre alors sur le nouveau Plan. À partir de là, un Plan en direct attend son agent ; un dry-run propose le cockpit.
+
+## Compléter le contexte
+
+- **Déclarations de l'agent** — les rôles écrits `declared by agent` dans la Procédure. Sur un Plan en direct, l'agent les déclare (une opération fermée qui remplace l'ensemble des déclarations, vérifiée contre la révision du Plan qu'il a lue). Sur un dry-run, l'étape *Déclarer le contexte* du cockpit fait la même chose. Une déclaration crée une nouvelle révision ; les Checks satisfaits dont la définition n'a pas changé gardent leur verdict.
+- Les **rôles matérialisés** sont remplis par leur Check fournisseur quand il est validé — aucune action nécessaire.
+- Les entrées racines et les rôles fixes ne changent jamais après l'engagement.
+
+<Callout kind="rule">
+  Engager à nouveau le même identifiant avec la même Procédure, les mêmes entrées, le même Environnement et le même mode renvoie le Plan courant (et rouvre une Session si nécessaire) ; avec quoi que ce soit de différent, c'est refusé. Un identifiant est un Plan, une seule fois.
+</Callout>
+
+<Details title="Contrat d'engagement" expert>
+`plan.engage { contract: "trust.plan-engagement-request@1", procedure, procedureVersion, plan, environment, rootInputs, mode? }` → `{ status: "ENGAGED", revision, checkUris }`. Refus : `procedure-not-found`, `invalid-plan-engagement` (Environnement inconnu, entrées racines incorrectes — `Plan Inputs must be exactly: …`, mauvais types), `plan-conflict` (identifiant déjà engagé avec une autre Procédure ou un autre contexte). Déclarations : `plan.declarations.replace { plan, expectedRevision, declarations }` — n'accepte que les rôles `declared by agent`, refuse un `expectedRevision` périmé (`plan-conflict`), coordonne les rôles `for each` avec les valeurs de leur parent. L'outil MCP `trust_plan_engage` n'engage que des Plans en direct.
+</Details>

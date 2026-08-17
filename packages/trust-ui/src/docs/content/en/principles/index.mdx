@@ -1,0 +1,50 @@
+---
+title: "Principles"
+summary: "What TRUST guarantees, who does what, and the objects the rest of the documentation is built on."
+order: 1
+---
+
+TRUST is a compliance runtime for work done by agents: **the agent performs actions; TRUST establishes what those actions proved.** Every rule below follows from that split.
+
+<Figure caption="Who talks to whom.">
+  <ArchitectureFigure />
+</Figure>
+
+## The rules
+
+<Callout kind="rule" title="Only TRUST qualifies">
+  The Runner executes and reports Facts. The agent reads verdicts. Neither decides whether a Check is validated.
+</Callout>
+
+<Callout kind="rule" title="A Check is validated by Facts, or it is not validated">
+  A Check is either open or satisfied. Its verdict comes from observed Facts qualified against the expectations written in the Procedure. A refusal, a crash or an interrupted execution leaves the Check unchanged.
+</Callout>
+
+<Callout kind="rule" title="Nothing runs before admission">
+  An action is delegated to the Runner only after TRUST has checked the Check, its Session, its prerequisites, the Operation contract and the Environment. Admission is not proof that the action happened; the Facts are.
+</Callout>
+
+<Callout kind="rule" title="History is immutable, qualification is current">
+  Every accepted execution is kept as an immutable record. The verdict active in the current revision of the Plan is replaceable: new Facts on a Check recompute it and reopen every Check that depends on it.
+</Callout>
+
+<Callout kind="rule" title="Published definitions never change">
+  A published Procedure revision embeds the exact Operations it uses. Editing the catalog later does not alter it.
+</Callout>
+
+## The objects
+
+| Object | In one line |
+| --- | --- |
+| <Term id="operation" /> | how to call one external system, and the typed fields it returns |
+| <Term id="procedure" /> | typed context roles, Scenarios and Checks bound to Operations — versioned, published |
+| <Term id="check" /> | one Operation on one target, with expectations on its fields; open or satisfied |
+| <Term id="scenario" /> | a group of Checks, satisfied when all are validated; may require other Scenarios |
+| <Term id="plan" /> | one Procedure engaged with concrete inputs in one Environment |
+| <Term id="environment" /> | named directories, URLs and credential references an execution needs |
+| <Term id="attempt" /> | one admitted execution of a Check |
+| <Term id="fact" /> | one typed observation reported by an execution |
+| <Term id="verdict" /> | validated or not, with a reason |
+| <Term id="runner" /> · <Term id="skill" /> | the executor shipped to the agent, and how the agent is told to use it |
+
+<PageCards />

@@ -1,0 +1,96 @@
+---
+title: "Étapes HTTP"
+summary: "GET une URL depuis l'Environnement (avec en option un Input comme segment de chemin), ou POST l'Input typé entier en JSON."
+order: 3
+---
+
+```gherkin fragment title="Les trois phrases (pas de table, pas de doc string)"
+    When HTTP "<name>" gets Environment "<url>" as Text
+    And  HTTP "<name>" gets Environment "<url>" appending Input "<input>" as JSON
+    And  HTTP "<name>" posts Input as JSON to Environment "<url>" and reads JSON
+```
+
+## GET
+
+| Partie | Règle |
+| --- | --- |
+| `"<name>"` | lower camel case, unique dans l'Opération |
+| `gets Environment "<url>"` | requis ; la valeur d'Environment doit être de type `url` ; utilisée telle quelle |
+| `appending Input "<input>"` | optionnel ; la valeur d'un Input, encodée pour l'URL, ajoutée comme **un seul segment de chemin** sous l'URL. L'Input doit être une chaîne |
+| `as Text` / `as JSON` | comment le corps est lu : une chaîne opaque, ou une valeur JSON analysée que la projection peut traverser |
+
+Il n'y a ni en-tête rédigé, ni query string, ni interpolation libre d'URL. `https://jira.example/issues` + `appending Input "issue"` avec `issue = "PAY-12"` requête `https://jira.example/issues/PAY-12`.
+
+```gherkin fragment
+    When HTTP "issue" gets Environment "jiraIssueUrl" appending Input "issue" as JSON
+    Then Produce with JSONata
+      """
+      { "issue": input.issue, "summary": steps.issue.body.summary, "workflowStatus": steps.issue.body.workflowStatus }
+      """
+```
+
+## POST
+
+| Partie | Règle |
+| --- | --- |
+| `posts Input as JSON` | l'objet Input typé **entier** est le corps de la requête (`content-type: application/json`). L'Opération doit déclarer au moins un Input |
+| `to Environment "<url>"` | requis ; type `url` |
+| `and reads JSON` | le corps de la réponse est analysé comme JSON. Il n'y a pas de variante Text ni d'`appending` pour POST |
+
+```gherkin operation id="healthcare.admission-record" title="healthcare.admission-record — POST l'Input, lire la réponse"
+# language: en
+@trust-dsl:1 @operation:healthcare.admission-record @version:1.0.0
+Feature: Record one simulated patient admission
+
+  Background: Operation interface
+    Given Environment
+      | name         | type |
+      | admissionUrl | url  |
+    And Input
+      | input              | type      | cardinality |
+      | patient            | reference | one         |
+      | admission          | reference | one         |
+      | documents          | reference | many        |
+      | documentRecordedAt | instant   | many        |
+    And Produced fields
+      | field           | type      | cardinality | domain                      |
+      | admission       | reference | one         | any                         |
+      | admissionStatus | string    | one         | enum "recorded", "rejected" |
+      | admittedAt      | instant   | one         | any                         |
+
+  Scenario: Run
+    When HTTP "admission" posts Input as JSON to Environment "admissionUrl" and reads JSON
+    Then Produce with JSONata
+      """
+      {
+        "admission": input.admission,
+        "admissionStatus": steps.admission.body.admissionStatus,
+        "admittedAt": steps.admission.body.admittedAt
+      }
+      """
+```
+
+## Résultat
+
+| Champ | Type |
+| --- | --- |
+| `steps.<name>.status` | number — le code de statut HTTP |
+| `steps.<name>.headers` | objet de chaînes (peut être copié en entier, pas traversé) |
+| `steps.<name>.body` | string pour `Text` ; la valeur analysée pour `JSON` |
+
+Tout statut est un résultat : un `404` n'interrompt pas l'Opération — la projection lit `steps.x.status` et décide. Ce qui interrompt, c'est une panne de transport (pas de connexion, timeout, JSON invalide quand il est lu `as JSON`).
+
+## Authentification
+
+Il n'y a pas d'authentification dans la phrase. Le Runner envoie la requête avec sa propre configuration sortante ; l'URL elle-même ne doit porter aucun credential (refusé à l'admission). Les Environnements portent des *références* de credential à cet effet — voir [Environnements et credentials](/docs/principles/environments).
+
+<Details title="Diagnostics propres aux étapes HTTP" expert>
+| Message | Cause |
+| --- | --- |
+| `HTTP "x" requires Environment "e" to be a url` | l'Environment est un `directory` |
+| `HTTP "x" uses undeclared Environment "e"` | le nom n'est pas dans la table Environment |
+| `HTTP "x" path Input "i" must be one string` | `appending` d'un Input non déclaré, `number` ou `many` |
+| `HTTP "x" cannot post an empty Input` | POST sans aucun Input déclaré |
+| `HTTP does not accept a table or DocString` · `HTTP cannot run after Produce` · `HTTP POST must precede Produce and accepts no table or DocString` | forme et ordre |
+| `Produce cannot traverse Text HTTP body` · `Produce cannot traverse HTTP result "status"` | un chemin descend sous une valeur opaque dans la projection |
+</Details>

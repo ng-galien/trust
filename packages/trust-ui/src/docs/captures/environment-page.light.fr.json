@@ -1,0 +1,49 @@
+{
+  "width": 2160,
+  "height": 1350,
+  "density": "operator",
+  "callouts": [
+    {
+      "key": "overlay.header",
+      "x": 19.79,
+      "y": 10.33,
+      "w": 79.31,
+      "h": 6.69
+    },
+    {
+      "key": "overlay.actions",
+      "x": 83.34,
+      "y": 12.07,
+      "w": 14.65,
+      "h": 3.11
+    },
+    {
+      "key": "environment.values",
+      "x": 20.9,
+      "y": 23.36,
+      "w": 54.79,
+      "h": 13.77
+    },
+    {
+      "key": "environment.credentials",
+      "x": 20.9,
+      "y": 38.47,
+      "w": 54.79,
+      "h": 12.81
+    },
+    {
+      "key": "environment.coverage",
+      "x": 20.9,
+      "y": 52.61,
+      "w": 54.79,
+      "h": 47.39
+    },
+    {
+      "key": "overlay.inspector",
+      "x": 76.88,
+      "y": 17.03,
+      "w": 22.22,
+      "h": 81.53
+    }
+  ]
+}

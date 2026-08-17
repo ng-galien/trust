@@ -3,6 +3,7 @@ import type { Translation } from "../types.js";
 
 export const shell: Translation<typeof en> = {
   brand: "TRUST",
+  help: "Documentation de cet écran",
   nav: {
     label: "Navigation",
     expand: "Déployer la navigation",
@@ -12,6 +13,7 @@ export const shell: Translation<typeof en> = {
     home: "Accueil TRUST",
     overview: "Vue d'ensemble",
     settings: "Paramètres",
+    docs: "Documentation",
     design: "Conception",
     run: "Exécution",
     operations: "Opérations",
@@ -39,7 +41,7 @@ export const shell: Translation<typeof en> = {
   },
   managementNote: {
     procedures: "Les versions publiées sont immuables",
-    plans: "Un Plan live appartient à l'agent — fermez plutôt sa Session depuis le Plan",
+    plans: "Fermez plutôt sa Session depuis le Plan",
   },
   explorer: {
     noMatch: "Aucun résultat.",
@@ -54,7 +56,6 @@ export const shell: Translation<typeof en> = {
   },
   environment: {
     label: "Environnement courant",
-    hint: "Environnement courant — les exécutions, engagements et marques « exécutable » s'y réfèrent (une préférence, jamais dans l'adresse)",
     none: "Aucun environnement",
     manage: "Gérer les environnements…",
     current: "Courant",
@@ -65,9 +66,16 @@ export const shell: Translation<typeof en> = {
     healthy: "Runtime opérationnel",
     checking: "Vérification du runtime…",
     unavailable: "Runtime indisponible",
-    liveHint: "Runtime opérationnel — mises à jour live via le flux d'événements",
-    pollingHint: "Runtime opérationnel — flux d'événements interrompu, interrogation périodique",
+    liveHint: "Mises à jour live",
+    pollingHint: "Flux d'événements interrompu — interrogation périodique",
     refresh: "Rafraîchir l'état du runtime",
+  },
+  density: {
+    label: "Mode d'interface",
+    operator: "Opérateur",
+    expert: "Expert",
+    operatorHint: "Mode opérateur : l'essentiel et les actions",
+    expertHint: "Mode expert : tous les identifiants, relations et vues techniques",
   },
   search: {
     placeholder: "Rechercher des opérations, procédures, plans…",

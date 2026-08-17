@@ -1,0 +1,142 @@
+---
+title: "Étape Shell"
+summary: "Exécuter un exécutable avec des arguments structurés dans un répertoire d'Environnement, et décider quels codes de sortie sont des observations."
+order: 1
+---
+
+```gherkin fragment title="Phrase + table d'arguments"
+    When Shell "<name>" runs "<executable>" with cwd from Environment "<directory>" and Input "<input>"
+      | argument   | source          |
+      | <literal>  | literal         |
+      | <any text> | Input "<input>" |
+```
+
+## La phrase
+
+| Partie | Règle |
+| --- | --- |
+| `"<name>"` | lower camel case, unique dans l'Opération |
+| `"<executable>"` | le programme à exécuter, tel que le Runner le taperait (`git`, `mvn`, `docker`, `kubectl`). Non validé à la compilation ; résolu sur le `PATH` du Runner |
+| `with cwd from Environment "<directory>"` | requis ; la valeur d'Environment doit être de type `directory` |
+| `and Input "<input>"` | optionnel ; restreint le répertoire à **un projet en dessous**. L'Input doit être une chaîne (`string`, `instant` ou `reference`, cardinalité `one`) nommant un sous-répertoire direct — pas de séparateur, pas de `..`, pas de lien hors de la racine |
+
+Sans `and Input`, la commande s'exécute dans le répertoire d'Environment lui-même.
+
+## La table d'arguments
+
+La table est **requise** (un en-tête seul est légal et signifie « aucun argument »). Son en-tête est soit `| argument |`, soit `| argument | source |`.
+
+| `source` | Signification |
+| --- | --- |
+| `literal` (ou la forme à une colonne) | la cellule `argument` est passée telle quelle, un argument |
+| `Input "<name>"` | la valeur de cet Input est passée comme un argument ; la cellule `argument` n'est qu'une étiquette pour le lecteur. L'Input doit être une chaîne |
+
+Le Runner **n'analyse jamais une ligne de commande** : chaque ligne est exactement un argument, quel que soit son contenu (espaces compris). Il n'y a pas de shell, pas de quoting, pas d'expansion de glob, pas de substitution de variables d'environnement.
+
+```gherkin fragment title="git rev-list --count HEAD --not <baseRevision>"
+    And Shell "commits" runs "git" with cwd from Environment "workspaceRoot" and Input "project"
+      | argument     | source               |
+      | rev-list     | literal              |
+      | --count      | literal              |
+      | HEAD         | literal              |
+      | --not        | literal              |
+      | baseRevision | Input "baseRevision" |
+```
+
+## Sorties acceptées — ce qui compte comme résultat
+
+Par défaut, seul le code de sortie `0` est un résultat. Toute autre sortie **interrompt l'Opération** : aucun champ n'est produit. Quand une autre sortie est une observation légitime, déclarez-la :
+
+```gherkin fragment
+    And Shell "test" accepts exits
+      | exit code | stdout contains | stderr contains |
+      | 0         |                 |                 |
+      | 1         | Tests run:      |                 |
+```
+
+- La phrase `And Shell "<name>" accepts exits` suit l'étape Shell qu'elle qualifie (toute position ultérieure avant `Produce` convient). L'en-tête est exactement `| exit code | stdout contains | stderr contains |`, au moins une ligne.
+- `exit code` est un entier de 0 à 255. `stdout contains` / `stderr contains` sont des sous-chaînes optionnelles qui doivent apparaître dans le flux correspondant pour que la ligne corresponde — ici la sortie `1` n'est acceptée que si la sortie ressemble à un rapport de tests, de sorte qu'un Maven qui n'a pas pu démarrer (sortie `1` aussi, sans `Tests run:`) reste une erreur.
+- **La liste déclarée remplace le défaut.** Si `0` doit rester accepté, listez-le.
+- Les lignes doivent être non vides et distinctes.
+
+Une sortie acceptée est un résultat d'étape normal : la projection lit `steps.test.exitCode` et le transforme en champ typé.
+
+```gherkin fragment
+      """
+      { "testStatus": steps.test.exitCode = 1 ? "defect-reproduced" : "not-reproduced" }
+      """
+```
+
+## Résultat
+
+| Champ | Type |
+| --- | --- |
+| `steps.<name>.exitCode` | number |
+| `steps.<name>.stdout` | string (sortie standard entière) |
+| `steps.<name>.stderr` | string (sortie d'erreur entière) |
+
+Seules ces trois clés existent et aucune ne peut être traversée plus loin (`steps.head.stdout.something` est refusé). Utilisez `$trim`, `$number`, les comparaisons et la conditionnelle pour les transformer en champs — voir [Produire des champs](/docs/operations/produce).
+
+## Exemple complet
+
+```gherkin operation id="maven.project-verify" title="maven.project-verify"
+# language: en
+@trust-dsl:1 @operation:maven.project-verify @version:1.0.0
+Feature: Verify one Maven project revision
+
+  Runs `mvn -B verify` in the project checked out below the workspace and reports whether
+  the build and its tests pass. Exit code 1 is an observation (`verificationStatus: failed`),
+  not an error; any other exit interrupts the Operation.
+
+  Background: Operation interface
+    Given Environment
+      | name          | type      |
+      | workspaceRoot | directory |
+    And Input
+      | input    | type      | cardinality |
+      | project  | reference | one         |
+      | revision | reference | one         |
+    And Produced fields
+      | field              | type      | cardinality | domain                      |
+      | verifiedProject    | reference | one         | any                         |
+      | verifiedRevision   | reference | one         | any                         |
+      | verificationStatus | string    | one         | enum "successful", "failed" |
+
+  Scenario: Run
+    When Shell "head" runs "git" with cwd from Environment "workspaceRoot" and Input "project"
+      | argument  | source  |
+      | rev-parse | literal |
+      | --verify  | literal |
+      | HEAD      | literal |
+    And Shell "verify" runs "mvn" with cwd from Environment "workspaceRoot" and Input "project"
+      | argument | source  |
+      | -B       | literal |
+      | verify   | literal |
+    And Shell "verify" accepts exits
+      | exit code | stdout contains | stderr contains |
+      | 0         |                 |                 |
+      | 1         |                 |                 |
+    Then Produce with JSONata
+      """
+      {
+        "verifiedProject": input.project,
+        "verifiedRevision": $trim(steps.head.stdout),
+        "verificationStatus": steps.verify.exitCode = 0 ? "successful" : "failed"
+      }
+      """
+```
+
+<Details title="Diagnostics propres aux étapes Shell" expert>
+| Message | Cause |
+| --- | --- |
+| `Shell "x" requires Environment "e" to be a directory` | l'Environment du `cwd` est une `url` |
+| `Shell "x" uses undeclared Environment "e"` | le nom n'est pas dans la table Environment |
+| `Shell "x" requires an argument table` | l'étape n'a pas de table de données |
+| `Shell "x" argument table must use argument or argument \| source` | mauvais en-tête |
+| `Shell "x" argument row has the wrong number of cells` | une ligne ne correspond pas à l'en-tête |
+| `Shell "x" argument references unknown Input "i"` / `… must be one string` | la source `Input "…"` n'est pas déclarée, ou est un `number` / `many` |
+| `Shell "x" narrows its directory with unknown Input "i"` / `… directory Input "i" must be one string` | mêmes règles pour `and Input` |
+| `Shell "x" is unknown` | `accepts exits` nomme une étape qui n'existe pas |
+| `Shell exit code "n" must be an integer from 0 to 255` · `Shell "x" accepted exits must be non-empty and unique` | table de sorties malformée |
+| `Shell accepted exits must follow a Shell step` · `Shell cannot run after Produce` | ordre |
+</Details>

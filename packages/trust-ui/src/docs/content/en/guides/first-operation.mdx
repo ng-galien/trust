@@ -1,0 +1,18 @@
+---
+title: "Write and try an Operation"
+summary: "From New operation to a real run — source, simulation, run."
+order: 1
+---
+
+<Steps>
+  <Step title="Open the catalog and create">Sidebar → **Operations** → **New operation**. The Source tab opens on the template.</Step>
+  <Step title="Name it">Set `@operation:<domain>.<action>` and `@version:1.0.0`; keep `@trust-dsl:1`. Give it a title and, under it, one or two lines describing what it observes.</Step>
+  <Step title="Declare the interface">In `Background`: the Environment values (`workspaceRoot` as `directory`, or a `url`), the Input the Check will provide, and the produced fields with their types — an `enum` when the value is a status.</Step>
+  <Step title="Write the steps">One `When Shell …` (or File, HTTP) per action, each with a name. Arguments one per row. Add `accepts exits` when a non-zero exit is an observation.</Step>
+  <Step title="Write the projection">`Then Produce with JSONata` returning exactly the produced fields from `input`, `environment` and `steps.<name>`.</Step>
+  <Step title="Watch the status line">It shows the first diagnostic with its line until the source compiles, then the count of steps and fields.</Step>
+  <Step title="Simulate">Simulate tab: type plausible step results, run, check the produced fields and their types.</Step>
+  <Step title="Save, then Run">Save writes the file into the catalog. Run tab: pick the current Environment (or a compatible one), fill the Input, **Run for real**, read the report.</Step>
+</Steps>
+
+Details: [Anatomy of an Operation](/docs/operations/anatomy) · [Operations in the interface](/docs/operations/authoring).

@@ -1,0 +1,35 @@
+{
+  "width": 2160,
+  "height": 1350,
+  "density": "operator",
+  "callouts": [
+    {
+      "key": "shell.sidebar",
+      "x": 0,
+      "y": 5.33,
+      "w": 18.89,
+      "h": 94.67
+    },
+    {
+      "key": "shell.search",
+      "x": 16.39,
+      "y": 0.83,
+      "w": 40,
+      "h": 3.56
+    },
+    {
+      "key": "shell.environment",
+      "x": 69.5,
+      "y": 1.06,
+      "w": 6.74,
+      "h": 3.11
+    },
+    {
+      "key": "shell.density",
+      "x": 76.79,
+      "y": 1.06,
+      "w": 9.32,
+      "h": 3.11
+    }
+  ]
+}

@@ -1,0 +1,35 @@
+---
+title: "Language reference"
+summary: "The Gherkin conventions common to Operations and Procedures, then the two closed grammars on one page each."
+order: 6
+---
+
+Operations and Procedures are written in **English Gherkin with a closed sentence set**: fixed words, fixed table headers, and anything outside the grammar is a compile error with a line. There is no free-form step: the compiler either understands a sentence entirely or refuses it.
+
+## Common conventions
+
+- `# language: en` may open the file; English is the only dialect.
+- Tags on `Feature:` carry the identity; `@trust-dsl:1` names the language version. Tag order is free.
+- Keywords are case-sensitive; quoted values are non-empty and separated from their neighbours by spaces.
+- Identifiers: lower camel case for Operation names in tables and sentences (`workspaceRoot`, `headRevision`); lowercase slugs for Operation, Procedure and Scenario identities (`git.head-read`, `patient-admission`); free quoted labels for Procedure roles and Check names (`"fix revision"`, `"Maven verification"`).
+- The description block under `Feature:` is free text, reported for humans, never executed.
+- Comments (`#`) and blank lines are free and never change a digest.
+
+## Continuation lines and formatting
+
+A step may continue on the following lines when they are indented deeper than its keyword and are not a table row, doc string, comment, tag or keyword line. The compiler folds them before parsing and reports positions on the physical lines. The formatter — **Format source** in the editor, *Shift+Alt+F*, or the language server's *Format document* — re-flows long steps onto such lines at their connective words (`on`, `using`, `and materializes`, `and must establish`, `with cwd from`, `appending`…), width 88.
+
+```gherkin fragment
+    Then Check "Maven verification" runs Operation "maven.project-verify"
+        on "project" as Input "project"
+        using "fix revision" as Input "revision"
+        and must establish "the committed fix passes Maven verification"
+```
+
+## Editing outside the interface
+
+The language server (`@trust/language-server`) gives any LSP editor the same diagnostics, formatting and folding as the interface. Sources are plain `.feature` files: the Operation catalog is a directory of them; a Procedure is published from one.
+
+## The two grammars
+
+<PageCards />

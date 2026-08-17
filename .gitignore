@@ -18,3 +18,5 @@ playwright-report/
 *.sqlite.trust-process-lock
 .trust/
 .DS_Store
+dist-docs/
+trust-docs.zip

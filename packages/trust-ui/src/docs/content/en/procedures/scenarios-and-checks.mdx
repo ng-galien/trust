@@ -1,0 +1,93 @@
+---
+title: "Scenarios and Checks"
+summary: "Grouping Checks into Scenarios, declaring prerequisites, binding an Operation's Input from the context, materializing produced fields."
+order: 3
+---
+
+A **Scenario** groups Checks and orders them: it is satisfied when every Check is validated, and its Checks are actionable only once its prerequisite Scenarios are validated. A **Check** runs one Operation on one target and states what its produced fields must establish.
+
+```gherkin fragment title="One Scenario"
+  @scenario:verification
+  Scenario: Verify the committed fix
+    Given scenario "fix" is validated
+    Then Check "Maven verification" runs Operation "maven.project-verify"
+        on "project" as Input "project"
+        using "fix revision" as Input "revision"
+        and must establish "the committed fix passes Maven verification"
+      | field              | relation | expectation            | failure reason                    |
+      | verifiedRevision   | equals   | context "fix revision" | "Maven verified another revision" |
+      | verificationStatus | equals   | value "successful"     | "Maven verification failed"       |
+    And the Scenario is satisfied when every Check is validated
+```
+
+## Scenario
+
+| Part | Rule |
+| --- | --- |
+| `@scenario:<slug>` | exactly one tag per Scenario, a lowercase slug, unique in the Procedure |
+| `Scenario: <title>` | free title, shown in the interface |
+| `Given scenario "<slug>" is validated` | zero or more prerequisites (`Given` or `And`), **before** the Checks; the slug must exist; no self or circular dependency; diamonds are fine |
+| Checks | one or more |
+| `And the Scenario is satisfied when every Check is validated` | required, exact wording (`And`, capital `S` and `C`), once, last |
+
+`Scenario Outline`, `Examples`, `Rule` and free steps are outside the grammar.
+
+## Check
+
+```text
+Then|And Check "<name>" runs Operation "<domain.action>"
+    on [each|all] "<role>" as Input "<input>"
+    [using [all] "<role>" as Input "<input>"]…
+    [and materializes "<role>" from field "<field>"]…
+    and must establish "<success reason>"
+  | field | relation | expectation | failure reason |
+```
+
+| Clause | Rule |
+| --- | --- |
+| `Then` / `And` | the keyword of a Check step |
+| `Check "<name>"` | free quoted name, non-empty, unique in the Procedure — it names the Check in Plans, verdicts and history |
+| `runs Operation "<domain.action>"` | an Operation of the catalog, by name; the version embedded is the current one at publication |
+| `on [each\|all] "<role>" as Input "<input>"` | the **target**: one role bound to one Input of the Operation. `on "r"` — one Check; `on each "r"` — one Check per value of a `many` role; `on all "r"` — one Check receiving the whole collection |
+| `using [all] "<role>" as Input "<input>"` | binds another Input (no `and` before `using`); `all` passes a collection. Every Input of the Operation is bound **exactly once**, between `on` and `using` |
+| `and materializes "<role>" from field "<field>"` | once the Check is validated, the value of the produced field fills the role. The role must be declared, neither fixed nor agent-declared; its type must match the field's; a role has **one** provider Check; a Check may materialize several roles |
+| `and must establish "<success reason>"` | required, **last** clause (trailing words are refused); the reason returned with a validated verdict |
+| table | the expectations, see [Expectations](/docs/procedures/expectations) — one row per predicate; the table is required |
+
+`using` and `and materializes` may be interleaved in any order between `on` and `and must establish`. Keywords are case-sensitive.
+
+Cardinality at each binding: a scalar Input takes `on`/`using` of a `one` role, or `each` of a `many` role (one value per Check); a collection Input takes `all` of a `many` role. A `many` role without `each` or `all` is accepted only in a `using` of the same scope as an `each` target (the related value). Types must match exactly (`reference` ≠ `string`).
+
+## `each` and `all`
+
+```gherkin fragment title="From the patient admission Procedure"
+    Then Check "document" runs Operation "healthcare.document-read"
+        on each "required document" as Input "document"
+        and materializes "document record time" from field "recordedAt"
+        and must establish "every admission document is confirmed"
+      | field          | relation | expectation       | failure reason                           |
+      | documentStatus | equals   | value "confirmed" | "an admission document is not confirmed" |
+    And the Scenario is satisfied when every Check is validated
+```
+
+- `on each "required document"` creates **one Check per document** — the Plan shows `document` once per value, each with its own verdict; the Scenario is satisfied when all are validated. A materialization on an `each` Check fills a role scoped `for each` that target: one record time per document.
+- `using all "required document" as Input "documents"` passes **the collection** to a `many` Input, in one Check.
+- A `many` role declared by the agent (`declared by agent`) has no values at engagement: the `each` Checks appear once the agent declares them.
+
+## Dependencies between Checks
+
+A Check depends on:
+
+- the Scenarios its Scenario requires (`Given scenario … is validated`), directly or transitively;
+- every Check whose produced field it references in an expectation (`field "…" from Check "…"`);
+- every Check that materializes a role it uses (`on`/`using "fix revision"`, `context "fix revision"`).
+
+The referenced Check, or the provider of the role, must belong to a **prerequisite Scenario** (directly or transitively) — not the same Scenario, not a later one. These dependencies are the graph of the **Graph** tab and the cascade: a new verdict on a Check reopens every Check that depends on it, directly or through a materialized value.
+
+<Callout kind="rule">
+  Nothing implicit flows between Checks. A value goes from one Check to another only through a materialized role or a `field … from Check` expectation, both written in the source.
+</Callout>
+
+<Details title="Compiled Checks and Check instances" expert>
+Each Check compiles to `{ name, scenario, operation, operationVersion, operationDigest, target { role, selection: "one" | "each" | "all" }, inputBindings [{ input, role, selection }] (target first), materializes [{ role, field }], predicates [...], successReason }`. At engagement the runtime instantiates it: one instance for `one` and `all`, one per target value for `each` (none while an agent-declared collection is empty). Each instance has a URI `trust://…/<procedure>@<version>/<plan>/<scenario>/<check>/<domain>-<action>[/<value>]` — the Check name is used as-is when it is a slug, hashed otherwise; the last segment exists only for `each`. The instance's dependencies (prerequisite Scenarios, `field … from Check` references, providers of the roles it binds) and the context it consumes are what the cascade follows: a value it does not use cannot reopen it.
+</Details>

@@ -8,10 +8,12 @@ import { Link } from "react-router";
 import { cx, formatTime, plural, relativeTime } from "../../lib/format.js";
 import { useCurrentEnvironment } from "../../lib/environment.js";
 import { mutationError } from "../../lib/mutations.js";
+import { useExpert } from "../../lib/preferences.js";
 import { useRuntime } from "../../lib/runtime-context.js";
 import type { CompiledOperation, JsonObject, TrialEvent, TrialSummary, TrialView } from "../../types.js";
 import { StatusBadge } from "../../ui/badge.js";
 import { Button } from "../../ui/button.js";
+import { Expert } from "../../ui/expert.js";
 import { blankObject, Disclosure, type FieldIssue, SchemaForm, schemaProperties } from "../../ui/schema.js";
 import { Select } from "../../ui/select.js";
 import { EmptyState, ErrorBox } from "../../ui/states.js";
@@ -101,7 +103,7 @@ export function RunView({ source, compiled, dirty }: { source: string; compiled:
     <div className="grid h-full min-h-0 grid-cols-[320px_minmax(0,1fr)]">
       <section className="flex min-h-0 flex-col border-r border-border">
         <div className="flex min-h-0 flex-1 flex-col gap-2.5 overflow-y-auto bg-bg p-3 [&>*]:shrink-0">
-          <div className="flex flex-col gap-1.5">
+          <div className="flex flex-col gap-1.5" data-doc="run.environment">
             <label className="text-caption font-semibold uppercase tracking-[0.06em] text-muted">{t("operations.run.environment")}</label>
             <Select
               ariaLabel={t("operations.run.environment")}
@@ -126,7 +128,7 @@ export function RunView({ source, compiled, dirty }: { source: string; compiled:
             {environments.isSuccess && compatible.length === 0 && !currentBlocked ? (
               <p className="text-label text-danger">
                 <AlertTriangle size={12} className="mr-1 inline" />
-                {t("operations.run.noEnvironmentDeclaresPrefix")} {needed.map((name) => <code key={name} className="mono">{name}</code>).reduce<ReactNode[]>((acc, node, index) => (index ? [...acc, ", ", node] : [node]), [])}{t("operations.run.noEnvironmentDeclaresSuffix")}
+                {t("operations.run.noEnvironmentDeclares")} {needed.map((name) => <code key={name} className="mono">{name}</code>).reduce<ReactNode[]>((acc, node, index) => (index ? [...acc, ", ", node] : [node]), [])}.
               </p>
             ) : null}
             {environment && environments.data ? (
@@ -137,16 +139,17 @@ export function RunView({ source, compiled, dirty }: { source: string; compiled:
               </dl>
             ) : null}
           </div>
-          <Disclosure title={t("operations.run.input")} meta={compiled ? t("operations.run.inputMeta", { count: schemaProperties(compiled.input).length }) : "—"}>
+          <div data-doc="run.input"><Disclosure title={t("operations.run.input")} meta={compiled ? t("operations.run.inputMeta", { count: schemaProperties(compiled.input).length }) : "—"}>
             {compiled ? (
               <SchemaForm idPrefix="run-input" schema={compiled.input} value={input} onChange={setInput} onValidity={onValidity} touchedAll={attempted} empty={t("operations.run.inputEmpty")} />
             ) : (
               <p className="text-body text-faint">{t("operations.run.fixSource")}</p>
             )}
-          </Disclosure>
+          </Disclosure></div>
           {dirty ? <p className="text-label text-warning"><AlertTriangle size={12} className="mr-1 inline" />{t("operations.run.unsavedWarning")}</p> : null}
           {actionError ? <ErrorBox message={actionError} /> : null}
           <Button
+            data-doc="run.start"
             variant={activeTrial ? "danger" : "primary"}
             icon={activeTrial ? <Square size={13} fill="currentColor" /> : <Play size={14} />}
             onClick={() => {
@@ -167,15 +170,12 @@ export function RunView({ source, compiled, dirty }: { source: string; compiled:
               ? cancel.isPending || cancel.isSuccess ? t("operations.run.stopping") : t("operations.run.stopRun")
               : start.isPending ? t("operations.run.starting") : compatible.length === 0 ? t("operations.run.noCompatibleEnvironment") : inputIssues.length ? t("operations.run.completeInput", { count: inputIssues.length }) : t("operations.run.runForReal")}
           </Button>
-          <p className="text-caption leading-snug text-faint">
-            {t("operations.run.runnerNote")}
-          </p>
-          <TrialHistory trials={trials.data ?? []} active={activeId} onSelect={setSelected} />
+          <div data-doc="run.recent"><TrialHistory trials={trials.data ?? []} active={activeId} onSelect={setSelected} /></div>
         </div>
       </section>
-      <section className="flex min-h-0 flex-col">
+      <section className="flex min-h-0 flex-col" data-doc="run.report">
         {activeId && compiled ? <TrialTimeline key={activeId} trialId={activeId} compiled={compiled} onSettled={() => void queryClient.invalidateQueries({ queryKey: ["trials", compiled.operation] })} /> : (
-          <div className="p-6"><EmptyState icon={<Play />} title={t("operations.run.noRunTitle")} body={t("operations.run.noRunBody")} /></div>
+          <div className="p-6"><EmptyState icon={<Play />} title={t("operations.run.noRunTitle")} /></div>
         )}
       </section>
     </div>
@@ -293,6 +293,7 @@ interface StepState {
 
 function TrialTimeline({ trialId, compiled, onSettled }: { trialId: string; compiled: CompiledOperation; onSettled: () => void }) {
   const { t } = useTranslation();
+  const expert = useExpert();
   const stableSettled = useCallback(onSettled, [onSettled]);
   const { trial, events, connection } = useTrial(trialId, stableSettled);
   const [copied, setCopied] = useState(false);
@@ -344,8 +345,15 @@ function TrialTimeline({ trialId, compiled, onSettled }: { trialId: string; comp
           <div className="flex items-center gap-2">
             <StatusBadge state={status} />
             {live ? <Loader2 size={13} className="animate-spin text-muted" /> : null}
-            <span className="text-body-lg font-semibold">{trial ? `${trial.operation}@${trial.version}` : "…"}</span>
-            <span className="text-label text-muted">{t("operations.run.on", { environment: trial?.environment ?? "…" })}</span>
+            {/* The overlay header names the operation; the operator reads the environment, the expert also the exact operation@version. */}
+            {expert ? (
+              <>
+                <span className="text-body-lg font-semibold">{trial ? `${trial.operation}@${trial.version}` : "…"}</span>
+                <span className="text-label text-muted">{t("operations.run.on", { environment: trial?.environment ?? "…" })}</span>
+              </>
+            ) : (
+              <span className="mono text-body-lg font-semibold">{trial?.environment ?? "…"}</span>
+            )}
           </div>
           <span className="block text-caption text-faint">
             {trial ? t("operations.run.startedBy", { time: formatTime(trial.startedAt), user: trial.startedBy }) : ""}{trial?.endedAt ? ` · ${duration(trial.startedAt, trial.endedAt)}` : ""}
@@ -408,10 +416,12 @@ function TrialTimeline({ trialId, compiled, onSettled }: { trialId: string; comp
               <pre className="mono mt-2 rounded-(--radius-2) border border-border bg-surface-2 p-3 text-label leading-relaxed">{runnerLogs.map((event) => `${event.at} [${String(event.level ?? "info")}] ${String(event.text ?? "")}`).join("\n")}</pre>
             </details>
           ) : null}
-          <details className="text-body">
-            <summary className="cursor-pointer text-muted hover:text-text">{t("operations.run.allEvents", { count: events.length })}</summary>
-            <pre className="mono mt-2 max-h-96 overflow-auto rounded-(--radius-2) border border-border bg-surface-2 p-3 text-caption leading-relaxed">{JSON.stringify(events, null, 2)}</pre>
-          </details>
+          <Expert>
+            <details className="text-body">
+              <summary className="cursor-pointer text-muted hover:text-text">{t("operations.run.allEvents", { count: events.length })}</summary>
+              <pre className="mono mt-2 max-h-96 overflow-auto rounded-(--radius-2) border border-border bg-surface-2 p-3 text-caption leading-relaxed">{JSON.stringify(events, null, 2)}</pre>
+            </details>
+          </Expert>
         </div>
       )}
     </>

@@ -1,0 +1,42 @@
+---
+title: "Étapes"
+summary: "Ce que fait une Opération — des étapes Shell, File-read et HTTP ordonnées, chacune nommée, chacune avec une forme de résultat fixe."
+order: 3
+---
+
+Le `Scenario: Run` liste ce que fait le Runner, dans l'ordre. Il existe trois sortes d'étape, et chaque étape a un **nom** — la poignée que la projection utilise pour lire son résultat.
+
+| Étape | Phrase | Résultat vu par la projection |
+| --- | --- | --- |
+| **Shell** | `Shell "<name>" runs "<executable>" with cwd from Environment "<dir>" [and Input "<in>"]` + table d'arguments | `exitCode`, `stdout`, `stderr` |
+| **File** | `File "<name>" reads "<path>" as Text\|JSON from Environment "<dir>" [and Input "<in>"]` | `relativePath`, `content` |
+| **HTTP GET** | `HTTP "<name>" gets Environment "<url>" [appending Input "<in>"] as Text\|JSON` | `status`, `headers`, `body` |
+| **HTTP POST** | `HTTP "<name>" posts Input as JSON to Environment "<url>" and reads JSON` | `status`, `headers`, `body` |
+
+```gherkin fragment title="Trois sortes d'étape, puis la projection"
+  Scenario: Run
+    When Shell "head" runs "git" with cwd from Environment "workspaceRoot" and Input "project"
+      | argument  | source  |
+      | rev-parse | literal |
+      | HEAD      | literal |
+    And File "manifest" reads "package.json" as JSON from Environment "workspaceRoot" and Input "project"
+    And HTTP "issue" gets Environment "jiraIssueUrl" appending Input "issue" as JSON
+    Then Produce with JSONata
+      """
+      { "revision": $trim(steps.head.stdout), "name": steps.manifest.content.name, "summary": steps.issue.body.summary }
+      """
+```
+
+## Règles communes à toutes les étapes
+
+- Les étapes utilisent `When` pour la première et `And` pour les suivantes (`When` est accepté partout). `Then` est réservé à `Produce with JSONata`, qui est toujours en dernier.
+- Les **noms** sont en lower camel case (`head`, `verifyBuild`) et uniques au sein de l'Opération. La projection désigne une étape par son nom — jamais par sa position — donc réordonner les étapes ne la casse pas.
+- Les étapes s'exécutent **dans l'ordre**, l'une après l'autre. Quand une étape se termine d'une manière qui n'est pas un résultat accepté (une sortie Shell non acceptée, un fichier illisible, une erreur de transport HTTP), l'Opération est **interrompue avant qu'aucun champ soit produit** : pas de Facts, pas de verdict — le Check reste tel qu'il était et l'agent peut réessayer.
+- Une étape lit son répertoire ou son URL depuis l'**Environment**, jamais depuis un littéral dans la source. C'est ce qui rend la même Opération exécutable sur plusieurs Environnements.
+- Rien dans une étape n'est interpolé depuis du texte libre : les arguments Shell sont des lignes, les chemins HTTP sont un seul segment encodé, les chemins de fichier sont des chemins relatifs fixes, les corps POST sont l'Input typé entier.
+
+<Callout kind="rule" title="Résultat contre erreur">
+  Une Opération distingue une **observation** d'une **erreur**. Une suite de tests qui échoue et sort avec `1` peut être une observation légitime (`status: failed`) si l'Opération le dit avec `accepts exits` ; un compilateur qui ne démarre pas, un répertoire manquant ou une panne réseau sont des erreurs qui interrompent l'Opération. Cette distinction est ce qui permet à une Procédure de demander « le build passe-t-il ? » sans confondre « le build a échoué » avec « nous n'avons pas pu builder ».
+</Callout>
+
+<PageCards />

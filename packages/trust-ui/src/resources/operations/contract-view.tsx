@@ -17,7 +17,7 @@ export function ContractView({ compiled, error }: { compiled: CompiledOperation 
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="shrink-0 border-b border-border px-4 py-2 text-body text-muted">
-        <span className="mono">{compiled.operation}</span> {t("operations.contract.header", { version: compiled.version, contract: compiled.contract })}
+        <span className="mono">{compiled.operation}</span> · {t("operations.contract.version", { version: compiled.version })} · <span className="mono">{compiled.contract}</span>
       </div>
       <div className="min-h-0 flex-1">
         <JsonViewer value={compiled} />

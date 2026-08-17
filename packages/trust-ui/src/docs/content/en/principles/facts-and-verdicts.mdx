@@ -1,0 +1,49 @@
+---
+title: "Facts, verdicts and the cascade"
+summary: "What a Fact is, how a Check is qualified, why a Check can reopen, what replay means."
+order: 3
+---
+
+## Facts
+
+A **Fact** is one typed observation: a produced field of an Operation with its value, reported by one execution. On a live Plan the Runner reports them after running the Operation; on a dry-run the operator types them.
+
+A Check is qualified from a **complete batch**: every field its expectations name, and every field it materializes, must be present. An incomplete batch is **rejected as a whole** — no Fact, no record, no verdict, no change to the Plan. The execution may be repeated; that is the normal answer to a rejection.
+
+Identical Facts submitted twice give the same record once: TRUST deduplicates the batch, the record and the verdict.
+
+## Verdicts
+
+The expectations of the Check are evaluated in table order against the Facts and the current Plan context.
+
+- All rows hold → **validated**, with the Check's success reason.
+- A row fails → **not validated**, with that row's failure reason.
+
+The verdict replaces the Check's active one. Every previous verdict stays in the history with its Facts.
+
+## The cascade
+
+New accepted Facts on a Check recompute its verdict and **reopen every Check that depends on it**:
+
+- the Checks of Scenarios that require its Scenario;
+- the Checks that use a role it materializes;
+- the Checks whose expectations compare with one of its fields.
+
+Reopened Checks return to *open*; their previous verdicts stay in the history. The agent resumes from any Check whose dependencies are satisfied.
+
+```mermaid
+flowchart LR
+  E["Execution"] -->|"produced fields"| F["Fact batch"]
+  F -->|"complete"| Q{"qualify"}
+  F -->|"incomplete"| X["rejected whole — nothing recorded"]
+  Q -->|"validated / not, reason"| V["Verdict — new revision"]
+  V -.->|"reopens"| C["Dependent Checks"]
+```
+
+## Replay
+
+Because rejection is atomic and identical Facts are deduplicated, **replaying** an execution is safe by design: after a rejected batch, an interrupted report or a lost answer, the Runner runs the Operation again. TRUST does not implement a generic exactly-once mechanism; the rare actions that cannot be replayed after an unknown outcome are the operator's business, not a product gate.
+
+<Callout kind="rule">
+  Facts and records are immutable history. Only the qualification active in the current revision is replaceable.
+</Callout>

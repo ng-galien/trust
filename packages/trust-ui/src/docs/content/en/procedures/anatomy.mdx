@@ -1,0 +1,105 @@
+---
+title: "Anatomy of a Procedure"
+summary: "A complete Procedure read line by line — tags, context roles, Scenarios, Checks, expectations — with the rules the compiler enforces at each line."
+order: 1
+---
+
+The Procedure below fixes one Jira defect in one Maven project. Four Scenarios in a chain, one Check each; two Checks materialize a revision that later Checks reuse. Each numbered line is explained under the source.
+
+```gherkin procedure id="mono-project-change" title="mono-project-change" marks="2,3,9,10,12,15,17,18,19,21,25,26,34"
+# language: en
+@trust-dsl:1 @procedure:mono-project-change @version:1.0.0
+Feature: Fix one Jira defect in one Maven project
+
+  Drives the correction of one Jira defect inside one Maven project, from a clean baseline
+  to a verified revision: read the ticket, establish the baseline, verify the fixed revision
+  and confirm the fix is committed.
+
+  Background: Plan context
+    Given one reference "jira issue"
+    And one reference "project"
+    And one reference "baseline revision" for "project"
+    And one reference "fix revision" for "project"
+
+  @scenario:issue
+  Scenario: Read the Jira defect
+    Then Check "issue" runs Operation "jira.issue-read" on "jira issue" as Input "issue" and must establish "the Jira issue is ready for correction"
+      | field          | relation | expectation    | failure reason                  |
+      | issueType      | equals   | value "defect" | "the Jira issue is not a defect" |
+      | workflowStatus | equals   | value "todo"   | "the Jira issue is not ready"    |
+    And the Scenario is satisfied when every Check is validated
+
+  @scenario:baseline
+  Scenario: Establish the project baseline
+    Given scenario "issue" is validated
+    Then Check "baseline" runs Operation "git.head-read" on "project" as Input "project" and materializes "baseline revision" from field "headRevision" and must establish "the project baseline is clean"
+      | field       | relation | expectation   | failure reason                       |
+      | workingTree | equals   | value "clean" | "the project has uncommitted changes" |
+    And the Scenario is satisfied when every Check is validated
+
+  @scenario:fix
+  Scenario: Establish the committed fix
+    Given scenario "baseline" is validated
+    Then Check "fix" runs Operation "git.head-compare" on "project" as Input "project" using "baseline revision" as Input "baseRevision" and materializes "fix revision" from field "headRevision" and must establish "the fix is committed after the baseline"
+      | field                | relation | expectation                 | failure reason                       |
+      | comparedBaseRevision | equals   | context "baseline revision" | "the fix uses another baseline"       |
+      | commitsAhead         | at least | number 1                    | "the fix is not committed"            |
+      | workingTree          | equals   | value "clean"               | "the project has uncommitted changes"  |
+    And the Scenario is satisfied when every Check is validated
+
+  @scenario:verification
+  Scenario: Verify the committed fix
+    Given scenario "fix" is validated
+    Then Check "Maven verification" runs Operation "maven.project-verify" on "project" as Input "project" using "fix revision" as Input "revision" and must establish "the committed fix passes Maven verification"
+      | field              | relation | expectation           | failure reason                   |
+      | verifiedRevision   | equals   | context "fix revision" | "Maven verified another revision" |
+      | verificationStatus | equals   | value "successful"     | "Maven verification failed"       |
+    And the Scenario is satisfied when every Check is validated
+```
+
+<Legend items={[
+  <>**Identity tags.** Exactly one <code>@procedure:</code> (a lowercase slug), one semantic <code>@version:</code>, and <code>@trust-dsl:1</code>. No other tag on the Feature.</>,
+  <>**Title and description.** The title is copied verbatim; the free text under it is the description shown on the Procedure page and on its Plans.</>,
+  <>**Plan context.** Exactly one <code>Background: Plan context</code>; each line declares one typed role. See [Plan context](/docs/procedures/context).</>,
+  <>**Plan input.** A role with no other source is given at engagement: <code>one reference "jira issue"</code>.</>,
+  <>**Scoped role.** <code>for "project"</code> attaches the role to a parent role; here a revision belongs to one project. Nothing declares its source yet: it is materialized by a Check below.</>,
+  <>**Scenario tag.** Exactly one <code>@scenario:&lt;slug&gt;</code> per Scenario, unique in the Procedure.</>,
+  <>**Check sentence.** <code>Then Check "&lt;name&gt;" runs Operation "&lt;domain.action&gt;" on "&lt;role&gt;" as Input "&lt;input&gt;" … and must establish "&lt;success reason&gt;"</code>. <code>on</code> names the target and binds one Input. See [Scenarios and Checks](/docs/procedures/scenarios-and-checks).</>,
+  <>**Expectation table.** Exactly the four columns <code>field · relation · expectation · failure reason</code>; one row per predicate on a produced field of the Operation. See [Expectations](/docs/procedures/expectations).</>,
+  <>**Failure reason.** Quoted; returned with the verdict when the row is not satisfied.</>,
+  <>**Closing sentence.** Every Scenario ends with exactly <code>And the Scenario is satisfied when every Check is validated</code>.</>,
+  <>**Prerequisite.** <code>Given scenario "issue" is validated</code>: this Scenario's Checks are actionable only after that Scenario is satisfied.</>,
+  <>**Materialization.** <code>and materializes "baseline revision" from field "headRevision"</code>: the value of a produced field becomes the value of a context role, for later Checks.</>,
+  <>**Using.** <code>using "baseline revision" as Input "baseRevision"</code> binds a further Input; every required Input of the Operation is bound exactly once.</>,
+]} />
+
+## The shape of the document
+
+```text
+# language: en                                          optional (English only)
+@trust-dsl:1 @procedure:<slug> @version:<x.y.z>          exactly these three tags
+Feature: <title>
+  [free-text description]
+
+  Background: Plan context                              exactly one
+    Given|And one|many <type> "<role>" [source clause]  one role per line
+
+  @scenario:<slug>                                      one per Scenario, unique
+  Scenario: <title>
+    [Given|And scenario "<slug>" is validated]          prerequisites first
+    Then|And Check "<name>" runs Operation "<domain.action>"
+        on [each|all] "<role>" as Input "<input>"
+        [using [all] "<role>" as Input "<input>"]…
+        [and materializes "<role>" from field "<field>"]…
+        and must establish "<success reason>"
+      | field | relation | expectation | failure reason |   exactly these columns
+    And the Scenario is satisfied when every Check is validated
+```
+
+## Reading the graph
+
+The same Procedure on its **Graph** tab: Scenarios as cards top to bottom in dependency order, solid links for `Given scenario … is validated`, dashed links for a value materialized by one Check and used by another. Selecting the Check `fix` shows what it needs (`baseline`) and what a new verdict on it would reset (`Maven verification`).
+
+<Callout kind="tip">
+  Long Check sentences read better on continuation lines — the source editor formats them (**Format source**) at `on`, `using`, `and materializes`, `and must establish`. The catalog sources above are one-line; both forms compile identically.
+</Callout>

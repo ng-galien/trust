@@ -3,7 +3,8 @@ import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useLocation } from "react-router";
 
-import { plural, relativeTime } from "../../lib/format.js";
+import { relativeTime } from "../../lib/format.js";
+import { useExpert } from "../../lib/preferences.js";
 import { usePlans, useProcedures } from "../../lib/runtime-context.js";
 import type { PlanMode } from "../../types.js";
 import { StatusBadge } from "../../ui/badge.js";
@@ -35,7 +36,6 @@ export function PlansHome({ mode }: { mode: PlanMode }) {
     <ResourceHome
       crumbs={[{ label: t("plans.brand"), to: "/overview" }, { label: mode === "dry-run" ? t("plans.anchor.dryRuns") : t("plans.anchor.plans") }]}
       title={mode === "dry-run" ? t("plans.anchor.dryRuns") : t("plans.anchor.plans")}
-      subtitle={mode === "dry-run" ? t("plans.home.subtitleDryRun") : t("plans.home.subtitleLive")}
       total={rows.length}
       visible={visible.length}
       createTo={`${base}/new${location.search}`}
@@ -54,7 +54,7 @@ export function PlansHome({ mode }: { mode: PlanMode }) {
       loading={plans.isLoading}
       error={plans.error?.message}
       emptyTitle={rows.length ? (mode === "dry-run" ? t("plans.home.empty.noMatchDryRun") : t("plans.home.empty.noMatchLive")) : mode === "dry-run" ? t("plans.home.empty.noneDryRun") : t("plans.home.empty.noneLive")}
-      emptyBody={rows.length ? t("plans.home.empty.adjust") : mode === "dry-run" ? t("plans.home.empty.bodyDryRun") : t("plans.home.empty.bodyLive")}
+      emptyBody={rows.length ? t("plans.home.empty.adjust") : ""}
       onClearFilters={() => update(emptyFilters)}
       groups={groups}
       renderCards={(list) => <CardsView rows={list} base={base} search={location.search} q={filters.q} />}
@@ -110,6 +110,7 @@ function PlanFilters({ rows, filters, update }: { rows: PlanRow[]; filters: Filt
 
 function CardsView({ rows, base, search, q }: { rows: PlanRow[]; base: string; search: string; q: string }) {
   const { t } = useTranslation();
+  const expert = useExpert();
   return (
     <CardGrid>
       {rows.map((row) => (
@@ -118,15 +119,14 @@ function CardsView({ rows, base, search, q }: { rows: PlanRow[]; base: string; s
           to={`${base}/${encodeURIComponent(row.id)}${search}`}
           marks={<><ModeBadge mode={row.mode} /><StatusBadge state={row.sessionState === "UNAVAILABLE" ? "UNAVAILABLE" : row.workState} /></>}
           title={row.id}
-          description={row.procedureTitle}
-          id={t("plans.home.card.id", { procedure: row.procedure, version: row.procedureVersion, revision: row.revision })}
+          id={expert ? t("plans.home.card.id", { procedure: row.procedure, version: row.procedureVersion, revision: row.revision }) : row.procedure}
           note={matchReason(row, q)}
           facts={[
             { label: t("plans.home.card.environment"), value: <span className="mono">{row.environment}</span> },
             { label: t("plans.home.card.progress"), value: <ProgressBar satisfied={row.satisfied} total={row.total} /> },
           ]}
-          footerLeft={<Link to={`/procedures/${encodeURIComponent(row.procedure)}`} className="inline-flex items-center gap-1 text-label text-accent hover:underline"><Workflow size={12} /> {row.procedure}</Link>}
-          footerRight={<span>{relativeTime(row.createdAt)}</span>}
+          footerLeft={<Link to={`/procedures/${encodeURIComponent(row.procedure)}`} className="flex min-w-0 items-center gap-1 text-label text-accent hover:underline"><Workflow size={12} className="shrink-0" /><span className="truncate-1">{row.procedureTitle}</span></Link>}
+          footerRight={<span className="shrink-0">{relativeTime(row.createdAt)}</span>}
         />
       ))}
     </CardGrid>
@@ -135,6 +135,7 @@ function CardsView({ rows, base, search, q }: { rows: PlanRow[]; base: string; s
 
 function ListView({ rows, base, search, q }: { rows: PlanRow[]; base: string; search: string; q: string }) {
   const { t } = useTranslation();
+  const expert = useExpert();
   return (
     <ResourceTable
       columns={[
@@ -148,9 +149,9 @@ function ListView({ rows, base, search, q }: { rows: PlanRow[]; base: string; se
       rows={rows}
       rowKey={(row) => row.id}
       renderCells={(row) => [
-        <TitleCell key="t" to={`${base}/${encodeURIComponent(row.id)}${search}`} title={row.id} id={t("plans.home.list.id", { revision: row.revision, checks: plural(row.total, "check") })} note={matchReason(row, q)} />,
+        <TitleCell key="t" to={`${base}/${encodeURIComponent(row.id)}${search}`} title={row.id} id={expert ? t("plans.home.list.id", { revision: row.revision }) : ""} note={matchReason(row, q)} />,
         <StatusBadge key="m" state={row.sessionState === "UNAVAILABLE" ? "UNAVAILABLE" : row.workState} />,
-        <Link key="p" to={`/procedures/${encodeURIComponent(row.procedure)}`} className="text-body-lg text-accent hover:underline">{row.procedureTitle} <span className="mono text-faint">@{row.procedureVersion}</span></Link>,
+        <Link key="p" to={`/procedures/${encodeURIComponent(row.procedure)}`} className="text-body-lg text-accent hover:underline">{row.procedureTitle}{expert ? <span className="mono text-faint"> @{row.procedureVersion}</span> : null}</Link>,
         <span key="e" className="mono text-body">{row.environment}</span>,
         <ProgressBar key="g" satisfied={row.satisfied} total={row.total} />,
         <span key="d" className="text-body text-muted">{relativeTime(row.createdAt)}</span>,

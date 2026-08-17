@@ -1,0 +1,88 @@
+---
+title: "Les Opérations dans l'interface"
+summary: "Le catalogue, la page d'Opération et ses onglets — Aperçu, Source, Simuler, Exécuter, Contrat — et les actions enregistrer, dupliquer et supprimer."
+order: 6
+screen: /operations
+---
+
+L'entrée **Opérations** de la barre latérale ouvre le catalogue. Sélectionner une Opération ouvre sa page par-dessus le catalogue ; l'onglet et la sélection sont dans l'URL, donc une page peut être partagée et rouverte telle qu'elle était.
+
+## Le catalogue
+
+<Screenshot id="operations-catalog" caption="Le catalogue des Opérations, vue cartes." legend={{
+  "home.header": "Titre et nombre d'Opérations visibles ; Nouvelle opération ouvre une source vide.",
+  "home.filters": "Recherche (nom, titre, champs produits…) et facettes : famille, domaine, sorte d'étape, nature, usage par des Procédures, exécutable.",
+  "home.display": "Cartes ou liste ; regroupement par domaine ou famille ; tri par nom, version, étapes ou usage.",
+  "home.card": "Une Opération : sortes d'étapes, domaine, version, titre, description, ce qu'elle requiert et produit, quelles Procédures l'utilisent.",
+  "operations.runnable": "Si l'environnement courant peut l'exécuter (il déclare chaque valeur d'Environment dont l'Opération a besoin).",
+  "shell.environment": "L'environnement courant — le contexte d'Exécuter et des marques « exécutable ».",
+}} />
+
+La même liste apparaît dans la barre latérale sous **Opérations** : chaque élément ouvre l'Opération, et son menu propose **Dupliquer** et **Supprimer**. Supprimer est refusé pour une Opération qu'une Procédure publiée utilise.
+
+## La page d'Opération
+
+<Screenshot id="operation-overview" caption="Une Opération, onglet Aperçu." legend={{
+  "overlay.header": "Version, état de compilation, marque « exécutable », titre. En mode expert l'identifiant est répété ici.",
+  "overlay.actions": "Dupliquer · Simuler · Exécuter · Modifier la source · Supprimer (quand inutilisée) · Enregistrer (quand la source compile et a changé).",
+  "overlay.tabs": "Aperçu, Source, Simuler, Exécuter — et Contrat JSON en mode expert.",
+  "overlay.status": "L'état de compilation : le diagnostic et sa ligne, ou le nombre d'étapes et de champs produits.",
+  "operation.summary": "Description, puis Requiert (Input et Environment), Fait (les étapes en mots), Produit (les champs et leurs énumérations).",
+  "overlay.inspector": "Utilisée par : les Procédures qui embarquent cette Opération. En mode expert : Interface (les trois tables) et Étapes. Le panneau se replie avec le bouton à droite des onglets.",
+}} />
+
+### Aperçu
+
+L'Opération en mots : sa description, ce qu'elle requiert, ce qu'elle fait étape par étape, ce qu'elle produit. En mode expert deux blocs de plus s'ouvrent : le contrat de chaque étape (exécutable et arguments, chemin, URL, sorties acceptées) et la projection.
+
+### Source
+
+<Screenshot id="operation-source" caption="Onglet Source : l'éditeur avec compilation en direct." legend={{
+  "editor": "La source Gherkin. Compilée à chaque changement ; un diagnostic souligne sa ligne et est répété dans la ligne d'état.",
+  "editor.format": "Formater la source : redistribue les étapes longues sur des lignes de continuation (aussi Shift+Alt+F).",
+  "overlay.status": "Compile / ne compile pas, avec le message et la ligne.",
+}} />
+
+- L'éditeur connaît le langage : coloration, repliement, complétions pour chaque phrase et table (⌃Espace), et le modèle **Operation feature**.
+- Les lignes ne se replient jamais ; une étape longue est plutôt formatée sur des lignes de continuation.
+- **Enregistrer** (ou ⌘S) écrit `<operation>.feature` dans le catalogue du runtime et le recharge. Enregistrer n'est disponible que quand la source compile et diffère de la copie du catalogue. Une source qui renomme l'Opération s'enregistre sous le nouveau nom ; l'ancien fichier reste jusqu'à sa suppression.
+
+### Simuler
+
+<Screenshot id="operation-simulate" caption="Onglet Simuler : résultats d'étapes saisis à la main, projection évaluée pour de vrai." legend={{
+  "simulation.input": "Les valeurs d'Input, un champ par Input déclaré, validées à la saisie.",
+  "simulation.steps": "Un bloc par étape, avec les champs de sa forme de résultat (code de sortie et sorties, contenu de fichier, statut et corps HTTP).",
+  "simulation.run": "Lancer la simulation — activé quand chaque champ requis est rempli.",
+  "simulation.result": "Les champs produits, typés, et le JSON brut.",
+}} />
+
+Simuler **n'exécute rien** : cela évalue la projection de la source courante sur les résultats d'étapes que vous fournissez, et valide le résultat contre les champs produits. Utilisez-le pour vérifier une projection avant d'exécuter, ou pour voir ce qu'une Opération produirait dans un cas difficile à reproduire (un build en échec, un 404). Le mode expert ajoute une vue JSON de l'entrée entière de la simulation.
+
+### Exécuter
+
+<Screenshot id="operation-run" caption="Onglet Exécuter : une exécution sur l'environnement courant." legend={{
+  "run.environment": "L'Environnement de l'exécution : le courant quand il déclare chaque valeur requise, sinon un compatible à choisir — avec les valeurs qu'il fournit.",
+  "run.input": "L'Input, un champ par Input déclaré.",
+  "run.start": "Exécuter pour de vrai : le runtime exécute l'Opération avec son Runner et diffuse la progression. Arrêter annule une exécution en cours.",
+  "run.recent": "Exécutions récentes de cette Opération, avec leur état.",
+  "run.report": "Le rapport de l'exécution sélectionnée : chaque étape avec son issue et sa sortie, puis les valeurs produites.",
+}} />
+
+Exécuter exécute l'Opération sur l'Environnement choisi **hors de tout Plan** : pas de Check, pas de Facts, pas de verdict — un moyen d'essayer une Opération contre un système réel. Le rapport montre chaque étape (commande ou requête, sortie ou statut, résultat) et les champs produits, ou le point où l'Opération a été interrompue. Une source non enregistrée peut être exécutée ; la page avertit avant de démarrer.
+
+<Callout kind="note" title="Exécutable, ou non">
+  Une Opération est exécutable sur un Environnement quand l'Environnement déclare chaque valeur de sa table `Environment`. Quand l'environnement courant ne le fait pas, l'onglet Exécuter dit quelles valeurs manquent et renvoie vers cet Environnement ; le catalogue et l'écran Environnement montrent la même information sous forme de marques ✓ / ✗.
+</Callout>
+
+### Contrat JSON (expert)
+
+L'Opération compilée : identité, schémas de l'interface, étapes, projection, classification. C'est ce qu'une Procédure embarque et ce que le Runner reçoit.
+
+## Créer, dupliquer, supprimer
+
+<Steps>
+  <Step title="Nouvelle opération">Depuis l'en-tête du catalogue ou la barre latérale. L'onglet Source s'ouvre sur un modèle ; la ligne d'état montre le premier diagnostic jusqu'à ce que la source compile.</Step>
+  <Step title="Dupliquer">Ouvre une nouvelle source pré-remplie avec la courante ; changez le nom `@operation` avant d'enregistrer.</Step>
+  <Step title="Enregistrer">Activé dès que la source compile. Écrit le fichier dans le catalogue ; le catalogue se recharge ; la page se rouvre sur l'Opération enregistrée.</Step>
+  <Step title="Supprimer">Retire le fichier du catalogue. Refusé tant qu'une Procédure publiée utilise l'Opération ; les Procédures gardent leur copie embarquée dans tous les cas.</Step>
+</Steps>

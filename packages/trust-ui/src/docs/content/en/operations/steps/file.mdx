@@ -1,0 +1,90 @@
+---
+title: "File step"
+summary: "Read one file at a fixed relative path below an Environment directory, as text or as JSON."
+order: 2
+---
+
+```gherkin fragment title="Sentence (no table, no doc string)"
+    When File "<name>" reads "<relative/path>" as Text from Environment "<directory>"
+    And  File "<name>" reads "<relative/path>" as JSON from Environment "<directory>" and Input "<input>"
+```
+
+## The sentence
+
+| Part | Rule |
+| --- | --- |
+| `"<name>"` | lower camel case, unique in the Operation |
+| `"<relative/path>"` | a **canonical relative path**: no leading `/`, no drive letter, no `\`, no empty, `.` or `..` segment. Fixed in the source — a path never comes from an Input |
+| `as Text` / `as JSON` | how the content is read: an opaque string, or a parsed JSON value the projection can traverse |
+| `from Environment "<directory>"` | required; the Environment value must be of type `directory` |
+| `and Input "<input>"` | optional; narrows the directory to one project below it, with the same rule as Shell: one string naming a direct sub-directory |
+
+A File step accepts neither a data table nor a doc string.
+
+## Result
+
+| Field | Type |
+| --- | --- |
+| `steps.<name>.relativePath` | string — the path that was read |
+| `steps.<name>.content` | string for `Text`; the parsed value for `JSON` |
+
+A `Text` content is opaque: `steps.license.content` may be copied into a field, not traversed. A `JSON` content is a value: `steps.manifest.content.name`, `steps.manifest.content.scripts.build` are legal paths.
+
+## Examples
+
+```gherkin operation id="file.package-read" title="file.package-read — a JSON file below the workspace root"
+# language: en
+@trust-dsl:1 @operation:file.package-read @version:1.0.0
+Feature: Read package name
+
+  Background: Operation interface
+    Given Environment
+      | name          | type      |
+      | workspaceRoot | directory |
+    And Produced fields
+      | field | type   | cardinality | domain |
+      | name  | string | one         | any    |
+
+  Scenario: Run
+    When File "manifest" reads "package.json" as JSON from Environment "workspaceRoot"
+    Then Produce with JSONata
+      """
+      { "name": steps.manifest.content.name }
+      """
+```
+
+```gherkin operation id="file.license-read" title="file.license-read — a text file"
+# language: en
+@trust-dsl:1 @operation:file.license-read @version:1.0.0
+Feature: Read license text
+
+  Background: Operation interface
+    Given Environment
+      | name          | type      |
+      | workspaceRoot | directory |
+    And Produced fields
+      | field | type   | cardinality | domain |
+      | text  | string | one         | any    |
+
+  Scenario: Run
+    When File "license" reads "LICENSE" as Text from Environment "workspaceRoot"
+    Then Produce with JSONata
+      """
+      { "text": steps.license.content }
+      """
+```
+
+<Callout kind="note" title="When the file is missing">
+  A file that cannot be read (absent, unreadable, or not valid JSON when read `as JSON`) is an error, not an observation: the Operation is interrupted before producing fields. If "the file may be absent" is itself the observation you need, read the directory with a Shell step whose exit codes you accept, and let the projection decide.
+</Callout>
+
+<Details title="Diagnostics specific to File steps" expert>
+| Message | Cause |
+| --- | --- |
+| `File "x" requires Environment "e" to be a directory` | the root Environment is a `url` |
+| `File "x" uses undeclared Environment "e"` | the name is not in the Environment table |
+| `File path "p" must be a canonical relative path` | absolute path, drive letter, backslash, `.` or `..` segment |
+| `File "x" narrows its directory with unknown Input "i"` / `… directory Input "i" must be one string` | `and Input` rules |
+| `File does not accept a table or DocString` · `File cannot read after Produce` | shape and ordering |
+| `Produce cannot traverse Text File content` · `Produce cannot traverse File relativePath` | a path goes below an opaque value in the projection |
+</Details>

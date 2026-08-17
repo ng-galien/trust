@@ -1,0 +1,45 @@
+---
+title: "Rehearsing with a dry-run"
+summary: "The rehearsal cockpit — declare the context, pick a Check, enter the values the Operation would produce, submit as the agent, read the verdict and the cascade."
+order: 3
+screen: /dry-runs
+---
+
+A dry-run is a Plan whose Facts come from the operator. Same Procedure, same Checks, same admission and qualification, same cascade, same history — nothing external runs, no Environment value is delegated. It is how a Procedure is rehearsed before an agent runs it.
+
+<Screenshot id="dryrun-cockpit" caption="A dry-run with its rehearsal cockpit." legend={{
+  "cockpit": "The cockpit, docked beside every tab of the Plan; resizable, closable (Cockpit / Rehearse in the tab bar).",
+  "cockpit.todo": "To do now: the actionable Checks — pick one. Done lists the satisfied Checks (pick one to observe it again); Waiting the blocked ones.",
+  "cockpit.workbench": "Values the operation would produce: one field per produced field of the Check's Operation, seeded with what the Check last observed. Fill passing / Fill failing propose values that satisfy every expectation, or break the first.",
+  "cockpit.submit": "Submit as the agent: admission, Facts, verdict — the real sequence.",
+}} />
+
+## The steps of the cockpit
+
+<Steps>
+  <Step title="Declare the context (when the Procedure has agent declarations)">One field per declared role, scoped by parent value when the role is `for each` a parent; **Apply declarations** replaces the whole set and creates a new revision. Until the missing declarations are applied, the Checks that need them are not actionable.</Step>
+  <Step title="Run the Checks">Three lists: **Done**, **To do now** (actionable — pick one), **Waiting for a prerequisite**. The selection is shared with the checklist and the graph (`?sel=`).</Step>
+  <Step title="Rehearse the selected Check">The workbench: in expert mode the Check's contract (Operation, target, inputs, success reason, expectations); the form of the produced fields; **Fill passing** / **Fill failing**; **Submit as the agent**.</Step>
+  <Step title="Read the outcome">The verdict and its reason; what became satisfied, what was reopened below, what is unchanged. A refused admission says why (a Check no longer current, a prerequisite open, no Session).</Step>
+</Steps>
+
+## What Submit does
+
+Exactly what the Runner does on a live Plan, with the operator's values instead of an execution: **admit** the Check (TRUST checks it is current, actionable, its Session open), **report the Facts** (the batch must be complete: every produced field the expectations or materializations need), **finalize** (TRUST qualifies, records, cascades). The Plan moves to its next revision; the checklist, the graph and the history update.
+
+## Observing a satisfied Check again
+
+Only a dry-run may re-observe a satisfied Check: pick it in **Done** — the workbench title becomes *Observe the selected Check again*. New Facts replace its verdict and reopen every Check depending on it; the previous verdict stays in the history. On a live Plan, a satisfied Check is not admitted again.
+
+## Reset and delete
+
+- **Reset** erases the dry-run's revisions, attempts and verdicts, then engages it again with the same Procedure, Environment and root inputs, from revision 1.
+- **Delete** erases the dry-run (its revisions, attempts, verdicts, sessions). Facts are content-addressed history and stay stored, but nothing of the erased Plan is reachable.
+
+<Callout kind="rule">
+  A dry-run refuses Runner Facts and a live Plan refuses operator Facts: the mode is part of the Plan's identity, and the channel of the Facts follows it.
+</Callout>
+
+<Details title="The cockpit's calls" expert>
+`check.attempt.admit { attemptKey: "rehearse-<check>-<time>", checkUri, reobserve? }` → grant (`environment: {}` on a dry-run) or refusal (`check-not-actionable`, `session-unavailable`, `check-not-found`, `attempt-key-conflict`); `check.attempt.facts { attemptKey, attemptHandle, checkUri, recordedAt, facts: [{ kind: <operation>, observedAt, values }] }` → accepted or `fact-batch-rejected`; `check.attempt.finalize { attemptHandle }` → `{ verdict, reasonCode: "check-qualified" | "predicate-not-satisfied", reason, checklistDelta: { newlySatisfied, newlyOpened, unchanged } }`. `plan.remove` erases a dry-run; a live Plan is refused (`plan-conflict`).
+</Details>

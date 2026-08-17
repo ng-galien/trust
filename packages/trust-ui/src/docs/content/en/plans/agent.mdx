@@ -1,0 +1,58 @@
+---
+title: "What the agent does"
+summary: "The skill, the Runner, what the agent reads and receives, why an admission can be refused, how the agent recovers."
+order: 4
+---
+
+An agent follows a live Plan with the TRUST **skill**: an instruction file, the **Runner** executable, and a reference for results. It reads the Plan through the runtime's MCP tools and hands each Check to the Runner. The principle is on [Delegation](/docs/principles/delegation); this page is the practice.
+
+## The loop
+
+<Steps>
+  <Step title="Read the Plan">`trust_plan_read` with any Check URI of the Plan: current revision, progress, the actionable Checks (name, URI, Operation, target, inputs), the missing declarations, the blocked Checks with why, the latest accepted attempt.</Step>
+  <Step title="Declare when asked">If the Plan lists missing declarations, `trust_plan_declarations_replace` with the Plan, the revision just read and the whole set of declared values. A stale revision is refused; read again.</Step>
+  <Step title="Execute one Check">Give the Runner exactly the URI TRUST supplied: `node <skill>/scripts/run.js 'trust://…' --json` (or the Runner's own MCP tool `trust_check_run`). Do not reconstruct the Operation, do not run its commands, do not fabricate Facts.</Step>
+  <Step title="Read the result">`COMPLETED` + `VALIDATED`: the Check is satisfied. `COMPLETED` + `NOT_VALIDATED`: the Check stays open — address the reason. `REFUSED`: nothing ran — follow the reason. An error: nothing was established — read the Check, retry is normal.</Step>
+  <Step title="Read the Plan again">A verdict may have opened, reopened or removed Checks. Pick the next actionable one.</Step>
+</Steps>
+
+## What the Runner does with a Check
+
+1. Asks TRUST for **admission** with a fresh attempt key. A refusal ends here.
+2. Receives the **grant**: the compiled Operation, the admitted Input resolved from the Plan context, the Environment values.
+3. Runs the Operation's steps and evaluates its projection.
+4. Reports **one Fact** — the produced fields — to TRUST.
+5. Asks TRUST to **finalize** the attempt and returns the verdict, its reason and the checklist delta.
+
+The Runner's report also carries the raw step outputs (`actionOutcome`) for the agent's information; they never take part in qualification.
+
+## Why an admission is refused
+
+| Reason | Meaning | What the agent does |
+| --- | --- | --- |
+| the Check is unknown or not current | the Plan moved to a new revision, or the URI is wrong | read the Plan again, pick a current Check |
+| the Check is already satisfied | nothing to do | pick another Check |
+| the Check dependencies are not satisfied | a prerequisite Scenario or referenced Check is open | execute the prerequisites first |
+| the Plan has no active Session | closed or expired | the operator engages the Plan again |
+| the attempt key is bound to another Check, finalized or expired | a reused key | use a fresh key |
+
+## Runner results at a glance
+
+| Status | Verdict | Exit code | Meaning |
+| --- | --- | --- | --- |
+| `COMPLETED` | `VALIDATED` | 0 | Operation ran, Facts accepted, Check satisfied |
+| `COMPLETED` | `NOT_VALIDATED` | 4 | Operation ran, Facts accepted, expectations not met (reason) |
+| `REFUSED` | — | 3 | nothing ran (reason code and reason) |
+| error | — | 1 | admission, execution, report or finalisation interrupted; nothing established |
+
+<Callout kind="rule">
+  A retry after an error is normal: an incomplete Fact batch was rejected whole and left the Check unchanged; the Runner may execute the Operation again. What cannot be replayed safely after an unknown outcome is the operator's call, not the Runner's.
+</Callout>
+
+## Setup
+
+The skill is packaged with `npm run package:skill` (into `packages/trust-runner/dist/skill/trust`): `SKILL.md`, `references/results.md`, `agents/openai.yaml`, `scripts/run.js`, `scripts/mcp-stdio.js`. The Runner reads `TRUST_RPC_ENDPOINT` (default `http://127.0.0.1:4318/rpc`) and `TRUST_OTLP_ENDPOINT` (default `http://127.0.0.1:4318/v1/traces`); every execution value comes from the Environment returned at admission — nothing is injected into the skill. See [Connect an agent](/docs/guides/connect-an-agent).
+
+<Details title="Contracts and channels" expert>
+MCP (`POST /mcp`, server `trust-runtime`): `trust_plan_read`, `trust_check_read`, `trust_procedure_read` (paged), `trust_session_read`, `trust_plan_engage` (live only), `trust_plan_declarations_replace` — all take a `checkUri` or a Plan; results are text blocks. Runner ↔ runtime: `check.attempt.admit` (`trust.check-admission-request@1`, `attemptKey`, `checkUri`) → `ADMITTED` (`attemptHandle`, `operation`, `actionInput`, `environment`, `expiresAt`) or `REFUSED` (`reasonCode` ∈ `check-not-found`, `check-not-actionable`, `session-unavailable`, `attempt-key-conflict`, `attempt-finalized`, `attempt-expired`); Facts over OTLP `POST /v1/traces` — one span `trust.runner.facts` with events `trust.runner.fact` (`trust.fact.kind`, `trust.fact.observed_at`, `trust.fact.values`); `check.attempt.finalize { attemptHandle }` → verdict, `reasonCode` (`check-qualified` / `predicate-not-satisfied`), reason, `checklistDelta`. Admission and finalization are idempotent per attempt key / handle. The grant hands the Runner the values of the Environment; credentials are not delegated.
+</Details>

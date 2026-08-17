@@ -1,0 +1,32 @@
+---
+title: "Historique des Checks"
+summary: "Chaque verdict jamais calculé — à travers les Plans et les dry-runs — avec sa raison, ses Facts et les Checks qu'il a rouverts ; et les révisions d'un Plan."
+order: 5
+screen: /history
+---
+
+Chaque exécution acceptée laisse un **snapshot** : le Check, ses Facts, le verdict, la raison, et le delta de checklist qu'il a causé (nouvellement satisfaits, rouverts, inchangés). Les snapshots sont immuables et dédupliqués ; l'historique est la piste d'audit de ce qui a été établi, quand, à partir de quoi.
+
+<Screenshot id="history" caption="Historique des Checks." legend={{
+  "home.filters": "Facettes appliquées par le runtime : Verdict, Mode (plans en direct / dry-runs), Procédure, Plan ; la recherche restreint les lignes chargées.",
+  "home.display": "Grouper par Plan ou par jour ; les plus récents d'abord.",
+  "home.content": "Une ligne par verdict : quand, verdict, Check (et son Opération), Plan (et sa Procédure, son mode), raison et Checks rouverts, nombre de Facts. Le lien du Plan ouvre le Plan sur ce Check. Charger plus ajoute des lignes plus anciennes.",
+}} />
+
+## Où l'historique apparaît aussi
+
+- **Vue d'ensemble** — les derniers verdicts.
+- **Page du Plan → Historique** — le dernier changement de révision (ajouté, retiré, satisfait, rouvert) et, en mode expert, les révisions.
+- **Détail du Check** (page du Plan) — les verdicts d'un Check, les plus récents d'abord ; en mode expert, ses tentatives.
+
+## Révisions
+
+Une révision de Plan est créée par une exécution acceptée (un verdict) ou par une déclaration de l'agent. Une révision peut ajouter des Checks (une collection déclarée expanse des Checks `on each`), retirer des Checks (leur contexte a disparu), en satisfaire un, rouvrir des dépendants. Les révisions sont numérotées à partir de 1 et jamais réécrites.
+
+<Callout kind="rule">
+  Supprimer un dry-run efface ses révisions et ses verdicts ; un Plan en direct n'est jamais supprimé. Les Facts eux-mêmes sont adressés par contenu et conservés.
+</Callout>
+
+<Details title="Ce qu'est une ligne" expert>
+`history.list { filter?: { plan, procedure, mode, verdict, since, until }, cursor?, limit? }` → snapshots, les plus récents d'abord : `snapshotId`, `calculatedAt`, `plan`, `mode`, `procedure`, `checkUri`, `checkName`, `target`, `operation`, `attemptHandle`, `verdict`, `reasonCode`, `reason`, `factCount`, `checklistDelta`. Les curseurs sont signés et liés à leur filtre. En mode expert, la ligne affiche `reasonCode · attempt <handle>`.
+</Details>

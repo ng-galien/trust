@@ -1,0 +1,96 @@
+---
+title: "HTTP steps"
+summary: "GET a URL from the Environment (optionally one Input as path segment), or POST the whole typed Input as JSON."
+order: 3
+---
+
+```gherkin fragment title="The three sentences (no table, no doc string)"
+    When HTTP "<name>" gets Environment "<url>" as Text
+    And  HTTP "<name>" gets Environment "<url>" appending Input "<input>" as JSON
+    And  HTTP "<name>" posts Input as JSON to Environment "<url>" and reads JSON
+```
+
+## GET
+
+| Part | Rule |
+| --- | --- |
+| `"<name>"` | lower camel case, unique in the Operation |
+| `gets Environment "<url>"` | required; the Environment value must be of type `url`; used as-is |
+| `appending Input "<input>"` | optional; the value of one Input, URL-encoded, appended as **one path segment** below the URL. The Input must be one string |
+| `as Text` / `as JSON` | how the body is read: an opaque string, or a parsed JSON value the projection can traverse |
+
+There is no authored header, query string or free URL interpolation. `https://jira.example/issues` + `appending Input "issue"` with `issue = "PAY-12"` requests `https://jira.example/issues/PAY-12`.
+
+```gherkin fragment
+    When HTTP "issue" gets Environment "jiraIssueUrl" appending Input "issue" as JSON
+    Then Produce with JSONata
+      """
+      { "issue": input.issue, "summary": steps.issue.body.summary, "workflowStatus": steps.issue.body.workflowStatus }
+      """
+```
+
+## POST
+
+| Part | Rule |
+| --- | --- |
+| `posts Input as JSON` | the **entire** typed Input object is the request body (`content-type: application/json`). The Operation must declare at least one Input |
+| `to Environment "<url>"` | required; type `url` |
+| `and reads JSON` | the response body is parsed as JSON. There is no Text variant and no `appending` for POST |
+
+```gherkin operation id="healthcare.admission-record" title="healthcare.admission-record — POST the Input, read the answer"
+# language: en
+@trust-dsl:1 @operation:healthcare.admission-record @version:1.0.0
+Feature: Record one simulated patient admission
+
+  Background: Operation interface
+    Given Environment
+      | name         | type |
+      | admissionUrl | url  |
+    And Input
+      | input              | type      | cardinality |
+      | patient            | reference | one         |
+      | admission          | reference | one         |
+      | documents          | reference | many        |
+      | documentRecordedAt | instant   | many        |
+    And Produced fields
+      | field           | type      | cardinality | domain                      |
+      | admission       | reference | one         | any                         |
+      | admissionStatus | string    | one         | enum "recorded", "rejected" |
+      | admittedAt      | instant   | one         | any                         |
+
+  Scenario: Run
+    When HTTP "admission" posts Input as JSON to Environment "admissionUrl" and reads JSON
+    Then Produce with JSONata
+      """
+      {
+        "admission": input.admission,
+        "admissionStatus": steps.admission.body.admissionStatus,
+        "admittedAt": steps.admission.body.admittedAt
+      }
+      """
+```
+
+## Result
+
+| Field | Type |
+| --- | --- |
+| `steps.<name>.status` | number — the HTTP status code |
+| `steps.<name>.headers` | object of strings (may be copied whole, not traversed) |
+| `steps.<name>.body` | string for `Text`; the parsed value for `JSON` |
+
+Any status is a result: a `404` does not interrupt the Operation — the projection reads `steps.x.status` and decides. What interrupts is a transport failure (no connection, timeout, invalid JSON when read `as JSON`).
+
+## Authentication
+
+There is no authentication in the sentence. The Runner sends the request with its own outbound configuration; the URL itself must carry no credentials (refused at admission). Environments carry credential *references* for that purpose — see [Environments and credentials](/docs/principles/environments).
+
+<Details title="Diagnostics specific to HTTP steps" expert>
+| Message | Cause |
+| --- | --- |
+| `HTTP "x" requires Environment "e" to be a url` | the Environment is a `directory` |
+| `HTTP "x" uses undeclared Environment "e"` | the name is not in the Environment table |
+| `HTTP "x" path Input "i" must be one string` | `appending` an undeclared, `number` or `many` Input |
+| `HTTP "x" cannot post an empty Input` | POST without any declared Input |
+| `HTTP does not accept a table or DocString` · `HTTP cannot run after Produce` · `HTTP POST must precede Produce and accepts no table or DocString` | shape and ordering |
+| `Produce cannot traverse Text HTTP body` · `Produce cannot traverse HTTP result "status"` | a path goes below an opaque value in the projection |
+</Details>

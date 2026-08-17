@@ -25,9 +25,10 @@ import { Link } from "react-router";
 
 import { i18next } from "../../i18n/index.js";
 import { cx, plural } from "../../lib/format.js";
-import { useResolvedTheme } from "../../lib/preferences.js";
+import { useExpert, useResolvedTheme } from "../../lib/preferences.js";
 import type { CompiledProcedure, PlanCheck, ProcedureCheck } from "../../types.js";
 import { IconButton } from "../../ui/button.js";
+import { Expert } from "../../ui/expert.js";
 import { useOrigin } from "../shared/origin.js";
 import { consumersOf, type DataLink, dataLinks, describeProvenance, downstreamOf, orderPrerequisites, providersOf, roleProvenance, upstreamOf } from "./dependencies.js";
 import { orderedScenarios } from "./model.js";
@@ -155,7 +156,7 @@ export function ProcedureGraph({ procedure, checks = [], selected, onSelect }: P
 
   return (
     <div className="flex h-full w-full bg-bg" aria-label={t("procedures.graph.ariaLabel", { title: procedure.title })}>
-      <div className="relative min-w-0 flex-1">
+      <div className="relative min-w-0 flex-1" data-doc="graph.canvas">
       <ReactFlow
         key={procedure.definitionDigest}
         nodes={nodes}
@@ -634,6 +635,7 @@ function ScenarioNode({ data }: NodeProps<Node<ScenarioNodeData>>) {
         data.emphasis === "dim" && "opacity-35",
       )}
       style={{ width: NODE_WIDTH }}
+      data-doc="graph.scenario"
     >
       <Handle id="order-in" type="target" position={Position.Top} className="!h-2 !w-2 !border-0 !bg-border-strong" />
       <button
@@ -669,7 +671,7 @@ function ScenarioNode({ data }: NodeProps<Node<ScenarioNodeData>>) {
                 check.highlight && "outline-2 -outline-offset-2 outline-accent",
               )}
               style={{ minHeight: CHECK_HEIGHT }}
-              title={check.emphasis === "downstream" ? t("procedures.graph.node.resetByVerdict") : check.emphasis === "upstream" ? t("procedures.graph.node.neededBySelected") : t("procedures.graph.node.selectCheck")}
+              title={t("procedures.graph.node.selectCheck")}
             >
               <span className="mt-0.5 shrink-0">
                 {check.state === "satisfied" ? <CheckCircle2 size={13} className="text-success" />
@@ -699,7 +701,7 @@ function ScenarioNode({ data }: NodeProps<Node<ScenarioNodeData>>) {
                 </span>
                 {check.establishes ? <span className="block truncate text-meta leading-snug text-muted" title={check.establishes}>“{check.establishes}”</span> : null}
                 {check.instances.length ? (
-                  <span className="mt-1 flex flex-wrap items-center gap-1" title={t("procedures.graph.node.instancesHint")}>
+                  <span className="mt-1 flex flex-wrap items-center gap-1">
                     <span className="text-micro text-faint">{t("procedures.graph.node.satisfiedRatio", { satisfied: String(check.instances.filter((instance) => instance.state === "satisfied").length), total: String(check.instances.length) })}</span>
                     {check.instances.map((instance) => (
                       <span
@@ -834,10 +836,11 @@ function orthogonalPath(points: Array<[number, number]>, radius: number): string
   return `${path} L ${lx} ${ly}`;
 }
 
-/** Chip on an edge; follows the edge emphasis. Hovering it (or the edge) lights the whole route and unfolds the reading of the link;
+/** Chip on an edge; follows the edge emphasis. Hovering it (or the edge) lights the whole route (and, for experts, unfolds the DSL reading of the link);
     clicking selects the edge. */
 function EdgeLabel({ x, y, tone, kind, edge, children }: { x: number; y: number; tone: Emphasis; kind: "order" | "data"; edge: EdgeCommon | undefined; children: ReactNode }) {
   const { t } = useTranslation();
+  const expert = useExpert();
   const lit = edge?.hovered || edge?.focus;
   return (
     <EdgeLabelRenderer>
@@ -862,7 +865,7 @@ function EdgeLabel({ x, y, tone, kind, edge, children }: { x: number; y: number;
         >
           {children}
         </button>
-        {edge?.hovered && edge.explain ? (
+        {expert && edge?.hovered && edge.explain ? (
           <div className="pointer-events-none absolute left-1/2 top-full mt-1.5 w-[250px] -translate-x-1/2 rounded-(--radius-2) border border-border bg-surface px-2 py-1.5 text-left font-sans text-meta leading-snug text-text shadow-(--shadow-2)">
             {edge.explain}
           </div>
@@ -923,9 +926,9 @@ function KeepCentered() {
 function Legend({ selection }: { selection: boolean }) {
   const { t } = useTranslation();
   return (
-    <div className="pointer-events-none absolute left-3 top-3 z-10 flex items-center gap-3 rounded-(--radius-2) border border-border bg-surface/95 px-2 py-1 text-meta text-muted shadow-(--shadow-1)">
-      <span className="inline-flex items-center gap-1" title={t("procedures.graph.legend.orderHint")}><span className="inline-block h-0 w-4 border-t-2 border-border-strong" />{t("procedures.graph.legend.order")}</span>
-      <span className="inline-flex items-center gap-1 text-graph-data" title={t("procedures.graph.legend.dataHint")}><span className="inline-block h-0 w-4 border-t-2 border-dashed border-graph-data" />{t("procedures.graph.legend.data")}</span>
+    <div className="pointer-events-none absolute left-3 top-3 z-10 flex items-center gap-3 rounded-(--radius-2) border border-border bg-surface/95 px-2 py-1 text-meta text-muted shadow-(--shadow-1)" data-doc="graph.legend">
+      <span className="inline-flex items-center gap-1"><span className="inline-block h-0 w-4 border-t-2 border-border-strong" />{t("procedures.graph.legend.order")}</span>
+      <span className="inline-flex items-center gap-1 text-graph-data"><span className="inline-block h-0 w-4 border-t-2 border-dashed border-graph-data" />{t("procedures.graph.legend.data")}</span>
       {selection ? (
         <>
           <span className="inline-flex items-center gap-1"><span className="inline-block h-2 w-2 rounded-sm bg-info" /> {t("procedures.graph.legend.needed")}</span>
@@ -962,7 +965,7 @@ function SelectionPanel({ procedure, selected, onSelect }: { procedure: Compiled
   const needs = sortChecks(upstreamOf(procedure, seeds));
 
   return (
-    <aside className="flex w-[300px] shrink-0 flex-col overflow-hidden border-l border-border bg-surface">
+    <aside className="flex w-[300px] shrink-0 flex-col overflow-hidden border-l border-border bg-surface" data-doc="graph.panel">
       <div className="flex items-start gap-2 border-b border-border px-3 py-2">
         <div className="min-w-0 flex-1">
           <span className="kicker">{check ? t("procedures.graph.panel.check") : scenario ? t("procedures.graph.panel.scenario") : edge?.kind === "data" ? t("procedures.graph.panel.dataLink") : t("procedures.graph.panel.orderLink")}</span>
@@ -980,17 +983,18 @@ function SelectionPanel({ procedure, selected, onSelect }: { procedure: Compiled
       <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-3 text-body [&>*]:shrink-0">
         {check ? <CheckDetails procedure={procedure} check={check} origin={origin} CheckLink={CheckLink} /> : null}
         {edge ? (
-          <PanelSection title={t("procedures.graph.panel.reading")}>
-            <p className="text-label leading-snug">
-              {edge.kind === "data"
-                ? readDataEdge(edge.link, downstreamOf(procedure, [edge.from]).size - 1)
-                : readOrderEdge(scenarioTitle(edge.from), scenarioTitle(edge.to), downstreamOf(procedure, procedure.scenarios.find((entry) => entry.slug === edge.from)?.checks ?? []).size)}
-            </p>
-            <p className="mt-1 text-caption text-muted">{t("procedures.graph.panel.arrowExplain")}</p>
-            <p className="mt-1 text-caption">
-              {edge.kind === "data" ? <>{t("procedures.graph.panel.goTo")} <CheckLink name={edge.from} /> · <CheckLink name={edge.to} /></> : null}
-            </p>
-          </PanelSection>
+          <>
+            <Expert>
+              <PanelSection title={t("procedures.graph.panel.reading")}>
+                <p className="text-label leading-snug">
+                  {edge.kind === "data"
+                    ? readDataEdge(edge.link, downstreamOf(procedure, [edge.from]).size - 1)
+                    : readOrderEdge(scenarioTitle(edge.from), scenarioTitle(edge.to), downstreamOf(procedure, procedure.scenarios.find((entry) => entry.slug === edge.from)?.checks ?? []).size)}
+                </p>
+              </PanelSection>
+            </Expert>
+            {edge.kind === "data" ? <p className="text-caption">{t("procedures.graph.panel.goTo")} <CheckLink name={edge.from} /> · <CheckLink name={edge.to} /></p> : null}
+          </>
         ) : null}
         {scenario ? (
           <PanelSection title={t("procedures.graph.panel.checks")} count={scenario.checks.length}>
@@ -998,11 +1002,11 @@ function SelectionPanel({ procedure, selected, onSelect }: { procedure: Compiled
             {scenario.dependencies.length ? <p className="mt-1 text-caption text-muted">{t("procedures.graph.panel.after", { list: scenario.dependencies.map(scenarioTitle).join(", ") })}</p> : null}
           </PanelSection>
         ) : null}
-        <PanelSection title={t("procedures.graph.panel.needs")} count={needs.length} icon={<ArrowUpFromLine size={11} className="text-info" />} hint={t("procedures.graph.panel.needsHint")}>
-          {needs.length === 0 ? <p className="text-caption text-muted">{t("procedures.graph.panel.needsNothing")}</p> : <ul className="flex flex-col gap-0.5">{needs.map((name) => <li key={name}><CheckLink name={name} /></li>)}</ul>}
+        <PanelSection title={t("procedures.graph.panel.needs")} count={needs.length} icon={<ArrowUpFromLine size={11} className="text-info" />}>
+          {needs.length === 0 ? <p className="text-caption text-muted">{t("procedures.graph.panel.nothing")}</p> : <ul className="flex flex-col gap-0.5">{needs.map((name) => <li key={name}><CheckLink name={name} /></li>)}</ul>}
         </PanelSection>
-        <PanelSection title={t("procedures.graph.panel.resets")} count={resets.length} icon={<RotateCcw size={11} className="text-graph-data" />} hint={t("procedures.graph.panel.resetsHint", { subject: check ? t("procedures.graph.panel.subjectThisCheck") : edge ? (edge.kind === "data" ? t("procedures.graph.panel.subjectQuoted", { name: edge.from }) : t("procedures.graph.panel.subjectAnyCheckOf", { title: scenarioTitle(edge.from) })) : t("procedures.graph.panel.subjectAnyCheckOfThisScenario") })}>
-          {resets.length === 0 ? <p className="text-caption text-muted">{t("procedures.graph.panel.resetsNothing")}</p> : (
+        <PanelSection title={t("procedures.graph.panel.resets")} count={resets.length} icon={<RotateCcw size={11} className="text-graph-data" />}>
+          {resets.length === 0 ? <p className="text-caption text-muted">{t("procedures.graph.panel.nothing")}</p> : (
             <ul className="flex flex-col gap-0.5">
               {resets.map((name) => (
                 <li key={name} className="flex items-baseline justify-between gap-2">
@@ -1018,6 +1022,8 @@ function SelectionPanel({ procedure, selected, onSelect }: { procedure: Compiled
   );
 }
 
+/** What the selected Check runs, on what, and what it must establish; the bindings, materialized values,
+    provenance and direct dependencies (the DSL detail) are for experts — Needs/Resets below carry the transitive reading for everyone. */
 function CheckDetails({ procedure, check, origin, CheckLink }: { procedure: CompiledProcedure; check: ProcedureCheck; origin: ReturnType<typeof useOrigin>; CheckLink: (props: { name: string }) => ReactNode }) {
   const { t } = useTranslation();
   const providers = providersOf(procedure, check.name);
@@ -1027,11 +1033,12 @@ function CheckDetails({ procedure, check, origin, CheckLink }: { procedure: Comp
     <>
       <PanelSection title={t("procedures.graph.panel.runs")}>
         <Link to={`/operations/${encodeURIComponent(check.operation)}`} state={origin} className="mono inline-flex items-center gap-1 text-body text-accent hover:underline">
-          <TerminalSquare size={12} /> {check.operation}{check.operationVersion ? <span className="text-faint">@{check.operationVersion}</span> : null}
+          <TerminalSquare size={12} /> {check.operation}{check.operationVersion ? <Expert><span className="text-faint">@{check.operationVersion}</span></Expert> : null}
         </Link>
-        {check.target ? <p className="mt-0.5 text-label text-muted">{check.target.selection === "each" ? t("procedures.graph.node.onEach") : t("procedures.graph.node.on")} <span className="mono text-text">{check.target.role}</span> <span className="text-faint">· {describeProvenance(roleProvenance(procedure, check.target.role))}</span></p> : null}
+        {check.target ? <p className="mt-0.5 text-label text-muted">{check.target.selection === "each" ? t("procedures.graph.node.onEach") : t("procedures.graph.node.on")} <span className="mono text-text">{check.target.role}</span> <Expert><span className="text-faint">· {describeProvenance(roleProvenance(procedure, check.target.role))}</span></Expert></p> : null}
         {check.successReason ? <p className="mt-1 text-label text-muted">{t("procedures.graph.panel.mustEstablish", { reason: check.successReason })}</p> : null}
       </PanelSection>
+      <Expert>
       {check.inputBindings?.length ? (
         <PanelSection title={t("procedures.graph.panel.inputs")} count={check.inputBindings.length}>
           <ul className="flex flex-col gap-1">
@@ -1082,6 +1089,7 @@ function CheckDetails({ procedure, check, origin, CheckLink }: { procedure: Comp
           </ul>
         </PanelSection>
       ) : null}
+      </Expert>
     </>
   );
 }
@@ -1092,7 +1100,7 @@ function CheckButton({ name, onSelect }: { name: string; onSelect: ProcedureGrap
   );
 }
 
-function PanelSection({ title, count, icon, hint, children }: { title: string; count?: number; icon?: ReactNode; hint?: string; children: ReactNode }) {
+function PanelSection({ title, count, icon, children }: { title: string; count?: number; icon?: ReactNode; children: ReactNode }) {
   return (
     <section>
       <div className="mb-1 flex items-center gap-1.5">
@@ -1100,7 +1108,6 @@ function PanelSection({ title, count, icon, hint, children }: { title: string; c
         <span className="kicker">{title}</span>
         {count !== undefined ? <span className="text-meta text-faint">{count}</span> : null}
       </div>
-      {hint ? <p className="mb-1 text-meta leading-snug text-faint">{hint}</p> : null}
       {children}
     </section>
   );

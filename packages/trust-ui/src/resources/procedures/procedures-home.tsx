@@ -31,7 +31,6 @@ export function ProceduresHome() {
     <ResourceHome
       crumbs={[{ label: t("procedures.crumbRoot"), to: "/overview" }, { label: t("procedures.crumbProcedures") }]}
       title={t("procedures.home.title")}
-      subtitle={t("procedures.home.subtitle")}
       total={rows.length}
       visible={visible.length}
       createTo={`/procedures/new${location.search}`}

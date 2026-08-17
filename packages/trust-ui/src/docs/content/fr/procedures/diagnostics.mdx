@@ -1,0 +1,68 @@
+---
+title: "Diagnostics"
+summary: "Ce que le compilateur de Procédures refuse, ses quatorze codes, et les messages par cause."
+order: 7
+---
+
+Le compilateur renvoie une Procédure compilée ou **un diagnostic** : un code, un message et un emplacement (la ligne physique, lignes de continuation comprises). L'interface l'affiche dans la ligne de statut et souligne la ligne dans l'éditeur de source ; la publication renvoie le même diagnostic quand le runtime compile la source.
+
+> Une source qui ne compile pas ne peut pas être publiée ; une version publiée a compilé une fois et ne change jamais.
+
+## Codes
+
+| Code | Signification |
+| --- | --- |
+| `invalid-procedure` | la forme du document, un tag, une phrase, une table ou une clause enfreint la grammaire fermée |
+| `invalid-identifier` | le slug de la Procédure, la version ou un slug de Scénario a une forme incorrecte |
+| `unknown-operation` | un Check exécute une Opération absente du catalogue |
+| `unknown-role` · `unknown-input` · `unknown-field` | un nom n'existe pas : un rôle, un Input d'Opération, un champ produit |
+| `duplicate-role` · `duplicate-check` · `duplicate-scenario` | un nom est déclaré deux fois |
+| `input-unbound` | un Input est lié deux fois ou pas du tout |
+| `incompatible-type` · `incompatible-cardinality` | une liaison, une matérialisation ou une attente ne correspond pas aux formes |
+| `invalid-dependency` | un prérequis, un Check référencé ou un rôle matérialisé est mal placé ou inconnu |
+| `dependency-cycle` | un cycle parmi les Scénarios ou les parents de rôles |
+
+## Messages par cause
+
+### Identité et forme
+- `Procedure is not valid Gherkin: …` · `Procedure must contain one English Feature`.
+- `procedure tag must appear exactly once` / `version tag …` / `TRUST DSL tag …` / `Scenario tag …` · `… tag cannot be empty` · `Unknown tag "…"`.
+- `Procedure "…" must be a lowercase slug` · `Version "…" must be semantic` · `Scenario "…" must be a lowercase slug` · `TRUST DSL "…" is unsupported`.
+- `Rules are outside the closed Procedure grammar` · `Scenario Outline is outside the closed Procedure grammar`.
+- `Procedure must declare exactly one Background named Plan context` · `Procedure must declare at least one Scenario`.
+
+### Contexte du Plan
+- `Plan context accepts only role sentences` — un mot-clé autre que `Given`/`And`, une table, une doc string.
+- `Role "…" is repeated` · `Role "…" has unknown parent "…"` · `Role parent cycle contains "…"`.
+- `Role "…" cannot be declared and fixed` · `Fixed role "…" must have cardinality one` · `Fixed role "…" must be a string or reference`.
+- Erreurs de phrase : `Invalid sentence "…"` · `Expected one of: one, many` · `Expected a quoted value` · `Sentence has trailing words`.
+
+### Scénarios
+- `Scenario "…" is repeated` · `Scenario "…" must contain Checks and its aggregation`.
+- `Scenario dependencies must precede Checks` · `Scenario "…" depends on unknown Scenario "…"` · `Scenario "…" depends on itself` · `Scenario dependency cycle contains "…"`.
+- `Check placement is invalid` — un Check avec un autre mot-clé que `Then`/`And`, ou après la phrase de clôture.
+- `Scenario aggregation is invalid` — la phrase de clôture avec un autre mot-clé, une table, ou en double.
+
+### Phrase de Check et liaisons
+- `Check "…" is repeated` · `Check "…" must establish one reason` · `Check "…" has trailing words`.
+- `Check "…" references unknown Operation "…"` · `Check "…" references unknown role "…"` · `Operation "…" has no Input "…"`.
+- `Check "…" binds Input "…" more than once` · `Check "…" does not bind Input: a, b`.
+- `Check "…" cannot run on each member of one role "…"` · `Check "…" cannot select all values of one role "…"` · `Check "…" cannot select one unscoped value of role "…"`.
+- `Input "…" and role "…" have incompatible cardinality` · `Input "…" and role "…" have incompatible types`.
+
+### Matérialisation
+- `Check "…" materializes unknown role "…"` · `Check "…" cannot materialize declared or fixed role "…"` · `Role "…" has more than one provider`.
+- `Operation "…" produces no field "…"` · `materialization of role "…" does not match role type and cardinality`.
+- `Check "…" uses role "…" before its provider Scenario is validated` · `Check "…" compares with role "…" before its provider Scenario is validated`.
+
+### Attentes
+- `Every Check requires a predicate table` · `Check table must use: field | relation | expectation | failure reason` · `Check predicate row must contain four cells` · `Failure reason cannot be empty`.
+- `Relation "…" is unknown` · `Number expectation "…" is invalid` · `Expected one of: value, number, valid, context, field`.
+- `Operation "…" produces no field "…"` · `Expectation references unknown role "…"` · `Expectation references unknown Check "…"` · `Check "…" produces no field "…"` · `Check "…" is not in a prerequisite Scenario`.
+- `Field "…" is not a number` · `Field "…" is not an instant` · `Field "…" cannot be compared with a string value` · `Value "…" is outside field "…" domain`.
+- `expectation for field "…" does not match role type and cardinality` · `field "…" and upstream field "…" have incompatible types`.
+- `equals requires the same type and cardinality` · `valid rfc3339 requires one instant field` · `at least requires one number field and one number expectation` · `has at least requires a collection field and one number expectation` · `is in requires one field and a collection expectation of the same type` · `before requires one instant field and one instant expectation` (`after` de même).
+
+<Callout kind="tip">
+  Les causes les plus fréquentes : un `Given scenario … is validated` écrit après un Check ; un rôle utilisé dans le même Scénario que celui qui le matérialise ; un rôle `many` lié sans `each` ni `all` ; une `value "…"` hors de l'énumération du champ ; une phrase de clôture oubliée ; un nom de Check réutilisé.
+</Callout>

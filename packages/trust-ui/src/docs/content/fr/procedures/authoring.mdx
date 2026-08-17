@@ -1,0 +1,76 @@
+---
+title: "Les Procédures dans l'interface"
+summary: "Le catalogue, la page d'une Procédure et ses onglets — Aperçu, Source, Graphe, Simuler, Contrat — et la publication."
+order: 6
+screen: /procedures
+---
+
+L'entrée **Procédures** de la barre latérale ouvre le catalogue. Sélectionner une Procédure ouvre sa page par-dessus le catalogue ; l'onglet et la sélection (un Scénario, un Check ou un lien du graphe) sont dans l'URL.
+
+## Le catalogue
+
+<Screenshot id="procedures-catalog" caption="Le catalogue des Procédures." legend={{
+  "home.header": "Titre et compteur ; Nouvelle procédure ouvre un modèle.",
+  "home.filters": "Recherche et facettes : famille, Opérations utilisées.",
+  "home.display": "Cartes ou liste ; regrouper par famille ; trier par nom, publication, Checks ou Plans.",
+  "home.card": "Une Procédure publiée : version, titre, description, ses entrées de Plan, Scénarios et Checks, les Opérations qu'elle utilise, les Plans qui l'exécutent.",
+}} />
+
+## La page d'une Procédure
+
+<Screenshot id="procedure-overview" caption="Une Procédure, onglet Aperçu." legend={{
+  "overlay.header": "Version, statut (publiée, ou l'état du brouillon), marque des Plans en cours, titre.",
+  "overlay.actions": "Dupliquer · Simuler · Modifier la source · Publier (quand la source compile et a changé).",
+  "overlay.tabs": "Aperçu, Source, Graphe, Simuler — et Contrat JSON en mode expert.",
+  "overlay.status": "Le statut de compilation : diagnostic et ligne, ou le nombre de Scénarios et de Checks.",
+  "procedure.summary": "Description, puis Nécessite (les entrées de Plan et leurs types) et Fait (chaque Scénario, ses prérequis, ses Checks avec leur Opération, cible et raison de succès).",
+  "overlay.inspector": "Exécutée par : les Plans de cette Procédure. Utilise : ses Opérations. En mode expert : entrées de Plan et liste des Scénarios (clic → Graphe).",
+}} />
+
+### Aperçu
+
+La Procédure en mots : description, les entrées de Plan qu'un engagement doit fournir, puis chaque Scénario dans l'ordre des dépendances avec ses Checks. En mode expert, un bloc s'ouvre avec le contrat complet de chaque Check : liaisons d'Input, table d'attentes, valeurs matérialisées.
+
+### Source
+
+<Screenshot id="procedure-source" caption="Onglet Source." legend={{
+  "editor": "La source Gherkin, compilée à chaque modification contre le catalogue d'Opérations. Les complétions proposent les phrases et les Opérations du catalogue.",
+  "editor.format": "Formater la source : replie les longues phrases de Check sur des lignes de continuation.",
+  "overlay.status": "Compile / ne compile pas, avec le message et la ligne.",
+}} />
+
+- La complétion **Procedure feature** insère un squelette ; **Context role**, **Scenario**, **Check** et **Use `<operation>`** insèrent les phrases, avec les Opérations du catalogue.
+- **Publier** compile une fois de plus sur le runtime et stocke une nouvelle révision `procedure@version`. Publier n'est disponible que lorsque la source compile et diffère de la version publiée ; une version déjà publiée est refusée — montez `@version`.
+- Une version publiée ne change jamais : l'interface n'a ni suppression ni écrasement pour une Procédure.
+
+### Graphe
+
+<Screenshot id="procedure-graph" caption="Onglet Graphe, un Check sélectionné." legend={{
+  "graph.canvas": "Les Scénarios en cartes dans l'ordre des dépendances, de haut en bas ; leurs Checks à l'intérieur. Liens d'ordre (pleins) : un Scénario après un autre. Liens de données (pointillés) : une valeur produite par un Check et utilisée par un autre.",
+  "graph.legend": "La légende des liens ; avec une sélection, les couleurs de ce dont la sélection a besoin (amont) et de ce qu'elle réinitialise (aval).",
+  "graph.scenario": "Un Scénario : titre, Checks avec leur Opération. Cliquez sur un Scénario ou un Check pour le sélectionner.",
+  "graph.panel": "La sélection : pour un Check, son Opération, ses liaisons d'Input, ses valeurs matérialisées, ses dépendances directes ; pour un lien, sa lecture ; pour tout élément, les Checks dont il a besoin et les Checks qu'un nouveau verdict réinitialiserait.",
+}} />
+
+Le graphe est la structure de dépendances qu'utilise le runtime : **a besoin de** est ce qui doit être validé d'abord ; **réinitialise** est la cascade — les Checks rouverts quand la sélection reçoit un nouveau verdict. Sur la page d'un Plan, le même graphe montre l'état en direct de chaque Check.
+
+### Simuler
+
+<Screenshot id="procedure-walk" caption="Onglet Simuler : l'ordre des Scénarios, sans aucun Plan." legend={{
+  "walk.controls": "Avancer au prochain Scénario actionnable, ou réinitialiser. Progression en Scénarios.",
+  "walk.scenarios": "Chaque Scénario avec ses Checks et ses raisons de succès ; terminé, actionnable, ou en attente de ses prérequis.",
+}} />
+
+Simuler n'exécute rien et ne crée rien : il joue l'ordre des Scénarios pour lire une Procédure. Répéter avec des Facts est un **dry-run** ([Plans, Sessions et dry-runs](/docs/plans)).
+
+### Contrat JSON (expert)
+
+La révision compilée : rôles, Scénarios, Checks avec leurs liaisons et leurs prédicats, digests, et les Opérations embarquées. C'est ce à partir de quoi un Plan est engagé.
+
+## Créer, dupliquer, publier
+
+<Steps>
+  <Step title="Nouvelle procédure">Depuis l'en-tête du catalogue ou la barre latérale. L'onglet Source s'ouvre sur un modèle ; la ligne de statut montre le premier diagnostic jusqu'à ce que la source compile.</Step>
+  <Step title="Dupliquer">Une nouvelle source pré-remplie avec la version publiée ; changez `@procedure` ou montez `@version` avant de publier.</Step>
+  <Step title="Publier">Activé une fois que la source compile. Le runtime la compile contre le catalogue courant, embarque les Opérations et stocke la révision. La page se rouvre sur la Procédure publiée ; des Plans peuvent en être engagés.</Step>
+</Steps>

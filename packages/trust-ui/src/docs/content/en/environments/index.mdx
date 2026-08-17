@@ -1,0 +1,55 @@
+---
+title: "Environments"
+summary: "Named execution contexts — values and write-only credentials — which Operations each one can run, and the current Environment of the interface."
+order: 5
+screen: /environments
+---
+
+An <Term id="environment">Environment</Term> is a named set of **values** an Operation reads at execution — directories where projects live, base URLs of services — and of **credentials** the runtime holds for it. A live Plan is engaged on one Environment; an Operation is *runnable* on an Environment when the Environment declares every value its `Environment` table needs.
+
+> An Environment answers "where and against what" for every Operation; the Operation never says it itself.
+
+## The catalog
+
+<Screenshot id="environments-catalog" caption="The Environments catalog." legend={{
+  "home.header": "Title and count; New environment.",
+  "home.filters": "Search by name or value; sort by name or usage.",
+  "home.card": "One Environment: its values, the Plans and dry-runs on it, the Operations it can run; Current when it is the current one.",
+  "shell.environment": "The current Environment of the interface — the same list, from anywhere.",
+}} />
+
+## The Environment page
+
+<Screenshot id="environment-page" caption="An Environment." legend={{
+  "overlay.header": "Name, Current badge, state (configured, edited, draft).",
+  "overlay.actions": "Use as current · Delete · Save (when a value changed).",
+  "environment.values": "The values: name and value, one row each — paths, URLs, names. Never a secret.",
+  "environment.credentials": "The credentials: names only, with Value held by the runtime. Add gives a name and a value; the value is written and never shown again.",
+  "environment.coverage": "Every Operation of the catalog: runnable here, or the missing value names.",
+  "overlay.inspector": "Plans on it; Runnable operations.",
+}} />
+
+### Values
+
+- A value has a **name** (the one Operations declare: `workspaceRoot`, `jiraIssueUrl`) and a value: an absolute directory, an `http(s)` URL without embedded credentials, or a name.
+- Names are matched exactly against the `Environment` tables of Operations. The coverage table below the values shows, for each Operation, ✓ or the missing names — it updates as you type, before saving.
+- **Save** writes the whole Environment (name and values). Deleting removes its values and credentials; Plans engaged on it keep the name, but nothing can be admitted on it any more.
+
+### Credentials
+
+- A credential is a **named secret** stored by the runtime for one Environment. The interface can add one (name + value) or remove one; it can never read a value back — the list shows names and *Value held by the runtime*.
+- Operations never carry credentials; the compiler refuses secret-like text in a source.
+- Today credentials are stored and listed by name only: no execution receives them — an execution receives Environment **values**. How and when a credential reaches an Operation is a product decision still open; until then a value an Operation needs at execution time is an Environment value.
+- Removing an Environment removes its credentials.
+
+### Current Environment
+
+The header of the interface holds the **current Environment**. It is the default of every Operation run and Plan engagement, and the reference of the runnable marks (✓ / ✗ in the Operations catalog, "not on the current environment" on the Run tab). **Use as current** on an Environment page changes it; the choice is a browser preference, never in the URL. When no Environment is configured, the first one saved becomes current.
+
+<Callout kind="rule">
+  A dry-run delegates no Environment value: rehearsing never touches an external system. A live Plan receives the values of its Environment at each admission.
+</Callout>
+
+<Details title="Behind the screen" expert>
+Environments and credentials are runtime objects: `environment.list` / `environment.save` / `environment.remove` and `credential.list` / `credential.save` / `credential.remove` (references only on read). `operation.environments` returns, per Operation version, the compatible Environments and the missing names — the source of every runnable mark. Values are validated at admission against the Operation's Environment schema (absolute directory, `http(s)` URL).
+</Details>

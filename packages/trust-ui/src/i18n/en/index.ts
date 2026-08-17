@@ -1,4 +1,5 @@
 import { common } from "./common.js";
+import { docs } from "./docs.js";
 import { environments } from "./environments.js";
 import { history } from "./history.js";
 import { operations } from "./operations.js";
@@ -25,4 +26,5 @@ export const en = {
   history,
   overview,
   settings,
+  docs,
 } as const;

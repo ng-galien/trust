@@ -1,0 +1,58 @@
+---
+title: "Diagnostics"
+summary: "What the compiler refuses, how a diagnostic is shown, and the message list by cause."
+order: 7
+---
+
+The compiler either returns a compiled Operation or **one diagnostic**: a code, a message and a location (the physical line, continuation lines included). The interface shows it in the status line under the tabs and underlines the line in the source editor; the language server shows the same diagnostic in an external editor.
+
+> A source that does not compile cannot be saved, simulated or run.
+
+## Codes
+
+| Code | Meaning |
+| --- | --- |
+| `invalid-operation` | the document shape, a table, a step or the projection breaks a rule of the closed grammar |
+| `invalid-identifier` | a name (Operation, version, classification tag, Environment, Input, field) has the wrong form |
+| `unknown-step` | a sentence is not one of the accepted step sentences, or is misplaced |
+| `unknown-environment` | a step uses an Environment name that is not declared |
+| `duplicate-environment` · `duplicate-input` · `duplicate-produced-field` · `duplicate-step` | a name is declared twice |
+| `secret-like-value` | the source contains something that looks like a credential |
+
+## Messages by cause
+
+### Identity and tags
+- `Operation "…" must use the canonical <domain>.<action> form` — two lower-case dot-separated segments, hyphens allowed.
+- `Operation version "…" must be semantic` — `x.y.z`, digits only.
+- `TRUST DSL version "…" is unsupported; expected "1"` · `Operation must declare exactly one Operation tag` / `… version tag` / `… TRUST DSL version tag`.
+- `Classification tag "…" must use the @x-<key>:<value> form (lower-case key, value without spaces or colons)`.
+- `Tag "…" is outside the closed Operation grammar` — any tag that is not one of the three identity tags or an `@x-` tag.
+
+### Document shape
+- `Operation is not valid Gherkin: …` · `Operation must contain one English Gherkin Feature`.
+- `Operation must declare exactly one Background` · `Operation must declare exactly one Scenario named Run`.
+- `Rules are outside the closed Operation grammar` · `Scenario Outline is outside the closed Operation grammar` · `Operation Scenario tags are outside the closed grammar`.
+- `Operation source contains a secret-like value`.
+
+### Interface tables
+- `Table must declare name | type` / `input | type | cardinality` / `field | type | cardinality | domain` — wrong header.
+- `Operation must declare Environment` · `Operation must declare produced fields` · `Operation repeats Environment` / `Input` / `Produce fields`.
+- `Environment name "…" must be lower camel case` · `Input "…" must be lower camel case` · `Produced field "…" must be lower camel case`.
+- `Environment "…" has invalid type "…"` (not `directory`/`url`) · `Input "…" has invalid type "…"` · `Produced field "…" has invalid type "…"` (not `string`/`number`/`instant`/`reference`).
+- `Cardinality "…" must be one or many` · `Only string fields may declare an enum domain` · `Domain "…" is invalid` · `Domain "…" repeats a value`.
+- `Environment "…" is repeated` · `Input "…" is repeated` · `Produced field "…" is repeated`.
+- `Operation interface must use Given or And` · `Unknown Operation interface step "…"`.
+
+### Steps
+- `Unknown Operation step "…"` — the sentence matches none of Shell, File, HTTP GET, HTTP POST, accepted exits, Produce.
+- `Operation must declare at least one step` · `Step "…" is repeated`.
+- `Shell must use When or And` / `File …` / `HTTP …` · `Shell cannot run after Produce` / `File cannot read after Produce` / `HTTP cannot run after Produce`.
+- Shell, File and HTTP messages: see the **Diagnostics** block of [Shell](/docs/operations/steps/shell), [File](/docs/operations/steps/file) and [HTTP](/docs/operations/steps/http).
+
+### Projection
+- `Operation must Produce with JSONata` · `Produce with JSONata cannot be empty` · `Produce with JSONata must use Then and one DocString` · `Produce with JSONata must be the final step` · `Operation repeats Produce with JSONata`.
+- Subset, shape and reference messages: see [Producing fields](/docs/operations/produce#what-is-checked).
+
+<Callout kind="tip">
+  The most frequent causes: a forgotten `@trust-dsl:1`; a name that is not lower camel case (`workspace_root`, `WorkspaceRoot`); a projection whose keys do not match the `Produced fields` table exactly; an `accepts exits` table that lists `1` but forgets `0`; a `Text` result traversed with a dot.
+</Callout>

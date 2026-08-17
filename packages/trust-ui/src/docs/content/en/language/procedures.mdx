@@ -1,0 +1,39 @@
+---
+title: "Procedure grammar"
+summary: "The complete sentence set of a Procedure, in one page — with links to the detailed pages."
+order: 2
+---
+
+```text
+@trust-dsl:1 @procedure:<slug> @version:<x.y.z>
+Feature: <title>
+  [description]
+
+  Background: Plan context
+    Given|And one|many string|number|instant|reference "<role>"
+        [declared by agent for "<parent>" | for "<parent>" | for each "<parent>" | fixed as "<value>"]
+
+  @scenario:<slug>
+  Scenario: <title>
+    [Given|And scenario "<slug>" is validated]…
+    Then|And Check "<name>" runs Operation "<domain.action>"
+        on [each|all] "<role>" as Input "<input>"
+        [using [all] "<role>" as Input "<input>"]…
+        [and materializes "<role>" from field "<field>"]…
+        and must establish "<success reason>"
+      | field | relation | expectation | failure reason |
+    And the Scenario is satisfied when every Check is validated
+```
+
+| | |
+| --- | --- |
+| **Relations** | `equals` · `at least` · `has at least` · `is in` · `before` · `after` |
+| **Expectations** | `value "<text>"` · `number <n>` · `valid rfc3339` · `context "<role>"` · `field "<field>" from Check "<check>"` |
+
+| Topic | Page |
+| --- | --- |
+| Tags, title, description, publication, versions | [Compiling and publishing](/docs/procedures/publishing) |
+| Roles and their sources, parent scope | [Plan context](/docs/procedures/context) |
+| Scenarios, prerequisites, Check sentence, `each` / `all`, materialization | [Scenarios and Checks](/docs/procedures/scenarios-and-checks) |
+| Relations and expectation forms, qualification | [Expectations](/docs/procedures/expectations) |
+| Errors | [Diagnostics](/docs/procedures/diagnostics) |

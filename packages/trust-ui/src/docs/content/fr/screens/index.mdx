@@ -1,0 +1,55 @@
+---
+title: "Écrans"
+summary: "L'interface écran par écran — navigation, les deux modes, l'environnement courant, le shell, Vue d'ensemble, Historique des Checks, Paramètres."
+order: 8
+---
+
+L'interface est une application web locale qui parle à un runtime. Chaque objet de TRUST a une page **catalogue** et une page **élément** qui s'ouvre par-dessus ; l'élément, son onglet et sa sélection sont dans l'URL, si bien qu'une adresse peut être partagée et rouverte telle quelle. Langue, thème, mode et environnement courant sont des préférences du navigateur, jamais dans l'URL.
+
+<Screenshot id="shell" caption="Le shell : en-tête, barre latérale avec l'explorateur de ressources, et la page courante." legend={{
+  "shell.sidebar": "Conception (Opérations, Procédures) et Exécution (Environnements, Plans, Dry-runs, Historique des Checks) ; chaque ancre se déplie en la liste de ses éléments avec leurs actions ; Documentation et Paramètres en bas.",
+  "shell.search": "⌘K : rechercher des Opérations, des Procédures et des Plans par nom.",
+  "shell.environment": "L'environnement courant ; Gérer les environnements… ouvre le catalogue.",
+  "shell.density": "Mode Opérateur / Expert.",
+}} />
+
+## Navigation
+
+- **Conception** : [Opérations](/docs/operations/authoring), [Procédures](/docs/procedures/authoring). **Exécution** : [Environnements](/docs/environments), [Plans](/docs/plans), [Dry-runs](/docs/plans), [Historique des Checks](#check-history). Vue d'ensemble en haut ; Documentation et Paramètres en bas.
+- La bascule de la barre latérale dans l'en-tête la replie en un rail d'icônes ; survoler une icône ouvre la même liste dans un volet flottant.
+- Chaque ancre de la barre latérale a un compteur et, au survol, **Nouveau** ; la déplier liste les éléments (champ de filtre, menu d'élément avec **Dupliquer** / **Supprimer** quand le runtime les propose).
+- La pastille de l'en-tête affiche l'état du runtime : **Runtime en direct** (flux d'événements), **Runtime sain** (interrogation), **Runtime indisponible**. Cliquer rafraîchit.
+
+## Modes opérateur et expert
+
+<Compare leftTitle="Opérateur (défaut)" rightTitle="Expert"
+  left="L'essentiel et toutes les actions. Identifiants, schémas, contrats, digests, tentatives et détail technique sont masqués."
+  right="Tout, chaque fait une fois : identifiants répétés dans les en-têtes, onglets Contrat JSON, contrats d'étapes et projections, entrées de Plan et listes de Scénarios dans les inspecteurs, tentatives et codes de raison, la lecture DSL du cockpit, indications techniques." />
+
+Le commutateur est dans l'en-tête. C'est une préférence, jamais dans l'URL ; une adresse `?tab=contract` ouverte en mode opérateur retombe sur l'onglet par défaut. La documentation le suit : les blocs **Expert** sont ouverts par défaut en mode expert.
+
+## L'environnement courant
+
+L'en-tête contient l'environnement courant. Les exécutions d'Opérations, les engagements de Plans et les marques « exécutable » (✓ / ✗) s'y réfèrent. **Utiliser comme environnement courant** sur une page Environnement, ou le sélecteur de l'en-tête, le change. Voir [Environnements](/docs/environments).
+
+## Vue d'ensemble
+
+`/overview` — la page d'accueil : compteurs d'Opérations, de Procédures, de Plans (avec le nombre en cours) et de Dry-runs ; **En cours** (les Plans en cours avec leur Procédure, leur Environnement et leur progression) ; **Runtime** (Environnements, Sessions ouvertes, mises à jour En direct ou Interrogation) ; **Derniers verdicts** avec un lien vers l'historique.
+
+## Historique des Checks
+
+`/history` — chaque verdict jamais calculé, à travers Plans et dry-runs, du plus récent au plus ancien, servi par le runtime avec des facettes côté serveur.
+
+<Screenshot id="history" caption="Historique des Checks." legend={{
+  "home.filters": "Rechercher dans les lignes chargées ; facettes Verdict (validé / non validé), Mode (live / dry-run), Procédure, Plan.",
+  "home.display": "Grouper par Plan ou par jour.",
+  "home.content": "Une ligne par verdict : quand, verdict, Check et son Opération, Plan et Procédure, raison (et les Checks qu'il a rouverts), nombre de Facts. Le lien Plan ouvre le Plan sur ce Check. Charger plus ajoute des lignes plus anciennes.",
+}} />
+
+## Paramètres
+
+`/settings` — **Apparence** (clair, sombre, système), **Langue** (English, Français — drapeaux), **Éditeur Gherkin** (taille de police), **Runtime** (son adresse et son état).
+
+## Écrans par section
+
+<PageCards />

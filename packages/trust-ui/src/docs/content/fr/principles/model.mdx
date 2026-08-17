@@ -1,0 +1,42 @@
+---
+title: "Le modèle — de l'Opération au verdict"
+summary: "Opérations, Procédures, Scénarios, Checks, Plans, Tentatives, Facts, verdicts, révisions — ce qu'est chacun et comment ils s'assemblent."
+order: 2
+---
+
+<Figure caption="Objets rédigés (en haut) et ce qu'un Plan en cours produit (en bas).">
+  <ModelFigure />
+</Figure>
+
+## Voie de conception — rédigée, immuable une fois publiée
+
+| Objet | Est | Vit |
+| --- | --- | --- |
+| <Term id="operation" /> | comment appeler un système externe et les champs typés qu'il renvoie | dans le catalogue, un fichier par version — [Opérations](/docs/operations) |
+| <Term id="procedure" /> | rôles de contexte typés, Scénarios, Checks ; chaque Check exécute une Opération sur une cible et énonce ses attentes | publiée sous `procedure@version`, embarquant ses Opérations — [Procédures](/docs/procedures) |
+| <Term id="scenario" /> | un groupe de Checks avec des prérequis ; satisfait quand chaque Check est validé | dans une Procédure |
+| <Term id="check" /> | une Opération sur un rôle cible, des liaisons d'Input, des attentes, des raisons | dans un Scénario |
+
+## Voie d'exécution — un Plan, révision après révision
+
+| Objet | Est | Produit par |
+| --- | --- | --- |
+| <Term id="plan" /> | une Procédure engagée avec des entrées concrètes dans un Environnement ; porte la révision courante de ses Checks | l'engagement — [Plans](/docs/plans) |
+| <Term id="session" /> | le travail ouvert sur un Plan | ouverte à l'engagement, fermée par l'opérateur |
+| <Term id="attempt" /> | une exécution admise d'un Check | le Runner (live) ou l'opérateur (dry-run) |
+| <Term id="fact" /> | une observation typée — un champ produit avec sa valeur | l'exécution |
+| <Term id="verdict" /> | validé ou non, avec une raison | TRUST, à partir d'un lot de Facts complet |
+| <Term id="revision" /> | l'état du Plan après un lot accepté | chaque acceptation |
+| <Term id="snapshot" /> | l'enregistrement immuable d'une qualification | chaque acceptation — l'[historique](/docs/plans/history) |
+
+## Cardinalité
+
+- Une Opération, plusieurs Checks (dans une ou plusieurs Procédures).
+- Une version de Procédure, plusieurs Plans.
+- Un Check d'une Procédure, une ou plusieurs instances de Check dans un Plan (`on each`), chacune avec un verdict actif et plusieurs Tentatives au fil du temps.
+- Un Plan, une Session, plusieurs révisions.
+
+## Deux objets qui ne sont pas dans le modèle
+
+- **Preuve, evidence, binding** : il n'y en a pas. Un Check est validé par des Facts qualifiés au regard d'attentes ; rien d'autre n'est stocké comme « preuve ».
+- **Une dérogation manuelle** : un opérateur ne peut pas marquer à la main un Check live comme validé. Sur un dry-run l'opérateur joue l'agent et saisit des Facts ; les mêmes règles s'appliquent.

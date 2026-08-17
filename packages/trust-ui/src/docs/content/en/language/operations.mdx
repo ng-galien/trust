@@ -1,0 +1,37 @@
+---
+title: "Operation grammar"
+summary: "The complete sentence set of an Operation, in one page — with links to the detailed pages."
+order: 1
+---
+
+```text
+@trust-dsl:1 @operation:<domain>.<action> @version:<x.y.z> [@x-<key>:<value> …]
+Feature: <title>
+  [description]
+
+  Background: <name>
+    Given Environment              | name | type |                              type: directory | url
+    And Input                      | input | type | cardinality |               type: string | number | instant | reference · one | many
+    And Produced fields            | field | type | cardinality | domain |      domain: any | enum "a", "b"
+
+  Scenario: Run
+    When/And Shell "<n>" runs "<exe>" with cwd from Environment "<dir>" [and Input "<in>"]
+      | argument | source |                                                     source: literal | Input "<in>"
+    And Shell "<n>" accepts exits
+      | exit code | stdout contains | stderr contains |
+    When/And File "<n>" reads "<path>" as Text|JSON from Environment "<dir>" [and Input "<in>"]
+    When/And HTTP "<n>" gets Environment "<url>" [appending Input "<in>"] as Text|JSON
+    When/And HTTP "<n>" posts Input as JSON to Environment "<url>" and reads JSON
+    Then Produce with JSONata
+      """ { "<field>": <expression>, … } """
+```
+
+| Topic | Page |
+| --- | --- |
+| Tags, title, description, versions | [Identity, classification and versions](/docs/operations/classification-and-versions) |
+| The three tables and the types | [Interface](/docs/operations/interface) |
+| Shell, accepted exits | [Shell step](/docs/operations/steps/shell) |
+| File | [File step](/docs/operations/steps/file) |
+| HTTP GET, POST | [HTTP steps](/docs/operations/steps/http) |
+| Projection, JSONata subset | [Producing fields](/docs/operations/produce) |
+| Errors | [Diagnostics](/docs/operations/diagnostics) |

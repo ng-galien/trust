@@ -32,12 +32,12 @@ export function Breadcrumb({ items, className }: { items: Crumb[]; className?: s
 }
 
 /** Header of a full page that is not a resource collection (Overview, Settings): crumbs · title · subtitle. */
-export function PageHeader({ crumbs, title, subtitle }: { crumbs: Crumb[]; title: string; subtitle: string }) {
+export function PageHeader({ crumbs, title, subtitle }: { crumbs: Crumb[]; title: string; subtitle?: string }) {
   return (
     <header className="shrink-0 border-b border-border bg-surface px-6 py-4">
       <Breadcrumb items={crumbs} />
       <h1 className="mt-1 text-heading font-semibold tracking-tight">{title}</h1>
-      <p className="text-ui text-muted">{subtitle}</p>
+      {subtitle ? <p className="text-ui text-muted">{subtitle}</p> : null}
     </header>
   );
 }

@@ -1,0 +1,49 @@
+{
+  "width": 2160,
+  "height": 1350,
+  "density": "operator",
+  "callouts": [
+    {
+      "key": "overlay.header",
+      "x": 19.79,
+      "y": 10.33,
+      "w": 79.31,
+      "h": 6.69
+    },
+    {
+      "key": "overlay.actions",
+      "x": 67.32,
+      "y": 12.07,
+      "w": 30.67,
+      "h": 3.11
+    },
+    {
+      "key": "overlay.tabs",
+      "x": 20.63,
+      "y": 17.69,
+      "w": 23.72,
+      "h": 3.11
+    },
+    {
+      "key": "overlay.status",
+      "x": 65.02,
+      "y": 18.32,
+      "w": 8.45,
+      "h": 1.85
+    },
+    {
+      "key": "procedure.summary",
+      "x": 20.9,
+      "y": 23.36,
+      "w": 54.79,
+      "h": 52.5
+    },
+    {
+      "key": "overlay.inspector",
+      "x": 76.88,
+      "y": 17.03,
+      "w": 22.22,
+      "h": 81.53
+    }
+  ]
+}

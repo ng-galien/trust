@@ -1,0 +1,44 @@
+---
+title: "Engaging a Plan"
+summary: "What an engagement takes — Procedure version, Environment, identifier, root inputs — what it builds, and how the context is completed later."
+order: 1
+---
+
+Engaging creates a Plan from a **published** Procedure version. It takes exactly what the Procedure's Plan inputs require, nothing else; fixed roles come from the Procedure, agent declarations come later, materialized roles come from Checks.
+
+<Screenshot id="plan-engage" caption="Engage a plan / New dry-run — the same form, the mode given by where you came from." legend={{
+  "overlay.header": "Live or dry-run; Engage / Start the dry-run once the form is complete.",
+  "engage.form": "Procedure (published versions), Environment (defaults to the current one), Plan identifier (lowercase slug, unique), then one field per root input of the chosen Procedure.",
+}} />
+
+## What an engagement takes
+
+| Field | Rule |
+| --- | --- |
+| **Procedure** | a published `procedure@version`; the version pins the definition for the life of the Plan |
+| **Environment** | a configured Environment; the default is the current one. Even a dry-run names one (nothing is delegated to it) |
+| **Plan identifier** | a lowercase slug, unique among Plans and dry-runs; it appears in every Check URI and in the history |
+| **Root inputs** | exactly the roles the Procedure compiled as Plan inputs — no more, no fewer; typed as declared (`string`, `number`, `instant`, `reference`; `many` = a non-empty list) |
+| **Mode** | live from **Plans → Engage a plan**, dry-run from **Dry-runs → New dry-run**. Part of the Plan's identity |
+
+## What it builds
+
+- **Revision 1**: the Checks of the Procedure instantiated on the context — one per Check, one per value for `on each` targets whose role already has values. Roles declared by the agent have no value yet: their `each` Checks appear once declared.
+- **A Session**, open, with an expiry (24 hours by default). Admissions require an open, unexpired Session.
+- The Checks whose prerequisites are met and whose context is complete are **actionable**; the others are blocked, with the reason (a prerequisite Scenario, a missing declaration).
+
+The page then opens on the new Plan. From here a live Plan waits for its agent; a dry-run offers the cockpit.
+
+## Completing the context
+
+- **Agent declarations** — roles written `declared by agent` in the Procedure. On a live Plan the agent declares them (a closed operation that replaces the whole declaration set, checked against the Plan revision it read). On a dry-run the cockpit's *Declare the context* step does the same. A declaration creates a new revision; satisfied Checks whose definition did not change keep their verdict.
+- **Materialized roles** are filled by their provider Check when it is validated — no action needed.
+- Root inputs and fixed roles never change after engagement.
+
+<Callout kind="rule">
+  Engaging the same identifier again with the same Procedure, inputs, Environment and mode returns the current Plan (and reopens a Session if needed); with anything different it is refused. An identifier is a Plan, once.
+</Callout>
+
+<Details title="Engagement contract" expert>
+`plan.engage { contract: "trust.plan-engagement-request@1", procedure, procedureVersion, plan, environment, rootInputs, mode? }` → `{ status: "ENGAGED", revision, checkUris }`. Refusals: `procedure-not-found`, `invalid-plan-engagement` (unknown Environment, wrong root inputs — `Plan Inputs must be exactly: …`, wrong types), `plan-conflict` (identifier already engaged with another Procedure or context). Declarations: `plan.declarations.replace { plan, expectedRevision, declarations }` — accepts only `declared by agent` roles, refuses a stale `expectedRevision` (`plan-conflict`), coordinates `for each` roles with their parent values. The MCP tool `trust_plan_engage` engages live Plans only.
+</Details>

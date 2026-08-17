@@ -1,0 +1,90 @@
+---
+title: "Étape File"
+summary: "Lire un fichier à un chemin relatif fixe sous un répertoire d'Environnement, comme texte ou comme JSON."
+order: 2
+---
+
+```gherkin fragment title="Phrase (pas de table, pas de doc string)"
+    When File "<name>" reads "<relative/path>" as Text from Environment "<directory>"
+    And  File "<name>" reads "<relative/path>" as JSON from Environment "<directory>" and Input "<input>"
+```
+
+## La phrase
+
+| Partie | Règle |
+| --- | --- |
+| `"<name>"` | lower camel case, unique dans l'Opération |
+| `"<relative/path>"` | un **chemin relatif canonique** : pas de `/` initial, pas de lettre de lecteur, pas de `\`, pas de segment vide, `.` ou `..`. Fixé dans la source — un chemin ne vient jamais d'un Input |
+| `as Text` / `as JSON` | comment le contenu est lu : une chaîne opaque, ou une valeur JSON analysée que la projection peut traverser |
+| `from Environment "<directory>"` | requis ; la valeur d'Environment doit être de type `directory` |
+| `and Input "<input>"` | optionnel ; restreint le répertoire à un projet en dessous, avec la même règle que Shell : une chaîne nommant un sous-répertoire direct |
+
+Une étape File n'accepte ni table de données ni doc string.
+
+## Résultat
+
+| Champ | Type |
+| --- | --- |
+| `steps.<name>.relativePath` | string — le chemin qui a été lu |
+| `steps.<name>.content` | string pour `Text` ; la valeur analysée pour `JSON` |
+
+Un contenu `Text` est opaque : `steps.license.content` peut être copié dans un champ, pas traversé. Un contenu `JSON` est une valeur : `steps.manifest.content.name`, `steps.manifest.content.scripts.build` sont des chemins légaux.
+
+## Exemples
+
+```gherkin operation id="file.package-read" title="file.package-read — un fichier JSON sous la racine du workspace"
+# language: en
+@trust-dsl:1 @operation:file.package-read @version:1.0.0
+Feature: Read package name
+
+  Background: Operation interface
+    Given Environment
+      | name          | type      |
+      | workspaceRoot | directory |
+    And Produced fields
+      | field | type   | cardinality | domain |
+      | name  | string | one         | any    |
+
+  Scenario: Run
+    When File "manifest" reads "package.json" as JSON from Environment "workspaceRoot"
+    Then Produce with JSONata
+      """
+      { "name": steps.manifest.content.name }
+      """
+```
+
+```gherkin operation id="file.license-read" title="file.license-read — un fichier texte"
+# language: en
+@trust-dsl:1 @operation:file.license-read @version:1.0.0
+Feature: Read license text
+
+  Background: Operation interface
+    Given Environment
+      | name          | type      |
+      | workspaceRoot | directory |
+    And Produced fields
+      | field | type   | cardinality | domain |
+      | text  | string | one         | any    |
+
+  Scenario: Run
+    When File "license" reads "LICENSE" as Text from Environment "workspaceRoot"
+    Then Produce with JSONata
+      """
+      { "text": steps.license.content }
+      """
+```
+
+<Callout kind="note" title="Quand le fichier est absent">
+  Un fichier qui ne peut pas être lu (absent, illisible, ou JSON invalide quand il est lu `as JSON`) est une erreur, pas une observation : l'Opération est interrompue avant de produire des champs. Si « le fichier peut être absent » est lui-même l'observation dont vous avez besoin, lisez le répertoire avec une étape Shell dont vous acceptez les codes de sortie, et laissez la projection décider.
+</Callout>
+
+<Details title="Diagnostics propres aux étapes File" expert>
+| Message | Cause |
+| --- | --- |
+| `File "x" requires Environment "e" to be a directory` | l'Environment racine est une `url` |
+| `File "x" uses undeclared Environment "e"` | le nom n'est pas dans la table Environment |
+| `File path "p" must be a canonical relative path` | chemin absolu, lettre de lecteur, antislash, segment `.` ou `..` |
+| `File "x" narrows its directory with unknown Input "i"` / `… directory Input "i" must be one string` | règles de `and Input` |
+| `File does not accept a table or DocString` · `File cannot read after Produce` | forme et ordre |
+| `Produce cannot traverse Text File content` · `Produce cannot traverse File relativePath` | un chemin descend sous une valeur opaque dans la projection |
+</Details>

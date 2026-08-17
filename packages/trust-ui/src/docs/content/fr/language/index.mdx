@@ -1,0 +1,35 @@
+---
+title: "Référence du langage"
+summary: "Les conventions Gherkin communes aux Opérations et aux Procédures, puis les deux grammaires fermées, une page chacune."
+order: 6
+---
+
+Les Opérations et les Procédures s'écrivent en **Gherkin anglais avec un ensemble fermé de phrases** : mots fixes, en-têtes de tableaux fixes, et tout ce qui sort de la grammaire est une erreur de compilation avec une ligne. Il n'y a pas d'étape libre : le compilateur comprend entièrement une phrase ou la refuse.
+
+## Conventions communes
+
+- `# language: en` peut ouvrir le fichier ; l'anglais est le seul dialecte.
+- Les tags sur `Feature:` portent l'identité ; `@trust-dsl:1` nomme la version du langage. L'ordre des tags est libre.
+- Les mots-clés sont sensibles à la casse ; les valeurs entre guillemets sont non vides et séparées de leurs voisines par des espaces.
+- Identifiants : lower camel case pour les noms d'Opération dans les tableaux et les phrases (`workspaceRoot`, `headRevision`) ; slugs en minuscules pour les identités d'Opération, de Procédure et de Scénario (`git.head-read`, `patient-admission`) ; libellés libres entre guillemets pour les rôles de Procédure et les noms de Check (`"fix revision"`, `"Maven verification"`).
+- Le bloc de description sous `Feature:` est du texte libre, restitué pour les humains, jamais exécuté.
+- Les commentaires (`#`) et les lignes vides sont libres et ne changent jamais un digest.
+
+## Lignes de continuation et formatage
+
+Une étape peut se poursuivre sur les lignes suivantes quand elles sont indentées plus profondément que son mot-clé et ne sont pas une ligne de tableau, de doc string, de commentaire, de tag ou de mot-clé. Le compilateur les replie avant l'analyse et rapporte les positions sur les lignes physiques. Le formateur — **Formater la source** dans l'éditeur, *Shift+Alt+F*, ou *Format document* du serveur de langage — redistribue les étapes longues sur de telles lignes à leurs mots de liaison (`on`, `using`, `and materializes`, `and must establish`, `with cwd from`, `appending`…), largeur 88.
+
+```gherkin fragment
+    Then Check "Maven verification" runs Operation "maven.project-verify"
+        on "project" as Input "project"
+        using "fix revision" as Input "revision"
+        and must establish "the committed fix passes Maven verification"
+```
+
+## Éditer hors de l'interface
+
+Le serveur de langage (`@trust/language-server`) donne à tout éditeur LSP les mêmes diagnostics, le même formatage et le même repliement que l'interface. Les sources sont de simples fichiers `.feature` : le catalogue d'Opérations en est un répertoire ; une Procédure est publiée depuis l'un d'eux.
+
+## Les deux grammaires
+
+<PageCards />

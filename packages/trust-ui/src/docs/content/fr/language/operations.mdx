@@ -1,0 +1,37 @@
+---
+title: "Grammaire des Opérations"
+summary: "L'ensemble complet des phrases d'une Opération, en une page — avec des liens vers les pages détaillées."
+order: 1
+---
+
+```text
+@trust-dsl:1 @operation:<domain>.<action> @version:<x.y.z> [@x-<key>:<value> …]
+Feature: <title>
+  [description]
+
+  Background: <name>
+    Given Environment              | name | type |                              type: directory | url
+    And Input                      | input | type | cardinality |               type: string | number | instant | reference · one | many
+    And Produced fields            | field | type | cardinality | domain |      domain: any | enum "a", "b"
+
+  Scenario: Run
+    When/And Shell "<n>" runs "<exe>" with cwd from Environment "<dir>" [and Input "<in>"]
+      | argument | source |                                                     source: literal | Input "<in>"
+    And Shell "<n>" accepts exits
+      | exit code | stdout contains | stderr contains |
+    When/And File "<n>" reads "<path>" as Text|JSON from Environment "<dir>" [and Input "<in>"]
+    When/And HTTP "<n>" gets Environment "<url>" [appending Input "<in>"] as Text|JSON
+    When/And HTTP "<n>" posts Input as JSON to Environment "<url>" and reads JSON
+    Then Produce with JSONata
+      """ { "<field>": <expression>, … } """
+```
+
+| Sujet | Page |
+| --- | --- |
+| Tags, titre, description, versions | [Identité, classification et versions](/docs/operations/classification-and-versions) |
+| Les trois tables et les types | [Interface](/docs/operations/interface) |
+| Shell, sorties acceptées | [Étape Shell](/docs/operations/steps/shell) |
+| File | [Étape File](/docs/operations/steps/file) |
+| HTTP GET, POST | [Étapes HTTP](/docs/operations/steps/http) |
+| Projection, sous-ensemble JSONata | [Produire des champs](/docs/operations/produce) |
+| Erreurs | [Diagnostics](/docs/operations/diagnostics) |

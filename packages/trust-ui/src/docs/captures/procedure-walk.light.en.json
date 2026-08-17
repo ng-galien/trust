@@ -1,0 +1,21 @@
+{
+  "width": 2160,
+  "height": 1350,
+  "density": "operator",
+  "callouts": [
+    {
+      "key": "walk.controls",
+      "x": 19.79,
+      "y": 21.58,
+      "w": 22.22,
+      "h": 76.97
+    },
+    {
+      "key": "walk.scenarios",
+      "x": 42.01,
+      "y": 21.58,
+      "w": 34.79,
+      "h": 76.97
+    }
+  ]
+}

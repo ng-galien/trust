@@ -1,6 +1,7 @@
 import type { en } from "../en/index.js";
 import type { Translation } from "../types.js";
 import { common } from "./common.js";
+import { docs } from "./docs.js";
 import { environments } from "./environments.js";
 import { history } from "./history.js";
 import { operations } from "./operations.js";
@@ -26,4 +27,5 @@ export const fr: Translation<typeof en> = {
   history,
   overview,
   settings,
+  docs,
 };

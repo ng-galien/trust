@@ -29,35 +29,6 @@ export function constraintLabel(spec: PropertySpec): string {
   return constraintHints(spec).join(" · ");
 }
 
-/** Read-only projection: one row per field. */
-export function SchemaTable({ schema, empty, className }: { schema: JsonObject | undefined; empty?: string; className?: string }) {
-  const { t } = useTranslation();
-  const rows = schemaProperties(schema);
-  if (rows.length === 0) return <p className={cx("text-body text-faint", className)}>{empty ?? t("ui.schema.noField")}</p>;
-  return (
-    <table className={cx("w-full border-collapse text-body", className)}>
-      <thead>
-        <tr className="text-left text-meta uppercase tracking-[0.06em] text-faint">
-          <th className="py-1 pr-3 font-semibold">{t("ui.schema.columns.field")}</th>
-          <th className="py-1 pr-3 font-semibold">{t("ui.schema.columns.type")}</th>
-          <th className="py-1 pr-3 font-semibold">{t("ui.schema.columns.constraint")}</th>
-          <th className="py-1 font-semibold">{t("ui.schema.columns.required")}</th>
-        </tr>
-      </thead>
-      <tbody>
-        {rows.map(({ name, spec, required }) => (
-          <tr key={name} className="border-t border-border">
-            <td className="mono py-1.5 pr-3 font-medium">{name}</td>
-            <td className="py-1.5 pr-3 text-muted">{typeLabel(spec)}</td>
-            <td className="py-1.5 pr-3 text-muted">{constraintLabel(spec) || "—"}</td>
-            <td className="py-1.5 text-muted">{required ? t("ui.schema.yes") : t("ui.schema.no")}</td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
-  );
-}
-
 /** Blank object with typed defaults for every property. */
 export function blankObject(schema: JsonObject | ObjectSchema | undefined): JsonObject {
   return Object.fromEntries(schemaProperties(schema).map(({ name, spec }) => [name, blankValue(spec)]).filter(([, value]) => value !== undefined));

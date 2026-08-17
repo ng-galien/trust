@@ -1,0 +1,58 @@
+---
+title: "Diagnostics"
+summary: "Ce que le compilateur refuse, comment un diagnostic est affiché, et la liste des messages par cause."
+order: 7
+---
+
+Le compilateur renvoie soit une Opération compilée, soit **un diagnostic** : un code, un message et un emplacement (la ligne physique, lignes de continuation comprises). L'interface l'affiche dans la ligne d'état sous les onglets et souligne la ligne dans l'éditeur de source ; le serveur de langage montre le même diagnostic dans un éditeur externe.
+
+> Une source qui ne compile pas ne peut être ni enregistrée, ni simulée, ni exécutée.
+
+## Codes
+
+| Code | Signification |
+| --- | --- |
+| `invalid-operation` | la forme du document, une table, une étape ou la projection enfreint une règle de la grammaire fermée |
+| `invalid-identifier` | un nom (Opération, version, tag de classification, Environment, Input, champ) a la mauvaise forme |
+| `unknown-step` | une phrase n'est pas l'une des phrases d'étape acceptées, ou est mal placée |
+| `unknown-environment` | une étape utilise un nom d'Environment qui n'est pas déclaré |
+| `duplicate-environment` · `duplicate-input` · `duplicate-produced-field` · `duplicate-step` | un nom est déclaré deux fois |
+| `secret-like-value` | la source contient quelque chose qui ressemble à un credential |
+
+## Messages par cause
+
+### Identité et tags
+- `Operation "…" must use the canonical <domain>.<action> form` — deux segments en minuscules séparés par un point, tirets autorisés.
+- `Operation version "…" must be semantic` — `x.y.z`, chiffres seulement.
+- `TRUST DSL version "…" is unsupported; expected "1"` · `Operation must declare exactly one Operation tag` / `… version tag` / `… TRUST DSL version tag`.
+- `Classification tag "…" must use the @x-<key>:<value> form (lower-case key, value without spaces or colons)`.
+- `Tag "…" is outside the closed Operation grammar` — tout tag qui n'est ni l'un des trois tags d'identité ni un tag `@x-`.
+
+### Forme du document
+- `Operation is not valid Gherkin: …` · `Operation must contain one English Gherkin Feature`.
+- `Operation must declare exactly one Background` · `Operation must declare exactly one Scenario named Run`.
+- `Rules are outside the closed Operation grammar` · `Scenario Outline is outside the closed Operation grammar` · `Operation Scenario tags are outside the closed grammar`.
+- `Operation source contains a secret-like value`.
+
+### Tables d'interface
+- `Table must declare name | type` / `input | type | cardinality` / `field | type | cardinality | domain` — mauvais en-tête.
+- `Operation must declare Environment` · `Operation must declare produced fields` · `Operation repeats Environment` / `Input` / `Produce fields`.
+- `Environment name "…" must be lower camel case` · `Input "…" must be lower camel case` · `Produced field "…" must be lower camel case`.
+- `Environment "…" has invalid type "…"` (ni `directory` ni `url`) · `Input "…" has invalid type "…"` · `Produced field "…" has invalid type "…"` (ni `string`, ni `number`, ni `instant`, ni `reference`).
+- `Cardinality "…" must be one or many` · `Only string fields may declare an enum domain` · `Domain "…" is invalid` · `Domain "…" repeats a value`.
+- `Environment "…" is repeated` · `Input "…" is repeated` · `Produced field "…" is repeated`.
+- `Operation interface must use Given or And` · `Unknown Operation interface step "…"`.
+
+### Étapes
+- `Unknown Operation step "…"` — la phrase ne correspond à aucune de Shell, File, HTTP GET, HTTP POST, sorties acceptées, Produce.
+- `Operation must declare at least one step` · `Step "…" is repeated`.
+- `Shell must use When or And` / `File …` / `HTTP …` · `Shell cannot run after Produce` / `File cannot read after Produce` / `HTTP cannot run after Produce`.
+- Messages Shell, File et HTTP : voir le bloc **Diagnostics** de [Shell](/docs/operations/steps/shell), [File](/docs/operations/steps/file) et [HTTP](/docs/operations/steps/http).
+
+### Projection
+- `Operation must Produce with JSONata` · `Produce with JSONata cannot be empty` · `Produce with JSONata must use Then and one DocString` · `Produce with JSONata must be the final step` · `Operation repeats Produce with JSONata`.
+- Messages de sous-ensemble, de forme et de référence : voir [Produire des champs](/docs/operations/produce#what-is-checked).
+
+<Callout kind="tip">
+  Les causes les plus fréquentes : un `@trust-dsl:1` oublié ; un nom qui n'est pas en lower camel case (`workspace_root`, `WorkspaceRoot`) ; une projection dont les clés ne correspondent pas exactement à la table `Produced fields` ; une table `accepts exits` qui liste `1` mais oublie `0` ; un résultat `Text` traversé avec un point.
+</Callout>
