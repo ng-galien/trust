@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { mkdtemp, rm, utimes } from "node:fs/promises";
 import { createServer } from "node:net";
+import { DatabaseSync } from "node:sqlite";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -13,6 +14,44 @@ const repositoryRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "../../../..",
 );
+
+test("the server manager refuses a stale SQLite schema before starting tmux", async () => {
+  const stateDirectory = await mkdtemp(path.join(tmpdir(), "trust-stale-schema-"));
+  const session = `trust-stale-${process.pid}-${Date.now().toString(36)}`;
+  const database = new DatabaseSync(path.join(stateDirectory, "runtime.sqlite"));
+  database.exec("CREATE TABLE attempts (attempt_handle TEXT PRIMARY KEY) STRICT");
+  database.close();
+  try {
+    await assert.rejects(
+      execute(
+        process.execPath,
+        [path.join(repositoryRoot, "scripts/server.ts"), "start"],
+        {
+          cwd: repositoryRoot,
+          env: {
+            ...process.env,
+            TRUST_SERVER_STATE_DIRECTORY: stateDirectory,
+            TRUST_SERVER_TMUX_SESSION: session,
+            TRUST_SERVER_PORT: String(await availablePort()),
+          },
+          timeout: 30_000,
+        },
+      ),
+      (error: unknown) => {
+        const output = error instanceof Error
+          ? `${error.message}\n${String((error as Error & { stderr?: unknown }).stderr ?? "")}`
+          : String(error);
+        assert.match(output, /SQLite database schema is incompatible/);
+        assert.match(output, /node scripts\/server\.ts reset/);
+        return true;
+      },
+    );
+    await assert.rejects(execute("tmux", ["has-session", "-t", session]));
+  } finally {
+    await execute("tmux", ["kill-session", "-t", session]).catch(() => undefined);
+    await rm(stateDirectory, { recursive: true, force: true });
+  }
+});
 
 test("the Node server manager resets, reuses and live-reloads an isolated tmux server", async () => {
   const stateDirectory = await mkdtemp(path.join(tmpdir(), "trust-server-manager-"));

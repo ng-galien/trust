@@ -1,13 +1,22 @@
 import type { Selectable } from "kysely";
 
 import type { Database, PlanRevisionTable, PlanTable } from "../database/database.js";
-import type { Plan, PlanCheck, PlanRevision } from "../model.js";
+import type { Plan, PlanCheck, PlanMode, PlanRevision } from "../model.js";
 
 type PlanRow = Selectable<PlanTable>;
 type RevisionRow = Selectable<PlanRevisionTable>;
 
 export interface PlanStoreDependencies {
   readonly database: Database;
+}
+
+export interface PlanListQuery {
+  readonly filter?: {
+    readonly procedure?: string;
+    readonly mode?: PlanMode;
+  };
+  readonly after?: { readonly createdAt: string; readonly plan: string };
+  readonly limit: number;
 }
 
 export class PlanStore {
@@ -30,9 +39,10 @@ export class PlanStore {
       && (existing.procedure !== compiled.procedure
         || existing.procedureVersion !== compiled.procedureVersion
         || existing.environment !== compiled.environment
+        || existing.mode !== compiled.mode
         || canonicalJson(existing.rootInputs) !== canonicalJson(compiled.rootInputs))
     ) {
-      throw new Error("a Plan cannot change its identity, environment or root inputs");
+      throw new Error("a Plan cannot change its identity, environment, mode or root inputs");
     }
 
     for (const check of compiled.checks) {
@@ -48,6 +58,7 @@ export class PlanStore {
         procedure_name: compiled.procedure,
         procedure_version: compiled.procedureVersion,
         environment: compiled.environment,
+        mode: compiled.mode,
         root_inputs_json: JSON.stringify(compiled.rootInputs),
         current_revision: compiled.revision,
         created_at: compiledAt,
@@ -90,6 +101,16 @@ export class PlanStore {
     }
   }
 
+  /** Erase a Plan and everything it owns (revisions, checks, sessions, attempts, receipts, snapshots, active
+      qualifications), in dependency order. Facts are content-addressed history and are kept. */
+  async remove(planSlug: string): Promise<void> {
+    const database = this.dependencies.database;
+    await database.deleteFrom("active_check_qualifications").where("plan_slug", "=", planSlug).execute();
+    await database.deleteFrom("check_snapshots").where("plan_slug", "=", planSlug).execute();
+    await database.deleteFrom("attempts").where("plan_slug", "=", planSlug).execute();
+    await database.deleteFrom("plans").where("plan_slug", "=", planSlug).execute();
+  }
+
   async findPlan(planSlug: string): Promise<Plan | undefined> {
     const row = await this.dependencies.database
       .selectFrom("plans")
@@ -99,12 +120,29 @@ export class PlanStore {
     return row ? toPlan(row) : undefined;
   }
 
-  async listPlans(): Promise<Plan[]> {
-    const rows = await this.dependencies.database
+  async listPlans(query: PlanListQuery): Promise<Plan[]> {
+    let selection = this.dependencies.database
       .selectFrom("plans")
       .selectAll()
       .orderBy("created_at", "desc")
-      .orderBy("plan_slug")
+      .orderBy("plan_slug", "asc")
+      .limit(query.limit);
+    if (query.filter?.procedure !== undefined) {
+      selection = selection.where("procedure_name", "=", query.filter.procedure);
+    }
+    if (query.filter?.mode !== undefined) {
+      selection = selection.where("mode", "=", query.filter.mode);
+    }
+    if (query.after !== undefined) {
+      selection = selection.where((expression) => expression.or([
+        expression("created_at", "<", query.after!.createdAt),
+        expression.and([
+          expression("created_at", "=", query.after!.createdAt),
+          expression("plan_slug", ">", query.after!.plan),
+        ]),
+      ]));
+    }
+    const rows = await selection
       .execute();
     return rows.map(toPlan);
   }
@@ -190,6 +228,7 @@ function toPlan(row: PlanRow): Plan {
     procedure: row.procedure_name,
     procedureVersion: row.procedure_version,
     environment: row.environment,
+    mode: row.mode as PlanMode,
     rootInputs: JSON.parse(row.root_inputs_json) as Record<string, unknown>,
     currentRevision: row.current_revision,
     createdAt: row.created_at,
@@ -201,6 +240,7 @@ function toRevision(plan: Plan, row: RevisionRow, checkJson: readonly string[]):
     procedure: plan.procedure,
     procedureVersion: plan.procedureVersion,
     environment: plan.environment,
+    mode: plan.mode,
     rootInputs: plan.rootInputs,
     planSlug: plan.slug,
     revision: row.revision,

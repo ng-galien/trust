@@ -7,6 +7,7 @@ export interface HttpAppDependencies {
   readonly mcpHttpHandler: Router;
   readonly otlpHttpHandler: Router;
   readonly diagnosticsHttpHandler: Router;
+  readonly planEventsHttpHandler: Router;
 }
 
 export const createHttpApp = ({
@@ -15,6 +16,7 @@ export const createHttpApp = ({
   mcpHttpHandler,
   otlpHttpHandler,
   diagnosticsHttpHandler,
+  planEventsHttpHandler,
 }: HttpAppDependencies): Express => {
   const app = express();
   app.disable("x-powered-by");
@@ -25,5 +27,6 @@ export const createHttpApp = ({
   app.use("/mcp", mcpHttpHandler);
   app.use("/v1/traces", otlpHttpHandler);
   app.use("/otlp/diagnostics", diagnosticsHttpHandler);
+  app.use("/events/plans", planEventsHttpHandler);
   return app;
 };

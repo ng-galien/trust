@@ -12,7 +12,6 @@ import {
   OperationCompilationError,
   OperationValidationError,
   simulateOperation,
-  type CompiledOperation,
 } from "@trust/operation";
 
 import {
@@ -28,6 +27,7 @@ import {
 import type { EnvironmentService } from "../environment/service.js";
 import type { CredentialService } from "../credential/service.js";
 import { EnvironmentConfigurationError } from "../environment/validation.js";
+import { OperationCatalogError, type OperationCatalog } from "../operation/catalog.js";
 import { TrialError, type TrialService } from "../trial/service.js";
 import { executeTrialRpc, InvalidTrialRpcParams, isTrialRpcMethod, TRIAL_ERROR_CONTRACT, type TrialFailureData } from "./trial.js";
 import {
@@ -53,6 +53,8 @@ const OPERATION_COMPILE_METHOD = "operation.compile" as const;
 const OPERATION_LIST_METHOD = "operation.list" as const;
 const OPERATION_READ_METHOD = "operation.read" as const;
 const OPERATION_SIMULATE_METHOD = "operation.simulate" as const;
+const OPERATION_SAVE_METHOD = "operation.save" as const;
+const OPERATION_REMOVE_METHOD = "operation.remove" as const;
 const PROCEDURE_COMPILATION_ERROR_CONTRACT =
   "trust.procedure-compilation-error@1" as const;
 const OPERATION_COMPILATION_ERROR_CONTRACT =
@@ -139,7 +141,7 @@ interface RpcHttpDependencies {
   readonly credentialService: CredentialService;
   readonly planReader: PlanReader;
   readonly procedures: Procedures;
-  readonly operations: readonly CompiledOperation[];
+  readonly operationCatalog: OperationCatalog;
   readonly planRuntime: PlanRuntime;
 }
 
@@ -203,8 +205,11 @@ const readParams = (value: unknown): ProcedureReadParams | undefined => {
   return { procedure: value.procedure, version: value.version };
 };
 
-const emptyParams = (value: unknown): boolean =>
-  isRecord(value) && Object.keys(value).length === 0;
+const listParams = (value: unknown): { readonly summary: boolean } | undefined => {
+  if (!isRecord(value) || !hasOnlyKeys(value, ["summary"])) return undefined;
+  if (value.summary !== undefined && typeof value.summary !== "boolean") return undefined;
+  return { summary: value.summary === true };
+};
 
 const operationReadParams = (value: unknown): OperationReadParams | undefined => {
   if (!isRecord(value) || !hasOnlyKeys(value, ["operation", "version"])) return undefined;
@@ -273,6 +278,8 @@ const processMessage = async (
     message.method !== OPERATION_LIST_METHOD &&
     message.method !== OPERATION_READ_METHOD &&
     message.method !== OPERATION_SIMULATE_METHOD &&
+    message.method !== OPERATION_SAVE_METHOD &&
+    message.method !== OPERATION_REMOVE_METHOD &&
     !isPlanRuntimeRpcMethod(message.method) &&
     !isConfigurationRpcMethod(message.method) &&
     !isTrialRpcMethod(message.method)
@@ -320,13 +327,15 @@ const processMessage = async (
   }
 
   if (message.method === OPERATION_LIST_METHOD) {
-    if (!emptyParams(message.params)) return respond(failure(id, INVALID_PARAMS, "Invalid params"));
+    const params = listParams(message.params);
+    if (!params) return respond(failure(id, INVALID_PARAMS, "Invalid params"));
+    const operations = dependencies.operationCatalog.list();
     return respond({
       jsonrpc: "2.0",
       id,
       result: {
         contract: "trust.operation-catalog@1",
-        operations: dependencies.operations,
+        operations: params.summary ? operations.map(operationSummary) : operations,
       },
     });
   }
@@ -334,12 +343,61 @@ const processMessage = async (
   if (message.method === OPERATION_READ_METHOD) {
     const params = operationReadParams(message.params);
     if (!params) return respond(failure(id, INVALID_PARAMS, "Invalid params"));
-    const operation = dependencies.operations.find((candidate) =>
-      candidate.operation === params.operation && candidate.version === params.version
-    );
+    const operation = dependencies.operationCatalog.find(params.operation, params.version);
     return respond(operation === undefined
       ? failure(id, PROCEDURE_COMPILATION_ERROR, "Operation not found")
       : { jsonrpc: "2.0", id, result: operation });
+  }
+
+  if (message.method === OPERATION_SAVE_METHOD) {
+    const params = compileParams(message.params);
+    if (!params || params.sourceName === undefined) return respond(failure(id, INVALID_PARAMS, "Invalid params"));
+    try {
+      return respond({
+        jsonrpc: "2.0",
+        id,
+        result: {
+          contract: "trust.saved-operation@1",
+          operation: await dependencies.operationCatalog.save(params.source, params.sourceName),
+          sourceName: params.sourceName,
+        },
+      });
+    } catch (error) {
+      if (error instanceof OperationCompilationError || error instanceof OperationCatalogError) {
+        return respond(failure(id, PROCEDURE_COMPILATION_ERROR, "Operation save rejected", {
+          contract: OPERATION_COMPILATION_ERROR_CONTRACT,
+          reason: error instanceof OperationCompilationError ? error.code : error.reason,
+          message: error.message,
+          sourceName: params.sourceName,
+          location: error instanceof OperationCompilationError ? error.location ?? null : null,
+        } satisfies OperationCompilationFailureData));
+      }
+      return respond(failure(id, INTERNAL_ERROR, "Internal error"));
+    }
+  }
+
+  if (message.method === OPERATION_REMOVE_METHOD) {
+    const params = operationReadParams(message.params);
+    if (!params) return respond(failure(id, INVALID_PARAMS, "Invalid params"));
+    try {
+      await dependencies.operationCatalog.remove(params.operation, params.version);
+      return respond({
+        jsonrpc: "2.0",
+        id,
+        result: { contract: "trust.removed-operation@1", operation: params.operation, version: params.version, removed: true },
+      });
+    } catch (error) {
+      if (error instanceof OperationCatalogError) {
+        return respond(failure(id, PROCEDURE_COMPILATION_ERROR, "Operation removal rejected", {
+          contract: OPERATION_COMPILATION_ERROR_CONTRACT,
+          reason: error.reason,
+          message: error.message,
+          sourceName: "<operation>",
+          location: null,
+        } satisfies OperationCompilationFailureData));
+      }
+      return respond(failure(id, INTERNAL_ERROR, "Internal error"));
+    }
   }
 
   if (message.method === OPERATION_COMPILE_METHOD) {
@@ -390,14 +448,16 @@ const processMessage = async (
   }
 
   if (message.method === PROCEDURE_LIST_METHOD) {
-    if (!emptyParams(message.params)) return respond(failure(id, INVALID_PARAMS, "Invalid params"));
+    const params = listParams(message.params);
+    if (!params) return respond(failure(id, INVALID_PARAMS, "Invalid params"));
     try {
+      const procedures = await dependencies.procedures.list();
       return respond({
         jsonrpc: "2.0",
         id,
         result: {
           contract: "trust.procedure-catalog@1",
-          procedures: await dependencies.procedures.list(),
+          procedures: params.summary ? procedures.map(procedureSummary) : procedures,
         },
       });
     } catch (error) {
@@ -508,14 +568,43 @@ const processMessage = async (
     if (error instanceof ReadError) {
       const data: PlanRuntimeFailureData = {
         contract: PLAN_RUNTIME_ERROR_CONTRACT,
-        reason: "check-not-found",
+        reason: error.code,
         message: error.message,
       };
       return respond(failure(id, PLAN_RUNTIME_ERROR, "Plan runtime rejected", data));
     }
+    process.stderr.write(`plan runtime rpc ${message.method} failed: ${error instanceof Error ? (error.stack ?? error.message) : String(error)}\n`);
     return respond(failure(id, INTERNAL_ERROR, "Internal error"));
   }
 };
+
+function operationSummary(operation: ReturnType<OperationCatalog["list"]>[number]) {
+  return {
+    contract: operation.contract,
+    operation: operation.operation,
+    version: operation.version,
+    title: operation.title,
+    ...(operation.description === undefined ? {} : { description: operation.description }),
+    ...(operation.classification === undefined ? {} : { classification: operation.classification }),
+  };
+}
+
+function procedureSummary(published: Awaited<ReturnType<Procedures["list"]>>[number]) {
+  const procedure = published.procedure;
+  return {
+    procedure: {
+      contract: procedure.contract,
+      procedure: procedure.procedure,
+      version: procedure.version,
+      title: procedure.title,
+      ...(procedure.description === undefined ? {} : { description: procedure.description }),
+      definitionDigest: procedure.definitionDigest,
+    },
+    sourceName: published.sourceName,
+    publishedBy: published.publishedBy,
+    publishedAt: published.publishedAt,
+  };
+}
 
 const dispatch = async (
   body: unknown,

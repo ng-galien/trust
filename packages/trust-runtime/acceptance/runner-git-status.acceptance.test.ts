@@ -110,9 +110,18 @@ test("the packaged TRUST Skill executes the git-status Check", async () => {
     assert.equal(output.actionOutcome.status.exitCode, 0);
     assert.match(output.actionOutcome.status.stdout, /untracked\.txt/);
 
+    const mcpEngagement = await mcpTool(runtime.endpoint, "trust_plan_engage", {
+      procedure: "git-status",
+      procedureVersion: "2.0.0",
+      plan: "runner-git-status-mcp",
+      environment: "local",
+      rootInputs: { repository: projectName },
+    });
+    const mcpCheckUri = uniqueUris(mcpEngagement)[0];
+    assert.ok(mcpCheckUri);
     const mcp = await runMcpStdio(
       path.join(skill, "scripts/mcp-stdio.js"),
-      checkUris[0]!,
+      mcpCheckUri,
       artifactRoot,
       {
         ...process.env,

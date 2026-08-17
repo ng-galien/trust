@@ -5,10 +5,30 @@ import type {
   CheckSnapshotTable,
   Database,
 } from "../database/database.js";
-import type { ActiveCheckQualification, CheckSnapshot } from "../model.js";
+import type { ActiveCheckQualification, CheckSnapshot, PlanCheck, PlanMode } from "../model.js";
 
 type SnapshotRow = Selectable<CheckSnapshotTable>;
 type ActiveQualificationRow = Selectable<ActiveCheckQualificationTable>;
+
+export interface HistoryListQuery {
+  readonly filter?: {
+    readonly plan?: string;
+    readonly procedure?: string;
+    readonly mode?: PlanMode;
+    readonly verdict?: CheckSnapshot["verdict"];
+    readonly since?: string;
+    readonly until?: string;
+  };
+  readonly after?: { readonly calculatedAt: string; readonly snapshotId: string };
+  readonly limit: number;
+}
+
+export interface HistoryRecord {
+  readonly snapshot: CheckSnapshot;
+  readonly procedure: string;
+  readonly mode: PlanMode;
+  readonly check: PlanCheck;
+}
 
 export class SnapshotStore {
   constructor(private readonly dependencies: { readonly database: Database }) {}
@@ -81,6 +101,59 @@ export class SnapshotStore {
       .orderBy("snapshot_id")
       .execute();
     return rows.map(toSnapshot);
+  }
+
+  async listHistoryPage(query: HistoryListQuery): Promise<HistoryRecord[]> {
+    let selection = this.dependencies.database
+      .selectFrom("check_snapshots")
+      .innerJoin("plans", "plans.plan_slug", "check_snapshots.plan_slug")
+      .innerJoin("compiled_checks", (join) => join
+        .onRef("compiled_checks.plan_slug", "=", "check_snapshots.plan_slug")
+        .onRef("compiled_checks.plan_revision", "=", "check_snapshots.plan_revision")
+        .onRef("compiled_checks.check_uri", "=", "check_snapshots.check_uri"))
+      .selectAll("check_snapshots")
+      .select([
+        "plans.procedure_name",
+        "plans.mode",
+        "compiled_checks.check_json",
+      ])
+      .orderBy("check_snapshots.calculated_at", "desc")
+      .orderBy("check_snapshots.snapshot_id", "desc")
+      .limit(query.limit);
+    if (query.filter?.plan !== undefined) {
+      selection = selection.where("check_snapshots.plan_slug", "=", query.filter.plan);
+    }
+    if (query.filter?.procedure !== undefined) {
+      selection = selection.where("plans.procedure_name", "=", query.filter.procedure);
+    }
+    if (query.filter?.mode !== undefined) {
+      selection = selection.where("plans.mode", "=", query.filter.mode);
+    }
+    if (query.filter?.verdict !== undefined) {
+      selection = selection.where("check_snapshots.verdict", "=", query.filter.verdict);
+    }
+    if (query.filter?.since !== undefined) {
+      selection = selection.where("check_snapshots.calculated_at", ">=", query.filter.since);
+    }
+    if (query.filter?.until !== undefined) {
+      selection = selection.where("check_snapshots.calculated_at", "<=", query.filter.until);
+    }
+    if (query.after !== undefined) {
+      selection = selection.where((expression) => expression.or([
+        expression("check_snapshots.calculated_at", "<", query.after!.calculatedAt),
+        expression.and([
+          expression("check_snapshots.calculated_at", "=", query.after!.calculatedAt),
+          expression("check_snapshots.snapshot_id", "<", query.after!.snapshotId),
+        ]),
+      ]));
+    }
+    const rows = await selection.execute();
+    return rows.map((row) => ({
+      snapshot: toSnapshot(row),
+      procedure: row.procedure_name,
+      mode: row.mode as PlanMode,
+      check: JSON.parse(row.check_json) as PlanCheck,
+    }));
   }
 
   async saveActiveForRevision(

@@ -38,6 +38,7 @@ export interface PlanTable {
   procedure_name: string;
   procedure_version: string;
   environment: string;
+  mode: string;
   root_inputs_json: string;
   current_revision: number;
   created_at: string;
@@ -84,6 +85,7 @@ export interface AttemptTable {
   operation_digest: string;
   action_input_json: string;
   environment: string;
+  reobserve: number;
   state: Attempt["state"];
   admitted_at: string;
   expires_at: string;

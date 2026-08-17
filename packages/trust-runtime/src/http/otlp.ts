@@ -27,7 +27,7 @@ export function createOtlpHttpHandler(dependencies: OtlpHttpDependencies): Route
   const router = express.Router();
   const handle: RequestHandler = async (request, response) => {
     try {
-      await dependencies.planRuntime.ingestFacts(parseCheckFactTrace(request.body));
+      await dependencies.planRuntime.ingestLiveFacts(parseCheckFactTrace(request.body));
       response.status(200).json({});
     } catch (error) {
       if (error instanceof PlanRuntimeError && error.code === "fact-batch-rejected") {

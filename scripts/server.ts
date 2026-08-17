@@ -8,6 +8,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 
 import { publicRpc } from "../infra/server/lib/public-rpc.mjs";
+import { assertSqliteSchemaFile } from "../packages/trust-runtime/src/database/sqlite-schema.ts";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
 const stateDirectory = parseStateDirectory(
@@ -54,6 +55,7 @@ switch (command) {
 }
 
 async function start(reset: boolean) {
+  if (!reset) assertSqliteSchemaFile(database);
   if (await healthy()) {
     if (reset) await stop();
     else {

@@ -42,6 +42,19 @@ test("an Operation Trial runs through the packaged runner and streams its diagno
     assert.match(streamText, /event: operation\.start/);
     assert.match(streamText, /event: trial\.completed/);
     assert.match(streamText, /event: end/);
+
+    const listed = await rpc(runtime.endpoint, "operation.trial.list", {}) as {
+      trials: Array<{ id: string; operation: string; status: string }>;
+    };
+    assert.deepEqual(listed.trials.map(({ id, operation, status }) => [id, operation, status]), [
+      [started.trial.id, "git.head-read", "succeeded"],
+    ]);
+    const filtered = await rpc(runtime.endpoint, "operation.trial.list", { operation: "git.head-read" }) as {
+      trials: Array<{ id: string }>;
+    };
+    assert.deepEqual(filtered.trials.map(({ id }) => id), [started.trial.id]);
+    assert.equal((await rpcEnvelope(runtime.endpoint, "operation.trial.list", { unexpected: true })).error?.code, -32_602);
+    assert.equal((await rpcEnvelope(runtime.endpoint, "operation.trial.read", { trial: started.trial.id, after: "latest" })).error?.code, -32_602);
   } finally {
     await runtime.close();
   }
@@ -214,13 +227,23 @@ function processExists(pid: number): boolean {
 const delay = (milliseconds: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, milliseconds));
 
 async function rpc(endpoint: string, method: string, params: unknown): Promise<unknown> {
+  const envelope = await rpcEnvelope(endpoint, method, params);
+  assert.equal(envelope.error, undefined, JSON.stringify(envelope.error));
+  return envelope.result;
+}
+
+async function rpcEnvelope(endpoint: string, method: string, params: unknown): Promise<{
+  result?: unknown;
+  error?: { code: number; message: string; data?: unknown };
+}> {
   const response = await fetch(`${endpoint}/rpc`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ jsonrpc: "2.0", id: method, method, params }),
   });
   assert.equal(response.status, 200);
-  const envelope = await response.json() as { result?: unknown; error?: unknown };
-  assert.equal(envelope.error, undefined, JSON.stringify(envelope.error));
-  return envelope.result;
+  return response.json() as Promise<{
+    result?: unknown;
+    error?: { code: number; message: string; data?: unknown };
+  }>;
 }

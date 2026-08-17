@@ -8,6 +8,7 @@ export interface RuntimeServerOptions {
   readonly databasePath?: string;
   readonly semanticAuthority?: string;
   readonly operations?: readonly CompiledOperation[];
+  readonly operationsDirectory?: string;
   readonly sessionDurationMs?: number;
   readonly diagnosticsEndpoint?: string;
   readonly runnerTrialScript?: string;
@@ -32,6 +33,8 @@ const listen = (server: Server, host: string, port: number): Promise<void> =>
 const close = (server: Server): Promise<void> =>
   new Promise((resolve, reject) => {
     server.close((error) => (error ? reject(error) : resolve()));
+    // A development reload or process shutdown must not wait for an idle keep-alive client.
+    server.closeAllConnections();
   });
 
 export const startRuntime = async ({
@@ -40,6 +43,7 @@ export const startRuntime = async ({
   databasePath,
   semanticAuthority,
   operations,
+  operationsDirectory,
   sessionDurationMs,
   diagnosticsEndpoint,
   runnerTrialScript,
@@ -60,6 +64,7 @@ export const startRuntime = async ({
       ...(databasePath ? { databasePath } : {}),
       ...(semanticAuthority ? { semanticAuthority } : {}),
       ...(operations ? { operations } : {}),
+      ...(operationsDirectory ? { operationsDirectory } : {}),
       ...(sessionDurationMs === undefined ? {} : { sessionDurationMs }),
       diagnosticsEndpoint: diagnosticsEndpoint ?? `http://${host}:${address.port}/otlp/diagnostics`,
       ...(runnerTrialScript ? { runnerTrialScript } : {}),

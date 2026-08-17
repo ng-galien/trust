@@ -32,6 +32,9 @@ import { EnvironmentStore } from "./environment/store.js";
 import { EnvironmentService } from "./environment/service.js";
 import { CredentialStore } from "./credential/store.js";
 import { CredentialService } from "./credential/service.js";
+import { PlanEvents } from "./plan/events.js";
+import { createPlanEventsHttpHandler } from "./http/events.js";
+import { OperationCatalog } from "./operation/catalog.js";
 
 export interface RuntimeComponents {
   readonly databasePath: string;
@@ -40,6 +43,8 @@ export interface RuntimeComponents {
   readonly clock: Clock;
   readonly health: Health;
   readonly operations: readonly CompiledOperation[];
+  readonly operationsDirectory?: string;
+  readonly operationCatalog: OperationCatalog;
   readonly environmentStore: EnvironmentStore;
   readonly environmentService: EnvironmentService;
   readonly credentialStore: CredentialStore;
@@ -53,11 +58,13 @@ export interface RuntimeComponents {
   readonly snapshotStore: SnapshotStore;
   readonly planRuntime: PlanRuntime;
   readonly planReader: PlanReader;
+  readonly planEvents: PlanEvents;
   readonly sessionDurationMs: number;
   readonly rpcHttpHandler: Router;
   readonly mcpHttpHandler: Router;
   readonly otlpHttpHandler: Router;
   readonly diagnosticsHttpHandler: Router;
+  readonly planEventsHttpHandler: Router;
   readonly trialRegistry: TrialRegistry;
   readonly trialService: TrialService;
   readonly diagnosticsEndpoint: string;
@@ -72,6 +79,7 @@ export interface RuntimeContainerOptions {
   semanticAuthority?: string;
   sessionDurationMs?: number;
   operations?: readonly CompiledOperation[];
+  operationsDirectory?: string;
   /** Base URL trial runners post their diagnostics to (this runtime's own diagnostic receiver). */
   diagnosticsEndpoint?: string;
   runnerTrialScript?: string;
@@ -90,6 +98,8 @@ export const createRuntimeContainer = async (
     databasePath: asValue(options.databasePath ?? ".trust/trust.sqlite"),
     semanticAuthority: asValue(options.semanticAuthority ?? "localhost:4318"),
     operations: asValue(options.operations ?? []),
+    operationsDirectory: asValue(options.operationsDirectory),
+    operationCatalog: asClass(OperationCatalog).singleton(),
     sessionDurationMs: asValue(options.sessionDurationMs ?? DEFAULT_SESSION_DURATION_MS),
     database: options.database === undefined
       ? asFunction(createSqliteDatabase)
@@ -105,6 +115,7 @@ export const createRuntimeContainer = async (
     attemptStore: asClass(AttemptStore).singleton(),
     factStore: asClass(FactStore).singleton(),
     snapshotStore: asClass(SnapshotStore).singleton(),
+    planEvents: asClass(PlanEvents).singleton(),
     environmentStore: asClass(EnvironmentStore).singleton(),
     environmentService: asClass(EnvironmentService).singleton(),
     credentialStore: asClass(CredentialStore).singleton(),
@@ -115,6 +126,7 @@ export const createRuntimeContainer = async (
     mcpHttpHandler: asFunction(createMcpHttpHandler).singleton(),
     otlpHttpHandler: asFunction(createOtlpHttpHandler).singleton(),
     diagnosticsHttpHandler: asFunction(createDiagnosticsHttpHandler).singleton(),
+    planEventsHttpHandler: asFunction(createPlanEventsHttpHandler).singleton(),
     trialRegistry: asFunction(() => new TrialRegistry()).singleton(),
     trialService: asClass(TrialService).singleton(),
     diagnosticsEndpoint: asValue(options.diagnosticsEndpoint ?? "http://127.0.0.1:4318/otlp/diagnostics"),
@@ -124,6 +136,7 @@ export const createRuntimeContainer = async (
   });
 
   try {
+    await container.resolve("operationCatalog").initialize();
     await container.resolve("credentialService").initialize();
     await container.resolve("environmentService").initialize();
     return container;

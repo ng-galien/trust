@@ -4,7 +4,7 @@ import { DatabaseSync, type SQLInputValue } from "node:sqlite";
 import { Kysely, SqliteDialect, type SqliteDatabase } from "kysely";
 
 import type { Database, TrustDatabase } from "./database.js";
-import { SQLITE_SCHEMA } from "./sqlite-schema.js";
+import { initializeSqliteSchema } from "./sqlite-schema.js";
 
 export interface SqliteDatabaseDependencies {
   readonly databasePath: string;
@@ -21,7 +21,12 @@ export function createSqliteDatabase({ databasePath }: SqliteDatabaseDependencie
   });
   sqlite.exec("PRAGMA foreign_keys = ON");
   sqlite.exec("PRAGMA journal_mode = WAL");
-  sqlite.exec(SQLITE_SCHEMA);
+  try {
+    initializeSqliteSchema(sqlite);
+  } catch (error) {
+    sqlite.close();
+    throw error;
+  }
 
   return new Kysely<TrustDatabase>({
     dialect: new SqliteDialect({ database: kyselySqliteDatabase(sqlite) }),

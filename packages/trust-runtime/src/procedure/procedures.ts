@@ -5,6 +5,7 @@ import {
 } from "@trust/procedure";
 
 import type { Clock } from "../time.js";
+import type { OperationCatalog } from "../operation/catalog.js";
 import {
   ProcedureStore,
   type PublishedProcedure,
@@ -14,23 +15,23 @@ export type ProcedureSource = Omit<ProcedureCompilationInput, "operations">;
 
 export interface ProceduresDependencies {
   readonly clock: Clock;
-  readonly operations: ProcedureCompilationInput["operations"];
+  readonly operationCatalog: OperationCatalog;
   readonly procedureStore: ProcedureStore;
 }
 
 export class Procedures {
   readonly #clock: Clock;
-  readonly #operations: ProcedureCompilationInput["operations"];
+  readonly #operations: OperationCatalog;
   readonly #store: ProcedureStore;
 
-  constructor({ clock, operations, procedureStore }: ProceduresDependencies) {
+  constructor({ clock, operationCatalog, procedureStore }: ProceduresDependencies) {
     this.#clock = clock;
-    this.#operations = operations;
+    this.#operations = operationCatalog;
     this.#store = procedureStore;
   }
 
   compile(input: ProcedureSource): CompiledProcedure {
-    return compileProcedure({ ...input, operations: this.#operations });
+    return compileProcedure({ ...input, operations: this.#operations.list() });
   }
 
   async publish(input: ProcedureSource, publisher: string): Promise<PublishedProcedure> {

@@ -23,6 +23,13 @@ test("the public runtime exposes the resources required by the TRUST interface",
     const gitHead = operations.operations.find(({ operation }) => operation === "git.head-read");
     assert.ok(gitHead);
 
+    const compiledOperation = await rpc(runtime.endpoint, "operation.compile", {
+      source: gitHead.source,
+      sourceName: "git.head-read.feature",
+    }) as { operation: string };
+    assert.equal(compiledOperation.operation, "git.head-read");
+    assert.deepEqual(compiledOperation, gitHead);
+
     const simulation = await rpc(runtime.endpoint, "operation.simulate", {
       source: gitHead.source,
       sourceName: "git.head-read.feature",

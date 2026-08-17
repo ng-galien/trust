@@ -1,6 +1,5 @@
 import { startRuntime } from "./server.js";
 import { normalizeAuthority } from "./check/uri.js";
-import { readOperations } from "./configuration.js";
 import { DEFAULT_SESSION_DURATION_MS } from "./plan/runtime.js";
 import { DEFAULT_TRIAL_TIMEOUT_MS } from "./trial/service.js";
 
@@ -11,9 +10,7 @@ const databasePath = process.env.TRUST_DATABASE_PATH ?? ".trust/trust.sqlite";
 const semanticAuthority = normalizeAuthority(
   process.env.TRUST_SEMANTIC_AUTHORITY ?? "localhost:4318",
 );
-const operations = process.env.TRUST_OPERATIONS_DIRECTORY === undefined
-  ? []
-  : readOperations(process.env.TRUST_OPERATIONS_DIRECTORY);
+const operationsDirectory = process.env.TRUST_OPERATIONS_DIRECTORY;
 const sessionDurationMs = durationFromEnvironment(
   "TRUST_SESSION_DURATION_MS",
   DEFAULT_SESSION_DURATION_MS,
@@ -31,7 +28,7 @@ const runtime = await startRuntime({
   port,
   databasePath,
   semanticAuthority,
-  operations,
+  ...(operationsDirectory === undefined ? {} : { operationsDirectory }),
   sessionDurationMs,
   trialTimeoutMs,
   ...(process.env.TRUST_DIAGNOSTICS_ENDPOINT ? { diagnosticsEndpoint: process.env.TRUST_DIAGNOSTICS_ENDPOINT } : {}),

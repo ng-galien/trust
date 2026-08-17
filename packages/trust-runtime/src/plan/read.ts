@@ -1,7 +1,7 @@
 import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 
 import { checkIsActionable } from "../check/actionability.js";
-import type { Attempt, CheckSnapshot, Fact, Plan, PlanCheck, PlanRevision } from "../model.js";
+import type { Attempt, CheckSnapshot, Fact, Plan, PlanCheck, PlanMode, PlanRevision } from "../model.js";
 import type { AttemptStore } from "../attempt/store.js";
 import type { FactStore } from "../fact/store.js";
 import type { SnapshotStore } from "../snapshot/store.js";
@@ -13,12 +13,34 @@ import type { Clock } from "../time.js";
 const DEFAULT_PROCEDURE_PAGE_SIZE = 49_152;
 const MAX_PROCEDURE_PAGE_SIZE = 65_536;
 const CURSOR_VERSION = 1;
+const DEFAULT_LIST_PAGE_SIZE = 50;
+const MAX_LIST_PAGE_SIZE = 200;
 
 export type ReadErrorCode =
   | "check-not-found"
   | "plan-not-found"
   | "revision-not-found"
-  | "invalid-procedure-page";
+  | "invalid-procedure-page"
+  | "invalid-list-page";
+
+export interface PlanListInput {
+  readonly filter?: { readonly procedure?: string; readonly mode?: PlanMode };
+  readonly cursor?: string;
+  readonly limit?: number;
+}
+
+export interface HistoryListInput {
+  readonly filter?: {
+    readonly plan?: string;
+    readonly procedure?: string;
+    readonly mode?: PlanMode;
+    readonly verdict?: CheckSnapshot["verdict"];
+    readonly since?: string;
+    readonly until?: string;
+  };
+  readonly cursor?: string;
+  readonly limit?: number;
+}
 
 export class ReadError extends Error {
   constructor(
@@ -46,6 +68,7 @@ export interface PlanView {
   readonly procedure: string;
   readonly procedureVersion: string;
   readonly environment: string;
+  readonly mode: PlanMode;
   readonly rootInputs: Readonly<Record<string, unknown>>;
   readonly createdAt: string;
   readonly state: "ENGAGED";
@@ -94,12 +117,31 @@ export interface PlanSummaryView {
   readonly procedure: string;
   readonly procedureVersion: string;
   readonly environment: string;
+  readonly mode: PlanMode;
   readonly revision: number;
   readonly createdAt: string;
   readonly sessionState: "OPEN" | "UNAVAILABLE";
   readonly workState: "IN_PROGRESS" | "COMPLETE";
   readonly satisfiedChecks: number;
   readonly checkCount: number;
+}
+
+export interface HistoryView {
+  readonly snapshotId: string;
+  readonly calculatedAt: string;
+  readonly plan: string;
+  readonly mode: PlanMode;
+  readonly procedure: string;
+  readonly checkUri: string;
+  readonly checkName: string;
+  readonly target: CheckTargetView;
+  readonly operation: string;
+  readonly attemptHandle: string;
+  readonly verdict: CheckSnapshot["verdict"];
+  readonly reasonCode: string;
+  readonly reason: string;
+  readonly factCount: number;
+  readonly checklistDelta: CheckSnapshot["checklistDelta"];
 }
 
 export interface PlanRevisionView {
@@ -279,15 +321,26 @@ export class PlanReader {
     return this.readPlanBySlug(plan.slug);
   }
 
-  async listPlans(): Promise<readonly PlanSummaryView[]> {
-    const plans = await this.#plans.listPlans();
-    return Promise.all(plans.map(async (plan) => {
+  async listPlans(input: PlanListInput = {}): Promise<{ readonly plans: readonly PlanSummaryView[]; readonly nextCursor?: string }> {
+    const limit = listLimit(input.limit);
+    const scope = cursorScope(input.filter);
+    const after = input.cursor === undefined
+      ? undefined
+      : this.#decodeListCursor(input.cursor, "plans", scope) as { createdAt: string; plan: string };
+    const page = await this.#plans.listPlans({
+      ...(input.filter === undefined ? {} : { filter: input.filter }),
+      ...(after === undefined ? {} : { after }),
+      limit: limit + 1,
+    });
+    const plans = page.slice(0, limit);
+    const views = await Promise.all(plans.map(async (plan) => {
       const view = await this.readPlanBySlug(plan.slug);
       return {
         plan: view.plan,
         procedure: view.procedure,
         procedureVersion: view.procedureVersion,
         environment: view.environment,
+        mode: view.mode,
         revision: view.revision,
         createdAt: view.createdAt,
         sessionState: view.sessionState,
@@ -296,6 +349,55 @@ export class PlanReader {
         checkCount: view.checks.length,
       };
     }));
+    const last = plans.at(-1);
+    return {
+      plans: views,
+      ...(page.length > limit && last !== undefined
+        ? { nextCursor: this.#encodeListCursor("plans", scope, { createdAt: last.createdAt, plan: last.slug }) }
+        : {}),
+    };
+  }
+
+  async listHistory(input: HistoryListInput = {}): Promise<{ readonly snapshots: readonly HistoryView[]; readonly nextCursor?: string }> {
+    const limit = listLimit(input.limit);
+    const scope = cursorScope(input.filter);
+    const after = input.cursor === undefined
+      ? undefined
+      : this.#decodeListCursor(input.cursor, "history", scope) as { calculatedAt: string; snapshotId: string };
+    const page = await this.#snapshots.listHistoryPage({
+      ...(input.filter === undefined ? {} : { filter: input.filter }),
+      ...(after === undefined ? {} : { after }),
+      limit: limit + 1,
+    });
+    const records = page.slice(0, limit);
+    const snapshots = records.map(({ snapshot, procedure, mode, check }) => ({
+      snapshotId: snapshot.id,
+      calculatedAt: snapshot.calculatedAt,
+      plan: snapshot.planSlug,
+      mode,
+      procedure,
+      checkUri: snapshot.checkUri,
+      checkName: check.check.name,
+      target: {
+        role: check.scope.role,
+        selection: check.check.target.selection,
+        value: check.scope.value,
+      },
+      operation: check.check.operation,
+      attemptHandle: snapshot.attemptHandle,
+      verdict: snapshot.verdict,
+      reasonCode: snapshot.reasonCode,
+      reason: snapshot.reason,
+      factCount: snapshot.factIds.length,
+      checklistDelta: snapshot.checklistDelta,
+    }));
+    const last = records.at(-1)?.snapshot;
+    return {
+      snapshots,
+      ...(page.length > limit && last !== undefined
+        ? { nextCursor: this.#encodeListCursor("history", scope, { calculatedAt: last.calculatedAt, snapshotId: last.id }) }
+        : {}),
+    };
   }
 
   async readPlanBySlug(planSlug: string): Promise<PlanView> {
@@ -366,6 +468,7 @@ export class PlanReader {
       procedure: plan.procedure,
       procedureVersion: plan.procedureVersion,
       environment: plan.environment,
+      mode: plan.mode,
       rootInputs: plan.rootInputs,
       createdAt: plan.createdAt,
       state: "ENGAGED",
@@ -602,6 +705,52 @@ export class PlanReader {
       "Procedure cursor is invalid or no longer belongs to this Check",
     );
   }
+
+  #encodeListCursor(kind: "plans" | "history", scope: string, key: Record<string, string>): string {
+    const payload = Buffer.from(JSON.stringify({ v: CURSOR_VERSION, kind, scope, key }), "utf8").toString("base64url");
+    const signature = createHmac("sha256", this.#cursorSecret).update(payload, "utf8").digest("base64url");
+    return `${payload}.${signature}`;
+  }
+
+  #decodeListCursor(cursor: string, kind: "plans" | "history", scope: string): Record<string, string> {
+    const [payload, signature, extra] = cursor.split(".");
+    if (!payload || !signature || extra !== undefined) return this.#invalidListCursor();
+    const expected = createHmac("sha256", this.#cursorSecret).update(payload, "utf8").digest();
+    const actual = Buffer.from(signature, "base64url");
+    if (actual.length !== expected.length || !timingSafeEqual(actual, expected)) return this.#invalidListCursor();
+    try {
+      const decoded = JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as unknown;
+      if (!isRecord(decoded) || decoded.v !== CURSOR_VERSION || decoded.kind !== kind || decoded.scope !== scope
+        || !isRecord(decoded.key) || Object.values(decoded.key).some((value) => typeof value !== "string")
+        || !validListKey(kind, decoded.key)) {
+        return this.#invalidListCursor();
+      }
+      return decoded.key as Record<string, string>;
+    } catch {
+      return this.#invalidListCursor();
+    }
+  }
+
+  #invalidListCursor(): never {
+    throw new ReadError("invalid-list-page", "List cursor is invalid or belongs to another filter");
+  }
+}
+
+function listLimit(value: number | undefined): number {
+  const limit = value ?? DEFAULT_LIST_PAGE_SIZE;
+  if (!Number.isSafeInteger(limit) || limit < 1 || limit > MAX_LIST_PAGE_SIZE) {
+    throw new ReadError("invalid-list-page", `List page limit must be between 1 and ${MAX_LIST_PAGE_SIZE}`);
+  }
+  return limit;
+}
+
+function cursorScope(filter: Readonly<Record<string, unknown>> | undefined): string {
+  return JSON.stringify(Object.fromEntries(Object.entries(filter ?? {}).sort(([left], [right]) => left.localeCompare(right))));
+}
+
+function validListKey(kind: "plans" | "history", key: Record<string, unknown>): boolean {
+  const expected = kind === "plans" ? ["createdAt", "plan"] : ["calculatedAt", "snapshotId"];
+  return Object.keys(key).length === expected.length && expected.every((name) => typeof key[name] === "string");
 }
 
 function checkView(

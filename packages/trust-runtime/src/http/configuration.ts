@@ -50,21 +50,29 @@ export async function executeConfigurationRpc(
       return { contract: "trust.operation-environments@1", operations: dependencies.trialService.catalogEnvironments() };
     }
     case ENVIRONMENT_LIST_METHOD: {
-      if (params !== undefined && !isRecord(params)) invalid();
-      const scoped = isRecord(params) && (typeof params.operation === "string" || typeof params.source === "string");
-      if (scoped) {
-        if (params.version !== undefined && typeof params.version !== "string") invalid();
+      if (params === undefined || (isRecord(params) && Object.keys(params).length === 0)) {
+        return { contract: "trust.environment-catalog@1", environments: dependencies.trialService.environments() };
+      }
+      if (!isRecord(params)) invalid();
+      const hasOperation = typeof params.operation === "string" && params.operation.length > 0;
+      const hasSource = typeof params.source === "string" && params.source.length > 0;
+      if (hasOperation === hasSource) invalid();
+      if (hasSource) {
+        if (!hasOnlyKeys(params, ["source"])) invalid();
         return {
           contract: "trust.environment-catalog@1",
-          environments: dependencies.trialService.environmentsFor({
-            ...(typeof params.operation === "string" ? { operation: params.operation } : {}),
-            ...(typeof params.version === "string" ? { version: params.version } : {}),
-            ...(typeof params.source === "string" ? { source: params.source } : {}),
-          }),
+          environments: dependencies.trialService.environmentsFor({ source: params.source as string }),
         };
       }
-      if (isRecord(params) && Object.keys(params).length > 0) invalid();
-      return { contract: "trust.environment-catalog@1", environments: dependencies.trialService.environments() };
+      if (!hasOnlyKeys(params, ["operation", "version"])
+        || (params.version !== undefined && (typeof params.version !== "string" || params.version.length === 0))) invalid();
+      return {
+        contract: "trust.environment-catalog@1",
+        environments: dependencies.trialService.environmentsFor({
+          operation: params.operation as string,
+          ...(typeof params.version === "string" ? { version: params.version } : {}),
+        }),
+      };
     }
     case ENVIRONMENT_SAVE_METHOD: {
       if (

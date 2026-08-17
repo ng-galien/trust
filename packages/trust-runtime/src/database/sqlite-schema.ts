@@ -1,3 +1,7 @@
+import { createHash } from "node:crypto";
+import { existsSync } from "node:fs";
+import { DatabaseSync } from "node:sqlite";
+
 export const SQLITE_SCHEMA = `
   CREATE TABLE IF NOT EXISTS environments (
     name TEXT PRIMARY KEY,
@@ -51,6 +55,7 @@ export const SQLITE_SCHEMA = `
     procedure_name TEXT NOT NULL,
     procedure_version TEXT NOT NULL,
     environment TEXT NOT NULL,
+    mode TEXT NOT NULL CHECK (mode IN ('live', 'dry-run')),
     root_inputs_json TEXT NOT NULL,
     current_revision INTEGER NOT NULL CHECK (current_revision >= 1),
     created_at TEXT NOT NULL
@@ -135,6 +140,7 @@ export const SQLITE_SCHEMA = `
     action_input_json TEXT NOT NULL,
 
     environment TEXT NOT NULL,
+    reobserve INTEGER NOT NULL CHECK (reobserve IN (0, 1)),
     state TEXT NOT NULL CHECK (state IN ('pending', 'finalized')),
     admitted_at TEXT NOT NULL,
     expires_at TEXT NOT NULL,
@@ -217,3 +223,73 @@ export const SQLITE_SCHEMA = `
       REFERENCES compiled_checks(plan_slug, plan_revision, check_uri, compiled_digest)
   ) STRICT;
 `;
+
+export const SQLITE_SCHEMA_DIGEST = createHash("sha256").update(SQLITE_SCHEMA).digest("hex");
+
+const SCHEMA_METADATA = `
+  CREATE TABLE trust_schema (
+    singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
+    digest TEXT NOT NULL
+  ) STRICT;
+`;
+
+export class IncompatibleSqliteSchemaError extends Error {
+  readonly actualDigest: string | undefined;
+
+  constructor(actualDigest: string | undefined) {
+    super(
+      "SQLite database schema is incompatible with this TRUST runtime. "
+      + "Run 'node scripts/server.ts reset' to replace and reseed the local database.",
+    );
+    this.name = "IncompatibleSqliteSchemaError";
+    this.actualDigest = actualDigest;
+  }
+}
+
+export function initializeSqliteSchema(sqlite: DatabaseSync): void {
+  const state = sqliteSchemaState(sqlite);
+  if (state.kind === "incompatible") throw new IncompatibleSqliteSchemaError(state.digest);
+  if (state.kind === "current") {
+    sqlite.exec(SQLITE_SCHEMA);
+    return;
+  }
+  sqlite.exec("BEGIN IMMEDIATE");
+  try {
+    sqlite.exec(SQLITE_SCHEMA);
+    sqlite.exec(SCHEMA_METADATA);
+    sqlite.prepare("INSERT INTO trust_schema (singleton, digest) VALUES (1, ?)").run(SQLITE_SCHEMA_DIGEST);
+    sqlite.exec("COMMIT");
+  } catch (error) {
+    sqlite.exec("ROLLBACK");
+    throw error;
+  }
+}
+
+/** Server-manager preflight: an old local database is rejected before a tmux runtime is started. */
+export function assertSqliteSchemaFile(databasePath: string): void {
+  if (!existsSync(databasePath)) return;
+  const sqlite = new DatabaseSync(databasePath, { readOnly: true, allowExtension: false });
+  try {
+    const state = sqliteSchemaState(sqlite);
+    if (state.kind === "incompatible") throw new IncompatibleSqliteSchemaError(state.digest);
+  } finally {
+    sqlite.close();
+  }
+}
+
+type SqliteSchemaState =
+  | { readonly kind: "empty" }
+  | { readonly kind: "current" }
+  | { readonly kind: "incompatible"; readonly digest?: string };
+
+function sqliteSchemaState(sqlite: DatabaseSync): SqliteSchemaState {
+  const tables = sqlite.prepare(
+    "SELECT name FROM sqlite_schema WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name",
+  ).all() as Array<{ name: string }>;
+  if (tables.length === 0) return { kind: "empty" };
+  if (!tables.some(({ name }) => name === "trust_schema")) return { kind: "incompatible" };
+  const row = sqlite.prepare("SELECT digest FROM trust_schema WHERE singleton = 1").get() as { digest?: unknown } | undefined;
+  const digest = typeof row?.digest === "string" ? row.digest : undefined;
+  if (digest === SQLITE_SCHEMA_DIGEST) return { kind: "current" };
+  return digest === undefined ? { kind: "incompatible" } : { kind: "incompatible", digest };
+}

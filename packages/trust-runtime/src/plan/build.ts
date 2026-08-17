@@ -9,6 +9,7 @@ import { buildSemanticCheckUri } from "../check/uri.js";
 import type {
   CheckValues,
   PlanCheck,
+  PlanMode,
   PlanRevision,
   ProducedRoleValue,
   RuntimeJsonObject,
@@ -20,11 +21,14 @@ interface ContextValue {
   readonly parents: RuntimeJsonObject;
 }
 
+type DraftPlanCheck = Omit<PlanCheck, "compiledCheckDigest" | "currentContextDigest" | "checkDependencies">;
+
 export interface BuildPlanRevisionInput {
   readonly authority: string;
   readonly procedure: CompiledProcedure;
   readonly plan: string;
   readonly environment: string;
+  readonly mode: PlanMode;
   readonly rootInputs: RuntimeJsonObject;
   readonly declarations?: RuntimeJsonObject;
   readonly revision: number;
@@ -48,7 +52,7 @@ export function buildPlanRevision(input: BuildPlanRevisionInput): PlanRevision {
   const operationByName = new Map(
     input.procedure.operations.map((operation) => [operation.operation, operation]),
   );
-  const checks: PlanCheck[] = [];
+  const checks: DraftPlanCheck[] = [];
 
   for (const compiledCheck of input.procedure.checks) {
     const operation = operationByName.get(compiledCheck.operation);
@@ -95,13 +99,6 @@ export function buildPlanRevision(input: BuildPlanRevisionInput): PlanRevision {
             || role.source.check !== compiledCheck.name;
         }),
       );
-      const semantic = {
-        check: compiledCheck,
-        operationDigest: operation.digest,
-        actionInput,
-        context: checkContext,
-        scope,
-      };
       checks.push({
         uri,
         planSlug: input.plan,
@@ -110,34 +107,56 @@ export function buildPlanRevision(input: BuildPlanRevisionInput): PlanRevision {
         expansion,
         check: compiledCheck,
         operation: operation.definition,
-        compiledCheckDigest: digest(semantic),
-        currentContextDigest: digest({ actionInput, context: checkContext }),
         actionInput,
         context: checkContext,
         scope,
         scenarioDependencies: scenarioDependencies.get(compiledCheck.scenario) ?? [],
-        checkDependencies: [],
       });
     }
   }
 
-  const byName = new Map<string, PlanCheck[]>();
+  const byName = new Map<string, DraftPlanCheck[]>();
   for (const check of checks) {
     const values = byName.get(check.check.name) ?? [];
     values.push(check);
     byName.set(check.check.name, values);
   }
-  const withDependencies = checks.map((check) => ({
-    ...check,
-    checkDependencies: requiredCheckNames(check, input.procedure.roles)
+  const withDependencies: PlanCheck[] = checks.map((check) => {
+    const checkDependencies = requiredCheckNames(check, input.procedure.roles)
       .flatMap((name) => relatedProviders(check, byName.get(name) ?? [], context)
-        .map((provider) => ({ checkName: name, providerCheckUri: provider.uri }))),
-  }));
+        .map((provider) => ({ checkName: name, providerCheckUri: provider.uri })));
+    const scenarioDependencyUris = check.scenarioDependencies.flatMap((scenario) => checks
+      .filter((candidate) => candidate.scenario === scenario)
+      .map((candidate) => candidate.uri));
+    // A Check identity contains only the context it consumes, plus the exact upstream Checks that
+    // provide values or prerequisites. Unrelated downstream values do not reopen it.
+    const consumed = consumedContext(check.check, input.procedure.roles, check.scope, check.context);
+    return {
+      ...check,
+      compiledCheckDigest: digest({
+        check: check.check,
+        operationDigest: check.check.operationDigest,
+        actionInput: check.actionInput,
+        context: consumed,
+        scope: check.scope,
+        scenarioDependencyUris,
+        checkDependencies,
+      }),
+      currentContextDigest: digest({
+        actionInput: check.actionInput,
+        context: consumed,
+        scenarioDependencyUris,
+        checkDependencies,
+      }),
+      checkDependencies,
+    };
+  });
 
   return Object.freeze({
     procedure: input.procedure.procedure,
     procedureVersion: input.procedure.version,
     environment: input.environment,
+    mode: input.mode,
     rootInputs,
     agentDeclarations: declarations,
     planSlug: input.plan,
@@ -385,6 +404,26 @@ function resolveActionInput(
   return Object.freeze(actionInput);
 }
 
+/** Roles a Check depends on: its target and the target's lineage, the roles bound to its inputs,
+    the roles its predicates compare against, and the parents of the roles it materializes. */
+function consumedContext(
+  compiledCheck: CompiledProcedure["checks"][number],
+  roles: readonly CompiledProcedureRole[],
+  scope: PlanCheck["scope"],
+  context: RuntimeJsonObject,
+): RuntimeJsonObject {
+  const names = new Set<string>([compiledCheck.target.role, ...Object.keys(scope.parents)]);
+  for (const binding of compiledCheck.inputBindings) names.add(binding.role);
+  for (const predicate of compiledCheck.predicates) {
+    if (predicate.expectation.kind === "context") names.add(predicate.expectation.role);
+  }
+  for (const production of compiledCheck.materializes) {
+    const role = roles.find((candidate) => candidate.name === production.role);
+    for (const parent of role?.parents ?? []) names.add(parent.role);
+  }
+  return Object.freeze(Object.fromEntries(Object.entries(context).filter(([name]) => names.has(name))));
+}
+
 function contextForTarget(
   targets: readonly ContextValue[],
   context: readonly ContextValue[],
@@ -407,10 +446,10 @@ function contextForTarget(
 }
 
 function relatedProviders(
-  check: PlanCheck,
-  providers: readonly PlanCheck[],
+  check: DraftPlanCheck,
+  providers: readonly DraftPlanCheck[],
   context: readonly ContextValue[],
-): readonly PlanCheck[] {
+): readonly DraftPlanCheck[] {
   if (providers.length <= 1) return providers;
   const current = contextValue(check.scope);
   const related = providers.filter((provider) =>
@@ -506,7 +545,7 @@ function validateScalar(role: CompiledProcedureRole, value: unknown): void {
 }
 
 function requiredCheckNames(
-  check: PlanCheck,
+  check: DraftPlanCheck,
   roles: readonly CompiledProcedureRole[],
 ): readonly string[] {
   const names = new Set<string>();

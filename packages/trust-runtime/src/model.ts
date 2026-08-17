@@ -3,11 +3,16 @@ import type { CompiledProcedureCheck } from "@trust/procedure";
 
 export type RuntimeJsonObject = Readonly<Record<string, unknown>>;
 
+/** A dry-run Plan follows every rule of a live Plan, but its Checks are qualified from Facts
+    supplied by the operator instead of the runner: no environment is ever resolved for it. */
+export type PlanMode = "live" | "dry-run";
+
 export interface Plan {
   slug: string;
   procedure: string;
   procedureVersion: string;
   environment: string;
+  mode: PlanMode;
   rootInputs: RuntimeJsonObject;
   currentRevision: number;
   createdAt: string;
@@ -52,6 +57,7 @@ export interface PlanRevision {
   procedure: string;
   procedureVersion: string;
   environment: string;
+  mode: PlanMode;
   rootInputs: RuntimeJsonObject;
   agentDeclarations: RuntimeJsonObject;
   planSlug: string;
@@ -88,6 +94,7 @@ export interface Attempt {
   operationDigest: string;
   actionInput: RuntimeJsonObject;
   environment: string;
+  reobserve: boolean;
   state: AttemptState;
   admittedAt: string;
   expiresAt: string;

@@ -466,10 +466,15 @@ function parsePredicates(step: Step, sourceName: string): PredicateSource[] {
       field: row.cells[0]?.value.trim() ?? "",
       relation: row.cells[1]?.value.trim() ?? "",
       expectation: row.cells[2]?.value.trim() ?? "",
-      failureReason: row.cells[3]?.value.trim() ?? "",
+      failureReason: unquoteTableCell(row.cells[3]?.value.trim() ?? ""),
       location: row.location,
     };
   });
+}
+
+function unquoteTableCell(value: string): string {
+  const match = value.match(/^"([^"]*)"$/);
+  return match?.[1] ?? value;
 }
 
 function compilePredicate(

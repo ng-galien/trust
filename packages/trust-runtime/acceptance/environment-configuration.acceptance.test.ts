@@ -43,6 +43,30 @@ test("environments and credential references persist without exposing credential
         credential: { environment: "local", name: "gitToken" },
       });
       assert.equal(JSON.stringify(savedCredential).includes(credentialValue), false);
+
+      await rpc(first.endpoint, "credential.save", {
+        environment: "local",
+        name: "temporaryToken",
+        value: "temporary-secret",
+      });
+      assert.deepEqual(await rpc(first.endpoint, "credential.remove", {
+        environment: "local",
+        name: "temporaryToken",
+      }), {
+        contract: "trust.credential-removal@1",
+        environment: "local",
+        name: "temporaryToken",
+        removed: true,
+      });
+      assert.deepEqual(await rpc(first.endpoint, "credential.remove", {
+        environment: "local",
+        name: "temporaryToken",
+      }), {
+        contract: "trust.credential-removal@1",
+        environment: "local",
+        name: "temporaryToken",
+        removed: false,
+      });
     } finally {
       await first.close();
     }
@@ -67,6 +91,27 @@ test("environments and credential references persist without exposing credential
         credentials: [{ environment: "local", name: "gitToken" }],
       });
       assert.equal(JSON.stringify(credentials).includes(credentialValue), false);
+
+      const operationEnvironments = await rpc(second.endpoint, "operation.environments", {}) as {
+        operations: Array<{ operation: string; environments: Array<{ name: string; compatible: boolean; missing: string[] }> }>;
+      };
+      const gitEnvironment = operationEnvironments.operations.find(({ operation }) => operation === "git.head-read")
+        ?.environments.find(({ name }) => name === "local");
+      assert.deepEqual(gitEnvironment, { name: "local", compatible: true, missing: [] });
+
+      const scopedEnvironments = await rpc(second.endpoint, "environment.list", {
+        operation: "git.head-read",
+        version: "1.0.0",
+      }) as { environments: Array<{ name: string; compatible: boolean }> };
+      assert.deepEqual(scopedEnvironments.environments.map(({ name, compatible }) => [name, compatible]), [["local", true]]);
+
+      for (const invalidScope of [
+        { operation: "git.head-read", source: "not allowed together" },
+        { source: "not an operation", version: "1.0.0" },
+        { operation: "git.head-read", unexpected: true },
+      ]) {
+        assert.equal((await rpcEnvelope(second.endpoint, "environment.list", invalidScope)).error?.code, -32_602);
+      }
 
       const started = await rpc(second.endpoint, "operation.trial.start", {
         operation: "git.head-read",

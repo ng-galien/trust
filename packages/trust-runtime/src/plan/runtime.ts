@@ -7,6 +7,7 @@ import type {
   Attempt,
   CheckSnapshot,
   Fact,
+  PlanMode,
   PlanRevision,
   RuntimeJsonObject,
 } from "../model.js";
@@ -20,6 +21,7 @@ import type { SessionStore } from "../session/store.js";
 import type { Procedures } from "../procedure/procedures.js";
 import type { EnvironmentService } from "../environment/service.js";
 import { buildPlanRevision, validateAgentDeclarations } from "./build.js";
+import type { PlanEvents } from "./events.js";
 
 export const DEFAULT_SESSION_DURATION_MS = 24 * 60 * 60 * 1_000;
 
@@ -47,6 +49,8 @@ export interface PlanEngagementInput {
   readonly plan: string;
   readonly environment: string;
   readonly rootInputs: RuntimeJsonObject;
+  /** Defaults to "live". A dry-run Plan is driven by the operator: Facts come through the RPC boundary and no environment is resolved. */
+  readonly mode?: PlanMode;
 }
 
 export interface PlanEngagementResult {
@@ -56,6 +60,7 @@ export interface PlanEngagementResult {
   readonly procedureVersion: string;
   readonly plan: string;
   readonly environment: string;
+  readonly mode: PlanMode;
   readonly revision: number;
   readonly checkUris: readonly string[];
 }
@@ -82,6 +87,7 @@ export interface CheckAttemptAdmissionInput {
   readonly contract: "trust.check-admission-request@1";
   readonly attemptKey: string;
   readonly checkUri: string;
+  readonly reobserve?: boolean;
 }
 
 export type CheckAttemptAdmissionResult =
@@ -139,6 +145,7 @@ export interface PlanRuntimeDependencies {
   readonly attemptStore: AttemptStore;
   readonly factStore: FactStore;
   readonly snapshotStore: SnapshotStore;
+  readonly planEvents: PlanEvents;
   readonly sessionDurationMs: number;
 }
 
@@ -153,6 +160,7 @@ export class PlanRuntime {
   readonly #attempts: AttemptStore;
   readonly #facts: FactStore;
   readonly #snapshots: SnapshotStore;
+  readonly #events: PlanEvents;
   readonly #sessionDurationMs: number;
 
   constructor(dependencies: PlanRuntimeDependencies) {
@@ -169,6 +177,7 @@ export class PlanRuntime {
     this.#attempts = dependencies.attemptStore;
     this.#facts = dependencies.factStore;
     this.#snapshots = dependencies.snapshotStore;
+    this.#events = dependencies.planEvents;
     this.#sessionDurationMs = dependencies.sessionDurationMs;
   }
 
@@ -183,6 +192,7 @@ export class PlanRuntime {
     if (!this.#environments.resolve(input.environment)) {
       throw new PlanRuntimeError("invalid-plan-engagement", `Environment "${input.environment}" is not configured`);
     }
+    const mode: PlanMode = input.mode ?? "live";
     let revision: PlanRevision;
     try {
       revision = buildPlanRevision({
@@ -190,6 +200,7 @@ export class PlanRuntime {
         procedure: published.procedure,
         plan: input.plan,
         environment: input.environment,
+        mode,
         rootInputs: input.rootInputs,
         revision: 1,
       });
@@ -201,11 +212,12 @@ export class PlanRuntime {
       const current = await this.#plans.readRevision(input.plan, existing.currentRevision);
       if (!current || current.definitionDigest !== revision.definitionDigest
         || canonicalJson(existing.rootInputs) !== canonicalJson(revision.rootInputs)
-        || existing.environment !== revision.environment) {
+        || existing.environment !== revision.environment
+        || existing.mode !== revision.mode) {
         throw new PlanRuntimeError("plan-conflict", `Plan ${input.plan} is already engaged with another Procedure or context`);
       }
       await this.#ensureSession(input.plan);
-      return engagement(existing.currentRevision, current, input);
+      return engagement(existing.currentRevision, current);
     }
     const now = this.#now();
     await this.#database.transaction().execute(async (transaction) => {
@@ -218,7 +230,38 @@ export class PlanRuntime {
         expiresAt: new Date(now.getTime() + this.#sessionDurationMs).toISOString(),
       });
     });
-    return engagement(1, revision, input);
+    this.#events.publish({
+      type: "plan.engaged",
+      at: now.toISOString(),
+      plan: input.plan,
+      revision: 1,
+    });
+    const session = await this.#sessions.findOpen(input.plan);
+    if (session) this.#sessionEvent(session.id, input.plan, "open", now.toISOString());
+    return engagement(1, revision);
+  }
+
+  /** Erase a dry-run Plan entirely (a blocked rehearsal starts over). Live Plans are audit history: refused. */
+  async remove(planSlug: string): Promise<{ readonly plan: string; readonly removed: true }> {
+    const plan = await this.#plans.findPlan(planSlug);
+    if (!plan) throw new PlanRuntimeError("plan-conflict", `Plan ${planSlug} is unknown`);
+    if (plan.mode !== "dry-run") throw new PlanRuntimeError("plan-conflict", `Plan ${planSlug} is a live Plan and cannot be removed`);
+    await this.#database.transaction().execute(async (transaction) => {
+      await this.#plans.using(transaction).remove(planSlug);
+    });
+    this.#events.publish({ type: "plan.removed", at: this.#now().toISOString(), plan: planSlug });
+    return { plan: planSlug, removed: true };
+  }
+
+  async close(planSlug: string): Promise<{ readonly plan: string; readonly closed: boolean }> {
+    const plan = await this.#plans.findPlan(planSlug);
+    if (!plan) throw new PlanRuntimeError("plan-conflict", `Plan ${planSlug} is unknown`);
+    const session = await this.#sessions.findOpen(planSlug);
+    if (!session) return { plan: planSlug, closed: false };
+    const closedAt = this.#now().toISOString();
+    await this.#sessions.changeState(session.id, "closed", closedAt);
+    this.#sessionEvent(session.id, planSlug, "closed", closedAt);
+    return { plan: planSlug, closed: true };
   }
 
   async replaceDeclarations(input: PlanDeclarationReplacementInput): Promise<PlanDeclarationReplacementResult> {
@@ -246,28 +289,51 @@ export class PlanRuntime {
       procedure: published.procedure,
       plan: plan.slug,
       environment: plan.environment,
+      mode: plan.mode,
       rootInputs: plan.rootInputs,
       declarations,
       revision: plan.currentRevision + 1,
       roleValues: current.roleValues,
       checkValues: current.checkValues,
     });
+    // Checks untouched by the new declarations keep their active qualification (same URI, same semantic digest).
+    const activeBefore = await this.#snapshots.listActive(plan.slug, plan.currentRevision);
+    const nextChecks = new Map(next.checks.map((candidate) => [candidate.uri, candidate]));
+    const retainedCandidates = activeBefore
+      .filter((item) => nextChecks.get(item.checkUri)?.compiledCheckDigest === item.compiledCheckDigest)
+      .map((item) => ({ ...item, planRevision: next.revision }));
+    const retained = retainQualifiedDependencies(retainedCandidates, next.checks);
     await this.#database.transaction().execute(async (transaction) => {
       await this.#plans.using(transaction).saveRevision(next, this.#now().toISOString());
+      await this.#snapshots.using(transaction).saveActiveForRevision(plan.slug, next.revision, retained);
     });
     await this.#ensureSession(plan.slug);
-    return declarationResult(current, next);
+    const result = declarationResult(current, next);
+    this.#events.publish({
+      type: "plan.revision",
+      at: this.#now().toISOString(),
+      plan: plan.slug,
+      revision: next.revision,
+      cause: "declarations",
+      checklistDelta: {
+        newlySatisfied: [],
+        newlyOpened: result.openedCheckUris,
+        unchanged: retained.map((item) => item.checkUri).sort(),
+      },
+      removedCheckUris: result.removedCheckUris,
+    });
+    return result;
   }
 
   async admitCheck(input: CheckAttemptAdmissionInput): Promise<CheckAttemptAdmissionResult> {
     if (input.contract !== "trust.check-admission-request@1") {
       return refuse("trust.check-admission@1", input.attemptKey, "invalid-admission-contract", "Unsupported admission contract");
     }
-    let resolved = await this.#resolveAdmission(input.attemptKey, input.checkUri);
+    let resolved = await this.#resolveAdmission(input.attemptKey, input.checkUri, input.reobserve === true);
     if ("refusal" in resolved) return { contract: "trust.check-admission@1", ...resolved.refusal };
     const creation = await this.#createAttempt(resolved);
     if (!creation.created && resolved.existing === undefined) {
-      resolved = await this.#resolveAdmission(input.attemptKey, input.checkUri);
+      resolved = await this.#resolveAdmission(input.attemptKey, input.checkUri, input.reobserve === true);
       if ("refusal" in resolved) return { contract: "trust.check-admission@1", ...resolved.refusal };
     }
     const attempt = creation.attempt;
@@ -279,12 +345,13 @@ export class PlanRuntime {
       checkUri: attempt.checkUri,
       operation: resolved.check.operation,
       actionInput: attempt.actionInput,
-      environment: this.#environments.resolve(attempt.environment) ?? {},
+      // A dry-run never hands out environment values: nothing external is executed for it.
+      environment: resolved.plan.mode === "dry-run" ? {} : this.#environments.resolve(attempt.environment) ?? {},
       expiresAt: attempt.expiresAt,
     };
   }
 
-  async ingestFacts(input: FactBatchInput): Promise<FactBatchResult> {
+  async #ingestFacts(input: FactBatchInput): Promise<FactBatchResult> {
     return this.#database.transaction().execute(async (transaction) => {
       const attempts = this.#attempts.using(transaction);
       const attempt = await attempts.lockPending(input.attemptHandle);
@@ -297,6 +364,16 @@ export class PlanRuntime {
       }
       return this.#ingest(attempt, input, transaction);
     });
+  }
+
+  async ingestDryRunFacts(input: FactBatchInput): Promise<FactBatchResult> {
+    await this.#requireAttemptMode(input.attemptHandle, "dry-run", "Operator");
+    return this.#ingestFacts(input);
+  }
+
+  async ingestLiveFacts(input: FactBatchInput): Promise<FactBatchResult> {
+    await this.#requireAttemptMode(input.attemptHandle, "live", "Runner");
+    return this.#ingestFacts(input);
   }
 
   async #ingest(attempt: Attempt, input: FactBatchInput, database: Database): Promise<FactBatchResult> {
@@ -340,7 +417,8 @@ export class PlanRuntime {
     const published = initialPlan
       ? await this.#procedures.find(initialPlan.procedure, initialPlan.procedureVersion)
       : undefined;
-    return this.#database.transaction().execute(async (transaction) => {
+    let revisionEvent: { revision: number; at: string; result: AttemptFinalizationResult } | undefined;
+    const finalized = await this.#database.transaction().execute(async (transaction) => {
       const attempts = this.#attempts.using(transaction);
       const factsStore = this.#facts.using(transaction);
       const plans = this.#plans.using(transaction);
@@ -358,7 +436,7 @@ export class PlanRuntime {
           contract: "trust.attempt-finalization@1",
           attemptHandle: currentAttempt.handle,
           ...currentAttempt.finalization,
-        };
+        } satisfies AttemptFinalizationResult;
       }
       const facts = await factsStore.list(attempt.handle);
       if (facts.length === 0) throw new PlanRuntimeError("facts-missing", "The Check is unchanged until TRUST accepts Facts");
@@ -372,6 +450,9 @@ export class PlanRuntime {
         || currentCheck.compiledCheckDigest !== attempt.compiledCheckDigest
         || !checkDependenciesSatisfied(currentCheck, current.checks, (uri) => activeUris.has(uri))) {
         throw new PlanRuntimeError("plan-conflict", "The admitted Check is no longer current or actionable");
+      }
+      if (activeUris.has(check.uri) && !currentAttempt.reobserve) {
+        throw new PlanRuntimeError("plan-conflict", "The admitted Check is already satisfied and this Attempt is not a re-observation");
       }
       let validated;
       let qualification;
@@ -426,6 +507,7 @@ export class PlanRuntime {
         procedure: published.procedure,
         plan: plan.slug,
         environment: plan.environment,
+        mode: plan.mode,
         rootInputs: plan.rootInputs,
         declarations: current.agentDeclarations,
         revision: nextRevisionNumber,
@@ -485,11 +567,23 @@ export class PlanRuntime {
         reason: result.reason,
         checklistDelta: result.checklistDelta,
       });
+      revisionEvent = { revision: nextRevisionNumber, at: calculatedAt, result };
       return result;
     });
+    if (revisionEvent !== undefined) {
+      this.#events.publish({
+        type: "plan.revision",
+        at: revisionEvent.at,
+        plan: attempt.planSlug,
+        revision: revisionEvent.revision,
+        cause: "verdict",
+        checklistDelta: revisionEvent.result.checklistDelta,
+      });
+    }
+    return finalized;
   }
 
-  async #resolveAdmission(attemptKey: string, checkUri: string): Promise<AdmissionResolution | AdmissionFailure> {
+  async #resolveAdmission(attemptKey: string, checkUri: string, reobserve: boolean): Promise<AdmissionResolution | AdmissionFailure> {
     const existing = await this.#attempts.findByKey(attemptKey);
     if (existing) {
       if (existing.checkUri !== checkUri) {
@@ -507,7 +601,10 @@ export class PlanRuntime {
         this.#sessions.findById(existing.sessionId),
       ]);
       if (!check || !plan || !session) return { refusal: refusal(attemptKey, "check-not-found", "The Check is unavailable") };
-      return { attemptKey, check, plan, session, existing };
+      if (existing.reobserve !== reobserve) {
+        return { refusal: refusal(attemptKey, "attempt-key-conflict", "Attempt key is already bound to another admission intent") };
+      }
+      return { attemptKey, check, plan, session, reobserve: existing.reobserve, existing };
     }
     const check = await this.#plans.findCurrentCheck(checkUri);
     const plan = check ? await this.#plans.findPlan(check.planSlug) : undefined;
@@ -517,6 +614,15 @@ export class PlanRuntime {
       this.#plans.listCurrentChecks(plan.slug),
     ]);
     const active = new Set(activeQualifications.map((item) => item.checkUri));
+    if (reobserve && plan.mode !== "dry-run") {
+      return { refusal: refusal(attemptKey, "check-not-actionable", "Only a dry-run Plan can explicitly re-observe a satisfied Check") };
+    }
+    if (reobserve && !active.has(check.uri)) {
+      return { refusal: refusal(attemptKey, "check-not-actionable", "Only a satisfied Check can be explicitly re-observed") };
+    }
+    if (active.has(check.uri) && !reobserve) {
+      return { refusal: refusal(attemptKey, "check-not-actionable", "The Check is already satisfied") };
+    }
     if (!checkDependenciesSatisfied(check, checks, (uri) => active.has(uri))) {
       return { refusal: refusal(attemptKey, "check-not-actionable", "The Check dependencies are not satisfied") };
     }
@@ -524,7 +630,7 @@ export class PlanRuntime {
     if (!session) {
       return { refusal: refusal(attemptKey, "session-unavailable", "The Plan has no active Session") };
     }
-    return { attemptKey, check, plan, session };
+    return { attemptKey, check, plan, session, reobserve };
   }
 
   async #createAttempt(
@@ -544,6 +650,7 @@ export class PlanRuntime {
       operationDigest: resolved.check.check.operationDigest,
       actionInput: resolved.check.actionInput,
       environment: resolved.plan.environment,
+      reobserve: resolved.reobserve,
       state: "pending",
       admittedAt: now.toISOString(),
       expiresAt: resolved.session.expiresAt,
@@ -555,14 +662,37 @@ export class PlanRuntime {
     const current = await this.#sessions.findOpen(plan);
     const now = this.#now();
     if (current && Date.parse(current.expiresAt) > now.getTime()) return;
-    if (current) await this.#sessions.changeState(current.id, "expired", now.toISOString());
+    if (current) {
+      await this.#sessions.changeState(current.id, "expired", now.toISOString());
+      this.#sessionEvent(current.id, plan, "expired", now.toISOString());
+    }
+    const id = randomUUID();
     await this.#sessions.create({
-      id: randomUUID(),
+      id,
       planSlug: plan,
       state: "open",
       openedAt: now.toISOString(),
       expiresAt: new Date(now.getTime() + this.#sessionDurationMs).toISOString(),
     });
+    this.#sessionEvent(id, plan, "open", now.toISOString());
+  }
+
+  #sessionEvent(id: string, plan: string, state: "open" | "closed" | "expired", at: string): void {
+    this.#events.publish({ type: "session.changed", at, plan, session: { id, state } });
+  }
+
+  async #requireAttemptMode(attemptHandle: string, mode: PlanMode, caller: "Operator" | "Runner"): Promise<void> {
+    const attempt = await this.#attempts.find(attemptHandle);
+    const plan = attempt ? await this.#plans.findPlan(attempt.planSlug) : undefined;
+    if (!attempt || !plan) {
+      throw new PlanRuntimeError("attempt-not-found", `${caller} Attempt ${attemptHandle} is unknown`);
+    }
+    if (plan.mode !== mode) {
+      throw new PlanRuntimeError(
+        "fact-batch-rejected",
+        `${caller} Facts are accepted only for a ${mode} Plan`,
+      );
+    }
   }
 
   #now(): Date {
@@ -577,6 +707,7 @@ interface AdmissionResolution {
   readonly check: import("../model.js").PlanCheck;
   readonly plan: import("../model.js").Plan;
   readonly session: import("../model.js").Session;
+  readonly reobserve: boolean;
   readonly existing?: Attempt;
 }
 
@@ -593,14 +724,15 @@ function finalization(snapshot: CheckSnapshot): AttemptFinalizationResult {
   };
 }
 
-function engagement(revision: number, planRevision: PlanRevision, input: PlanEngagementInput): PlanEngagementResult {
+function engagement(revision: number, planRevision: PlanRevision): PlanEngagementResult {
   return {
     contract: "trust.plan-engagement@1",
     status: "ENGAGED",
-    procedure: input.procedure,
-    procedureVersion: input.procedureVersion,
-    plan: input.plan,
-    environment: input.environment,
+    procedure: planRevision.procedure,
+    procedureVersion: planRevision.procedureVersion,
+    plan: planRevision.planSlug,
+    environment: planRevision.environment,
+    mode: planRevision.mode,
     revision,
     checkUris: planRevision.checks.map((check) => check.uri).sort(),
   };
@@ -662,6 +794,24 @@ function dependentChecks(checks: readonly import("../model.js").PlanCheck[], pro
     }
   }
   return affected;
+}
+
+function retainQualifiedDependencies(
+  candidates: readonly ActiveCheckQualification[],
+  checks: readonly import("../model.js").PlanCheck[],
+): readonly ActiveCheckQualification[] {
+  const retained = new Map(candidates.map((candidate) => [candidate.checkUri, candidate]));
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const [checkUri] of retained) {
+      const check = checks.find((candidate) => candidate.uri === checkUri);
+      if (check && checkDependenciesSatisfied(check, checks, (uri) => retained.has(uri))) continue;
+      retained.delete(checkUri);
+      changed = true;
+    }
+  }
+  return [...retained.values()];
 }
 
 function refuse(contract: Refusal["contract"], attemptKey: string, reasonCode: string, reason: string): Refusal {

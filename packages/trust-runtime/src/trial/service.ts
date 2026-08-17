@@ -9,6 +9,7 @@ import type { RuntimeJsonObject } from "../model.js";
 import type { Clock } from "../time.js";
 import type { EnvironmentService } from "../environment/service.js";
 import type { TrialRecord, TrialRegistry, TrialSummary } from "./registry.js";
+import type { OperationCatalog } from "../operation/catalog.js";
 
 /* Starts trial runs: the same packaged runner an agent uses, spawned by TRUST, fed one job on stdin,
    its diagnostics streamed back through the diagnostic OTLP receiver. */
@@ -40,7 +41,7 @@ export interface TrialStartInput {
 
 export interface TrialServiceDependencies {
   readonly trialRegistry: TrialRegistry;
-  readonly operations: readonly CompiledOperation[];
+  readonly operationCatalog: OperationCatalog;
   readonly environmentService: EnvironmentService;
   readonly clock: Clock;
   readonly diagnosticsEndpoint: string;
@@ -53,7 +54,7 @@ const FORCE_KILL_DELAY_MS = 2_000;
 
 export class TrialService {
   readonly #registry: TrialRegistry;
-  readonly #operations: readonly CompiledOperation[];
+  readonly #operations: OperationCatalog;
   readonly #environments: EnvironmentService;
   readonly #clock: Clock;
   readonly #diagnosticsEndpoint: string;
@@ -63,7 +64,7 @@ export class TrialService {
 
   constructor(dependencies: TrialServiceDependencies) {
     this.#registry = dependencies.trialRegistry;
-    this.#operations = dependencies.operations;
+    this.#operations = dependencies.operationCatalog;
     this.#environments = dependencies.environmentService;
     this.#clock = dependencies.clock;
     this.#diagnosticsEndpoint = dependencies.diagnosticsEndpoint;
@@ -80,7 +81,7 @@ export class TrialService {
 
   /** For every catalog operation, which configured environments can run it. */
   catalogEnvironments(): Array<{ operation: string; version: string; environments: Array<{ name: string; compatible: boolean; missing: string[] }> }> {
-    return this.#operations.map((operation) => {
+    return this.#operations.list().map((operation) => {
       const needed = Object.keys((operation.environment as { properties?: Record<string, unknown> }).properties ?? {});
       return {
         operation: operation.operation,
@@ -165,7 +166,9 @@ export class TrialService {
         throw error;
       }
     }
-    const found = this.#operations.find((candidate) => candidate.operation === input.operation && (input.version === undefined || candidate.version === input.version));
+    const found = input.version === undefined
+      ? this.#operations.list().find((candidate) => candidate.operation === input.operation)
+      : this.#operations.find(input.operation ?? "", input.version);
     if (!found) throw new TrialError("unknown-operation", `Operation "${input.operation ?? ""}" is not in the catalog`);
     return found;
   }

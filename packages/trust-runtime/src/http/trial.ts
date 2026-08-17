@@ -44,10 +44,17 @@ export function executeTrialRpc(method: TrialRpcMethod, params: unknown, depende
   switch (method) {
     case TRIAL_START_METHOD: {
       if (!isRecord(params) || typeof params.environment !== "string" || !isRecord(params.input)) throw new InvalidTrialRpcParams();
-      const hasSource = typeof params.source === "string";
-      const hasOperation = typeof params.operation === "string";
+      const hasSource = typeof params.source === "string" && params.source.length > 0;
+      const hasOperation = typeof params.operation === "string" && params.operation.length > 0;
       if (hasSource === hasOperation) throw new InvalidTrialRpcParams();
-      if (params.version !== undefined && typeof params.version !== "string") throw new InvalidTrialRpcParams();
+      const allowed = hasSource
+        ? ["source", "environment", "input"]
+        : ["operation", "version", "environment", "input"];
+      if (Object.keys(params).some((key) => !allowed.includes(key))
+        || params.environment.length === 0
+        || (params.version !== undefined && (typeof params.version !== "string" || params.version.length === 0))) {
+        throw new InvalidTrialRpcParams();
+      }
       const summary = dependencies.trialService.start({
         ...(hasSource ? { source: params.source as string } : { operation: params.operation as string, ...(typeof params.version === "string" ? { version: params.version } : {}) }),
         environment: params.environment,
@@ -61,7 +68,13 @@ export function executeTrialRpc(method: TrialRpcMethod, params: unknown, depende
       return { contract: "trust.trial-summary@1", trial: dependencies.trialService.cancel(params.trial) };
     }
     case TRIAL_READ_METHOD: {
-      if (!isRecord(params) || typeof params.trial !== "string") throw new InvalidTrialRpcParams();
+      if (!isRecord(params)
+        || Object.keys(params).some((key) => !["trial", "after"].includes(key))
+        || typeof params.trial !== "string"
+        || params.trial.length === 0
+        || (params.after !== undefined && (!Number.isSafeInteger(params.after) || Number(params.after) < 0))) {
+        throw new InvalidTrialRpcParams();
+      }
       const trial = dependencies.trialService.read(params.trial);
       const after = typeof params.after === "number" ? params.after : 0;
       return {
@@ -84,7 +97,11 @@ export function executeTrialRpc(method: TrialRpcMethod, params: unknown, depende
     }
     case TRIAL_LIST_METHOD: {
       if (params !== undefined && !isRecord(params)) throw new InvalidTrialRpcParams();
-      if (isRecord(params) && params.operation !== undefined && typeof params.operation !== "string") throw new InvalidTrialRpcParams();
+      if (isRecord(params)
+        && (Object.keys(params).some((key) => key !== "operation")
+          || (params.operation !== undefined && (typeof params.operation !== "string" || params.operation.length === 0)))) {
+        throw new InvalidTrialRpcParams();
+      }
       return { contract: "trust.trial-catalog@1", trials: dependencies.trialService.list(isRecord(params) ? (params.operation as string | undefined) : undefined) };
     }
   }
