@@ -10,6 +10,10 @@
     ".": {
       "types": "./src/index.ts",
       "import": "./dist/index.js"
+    },
+    "./format": {
+      "types": "./src/format.ts",
+      "import": "./dist/format.js"
     }
   },
   "files": [

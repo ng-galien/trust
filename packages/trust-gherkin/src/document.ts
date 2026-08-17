@@ -1,6 +1,8 @@
 import { AstBuilder, GherkinClassicTokenMatcher, Parser } from "@cucumber/gherkin";
 import { IdGenerator, type GherkinDocument } from "@cucumber/messages";
 
+import { joinContinuations } from "./continuation.js";
+
 export class GherkinSyntaxError extends Error {
   constructor(
     message: string,
@@ -21,7 +23,7 @@ export function parseGherkin(source: string): GherkinDocument {
     new GherkinClassicTokenMatcher("en"),
   );
   try {
-    return parser.parse(source);
+    return parser.parse(joinContinuations(source));
   } catch (error) {
     const parserError = record(error);
     const nested = Array.isArray(parserError?.errors) ? record(parserError.errors[0]) : undefined;

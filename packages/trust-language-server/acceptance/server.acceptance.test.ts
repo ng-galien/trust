@@ -24,6 +24,35 @@ test("the Microsoft LSP server exposes the Operation language through standard J
   await session.shutdown();
 });
 
+test("the server accepts step continuation lines and formats long steps onto them", async (context) => {
+  const session = await startLanguageServer(context, true);
+  const uri = "file:///workspace/format/git.head-read.feature";
+  const original = operationFixture("valid/git.head-read.feature");
+  const longStep = 'When Shell "head" runs "git" with cwd from Environment "workspaceRoot" and Input "project"';
+  assert.ok(original.includes(longStep), "fixture carries the long step");
+  const diagnostics = waitForDiagnostics(session.connection, uri, 1);
+  session.connection.sendNotification("textDocument/didOpen", {
+    textDocument: { uri, languageId: "gherkin", version: 1, text: original },
+  });
+  assert.deepEqual(await diagnostics, { uri, version: 1, diagnostics: [] });
+
+  const edits = await session.connection.sendRequest<Array<{ newText: string }>>(
+    "textDocument/formatting",
+    { textDocument: { uri }, options: { tabSize: 2, insertSpaces: true } },
+  );
+  assert.equal(edits.length, 1);
+  const formatted = edits[0]!.newText;
+  assert.ok(formatted.includes('When Shell "head" runs "git" with cwd from Environment "workspaceRoot"\n        and Input "project"'), formatted);
+
+  const reopened = "file:///workspace/format/continued.feature";
+  const reopenedDiagnostics = waitForDiagnostics(session.connection, reopened, 1);
+  session.connection.sendNotification("textDocument/didOpen", {
+    textDocument: { uri: reopened, languageId: "gherkin", version: 1, text: formatted },
+  });
+  assert.deepEqual(await reopenedDiagnostics, { uri: reopened, version: 1, diagnostics: [] });
+  await session.shutdown();
+});
+
 test("the server returns flat symbols when the client does not support hierarchy", async (context) => {
   const session = await startLanguageServer(context, false);
   const uri = "file:///workspace/flat/git.head-read.feature";

@@ -11,9 +11,11 @@ import {
   type InitializeParams,
   type InitializeResult,
   type Range,
+  type TextEdit,
 } from "vscode-languageserver/node";
 import { TextDocument } from "vscode-languageserver-textdocument";
 
+import { formatGherkinSource } from "@trust/gherkin/format";
 import {
   analyzeOperation,
   isOperationSource,
@@ -33,6 +35,7 @@ connection.onInitialize((params: InitializeParams): InitializeResult => {
     capabilities: {
       textDocumentSync: TextDocumentSyncKind.Incremental,
       documentSymbolProvider: true,
+      documentFormattingProvider: true,
     },
   };
 });
@@ -50,6 +53,16 @@ documents.onDidChangeContent(({ document }) => {
 documents.onDidClose(({ document }) => {
   operationDocuments.delete(document.uri);
   connection.sendDiagnostics({ uri: document.uri, version: document.version, diagnostics: [] });
+});
+
+// Formatting re-flows long steps onto continuation lines (see @trust/gherkin/format); tables and doc strings are kept.
+connection.onDocumentFormatting(({ textDocument }): TextEdit[] => {
+  const document = documents.get(textDocument.uri);
+  if (!document) return [];
+  const source = document.getText();
+  const formatted = formatGherkinSource(source);
+  if (formatted === source) return [];
+  return [{ range: { start: { line: 0, character: 0 }, end: document.positionAt(source.length) }, newText: formatted }];
 });
 
 connection.onDocumentSymbol(({ textDocument }) => {

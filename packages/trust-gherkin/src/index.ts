@@ -5,6 +5,12 @@ export {
   parseGherkin,
 } from "./document.js";
 export {
+  continuationLineIndexes,
+  isContinuationLine,
+  joinContinuations,
+} from "./continuation.js";
+export { formatGherkinSource, type FormatOptions } from "./format.js";
+export {
   documentRange,
   sourceLineRange,
   sourceValueRange,
