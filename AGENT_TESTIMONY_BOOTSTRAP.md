@@ -28,7 +28,8 @@ request gate and the direct-`main` workflow have produced live evidence.
 ## Installed files
 
 - `.github/pull_request_template.md` contains the French editorial invitation
-  and exactly one `agent-testimony:start` / `agent-testimony:end` marker pair.
+  with a declared `agent-name`, and exactly one `agent-testimony:start` /
+  `agent-testimony:end` marker pair.
 - `.github/workflows/agent-testimony.yml` delegates pull request collection to
   `ng-galien/ng-galien.github.io/.github/workflows/collect-agent-testimony.yml@main`.
 - `.github/workflows/agent-testimony-main.yml` delegates manual collection from
