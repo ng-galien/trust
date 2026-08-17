@@ -1,0 +1,46 @@
+import type { shared as en } from "../en/shared.js";
+import type { Translation } from "../types.js";
+
+export const shared: Translation<typeof en> = {
+  resourceHome: {
+    visibleOfTotal: "{{visible}} sur {{total}}",
+    display: "Affichage",
+    cards: "Cartes",
+    list: "Liste",
+    byGroup: "par {{group}}",
+    view: "Vue",
+    viewMode: "Mode d'affichage",
+    groupBy: "Grouper par",
+    sortBy: "Trier par",
+  },
+  resourceOverlay: {
+    views: "Vues",
+    hideDetails: "Masquer les détails",
+    showDetails: "Afficher les détails",
+  },
+  gherkinEditor: {
+    loading: "Chargement de l'éditeur…",
+    format: "Formater la source",
+    formatHint: "Replier les étapes longues sur des lignes de continuation (Maj+Alt+F)",
+    gherkinKeyword: "Mot-clé Gherkin",
+    grammar: "Grammaire TRUST {{kind}}",
+    snippets: {
+      operationFeature: "Feature d'Operation",
+      operationFeatureDoc: "Squelette complet d'Operation : tags, tables d'interface, une étape Shell et la projection JSONata.",
+      environmentTable: "Table Environment",
+      inputTable: "Table Input",
+      producedFieldsTable: "Table des champs produits",
+      shellStep: "Étape Shell",
+      shellArgumentFromInput: "Argument Shell depuis un Input",
+      shellAcceptedExits: "Codes de sortie Shell acceptés",
+      httpGetStep: "Étape HTTP GET",
+      httpGetStepAppendingInput: "Étape HTTP GET avec Input en suffixe",
+      httpPostStep: "Étape HTTP POST",
+      fileReadStep: "Étape de lecture de fichier",
+      produceWithJsonata: "Produire avec JSONata",
+      procedureFeature: "Feature de Procedure",
+      scenario: "Scenario",
+      useOperation: "Utiliser {{operation}}",
+    },
+  },
+};

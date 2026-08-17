@@ -1,0 +1,409 @@
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { FileCode2, FlaskConical, History, ListChecks, LockKeyhole, Network, RotateCcw, Server, Trash2, Workflow, X } from "lucide-react";
+import type { TFunction } from "i18next";
+import { type ReactNode, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
+import { useLocation, useNavigate, useParams } from "react-router";
+
+import { plural, relativeTime } from "../../lib/format.js";
+import { useCurrentEnvironment } from "../../lib/environment.js";
+import { mutationError, mutationErrorDetails, useClosePlan, useRemovePlan } from "../../lib/mutations.js";
+import { useCheck, usePlan, useProcedures, useRuntime } from "../../lib/runtime-context.js";
+import type { CompiledProcedure, PlanCheck, PlanMode, PlanView } from "../../types.js";
+import { Badge, StatusBadge } from "../../ui/badge.js";
+import { Button, IconButton } from "../../ui/button.js";
+import { type EditorDecoration, GherkinEditor } from "../../gherkin-editor.js";
+import { updatePreferences, usePreference, useResolvedTheme } from "../../lib/preferences.js";
+import { ConfirmDialog } from "../../ui/confirm.js";
+import { EmptyState, ErrorBox, LoadingState } from "../../ui/states.js";
+import { useCloseTo, useOrigin } from "../shared/origin.js";
+import { stripEphemeral, useOverlayViewState } from "../shared/overlay-state.js";
+import { ResourceOverlay } from "../shared/resource-overlay.js";
+import { ProcedureGraph } from "../procedures/procedure-graph.js";
+import { PlanCockpit } from "./plan-console.js";
+import { PlanEngage } from "./plan-engage.js";
+import { orderedChecks } from "./model.js";
+import { ModeBadge, ProgressBar } from "./parts.js";
+
+type Tab = "checklist" | "graph" | "source" | "history";
+const TABS: readonly Tab[] = ["checklist", "graph", "source", "history"];
+
+/* One overlay for live Plans (`/plans`) and dry-runs (`/dry-runs`): same object, same views.
+   A dry-run adds a cockpit docked beside every view (declarations, next Check, verdict) — the views
+   themselves are exactly what an agent-driven Plan shows. The interface never admits or finalizes a live Check. */
+export function PlanOverlay({ planMode, mode = "item" }: { planMode: PlanMode; mode?: "item" | "new" }) {
+  const params = useParams();
+  const location = useLocation();
+  const base = planMode === "dry-run" ? "/dry-runs" : "/plans";
+  const listSearch = useMemo(() => stripEphemeral(location.search), [location.search]);
+  const close = useCloseTo(`${base}${listSearch}`);
+  if (mode === "new") return <PlanEngage planMode={planMode} base={base} onClose={close} listSearch={listSearch} />;
+  return <PlanItem slug={decodeURIComponent(params.plan ?? "")} planMode={planMode} base={base} onClose={close} listSearch={listSearch} />;
+}
+
+function PlanItem({ slug, planMode, base, onClose, listSearch }: { slug: string; planMode: PlanMode; base: string; onClose: () => void; listSearch: string }) {
+  const { t } = useTranslation();
+  const runtime = useRuntime();
+  const queryClient = useQueryClient();
+  const navigate = useNavigate();
+  const origin = useOrigin();
+  const plan = usePlan(slug);
+  const procedures = useProcedures();
+  const view = useOverlayViewState<Tab>(TABS, "checklist");
+  const { tab, setTab, sel, setSel } = view;
+  const data = plan.data;
+  const compiled: CompiledProcedure | undefined = useMemo(
+    () => procedures.data?.find(({ procedure }) => procedure.procedure === data?.procedure && procedure.version === data?.procedureVersion)?.procedure,
+    [procedures.data, data?.procedure, data?.procedureVersion],
+  );
+  const invalidate = () => Promise.all([queryClient.invalidateQueries({ queryKey: ["plan", slug] }), queryClient.invalidateQueries({ queryKey: ["plans"] })]);
+  const dryRun = data?.mode === "dry-run";
+  const cockpitOpen = usePreference("cockpitOpen");
+  const cockpitWidth = usePreference("cockpitWidth");
+  const setCockpitOpen = (open: boolean) => updatePreferences({ cockpitOpen: open });
+  // A plan reached under the wrong anchor (a dry-run under /plans or the reverse) is shown, but never mixed in the lists.
+  const notFound = plan.isError;
+  const crumbs = [{ label: t("plans.brand"), to: "/overview" }, { label: planMode === "dry-run" ? t("plans.anchor.dryRuns") : t("plans.anchor.plans"), to: `${base}${listSearch}` }, { label: slug, mono: true }];
+  const tabs: Array<{ value: Tab; label: ReactNode }> = [
+    { value: "checklist", label: <><ListChecks size={13} /> {t("plans.overlay.tabs.checklist")}</> },
+    { value: "graph", label: <><Network size={13} /> {t("plans.overlay.tabs.graph")}</> },
+    { value: "source", label: <><FileCode2 size={13} /> {t("plans.overlay.tabs.source")}</> },
+    { value: "history", label: <><History size={13} /> {t("plans.overlay.tabs.history")}</> },
+  ];
+  const theme = useResolvedTheme();
+  const editorFontSize = usePreference("editorFontSize");
+  const currentEnvironment = useCurrentEnvironment().name;
+  const decorations = useMemo(() => (compiled && data ? hydrate(compiled, data, t) : []), [compiled, data, t]);
+  const ordered = useMemo(() => (data ? { ...data, checks: orderedChecks(data.checks, compiled) } : undefined), [data, compiled]);
+  const actionable = ordered?.checks.filter((check) => check.actionable) ?? [];
+  // Dry-runs only: a blocked rehearsal is erased (Delete) or erased and engaged again as it was (Reset).
+  const reset = useRemovePlan();
+  // Live Plans: the only action the interface takes on the agent's Plan is closing its open Session.
+  const close = useClosePlan();
+  const actionError = mutationError(reset.error ?? close.error);
+  const [confirming, setConfirming] = useState<"reset" | "delete" | "close">();
+
+  return (
+    <ResourceOverlay
+      onClose={onClose}
+      crumbs={crumbs}
+      labelledBy="plan-title"
+      kicker={data ? t("plans.overlay.kickerRev", { revision: data.revision }) : t("plans.overlay.kicker")}
+      badges={data ? <><ModeBadge mode={data.mode} /><StatusBadge state={data.sessionState === "UNAVAILABLE" ? "UNAVAILABLE" : data.workState} />{currentEnvironment && data.environment !== currentEnvironment ? <span title={t("plans.overlay.otherEnvironmentHint", { environment: data.environment, current: currentEnvironment })}><Badge tone="warning" className="inline-flex items-center gap-1"><Server size={11} /> {t("plans.overlay.otherEnvironment", { environment: data.environment })}</Badge></span> : null}</> : null}
+      id={data ? `${data.procedure}@${data.procedureVersion} · ${data.environment}` : slug}
+      title={slug}
+      loading={plan.isLoading ? <LoadingState /> : notFound ? (
+        <div className="p-8"><EmptyState title={t("plans.overlay.unknown", { slug })} body={plan.error?.message} action={<Button onClick={onClose}>{t("plans.overlay.backToPlans")}</Button>} /></div>
+      ) : undefined}
+      actions={
+        <>
+          {dryRun ? (
+            <>
+              <Button size="sm" icon={<RotateCcw size={13} />} disabled={reset.isPending} title={t("plans.overlay.resetTitle")} onClick={() => setConfirming("reset")}>{t("plans.overlay.reset")}</Button>
+              <Button size="sm" variant="danger" icon={<Trash2 size={13} />} disabled={reset.isPending} title={t("plans.overlay.deleteTitle")} onClick={() => setConfirming("delete")}>{t("common.actions.delete")}</Button>
+            </>
+          ) : data?.sessionState === "OPEN" ? (
+            <Button size="sm" icon={<LockKeyhole size={13} />} disabled={close.isPending} title={t("plans.overlay.closeSessionTitle")} onClick={() => setConfirming("close")}>{t("plans.overlay.closeSession")}</Button>
+          ) : null}
+          <Button size="sm" icon={<Workflow size={13} />} onClick={() => data && navigate(`/procedures/${encodeURIComponent(data.procedure)}`, { state: origin })}>{t("plans.overlay.procedure")}</Button>
+        </>
+      }
+      tabs={tabs}
+      tab={tab}
+      onTab={setTab}
+      tabActions={dryRun ? (
+        <Button size="sm" variant={cockpitOpen ? "secondary" : "primary"} icon={<FlaskConical size={13} />} onClick={() => setCockpitOpen(!cockpitOpen)} title={cockpitOpen ? t("plans.overlay.hideCockpit") : t("plans.overlay.showCockpit")}>
+          {cockpitOpen ? t("plans.overlay.cockpit") : actionable.length ? t("plans.overlay.rehearseCount", { count: actionable.length }) : t("plans.overlay.rehearse")}
+        </Button>
+      ) : undefined}
+      tabMeta={data
+        ? data.missingDeclarations.length
+          ? t("plans.overlay.tabMetaMissing", { checks: plural(data.checks.length, "check"), satisfied: data.satisfiedChecks, actionable: actionable.length, missing: plural(data.missingDeclarations.length, "missingDeclaration") })
+          : t("plans.overlay.tabMeta", { checks: plural(data.checks.length, "check"), satisfied: data.satisfiedChecks, actionable: actionable.length })
+        : ""}
+      // No inspector on Plans / dry-runs: the checklist, the summary strip and the cockpit carry everything.
+    >
+      <ConfirmDialog
+        open={confirming !== undefined}
+        tone={confirming === "delete" ? "danger" : "primary"}
+        title={confirming === "delete" ? t("plans.overlay.confirm.deleteTitle", { slug }) : confirming === "close" ? t("plans.overlay.confirm.closeTitle", { slug }) : t("plans.overlay.confirm.resetTitle", { slug })}
+        body={confirming === "delete"
+          ? t("plans.overlay.confirm.deleteBody")
+          : confirming === "close"
+            ? t("plans.overlay.confirm.closeBody")
+            : t("plans.overlay.confirm.resetBody")}
+        confirmLabel={confirming === "delete" ? t("common.actions.delete") : confirming === "close" ? t("plans.overlay.closeSession") : t("plans.overlay.reset")}
+        busy={reset.isPending || close.isPending}
+        onCancel={() => setConfirming(undefined)}
+        onConfirm={() => {
+          const action = confirming; setConfirming(undefined);
+          if (action === "close") close.mutate(data!.plan);
+          else { const again = action === "reset"; reset.mutate({ plan: data!.plan, ...(again ? { again: data! } : {}) }, { onSuccess: () => { if (!again) onClose(); } }); }
+        }}
+      />
+      {actionError ? <div className="border-b border-border p-2"><ErrorBox message={actionError} details={mutationErrorDetails(reset.error ?? close.error)} /></div> : null}
+      {ordered ? (
+        <div className="flex h-full min-h-0">
+        <div className="min-h-0 min-w-0 flex-1">
+          {tab === "checklist" ? (
+            <div className="flex h-full min-h-0 flex-col">
+              <PlanSummaryStrip plan={ordered} compiled={compiled} onRehearse={dryRun ? () => setCockpitOpen(true) : undefined} onSelectCheck={(uri) => setSel(`check:${uri}`)} />
+              <div className="min-h-0 flex-1"><PlanChecks plan={ordered} selected={sel} onSelect={setSel} /></div>
+            </div>
+          ) : null}
+          {tab === "graph" ? (
+            compiled ? <div className="h-full"><ProcedureGraph procedure={compiled} checks={ordered.checks} selected={sel} onSelect={setSel} /></div>
+              : <div className="p-6"><EmptyState icon={<Network />} title={t("plans.overlay.notPublished")} body={t("plans.overlay.graphNeedsProcedure")} /></div>
+          ) : null}
+          {tab === "source" ? (
+            compiled ? <GherkinEditor kind="procedure" value={compiled.source} onChange={() => undefined} readOnly theme={theme} fontSize={editorFontSize} decorations={decorations} />
+              : <div className="p-6"><EmptyState icon={<FileCode2 />} title={t("plans.overlay.notPublished")} body={t("plans.overlay.sourceNeedsProcedure")} /></div>
+          ) : null}
+          {tab === "history" ? <PlanHistory plan={ordered} /> : null}
+        </div>
+        {dryRun && cockpitOpen ? (
+          <aside className="relative shrink-0 border-l border-border bg-surface" style={{ width: cockpitWidth }}>
+            <ResizeHandle width={cockpitWidth} onResize={(width) => updatePreferences({ cockpitWidth: width })} />
+            <PlanCockpit plan={ordered} compiled={compiled} onChanged={invalidate} runtime={runtime} selected={sel} onSelect={setSel} onClose={() => setCockpitOpen(false)} />
+          </aside>
+        ) : null}
+        </div>
+      ) : null}
+    </ResourceOverlay>
+  );
+}
+
+/** Compact reading of the plan above its checklist: progress, latest verdict, what is next. */
+function PlanSummaryStrip({ plan, compiled, onRehearse, onSelectCheck }: { plan: PlanView; compiled: CompiledProcedure | undefined; onRehearse?: (() => void) | undefined; onSelectCheck: (uri: string) => void }) {
+  const { t } = useTranslation();
+  const actionable = plan.checks.filter((check) => check.actionable);
+  const failed = plan.checks.filter((check) => check.state === "OPEN" && check.latestVerdict === "NOT_VALIDATED");
+  return (
+    <div className="flex shrink-0 flex-col gap-2 border-b border-border bg-surface px-4 py-3">
+      <section>
+        <div className="flex flex-wrap items-center gap-3">
+          <ProgressBar satisfied={plan.satisfiedChecks} total={plan.checks.length} />
+          <StatusBadge state={plan.workState} />
+          {plan.sessionState === "UNAVAILABLE" ? <Badge tone="danger">{t("plans.summary.sessionUnavailable")}</Badge> : null}
+          <span className="text-body text-muted">{t("plans.summary.revisionEngaged", { revision: plan.revision, when: relativeTime(plan.createdAt) })}</span>
+        </div>
+        <p className="mt-2 text-ui leading-relaxed">
+          {compiled?.title ?? plan.procedure}
+          {plan.mode === "dry-run" ? <span className="text-muted"> {t("plans.summary.rehearsedByYou")}</span> : <span className="text-muted"> {t("plans.summary.executedByAgent")}</span>}
+        </p>
+        {plan.latestQualification ? (
+          <p className="mt-2 text-body-lg">
+            <span className="kicker mr-2">{t("plans.summary.latestVerdict")}</span>
+            <StatusBadge state={plan.latestQualification.verdict} />{" "}
+            <button type="button" className="mono text-accent hover:underline" onClick={() => onSelectCheck(plan.latestQualification!.checkUri)}>{checkName(plan, plan.latestQualification.checkUri)}</button>
+            <span className="text-muted"> — {plan.latestQualification.reason}</span>
+            {plan.latestQualification.newlyOpened.length ? <span className="text-graph-data"> · {t("plans.summary.reopened", { checks: plural(plan.latestQualification.newlyOpened.length, "check") })}</span> : null}
+          </p>
+        ) : null}
+      </section>
+      <section>
+        <div className="mb-1 flex items-center justify-between"><span className="kicker">{t("plans.summary.next")}</span>{onRehearse && (actionable.length || plan.missingDeclarations.length) ? <Button size="sm" variant="primary" icon={<FlaskConical size={12} />} onClick={onRehearse}>{t("plans.summary.rehearse")}</Button> : null}</div>
+        {plan.missingDeclarations.length ? <p className="mb-2 text-body-lg"><Badge tone="warning">{t("plans.summary.declare")}</Badge> <span className="text-muted">{t("plans.summary.agentMustDeclare")}</span> {plan.missingDeclarations.map((role, index) => <span key={role}>{index ? ", " : ""}<span className="mono">{role}</span></span>)}{onRehearse ? <> — <button type="button" className="text-accent hover:underline" onClick={onRehearse}>{t("plans.summary.declareNow")}</button></> : null}</p> : null}
+        {actionable.length === 0 && plan.missingDeclarations.length === 0 ? <p className="text-body-lg text-muted">{plan.workState === "COMPLETE" ? t("plans.summary.allSatisfied") : t("plans.summary.noneActionable")}</p> : null}
+        {actionable.length ? <p className="text-body-lg"><span className="text-muted">{t("plans.summary.actionableNow")}</span> {actionable.map((check, index) => <span key={check.checkUri}>{index ? ", " : ""}<button type="button" className="mono text-accent hover:underline" onClick={() => onSelectCheck(check.checkUri)}>{check.name}</button><span className="text-faint"> {t("plans.summary.onTarget", { value: JSON.stringify(check.target.value) })}</span></span>)}</p> : null}
+        {failed.length ? <p className="mt-1 text-body text-muted">{t("plans.summary.leftOpen", { checks: plural(failed.length, "check") })} {failed.map((check, index) => <span key={check.checkUri}>{index ? ", " : ""}<button type="button" className="mono text-accent hover:underline" onClick={() => onSelectCheck(check.checkUri)}>{check.name}</button></span>)}</p> : null}
+      </section>
+    </div>
+  );
+}
+
+function PlanChecks({ plan, selected, onSelect }: { plan: PlanView; selected: string | undefined; onSelect: (id: string | undefined) => void }) {
+  const { t } = useTranslation();
+  const selectedUri = selected?.startsWith("check:") ? selected.slice("check:".length) : undefined;
+  const check = plan.checks.find((entry) => entry.checkUri === selectedUri);
+  return (
+    <div className={check ? "grid h-full min-h-0 grid-cols-[minmax(0,1fr)_300px]" : "flex h-full min-h-0 flex-col"}>
+      <ul className="flex min-h-0 flex-col overflow-y-auto">
+        {groupExpanded(plan.checks).map((group) => (
+          <li key={group.key} className="border-b border-border">
+            {group.checks.length > 1 ? (
+              <div className="flex items-baseline gap-2 bg-surface-2 px-3 py-1.5 text-label" title={t("plans.checklist.parallelTitle")}>
+                <span className="mono font-medium">{group.checks[0]!.name}</span>
+                <span className="text-muted">{t("plans.checklist.timesOnEach", { count: group.checks.length })} <span className="mono text-text">{group.checks[0]!.target.role}</span></span>
+                <span className="ml-auto text-faint">{t("plans.checklist.satisfiedRatio", { satisfied: group.checks.filter((check) => check.state === "SATISFIED").length, total: group.checks.length })}</span>
+              </div>
+            ) : null}
+            {group.checks.map((entry) => (
+              <div key={entry.checkUri} className={group.checks.length > 1 ? "border-t border-border pl-4" : ""}>
+                <CheckLine check={entry} selected={entry.checkUri === selectedUri} onClick={() => onSelect(entry.checkUri === selectedUri ? undefined : `check:${entry.checkUri}`)} />
+              </div>
+            ))}
+          </li>
+        ))}
+      </ul>
+      {check ? (
+        <aside className="flex min-h-0 flex-col border-l border-border bg-surface">
+          <div className="flex items-center gap-2 border-b border-border px-3 py-1.5"><span className="kicker">{t("plans.checklist.check")}</span><IconButton size="sm" label={t("plans.checklist.closeDetails")} className="ml-auto" onClick={() => onSelect(undefined)}><X size={14} /></IconButton></div>
+          <div className="min-h-0 flex-1 overflow-y-auto p-3"><CheckDetail checkUri={check.checkUri} /></div>
+        </aside>
+      ) : null}
+    </div>
+  );
+}
+
+export function CheckLine({ check, selected, compact = false, onClick }: { check: PlanCheck; selected?: boolean; compact?: boolean; onClick: () => void }) {
+  const { t } = useTranslation();
+  return (
+    <button type="button" onClick={onClick} className={`flex w-full items-start gap-3 px-3 py-2 text-left hover:bg-surface-2 ${selected ? "bg-accent-soft" : ""}`}>
+      {compact ? null : <span className="mt-0.5 w-24 shrink-0"><StatusBadge state={check.state === "SATISFIED" ? "SATISFIED" : check.actionable ? "ACTIONABLE" : "OPEN"} /></span>}
+      <span className="min-w-0 flex-1">
+        <span className="flex items-baseline gap-2"><span className="mono text-body-lg font-medium">{check.name}</span>{compact ? null : <span className="text-caption text-muted">{check.scenario}</span>}<span className="mono ml-auto shrink-0 text-caption text-accent">{check.operation}</span></span>
+        <span className="block truncate text-label text-muted">{t("plans.checkLine.on")} <span className="mono text-text">{check.target.role}</span> = <span className="mono">{JSON.stringify(check.target.value)}</span></span>
+        {check.latestVerdict && !compact ? <span className="block text-label"><StatusBadge state={check.latestVerdict} /> <span className="text-muted">{check.reason}</span></span> : null}
+        {!check.actionable && check.state === "OPEN" && check.blockedBy.length && !compact ? <span className="block text-caption text-faint">{t("plans.checkLine.waitsFor", { checks: plural(check.blockedBy.length, "check") })}</span> : null}
+      </span>
+    </button>
+  );
+}
+
+function CheckDetail({ checkUri }: { checkUri: string }) {
+  const { t } = useTranslation();
+  const check = useCheck(checkUri);
+  if (!check.data) return <LoadingState label={t("plans.checkDetail.reading")} />;
+  const view = check.data;
+  return (
+    <div className="flex flex-col gap-3 text-body">
+      <div><span className="kicker">{t("plans.checkDetail.check")}</span><strong className="mono block text-ui">{view.name}</strong><span className="mono block break-all text-meta text-faint">{view.checkUri}</span></div>
+      <div><span className="kicker">{t("plans.checkDetail.inputs")}</span>{Object.entries(view.inputs).map(([key, value]) => <div key={key} className="flex justify-between gap-2"><span className="mono">{key}</span><span className="mono truncate text-muted">{JSON.stringify(value)}</span></div>)}</div>
+      <div><span className="kicker">{t("plans.checkDetail.history")}</span>{view.history.length === 0 ? <p className="text-muted">{t("plans.checkDetail.noVerdict")}</p> : null}
+        <ul className="flex flex-col gap-1">{[...view.history].reverse().map((entry) => <li key={entry.snapshotId}><StatusBadge state={entry.verdict} /> <span className="text-muted">{entry.reason}</span> <span className="text-caption text-faint">{relativeTime(entry.calculatedAt)}</span></li>)}</ul>
+      </div>
+      <div><span className="kicker">{t("plans.checkDetail.attempts")}</span>{view.attempts.length === 0 ? <p className="text-muted">{t("plans.checkDetail.noAttempt")}</p> : null}
+        <ul className="flex flex-col gap-1">{[...view.attempts].reverse().map((attempt) => <li key={attempt.handle} className="flex justify-between gap-2"><span className="mono truncate">{attempt.attemptKey}</span><span className="text-faint">{attempt.state} · {plural(attempt.facts.length, "fact")}</span></li>)}</ul>
+      </div>
+    </div>
+  );
+}
+
+function PlanHistory({ plan }: { plan: PlanView }) {
+  const { t } = useTranslation();
+  return (
+    <div className="flex h-full flex-col gap-3 overflow-y-auto bg-bg p-4 [&>*]:shrink-0">
+      <section className="rounded-(--radius-3) border border-border bg-surface p-4">
+        <span className="kicker">{t("plans.history.latestChange")}</span>
+        <p className="mt-1 text-body-lg">{t("plans.history.revChange", { from: String(plan.latestRevisionChange.fromRevision ?? "—"), to: plan.latestRevisionChange.toRevision })}
+          {plan.latestRevisionChange.added.length ? <span className="text-muted"> · {t("plans.history.added", { count: plan.latestRevisionChange.added.length })}</span> : null}
+          {plan.latestRevisionChange.removed.length ? <span className="text-muted"> · {t("plans.history.removed", { count: plan.latestRevisionChange.removed.length })}</span> : null}
+          {plan.latestRevisionChange.newlySatisfied.length ? <span className="text-success"> · {t("plans.history.satisfied", { count: plan.latestRevisionChange.newlySatisfied.length })}</span> : null}
+          {plan.latestRevisionChange.newlyOpened.length ? <span className="text-graph-data"> · {t("plans.history.reopened", { count: plan.latestRevisionChange.newlyOpened.length })}</span> : null}
+        </p>
+      </section>
+      <section className="rounded-(--radius-3) border border-border bg-surface">
+        <div className="border-b border-border px-4 py-2"><span className="kicker">{t("plans.history.revisions")}</span> <span className="text-caption text-faint">{plan.revisions.length}</span></div>
+        <ul>
+          {[...plan.revisions].reverse().map((revision) => (
+            <li key={revision.revision} className="flex items-baseline gap-3 border-b border-border px-4 py-1.5 text-body last:border-b-0">
+              <span className="w-12 shrink-0 font-medium">{t("plans.history.rev", { revision: revision.revision })}</span>
+              <span className="text-muted">{plural(revision.checkUris.length, "check")}</span>
+              <span className="mono truncate text-caption text-faint">{revision.definitionDigest.slice(0, 12)}</span>
+            </li>
+          ))}
+        </ul>
+      </section>
+    </div>
+  );
+}
+
+/** The procedure source, hydrated with the Plan: role values on Background lines, live state on Scenario and Check lines. */
+function hydrate(compiled: CompiledProcedure, plan: PlanView, t: TFunction): EditorDecoration[] {
+  const lines = compiled.source.split("\n");
+  const decorations: EditorDecoration[] = [];
+  const byTitle = new Map(compiled.scenarios.map((scenario) => [scenario.title.toLowerCase(), scenario.slug]));
+  const stateOf = (checks: PlanCheck[]) => {
+    if (checks.length === 0) return undefined;
+    if (checks.every((check) => check.state === "SATISFIED")) return "satisfied" as const;
+    if (checks.some((check) => check.latestVerdict === "NOT_VALIDATED" && check.state === "OPEN")) return "failed" as const;
+    if (checks.some((check) => check.actionable)) return "actionable" as const;
+    return "open" as const;
+  };
+  const summarize = (checks: PlanCheck[]) => {
+    const satisfied = checks.filter((check) => check.state === "SATISFIED").length;
+    const failed = checks.filter((check) => check.latestVerdict === "NOT_VALIDATED" && check.state === "OPEN");
+    const actionable = checks.filter((check) => check.actionable).length;
+    if (checks.length === 1) {
+      const [check] = checks;
+      if (check!.state === "SATISFIED") return t("plans.hydrate.satisfied", { reason: check!.reason ?? "" }).trim();
+      if (check!.latestVerdict === "NOT_VALIDATED") return t("plans.hydrate.notValidated", { reason: check!.reason ?? "" }).trim();
+      return check!.actionable ? t("plans.hydrate.actionable") : t("plans.hydrate.waitsFor", { checks: plural(check!.blockedBy.length, "check") });
+    }
+    const targets = checks.map((check) => String(check.target.value)).join(", ");
+    return `${t("plans.hydrate.expansion", { count: checks.length, targets, satisfied })}${failed.length ? t("plans.hydrate.expansionNotValidated", { count: failed.length }) : ""}${actionable ? t("plans.hydrate.expansionActionable", { count: actionable }) : ""}`;
+  };
+  lines.forEach((line, index) => {
+    const number = index + 1;
+    const scenario = line.match(/^\s*Scenario:\s*(.+)$/);
+    if (scenario) {
+      const slug = byTitle.get(scenario[1]!.trim().toLowerCase());
+      const checks = plan.checks.filter((check) => check.scenario === slug);
+      const tone = stateOf(checks);
+      if (tone) decorations.push({ line: number, tone, text: checks.length ? t("plans.hydrate.satisfiedRatio", { satisfied: checks.filter((check) => check.state === "SATISFIED").length, total: checks.length }) : undefined });
+      else if (slug) decorations.push({ line: number, tone: "open", text: t("plans.hydrate.noCheckYet") });
+      return;
+    }
+    const check = line.match(/\bCheck\s+"([^"]+)"/);
+    if (check) {
+      const checks = plan.checks.filter((entry) => entry.name === check[1]);
+      const tone = stateOf(checks);
+      if (tone) decorations.push({ line: number, tone, text: summarize(checks) });
+      return;
+    }
+    const role = line.match(/^\s*(?:Given|And)\s+(?:one|many)\s+\w+\s+"([^"]+)"/);
+    if (role) {
+      const name = role[1]!;
+      const value = plan.rootInputs[name] ?? plan.declarations[name];
+      if (value !== undefined) decorations.push({ line: number, tone: "info", text: t("plans.hydrate.value", { value: describeValue(value) }) });
+      else if (plan.missingDeclarations.includes(name)) decorations.push({ line: number, tone: "open", text: t("plans.hydrate.notDeclared") });
+      else if (line.includes("declared by agent")) decorations.push({ line: number, tone: "open", text: t("plans.hydrate.waitsForParent") });
+    }
+  });
+  return decorations;
+}
+
+function describeValue(value: unknown): string {
+  if (Array.isArray(value)) return value.map((entry) => (entry !== null && typeof entry === "object" && "value" in (entry as object) ? String((entry as { value: unknown }).value) : String(entry))).join(", ");
+  return typeof value === "string" ? `"${value}"` : JSON.stringify(value);
+}
+
+/** Left-edge grip: drag to resize the cockpit (persisted), double-click to reset. */
+function ResizeHandle({ width, onResize }: { width: number; onResize: (width: number) => void }) {
+  const { t } = useTranslation();
+  return (
+    <div
+      role="separator"
+      aria-orientation="vertical"
+      title={t("plans.resize.title")}
+      className="absolute inset-y-0 -left-1 z-10 w-2 cursor-col-resize hover:bg-accent/30 active:bg-accent/40"
+      onDoubleClick={() => onResize(400)}
+      onPointerDown={(event) => {
+        event.preventDefault();
+        const startX = event.clientX;
+        const start = width;
+        const move = (next: PointerEvent) => onResize(Math.min(720, Math.max(300, start + (startX - next.clientX))));
+        const up = () => { window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); };
+        window.addEventListener("pointermove", move);
+        window.addEventListener("pointerup", up);
+      }}
+    />
+  );
+}
+
+/** Consecutive instances of one Check (an "each" expansion) form a group; single Checks are groups of one. */
+function groupExpanded(checks: readonly PlanCheck[]): Array<{ key: string; checks: PlanCheck[] }> {
+  const groups: Array<{ key: string; checks: PlanCheck[] }> = [];
+  for (const check of checks) {
+    const last = groups[groups.length - 1];
+    if (last && last.checks[0]!.name === check.name && last.checks[0]!.scenario === check.scenario) last.checks.push(check);
+    else groups.push({ key: `${check.scenario}:${check.name}`, checks: [check] });
+  }
+  return groups;
+}
+
+function checkName(plan: PlanView, uri: string): string {
+  return plan.checks.find((check) => check.checkUri === uri)?.name ?? uri;
+}
+

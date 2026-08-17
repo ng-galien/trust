@@ -7,22 +7,26 @@
     "node": ">=24.10.0"
   },
   "workspaces": [
+    "apps/trust-web",
     "packages/trust-runtime",
     "packages/trust-gherkin",
     "packages/trust-language-server",
     "packages/trust-operation",
     "packages/trust-procedure",
-    "packages/trust-runner"
+    "packages/trust-runner",
+    "packages/trust-ui"
   ],
   "scripts": {
     "dev": "node scripts/server.ts start",
+    "dev:web": "npm run dev --workspace=@trust/web",
     "build": "npm run build --workspaces --if-present",
     "package:skill": "npm run package:skill --workspace=@trust/runner",
     "check:dependencies": "node scripts/check-workspace-dependencies.mjs",
     "typecheck": "npm run check:dependencies && npm run typecheck --workspaces --if-present",
     "test": "npm run test:acceptance",
     "test:acceptance": "npm run test:acceptance --workspaces --if-present",
-    "start": "npm --workspace @trust/runtime start"
+    "start": "npm --workspace @trust/runtime start",
+    "start:web": "npm run preview --workspace=@trust/web"
   },
   "devDependencies": {
     "typescript": "^5.7.2"
