@@ -1,6 +1,7 @@
 import { Braces } from "lucide-react";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
+import { operationLanguage } from "@trust/operation/language";
 
 import type { CompiledOperation, OperationStep } from "../../types.js";
 import { Badge } from "../../ui/badge.js";
@@ -58,7 +59,7 @@ export function StepCard({ step, index }: { step: OperationStep; index: number }
 }
 
 function resultShape(type: OperationStep["type"]) {
-  return type === "shell" ? "→ exitCode, stdout, stderr" : type === "http" ? "→ status, headers, body" : "→ relativePath, content";
+  return `→ ${operationLanguage.stepResults[type].join(", ")}`;
 }
 
 function StepBody({ step }: { step: OperationStep }) {

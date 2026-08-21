@@ -43,7 +43,7 @@ Le Runner renvoie l'un de ces résultats :
 | Résultat | Signification | Ce que fait l'agent |
 | --- | --- | --- |
 | **completed · validated** | l'Opération s'est exécutée, les Facts ont été acceptés, le Check est satisfait | relire le Plan : des Checks dépendants ont pu s'ouvrir |
-| **completed · not validated** | l'Opération s'est exécutée, les Facts ont été acceptés, les attentes ne tiennent pas — la raison dit lesquelles | traiter la condition observée ; ne pas la réinterpréter comme une progression |
+| **completed · not validated** | l'Opération s'est exécutée, les Facts ont été acceptés, une garde de qualification est fausse — sa raison calculée explique l'observation | traiter la condition observée ; ne pas la réinterpréter comme une progression |
 | **refused** | rien ne s'est exécuté : le Check n'est pas courant, ses prérequis sont ouverts, la Session est fermée, le contrat ou l'Environnement ne correspond pas | lire le Check ou le Plan et suivre la raison |
 | **error** | l'admission, l'exécution, le rapport ou la finalisation a été interrompu : rien n'est établi | lire le Check ; réessayer est normal (un lot de Facts incomplet a été rejeté en entier ; le Runner peut exécuter l'Opération à nouveau) |
 

@@ -1,5 +1,5 @@
 import { useMutation } from "@tanstack/react-query";
-import { CheckCircle2, Clock3, FlaskConical, PanelRightClose, Send, Wand2, XCircle } from "lucide-react";
+import { CheckCircle2, Clock3, FlaskConical, PanelRightClose, Send, XCircle } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Trans, useTranslation } from "react-i18next";
 
@@ -20,7 +20,7 @@ import { CheckLine } from "./plan-overlay.js";
 /* Rehearsal cockpit of a dry-run, docked beside every view of the Plan: the operator plays the agent.
    1. Declare the dynamic context (the roles an agent declares) — same closed operation as MCP.
    2. Take the selected actionable Check (from the checklist, the graph or the list here), supply the values its
-      Operation would produce (or fill a passing/failing set), submit as the agent would:
+      Operation would produce, submit as the agent would:
       admission → Facts → finalization. TRUST qualifies and cascades for real. */
 
 export function PlanCockpit({ plan, compiled, onChanged, runtime, selected: selection, onSelect, onClose }: { plan: PlanView; compiled: CompiledProcedure | undefined; onChanged: () => Promise<unknown>; runtime: TrustRuntimeClient; selected: string | undefined; onSelect: (id: string | undefined) => void; onClose: () => void }) {
@@ -251,8 +251,6 @@ function CheckWorkbench({ plan, check, compiled, onChanged, runtime, reobserve =
   const [seeded, setSeeded] = useState(false);
   useEffect(() => { if (previous && !seeded) { setValues(previous); setSeeded(true); } }, [previous, seeded]);
   const [valid, setValid] = useState(false);
-  const passing = useMemo(() => (schema && compiledCheck ? synthesize(schema, compiledCheck, check, "pass", previous) : undefined), [schema, compiledCheck, check, previous]);
-  const failing = useMemo(() => (schema && compiledCheck ? synthesize(schema, compiledCheck, check, "fail", previous) : undefined), [schema, compiledCheck, check, previous]);
 
   const submit = useMutation({
     mutationFn: async () => {
@@ -276,21 +274,13 @@ function CheckWorkbench({ plan, check, compiled, onChanged, runtime, reobserve =
             <p className="mt-1 text-body text-muted">{t("plans.workbench.runs")} <span className="mono text-accent">{check.operation}</span> {t("plans.workbench.on")} <span className="mono text-text">{check.target.role}</span> = <span className="mono text-text">{JSON.stringify(check.target.value)}</span></p>
             {Object.keys(check.inputs).length ? <p className="mt-1 text-label text-muted">{t("plans.workbench.inputs")} {Object.entries(check.inputs).map(([key, value], index) => <span key={key}>{index ? " · " : ""}<span className="mono">{key}</span> = <span className="mono text-text">{JSON.stringify(value)}</span></span>)}</p> : null}
             {compiledCheck?.successReason ? <p className="mt-1 text-body">{t("plans.workbench.mustEstablish")} <em>“{compiledCheck.successReason}”</em></p> : null}
-            {compiledCheck?.predicates.length ? (
-              <ul className="mt-1 flex flex-col gap-0.5 text-label text-muted">
-                {compiledCheck.predicates.map((predicate, index) => <li key={index}><span className="mono text-text">{predicate.field}</span> {predicate.relation} <span className="mono">{JSON.stringify((predicate.expectation as { value?: unknown; role?: unknown; check?: unknown }).value ?? (predicate.expectation as { role?: unknown }).role ?? (predicate.expectation as { check?: unknown }).check ?? predicate.expectation.kind)}</span> <span className="text-faint">{t("plans.workbench.elseReason", { reason: predicate.failureReason })}</span></li>)}
-              </ul>
-            ) : null}
+            {compiledCheck ? <pre className="mono mt-2 overflow-x-auto whitespace-pre-wrap rounded-(--radius-1) bg-surface-2 p-2 text-label text-text"><code>{compiledCheck.qualification.source}</code></pre> : null}
           </>
         ) : null}
       </section>
       <section className="rounded-(--radius-3) border border-border bg-bg p-3" data-doc="cockpit.workbench">
         <div className="mb-2 flex flex-wrap items-center gap-2">
           <span className="kicker">{t("plans.workbench.producedValues")}</span>
-          <span className="ml-auto flex items-center gap-1">
-            <Button size="sm" icon={<Wand2 size={12} />} disabled={!passing} onClick={() => passing && setValues(passing)} title={t("plans.workbench.fillPassingTitle")}>{t("plans.workbench.fillPassing")}</Button>
-            <Button size="sm" icon={<XCircle size={12} />} disabled={!failing} onClick={() => failing && setValues(failing)} title={t("plans.workbench.fillFailingTitle")}>{t("plans.workbench.fillFailing")}</Button>
-          </span>
         </div>
         {schema ? <SchemaForm idPrefix={`facts-${check.name}`} schema={schema} value={values} onChange={setValues} onValidity={setValid} showSummary={false} /> : <p className="text-body text-faint">{t("plans.workbench.needsProcedure")}</p>}
         <div className="mt-3">
@@ -300,54 +290,4 @@ function CheckWorkbench({ plan, check, compiled, onChanged, runtime, reobserve =
       </section>
     </div>
   );
-}
-
-/** A produced-values set that satisfies (or, for "fail", breaks the first of) the Check's predicates.
-    Starts from what the Check already observed when it has, so a re-run keeps the established values. */
-/** A placeholder that looks like the field it stands for (revisions, ids, names…), not a template string. */
-function plausible(name: string): string {
-  const lower = name.toLowerCase();
-  const hex = () => Array.from({ length: 12 }, () => "0123456789abcdef"[Math.floor(Math.random() * 16)]).join("");
-  if (/revision|sha|commit|digest/.test(lower)) return hex();
-  if (/image/.test(lower)) return `registry.local/${lower}:${hex().slice(0, 7)}`;
-  if (/url|endpoint/.test(lower)) return `https://example.test/${lower}`;
-  if (/date|time|at$/.test(lower)) return new Date().toISOString();
-  return `${lower}-1`;
-}
-
-function synthesize(schema: JsonObject, compiledCheck: ProcedureCheck, check: PlanCheck, outcome: "pass" | "fail", previous?: JsonObject): JsonObject {
-  const properties = (schema.properties ?? {}) as Record<string, { type?: string; enum?: unknown[]; format?: string; minLength?: number }>;
-  const values: Record<string, unknown> = {};
-  for (const [name, spec] of Object.entries(properties)) {
-    if (previous && previous[name] !== undefined) values[name] = previous[name];
-    else if (spec.enum?.length) values[name] = spec.enum[0];
-    else if (spec.type === "number" || spec.type === "integer") values[name] = 1;
-    else if (spec.type === "boolean") values[name] = true;
-    else if (spec.type === "array") values[name] = [];
-    else if (spec.type === "object") values[name] = {};
-    else if (spec.format === "date-time") values[name] = new Date().toISOString();
-    else values[name] = plausible(name);
-  }
-  const contextValue = (role: string): unknown => {
-    if (check.target.role === role) return check.target.value;
-    const binding = compiledCheck.inputBindings?.find((entry) => entry.role === role);
-    return binding ? check.inputs[binding.input] : undefined;
-  };
-  for (const predicate of compiledCheck.predicates) {
-    const expectation = predicate.expectation as { kind?: string; value?: unknown; role?: string };
-    let expected: unknown;
-    if (expectation.kind === "value" || expectation.kind === "number") expected = expectation.value;
-    else if (expectation.kind === "valid-rfc3339") expected = new Date().toISOString();
-    else if (expectation.kind === "context" && expectation.role) expected = contextValue(expectation.role);
-    if (expected !== undefined) values[predicate.field] = expected;
-  }
-  if (outcome === "fail" && compiledCheck.predicates.length) {
-    const first = compiledCheck.predicates[0]!;
-    const spec = properties[first.field];
-    const current = values[first.field];
-    if (typeof current === "number") values[first.field] = first.relation === "at least" ? current - 1 : current + 1;
-    else if (spec?.enum?.length) values[first.field] = spec.enum.find((option) => option !== current) ?? current;
-    else values[first.field] = `${String(current ?? "value")}-not`;
-  }
-  return values;
 }

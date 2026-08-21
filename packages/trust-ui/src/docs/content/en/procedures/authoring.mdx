@@ -21,7 +21,7 @@ The **Procedures** entry of the sidebar opens the catalog. Selecting a Procedure
 <Screenshot id="procedure-overview" caption="A Procedure, Overview tab." legend={{
   "overlay.header": "Version, status (published, or the state of the draft), running Plans mark, title.",
   "overlay.actions": "Duplicate · Simulate · Edit source · Publish (when the source compiles and changed).",
-  "overlay.tabs": "Overview, Source, Graph, Simulate — and Contract JSON in expert mode.",
+  "overlay.tabs": "Overview, Source, Graph, Simulate — and Compiled JSON in expert mode.",
   "overlay.status": "The compile status: diagnostic and line, or the count of Scenarios and Checks.",
   "procedure.summary": "Description, then Needs (the Plan inputs and their types) and Does (each Scenario, its prerequisites, its Checks with their Operation, target and success reason).",
   "overlay.inspector": "Executed by: the Plans of this Procedure. Uses: its Operations. In expert mode: Plan inputs and the Scenario list (click → Graph).",
@@ -29,17 +29,19 @@ The **Procedures** entry of the sidebar opens the catalog. Selecting a Procedure
 
 ### Overview
 
-The Procedure in words: description, the Plan inputs an engagement must give, then each Scenario in dependency order with its Checks. In expert mode a block opens with the full contract of every Check: Input bindings, expectation table, materialized values.
+The Procedure in words: description, the Plan inputs an engagement must give, then each Scenario in dependency order with its Checks. In expert mode a block opens with every Check's Input bindings, `js` qualification and materialized values.
 
 ### Source
 
 <Screenshot id="procedure-source" caption="Source tab." legend={{
-  "editor": "The Gherkin source, compiled on every change against the Operation catalog. Completions propose the sentences and the Operations of the catalog.",
+  "editor": "The Gherkin source, connected to the TRUST language server. Diagnostics and completions follow every edit against the Operation catalog.",
   "editor.format": "Format source: re-flows long Check sentences onto continuation lines.",
   "overlay.status": "Compiles / does not compile, with the message and the line.",
 }} />
 
-- The **Procedure feature** completion inserts a skeleton; **Context role**, **Scenario**, **Check** and **Use `<operation>`** insert the sentences, with the Operations of the catalog.
+- The editor uses one language server for Procedures and Operations. It provides diagnostics, completion, formatting, folding and document symbols from the same compilers used when the source is published.
+- In a Check's `js` DocString, completion is typed from the selected Operation: `fact.` proposes its Produced fields; `context.`, `checks.` and the closed `Math` surface expose only the values available to that Check. A compilation error is marked in the editor while the source remains a draft.
+- Grammar completions insert a Procedure, a context role, a Scenario or a Check. At the relevant position they also propose the Operations, Inputs, roles, Scenario identifiers and Produced fields known by the current source.
 - **Publish** compiles once more on the runtime and stores a new revision `procedure@version`. Publish is available only when the source compiles and differs from the published one; a version already published is refused — raise `@version`.
 - A published version never changes: the interface has no delete or overwrite for a Procedure.
 
@@ -63,9 +65,9 @@ The graph is the dependency structure the runtime uses: **needs** is what must b
 
 Simulate executes nothing and creates nothing: it plays the Scenario order to read a Procedure. Rehearsing with Facts is a **dry-run** ([Plans, Sessions and dry-runs](/docs/plans)).
 
-### Contract JSON (expert)
+### Compiled JSON (expert)
 
-The compiled revision: roles, Scenarios, Checks with their bindings and predicates, digests, and the embedded Operations. It is what a Plan is engaged from.
+The compiled revision: roles, Scenarios, Checks with their bindings and qualification guards, digests, and the embedded Operations. It is what a Plan is engaged from.
 
 ## Creating, duplicating, publishing
 

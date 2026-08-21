@@ -188,7 +188,7 @@ is aligned:
 
 TRUST applies this principle to procedural objectives. The Plan persists the objective and its
 current progress outside the agent. Checks identify the remaining governed work. Accepted Facts and
-compiled predicates determine qualification. The agent cannot advance the Plan through a completion
+compiled qualification guards determine qualification. The agent cannot advance the Plan through a completion
 claim, and an Action is not treated as progress merely because it was attempted.
 
 In this sense, TRUST is aligned with the external verifier-backed controllers tested in the study.

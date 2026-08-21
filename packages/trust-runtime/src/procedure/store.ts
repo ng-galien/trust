@@ -103,8 +103,7 @@ export class ProcedureStore {
 function toPublishedProcedure(row: ProcedureRow): PublishedProcedure {
   const compiled = JSON.parse(row.compiled_procedure_json) as CompiledProcedure;
   if (
-    compiled.contract !== "trust.compiled-procedure@3"
-    || compiled.procedure !== row.procedure_name
+    compiled.procedure !== row.procedure_name
     || compiled.version !== row.procedure_version
     || compiled.definitionDigest !== row.definition_digest
     || compiled.source !== row.source

@@ -33,9 +33,10 @@ Feature: Run one high-voltage intervention under lockout-tagout with ordered pro
     Then Check "registry" runs Operation "energy.installation-read"
         on "installation" as Input "installation"
         and must establish "every registered energy source of the installation was declared"
-      | field            | relation | expectation             | failure reason                              |
-      | registeredSource | is in    | context "energy source" | "a registered energy source was not declared" |
-    And the Scenario is satisfied when every Check is validated
+      """js
+      context["energy source"].includes(fact.registeredSource) ||
+      fail("a registered energy source was not declared")
+      """
 
   @scenario:isolation
   Scenario: Confirm every energy source is locked
@@ -44,39 +45,56 @@ Feature: Run one high-voltage intervention under lockout-tagout with ordered pro
         on each "energy source" as Input "source"
         and materializes "isolation time" from field "isolatedAt"
         and must establish "every energy source of the scheme is locked"
-      | field           | relation | expectation            | failure reason                             |
-      | isolationStatus | equals   | value "locked"         | "an energy source is not locked"           |
-      | installation    | equals   | context "installation" | "a lock belongs to another installation"   |
-    And the Scenario is satisfied when every Check is validated
+      """js
+      (
+        fact.isolationStatus === "locked" ||
+        fail("an energy source is not locked")
+      ) &&
+      (
+        fact.installation === context.installation ||
+        fail("a lock belongs to another installation")
+      )
+      """
 
   @scenario:zero-energy
   Scenario: Confirm the zero-energy verification of every source after its isolation
     Given scenario "isolation" is validated
-    # The verifier must also be a DIFFERENT person from the one who applied the lock — same
-    # missing `differs from` relation as the aviation duplicate inspection.
     Then Check "verification" runs Operation "energy.zero-energy-read"
         on each "energy source" as Input "source"
         and materializes "verification time" from field "verifiedAt"
         and must establish "every source is verified at zero energy after its isolation"
-      | field              | relation | expectation              | failure reason                                  |
-      | verificationStatus | equals   | value "verified"         | "a source is not verified at zero energy"       |
-      | verifiedAt         | after    | context "isolation time" | "a verification predates its isolation"         |
-    And the Scenario is satisfied when every Check is validated
+      """js
+      (
+        fact.verificationStatus === "verified" ||
+        fail("a source is not verified at zero energy")
+      ) &&
+      (
+        fact.verifiedAt > context["isolation time"] ||
+        fail("a verification predates its isolation")
+      )
+      """
 
   @scenario:permit
   Scenario: Confirm the work permit was issued after every verification
     Given scenario "zero-energy" is validated
-    # DSL GAP — quantified temporal: the permit must be issued after EVERY zero-energy
-    # verification. Written here as the missing quantifier `after every`.
     Then Check "permit issue" runs Operation "energy.permit-read"
         on "permit" as Input "permit"
         using "intervention" as Input "intervention"
         and must establish "the work permit was issued after every zero-energy verification"
-      | field        | relation    | expectation                 | failure reason                                |
-      | permitStatus | equals      | value "issued"              | "the work permit is not issued"               |
-      | intervention | equals      | context "intervention"      | "the permit covers another intervention"      |
-      | issuedAt     | after every | context "verification time" | "the permit predates a zero-energy verification" |
-    And the Scenario is satisfied when every Check is validated
+      """js
+      (
+        fact.permitStatus === "issued" ||
+        fail("the work permit is not issued")
+      ) &&
+      (
+        fact.intervention === context.intervention ||
+        fail("the permit covers another intervention")
+      ) &&
+      (
+        context["verification time"].every(value => fact.issuedAt > value) ||
+        fail("the permit predates a zero-energy verification")
+      )
+      """
 
   @scenario:work
   Scenario: Confirm the intervention is completed
@@ -85,9 +103,10 @@ Feature: Run one high-voltage intervention under lockout-tagout with ordered pro
         on "intervention" as Input "intervention"
         and materializes "work completion time" from field "completedAt"
         and must establish "the intervention is completed"
-      | field              | relation | expectation       | failure reason                     |
-      | interventionStatus | equals   | value "completed" | "the intervention is not completed" |
-    And the Scenario is satisfied when every Check is validated
+      """js
+      fact.interventionStatus === "completed" ||
+      fail("the intervention is not completed")
+      """
 
   @scenario:deconsignation
   Scenario: Confirm every lock was removed after the work and the permit closed
@@ -95,17 +114,30 @@ Feature: Run one high-voltage intervention under lockout-tagout with ordered pro
     Then Check "lock removal" runs Operation "energy.lock-removal-read"
         on each "energy source" as Input "source"
         and must establish "every lock was removed after the work completion"
-      | field         | relation | expectation                    | failure reason                        |
-      | removalStatus | equals   | value "removed"                | "a lock is still in place"            |
-      | removedAt     | after    | context "work completion time" | "a lock was removed before the work ended" |
+      """js
+      (
+        fact.removalStatus === "removed" ||
+        fail("a lock is still in place")
+      ) &&
+      (
+        fact.removedAt > context["work completion time"] ||
+        fail("a lock was removed before the work ended")
+      )
+      """
     And Check "permit closure" runs Operation "energy.permit-read"
         on "permit" as Input "permit"
         using "intervention" as Input "intervention"
         and must establish "the permit was closed after the work completion"
-      | field        | relation | expectation                    | failure reason                          |
-      | permitStatus | equals   | value "closed"                 | "the permit is not closed"              |
-      | closedAt     | after    | context "work completion time" | "the permit closed before the work ended" |
-    And the Scenario is satisfied when every Check is validated
+      """js
+      (
+        fact.permitStatus === "closed" ||
+        fail("the permit is not closed")
+      ) &&
+      (
+        fact.closedAt > context["work completion time"] ||
+        fail("the permit closed before the work ended")
+      )
+      """
 
   @scenario:re-energization
   Scenario: Confirm the installation was re-energized after the permit closure
@@ -113,7 +145,13 @@ Feature: Run one high-voltage intervention under lockout-tagout with ordered pro
     Then Check "re-energization" runs Operation "energy.installation-read"
         on "installation" as Input "installation"
         and must establish "the installation was re-energized after the permit closure"
-      | field              | relation | expectation                                    | failure reason                                    |
-      | installationStatus | equals   | value "energized"                              | "the installation is not energized"               |
-      | energizedAt        | after    | field "closedAt" from Check "permit closure"   | "the re-energization predates the permit closure" |
-    And the Scenario is satisfied when every Check is validated
+      """js
+      (
+        fact.installationStatus === "energized" ||
+        fail("the installation is not energized")
+      ) &&
+      (
+        fact.energizedAt > checks["permit closure"].closedAt ||
+        fail("the re-energization predates the permit closure")
+      )
+      """

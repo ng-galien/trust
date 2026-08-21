@@ -51,7 +51,7 @@ L'engagement accepte **exactement** les entrées de Plan — aucun rôle fixe, d
 
 - Le parent doit être un rôle déclaré ; les relations de parenté forment un graphe acyclique.
 - `for "<parent>"` : une valeur parente partagée. `for each "<parent>"` : une valeur par valeur du parent — la relation retient **quelle valeur appartient à quel parent**. Quand un Check s'exécute `on each "affected project"`, un `using "fix revision"` sélectionne la révision de *ce* projet, pas la collection entière — la sélection suit le scope, jamais une position dans un tableau.
-- Deux rôles sont dans le **même scope** quand l'un est `for each` l'autre, ou quand ils partagent les mêmes parents. C'est le même scope qui permet à un rôle `many` d'alimenter un Input `one` sous `on each`, à un scalaire produit d'être comparé avec `context "<many role>"`, et à un champ scalaire de matérialiser un rôle `many`.
+- Deux rôles sont dans le **même scope** quand l'un est `for each` l'autre, ou quand ils partagent les mêmes parents. C'est le même scope qui permet à un rôle `many` d'alimenter un Input `one` sous `on each`, à un scalaire produit d'être comparé avec `context["<many role>"]`, et à un champ scalaire de matérialiser un rôle `many`.
 
 ```gherkin fragment title="Extrait de la Procédure de départ d'avion : valeurs scopées à un vol"
     Given one reference "flight"
@@ -63,7 +63,7 @@ L'engagement accepte **exactement** les entrées de Plan — aucun rôle fixe, d
 
 - **Une cible de Check** : `on "<role>"` — un Check (`on "project"`), un Check par valeur (`on each "affected project"`), ou un Check avec la collection entière (`on all "…"`).
 - **D'autres Inputs** : `using "<role>" as Input "<input>"` (`using all` pour une collection).
-- **Une attente** : `context "<role>"` compare un champ produit avec la valeur d'un rôle — voir [Attentes](/docs/procedures/expectations).
+- **Une référence de qualification** : `context["<role>"]` lit la valeur d'un rôle visible du Plan — voir [Qualifications](/docs/procedures/expectations).
 
 Types et cardinalités doivent correspondre à l'Input de l'Opération à chaque liaison : un rôle `many reference` ne peut pas alimenter un Input `one` sans `each` ; un rôle `string` ne peut pas alimenter un Input `reference`.
 

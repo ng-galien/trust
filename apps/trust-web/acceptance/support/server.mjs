@@ -24,7 +24,8 @@ const runtime = spawn(
       TRUST_OPERATIONS_DIRECTORY: path.join(repositoryRoot, "assets/operations"),
       TRUST_SKILL_POLICY: "local",
     },
-    stdio: ["ignore", "pipe", "inherit"],
+    // Never leave runtime output unread: a full child pipe blocks the seeded public RPC boundary.
+    stdio: ["ignore", "inherit", "inherit"],
   },
 );
 children.push(runtime);

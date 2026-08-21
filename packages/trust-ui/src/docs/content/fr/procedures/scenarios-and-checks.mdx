@@ -14,10 +14,16 @@ Un **Scénario** regroupe des Checks et les ordonne : il est satisfait quand cha
         on "project" as Input "project"
         using "fix revision" as Input "revision"
         and must establish "the committed fix passes Maven verification"
-      | field              | relation | expectation            | failure reason                    |
-      | verifiedRevision   | equals   | context "fix revision" | "Maven verified another revision" |
-      | verificationStatus | equals   | value "successful"     | "Maven verification failed"       |
-    And the Scenario is satisfied when every Check is validated
+      """js
+      (
+        fact.verifiedRevision === context["fix revision"] ||
+        fail("Maven verified another revision")
+      ) &&
+      (
+        fact.verificationStatus === "successful" ||
+        fail("Maven verification failed")
+      )
+      """
 ```
 
 ## Scénario
@@ -28,7 +34,6 @@ Un **Scénario** regroupe des Checks et les ordonne : il est satisfait quand cha
 | `Scenario: <title>` | titre libre, affiché dans l'interface |
 | `Given scenario "<slug>" is validated` | zéro ou plusieurs prérequis (`Given` ou `And`), **avant** les Checks ; le slug doit exister ; pas de dépendance à soi-même ni circulaire ; les diamants sont acceptés |
 | Checks | un ou plusieurs |
-| `And the Scenario is satisfied when every Check is validated` | obligatoire, formulation exacte (`And`, `S` et `C` majuscules), une fois, en dernier |
 
 `Scenario Outline`, `Examples`, `Rule` et les étapes libres sont hors grammaire.
 
@@ -40,7 +45,9 @@ Then|And Check "<name>" runs Operation "<domain.action>"
     [using [all] "<role>" as Input "<input>" | using plan as Input "<input>"]…
     [and materializes "<role>" from field "<field>"]…
     and must establish "<success reason>"
-  | field | relation | expectation | failure reason |
+  """js
+  <boolean expression> || fail(<string expression>)
+  """
 ```
 
 | Clause | Règle |
@@ -53,7 +60,7 @@ Then|And Check "<name>" runs Operation "<domain.action>"
 | `using plan as Input "<input>"` | lie l'**identifiant du Plan** (le slug donné à l'engagement) à un Input `string` ou `reference` de cardinalité `one`. `plan` est un nom de rôle réservé (aucun Background ne peut le déclarer) : la liaison compile en un rôle synthétisé `"plan"` de source `plan-identifier`, alimenté par le slug du Plan à l'engagement ; la valeur est fixe pendant toute la vie du Plan et ne rouvre jamais le Check. Cela permet à une Opération d'étiqueter ce qu'elle fait avec le Plan (une propriété Maven, un attribut de trace, un paramètre de query) |
 | `and materializes "<role>" from field "<field>"` | une fois le Check validé, la valeur du champ produit remplit le rôle. Le rôle doit être déclaré, ni fixe ni déclaré par l'agent ; son type doit correspondre à celui du champ ; un rôle a **un** Check fournisseur ; un Check peut matérialiser plusieurs rôles |
 | `and must establish "<success reason>"` | obligatoire, **dernière** clause (les mots qui suivent sont refusés) ; la raison renvoyée avec un verdict validé |
-| table | les attentes, voir [Attentes](/docs/procedures/expectations) — une ligne par prédicat ; la table est obligatoire |
+| DocString `js` | la qualification, voir [Qualifications](/docs/procedures/expectations) — exactement une expression attachée au Check |
 
 `using` et `and materializes` peuvent s'entremêler dans n'importe quel ordre entre `on` et `and must establish`. Les mots-clés sont sensibles à la casse.
 
@@ -66,9 +73,10 @@ Cardinalité à chaque liaison : un Input scalaire prend `on`/`using` d'un rôle
         on each "required document" as Input "document"
         and materializes "document record time" from field "recordedAt"
         and must establish "every admission document is confirmed"
-      | field          | relation | expectation       | failure reason                           |
-      | documentStatus | equals   | value "confirmed" | "an admission document is not confirmed" |
-    And the Scenario is satisfied when every Check is validated
+      """js
+      fact.documentStatus === "confirmed" ||
+      fail("an admission document is not confirmed")
+      """
 ```
 
 - `on each "required document"` crée **un Check par document** — le Plan montre `document` une fois par valeur, chacun avec son propre verdict ; le Scénario est satisfait quand tous sont validés. Une matérialisation sur un Check `each` remplit un rôle scopé `for each` cette cible : une heure d'enregistrement par document.
@@ -80,15 +88,15 @@ Cardinalité à chaque liaison : un Input scalaire prend `on`/`using` d'un rôle
 Un Check dépend de :
 
 - les Scénarios que son Scénario requiert (`Given scenario … is validated`), directement ou transitivement ;
-- chaque Check dont il référence un champ produit dans une attente (`field "…" from Check "…"`) ;
-- chaque Check qui matérialise un rôle qu'il utilise (`on`/`using "fix revision"`, `context "fix revision"`).
+- chaque Check dont il référence un champ produit dans la qualification (`checks["check"].field`) ;
+- chaque Check qui matérialise un rôle qu'il utilise (`on`/`using "fix revision"`, `context["fix revision"]`).
 
 Le Check référencé, ou le fournisseur du rôle, doit appartenir à un **Scénario prérequis** (directement ou transitivement) — pas le même Scénario, pas un Scénario ultérieur. Ces dépendances sont le graphe de l'onglet **Graphe** et la cascade : un nouveau verdict sur un Check rouvre chaque Check qui en dépend, directement ou via une valeur matérialisée.
 
 <Callout kind="rule">
-  Rien d'implicite ne circule entre les Checks. Une valeur passe d'un Check à un autre uniquement par un rôle matérialisé ou une attente `field … from Check`, tous deux écrits dans la source.
+  Rien d'implicite ne circule entre les Checks. Une valeur passe d'un Check à un autre uniquement par un rôle matérialisé ou une référence explicite à `checks`, tous deux écrits dans la source.
 </Callout>
 
 <Details title="Checks compilés et instances de Check" expert>
-Chaque Check compile en `{ name, scenario, operation, operationVersion, operationDigest, target { role, selection: "one" | "each" | "all" }, inputBindings [{ input, role, selection }] (target first), materializes [{ role, field }], predicates [...], successReason }`. À l'engagement, le runtime l'instancie : une instance pour `one` et `all`, une par valeur cible pour `each` (aucune tant qu'une collection déclarée par l'agent est vide). Chaque instance a une URI `trust://…/<procedure>@<version>/<plan>/<scenario>/<check>/<domain>-<action>[/<value>]` — le nom du Check est utilisé tel quel quand c'est un slug, haché sinon ; le dernier segment n'existe que pour `each`. Les dépendances de l'instance (Scénarios prérequis, références `field … from Check`, fournisseurs des rôles qu'elle lie) et le contexte qu'elle consomme sont ce que suit la cascade : une valeur qu'elle n'utilise pas ne peut pas la rouvrir.
+Chaque Check compile en `{ name, scenario, operation, operationVersion, operationDigest, target, inputBindings, materializes, qualification { source, guards }, successReason }`. À l'engagement, le runtime l'instancie : une instance pour `one` et `all`, une par valeur cible pour `each` (aucune tant qu'une collection déclarée par l'agent est vide). Chaque instance a une URI `trust://…/<procedure>@<version>/<plan>/<scenario>/<check>/<domain>-<action>[/<value>]` — le nom du Check est utilisé tel quel quand c'est un slug, haché sinon ; le dernier segment n'existe que pour `each`. Les dépendances de l'instance (Scénarios prérequis, références `checks`, fournisseurs des rôles qu'elle lie) et le contexte qu'elle consomme sont ce que suit la cascade : une valeur qu'elle n'utilise pas ne peut pas la rouvrir.
 </Details>

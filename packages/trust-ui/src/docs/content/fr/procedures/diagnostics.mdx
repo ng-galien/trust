@@ -12,13 +12,13 @@ Le compilateur renvoie une Procédure compilée ou **un diagnostic** : un code, 
 
 | Code | Signification |
 | --- | --- |
-| `invalid-procedure` | la forme du document, un tag, une phrase, une table ou une clause enfreint la grammaire fermée |
+| `invalid-procedure` | la forme du document, un tag, une phrase, un DocString ou une expression enfreint la grammaire fermée |
 | `invalid-identifier` | le slug de la Procédure, la version ou un slug de Scénario a une forme incorrecte |
 | `unknown-operation` | un Check exécute une Opération absente du catalogue |
 | `unknown-role` · `unknown-input` · `unknown-field` | un nom n'existe pas : un rôle, un Input d'Opération, un champ produit |
 | `duplicate-role` · `duplicate-check` · `duplicate-scenario` | un nom est déclaré deux fois |
 | `input-unbound` | un Input est lié deux fois ou pas du tout |
-| `incompatible-type` · `incompatible-cardinality` | une liaison, une matérialisation ou une attente ne correspond pas aux formes |
+| `incompatible-type` · `incompatible-cardinality` | une liaison, une matérialisation ou une expression ne correspond pas aux formes déclarées |
 | `invalid-dependency` | un prérequis, un Check référencé ou un rôle matérialisé est mal placé ou inconnu |
 | `dependency-cycle` | un cycle parmi les Scénarios ou les parents de rôles |
 
@@ -38,10 +38,9 @@ Le compilateur renvoie une Procédure compilée ou **un diagnostic** : un code, 
 - Erreurs de phrase : `Invalid sentence "…"` · `Expected one of: one, many` · `Expected a quoted value` · `Sentence has trailing words`.
 
 ### Scénarios
-- `Scenario "…" is repeated` · `Scenario "…" must contain Checks and its aggregation`.
+- `Scenario "…" is repeated` · `Scenario "…" must contain at least one Check`.
 - `Scenario dependencies must precede Checks` · `Scenario "…" depends on unknown Scenario "…"` · `Scenario "…" depends on itself` · `Scenario dependency cycle contains "…"`.
-- `Check placement is invalid` — un Check avec un autre mot-clé que `Then`/`And`, ou après la phrase de clôture.
-- `Scenario aggregation is invalid` — la phrase de clôture avec un autre mot-clé, une table, ou en double.
+- `Check placement is invalid` — un Check avec un autre mot-clé que `Then`/`And`.
 
 ### Phrase de Check et liaisons
 - `Check "…" is repeated` · `Check "…" must establish one reason` · `Check "…" has trailing words`.
@@ -53,16 +52,16 @@ Le compilateur renvoie une Procédure compilée ou **un diagnostic** : un code, 
 ### Matérialisation
 - `Check "…" materializes unknown role "…"` · `Check "…" cannot materialize declared or fixed role "…"` · `Role "…" has more than one provider`.
 - `Operation "…" produces no field "…"` · `materialization of role "…" does not match role type and cardinality`.
-- `Check "…" uses role "…" before its provider Scenario is validated` · `Check "…" compares with role "…" before its provider Scenario is validated`.
+- `Check "…" uses role "…" before its provider Scenario is validated`.
 
-### Attentes
-- `Every Check requires a predicate table` · `Check table must use: field | relation | expectation | failure reason` · `Check predicate row must contain four cells` · `Failure reason cannot be empty`.
-- `Relation "…" is unknown` · `Number expectation "…" is invalid` · `Expected one of: value, number, valid, context, field`.
-- `Operation "…" produces no field "…"` · `Expectation references unknown role "…"` · `Expectation references unknown Check "…"` · `Check "…" produces no field "…"` · `Check "…" is not in a prerequisite Scenario`.
-- `Field "…" is not a number` · `Field "…" is not an instant` · `Field "…" cannot be compared with a string value` · `Value "…" is outside field "…" domain`.
-- `expectation for field "…" does not match role type and cardinality` · `field "…" and upstream field "…" have incompatible types`.
-- `equals requires the same type and cardinality` · `valid rfc3339 requires one instant field` · `at least requires one number field and one number expectation` · `has at least requires a collection field and one number expectation` · `is in requires one field and a collection expectation of the same type` · `before requires one instant field and one instant expectation` (`after` de même).
+### Expressions de qualification
+- `Every Check requires one js qualification DocString` · `Check qualification DocString content type must be js` · `Check qualification DocString cannot be empty` · `Failure reason cannot be empty`.
+- `Qualification is not a valid JavaScript expression: …` · `Qualification must use booleanExpression || fail(stringExpression)` · `fail may appear only at the end of one qualification guard` · `fail requires exactly one reason expression`.
+- `Identifier "…" is not available` · `Property names must be statically known strings` · `… is outside the closed qualification expression language`.
+- `Operation "…" produces no field "…"` · `Plan context has no role "…"` · `Qualification references unknown Check "…"` · `Check "…" produces no field "…"` · `Check "…" is not in a prerequisite Scenario`.
+- `Qualification guard condition requires boolean, received …` · `fail reason requires string, received …` · les diagnostics d'opérateurs et de méthodes indiquent le type, la forme ou l'arité requis.
+- `Value "…" is outside the declared domain` · `Array literals must be homogeneous` · `Both conditional branches must have the same type`.
 
 <Callout kind="tip">
-  Les causes les plus fréquentes : un `Given scenario … is validated` écrit après un Check ; un rôle utilisé dans le même Scénario que celui qui le matérialise ; un rôle `many` lié sans `each` ni `all` ; une `value "…"` hors de l'énumération du champ ; une phrase de clôture oubliée ; un nom de Check réutilisé.
+  Les causes les plus fréquentes : un `Given scenario … is validated` écrit après un Check ; un rôle utilisé dans le même Scénario que celui qui le matérialise ; un rôle `many` lié sans `each` ni `all` ; un littéral hors de l'énumération du champ ; un `|| fail(reason)` manquant ; un nom de Check réutilisé.
 </Callout>

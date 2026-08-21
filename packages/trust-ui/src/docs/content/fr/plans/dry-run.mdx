@@ -10,7 +10,7 @@ Un dry-run est un Plan dont les Facts viennent de l'opérateur. Même Procédure
 <Screenshot id="dryrun-cockpit" caption="Un dry-run avec son cockpit de répétition." legend={{
   "cockpit": "Le cockpit, accolé à chaque onglet du Plan ; redimensionnable, refermable (Cockpit / Répéter dans la barre d'onglets).",
   "cockpit.todo": "À faire maintenant : les Checks actionnables — choisissez-en un. Faits liste les Checks satisfaits (choisissez-en un pour l'observer à nouveau) ; En attente, les Checks bloqués.",
-  "cockpit.workbench": "Valeurs que l'opération produirait : un champ par champ produit de l'Opération du Check, pré-rempli avec ce que le Check a observé en dernier. Remplir en succès / Remplir en échec proposent des valeurs qui satisfont chaque attente, ou brisent la première.",
+  "cockpit.workbench": "Valeurs que l'opération produirait : un champ par champ Produced de l'Opération du Check, pré-rempli avec ce que le Check a observé en dernier.",
   "cockpit.submit": "Soumettre comme l'agent : admission, Facts, verdict — la vraie séquence.",
 }} />
 
@@ -19,13 +19,13 @@ Un dry-run est un Plan dont les Facts viennent de l'opérateur. Même Procédure
 <Steps>
   <Step title="Déclarer le contexte (quand la Procédure a des déclarations de l'agent)">Un champ par rôle déclaré, délimité par valeur du parent quand le rôle est `for each` un parent ; **Appliquer les déclarations** remplace tout l'ensemble et crée une nouvelle révision. Tant que les déclarations manquantes ne sont pas appliquées, les Checks qui en ont besoin ne sont pas actionnables.</Step>
   <Step title="Exécuter les Checks">Trois listes : **Faits**, **À faire maintenant** (actionnables — choisissez-en un), **En attente d'un prérequis**. La sélection est partagée avec la checklist et le graphe (`?sel=`).</Step>
-  <Step title="Répéter le Check sélectionné">L'établi : en mode expert, le contrat du Check (Opération, cible, entrées, raison de succès, attentes) ; le formulaire des champs produits ; **Remplir en succès** / **Remplir en échec** ; **Soumettre comme l'agent**.</Step>
+  <Step title="Répéter le Check sélectionné">L'établi affiche, en mode expert, l'Opération, la cible, les entrées, la raison de succès et la qualification `js` du Check ; remplissez le formulaire des champs produits, puis **Soumettre comme l'agent**.</Step>
   <Step title="Lire le résultat">Le verdict et sa raison ; ce qui est devenu satisfait, ce qui a été rouvert en aval, ce qui est inchangé. Une admission refusée dit pourquoi (un Check qui n'est plus courant, un prérequis ouvert, pas de Session).</Step>
 </Steps>
 
 ## Ce que fait Soumettre
 
-Exactement ce que fait le Runner sur un Plan en direct, avec les valeurs de l'opérateur à la place d'une exécution : **admettre** le Check (TRUST vérifie qu'il est courant, actionnable, sa Session ouverte), **rapporter les Facts** (le lot doit être complet : chaque champ produit dont les attentes ou les matérialisations ont besoin), **finaliser** (TRUST qualifie, enregistre, cascade). Le Plan passe à sa révision suivante ; la checklist, le graphe et l'historique se mettent à jour.
+Exactement ce que fait le Runner sur un Plan en direct, avec les valeurs de l'opérateur à la place d'une exécution : **admettre** le Check (TRUST vérifie qu'il est courant, actionnable, sa Session ouverte), **rapporter les Facts** (le lot doit satisfaire le schéma Produced complet de l'Opération), **finaliser** (TRUST qualifie, enregistre, cascade). Le Plan passe à sa révision suivante ; la checklist, le graphe et l'historique se mettent à jour.
 
 ## Observer à nouveau un Check satisfait
 
@@ -41,5 +41,5 @@ Seul un dry-run peut ré-observer un Check satisfait : choisissez-le dans **Fait
 </Callout>
 
 <Details title="Les appels du cockpit" expert>
-`check.attempt.admit { attemptKey: "rehearse-<check>-<time>", checkUri, reobserve? }` → accord (`environment: {}` sur un dry-run) ou refus (`check-not-actionable`, `session-unavailable`, `check-not-found`, `attempt-key-conflict`) ; `check.attempt.facts { attemptKey, attemptHandle, checkUri, recordedAt, facts: [{ kind: <operation>, observedAt, values }] }` → accepté ou `fact-batch-rejected` ; `check.attempt.finalize { attemptHandle }` → `{ verdict, reasonCode: "check-qualified" | "predicate-not-satisfied", reason, checklistDelta: { newlySatisfied, newlyOpened, unchanged } }`. `plan.remove` efface un dry-run ; un Plan en direct est refusé (`plan-conflict`).
+`check.attempt.admit { attemptKey: "rehearse-<check>-<time>", checkUri, reobserve? }` → accord (`environment: {}` sur un dry-run) ou refus (`check-not-actionable`, `session-unavailable`, `check-not-found`, `attempt-key-conflict`) ; `check.attempt.facts { attemptKey, attemptHandle, checkUri, recordedAt, facts: [{ kind: <operation>, observedAt, values }] }` → accepté ou `fact-batch-rejected` ; `check.attempt.finalize { attemptHandle }` → `{ verdict, reasonCode: "check-qualified" | "qualification-not-satisfied", reason, checklistDelta: { newlySatisfied, newlyOpened, unchanged } }`. `plan.remove` efface un dry-run ; un Plan en direct est refusé (`plan-conflict`).
 </Details>

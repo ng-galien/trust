@@ -11,30 +11,34 @@ Feature: Release one food batch after traceability, laboratory and cold-chain ch
   @scenario:traceability
   Scenario: Confirm complete batch traceability
     Then Check "traceability" runs Operation "food.batch-read" on "batch" as Input "batch" and must establish "the batch traceability is complete"
-      | field              | relation | expectation       | failure reason                         |
-      | traceabilityStatus | equals   | value "complete"   | "the batch traceability is incomplete"  |
-    And the Scenario is satisfied when every Check is validated
+      """js
+      fact.traceabilityStatus === "complete" ||
+      fail("the batch traceability is incomplete")
+      """
 
   @scenario:laboratory
   Scenario: Accept the laboratory results
     Given scenario "traceability" is validated
     Then Check "laboratory" runs Operation "food.lab-read" on "batch" as Input "batch" and must establish "the batch laboratory results are accepted"
-      | field     | relation | expectation       | failure reason                     |
-      | labStatus | equals   | value "accepted"   | "the batch laboratory results are rejected" |
-    And the Scenario is satisfied when every Check is validated
+      """js
+      fact.labStatus === "accepted" ||
+      fail("the batch laboratory results are rejected")
+      """
 
   @scenario:cold-chain
   Scenario: Confirm the cold chain
     Given scenario "laboratory" is validated
     Then Check "cold chain" runs Operation "food.cold-chain-read" on "batch" as Input "batch" and must establish "the batch cold chain was maintained"
-      | field           | relation | expectation         | failure reason                  |
-      | coldChainStatus | equals   | value "maintained"   | "the batch cold chain was interrupted" |
-    And the Scenario is satisfied when every Check is validated
+      """js
+      fact.coldChainStatus === "maintained" ||
+      fail("the batch cold chain was interrupted")
+      """
 
   @scenario:release
   Scenario: Release the food batch
     Given scenario "cold-chain" is validated
     Then Check "batch release" runs Operation "food.batch-release" on "batch" as Input "batch" and must establish "the food batch is released"
-      | field         | relation | expectation      | failure reason              |
-      | releaseStatus | equals   | value "released"  | "the food batch was rejected" |
-    And the Scenario is satisfied when every Check is validated
+      """js
+      fact.releaseStatus === "released" ||
+      fail("the food batch was rejected")
+      """

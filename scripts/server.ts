@@ -1,8 +1,10 @@
 #!/usr/bin/env node
 
 import { spawn } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import { readdir, readFile, rm } from "node:fs/promises";
+import { createServer as createNetServer } from "node:net";
 import { parse, resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
@@ -32,7 +34,9 @@ const environmentValues = {
   ...(projectsRoot ? { payment: { workspaceRoot: projectsRoot } } : {}),
 };
 const port = parsePort(process.env.TRUST_SERVER_PORT ?? "4318");
+const webPort = parsePort(process.env.TRUST_WEB_PORT ?? "4173");
 const endpoint = `http://127.0.0.1:${port}`;
+const webEndpoint = `http://127.0.0.1:${webPort}`;
 const rpcEndpoint = `${endpoint}/rpc`;
 const mcpEndpoint = `${endpoint}/mcp`;
 const tmux = Object.freeze({
@@ -40,13 +44,14 @@ const tmux = Object.freeze({
   window: "server",
 });
 const command = process.argv[2];
+const withWeb = process.argv.includes("--web");
 
 switch (command) {
   case "start":
-    await start(false);
+    await start(false, withWeb);
     break;
   case "reset":
-    await start(true);
+    await start(true, withWeb);
     await seed();
     break;
   case "seed":
@@ -57,47 +62,69 @@ switch (command) {
     break;
   default:
     throw new TypeError(
-      "usage: server.ts start | reset | seed | preflight --ticket <key> --procedure <slug> --version <version>",
+      "usage: server.ts start [--web] | reset [--web] | seed | preflight --ticket <key> --procedure <slug> --version <version>",
     );
 }
 
-async function start(reset: boolean) {
+async function start(reset: boolean, startWeb: boolean) {
   if (!reset) assertSqliteSchemaFile(database);
+  const sessionExists = await hasSession();
   if (await healthy()) {
-    if (reset) await stop();
-    else {
-      await assertServer();
+    if (!sessionExists) throw portOwnerError(port, "runtime");
+    const activeInstance = await sessionInstance();
+    if (!activeInstance || !await healthy(activeInstance)) {
+      await stop();
+      if (await healthy()) throw portOwnerError(port, "runtime");
+    } else if (reset) await stop();
+    else if (!startWeb || await developmentStackHealthy(activeInstance)) {
+      await assertServer(startWeb, activeInstance);
       process.stdout.write("TRUST server: already available\n");
       return;
-    }
-  } else if (await hasSession()) {
+    } else await stop();
+  } else if (sessionExists) {
     await stop();
   }
 
+  await waitForAvailablePort(port, "runtime");
+  if (startWeb) await waitForAvailablePort(webPort, "web");
   if (reset) {
     for (const suffix of ["", "-wal", "-shm", ".trust-process-lock"]) {
       await rm(`${database}${suffix}`, { force: true });
     }
   }
-  await run([
-    "tmux", "new-session", "-d", "-s", tmux.session, "-n", tmux.window,
-    "-c", root,
-    "-e", `TRUST_DATABASE_PATH=${database}`,
-    "-e", `TRUST_OPERATIONS_DIRECTORY=${operations}`,
-    "-e", "TRUST_HOST=127.0.0.1",
-    "-e", `TRUST_PORT=${port}`,
-    "-e", `TRUST_SEMANTIC_AUTHORITY=trust-test:${port}`,
-    "exec node infra/server/start-runtime.mjs --dev",
-  ]);
-  await run(["tmux", "set-option", "-t", tmux.session, "remain-on-exit", "on"]);
-  await waitForHealth();
-  await assertServer();
-  process.stdout.write(`TRUST server: started${reset ? " with an empty database" : ""}\n`);
+  const instance = randomUUID();
+  let sessionCreated = false;
+  try {
+    await run([
+      "tmux", "new-session", "-d", "-s", tmux.session, "-n", tmux.window,
+      "-c", root,
+      "-e", `TRUST_DATABASE_PATH=${database}`,
+      "-e", `TRUST_OPERATIONS_DIRECTORY=${operations}`,
+      "-e", "TRUST_HOST=127.0.0.1",
+      "-e", `TRUST_PORT=${port}`,
+      "-e", `TRUST_WEB_PORT=${webPort}`,
+      "-e", `TRUST_RUNTIME_INSTANCE=${instance}`,
+      "-e", `TRUST_SEMANTIC_AUTHORITY=trust-test:${port}`,
+      ...(process.env.TRUST_DEV_WATCH_INCLUDE
+        ? ["-e", `TRUST_DEV_WATCH_INCLUDE=${process.env.TRUST_DEV_WATCH_INCLUDE}`]
+        : []),
+      `exec npm run ${startWeb ? "dev:stack" : "dev:server"}`,
+    ], "ignore");
+    sessionCreated = true;
+    await run(["tmux", "set-option", "-t", tmux.session, "remain-on-exit", "on"], "ignore");
+    await waitForHealth(instance);
+    if (startWeb) await waitForWeb(instance);
+    await assertServer(startWeb, instance);
+    process.stdout.write(`TRUST server: started${reset ? " with an empty database" : ""}\n`);
+  } catch (error) {
+    if (sessionCreated) await stop().catch(() => undefined);
+    throw error;
+  }
 }
 
 async function stop() {
   if (await hasSession()) {
-    await run(["tmux", "kill-session", "-t", tmux.session]);
+    await run(["tmux", "kill-session", "-t", tmux.session], "ignore");
   }
 }
 
@@ -196,13 +223,15 @@ async function mcpTool(name: string, arguments_: Record<string, unknown>) {
   return text;
 }
 
-async function assertServer() {
+async function assertServer(expectWeb = false, expectedInstance?: string) {
   if (!await hasSession()) throw new Error("the TRUST server session is not running");
   for (const [name, expected] of [
     ["TRUST_DATABASE_PATH", database],
     ["TRUST_OPERATIONS_DIRECTORY", operations],
     ["TRUST_PORT", String(port)],
     ["TRUST_SEMANTIC_AUTHORITY", `trust-test:${port}`],
+    ...(expectedInstance ? [["TRUST_RUNTIME_INSTANCE", expectedInstance]] as const : []),
+    ...(expectWeb ? [["TRUST_WEB_PORT", String(webPort)]] as const : []),
   ] as readonly (readonly [string, string])[]) {
     const output = await capture(["tmux", "show-environment", "-t", tmux.session, name]);
     if (output.trim() !== `${name}=${expected}`) {
@@ -211,23 +240,55 @@ async function assertServer() {
   }
 }
 
-async function waitForHealth() {
+async function developmentStackHealthy(instance: string) {
+  if (!await webHealthy(instance)) return false;
+  const started = await capture(["tmux", "display-message", "-p", "-t", `${tmux.session}:${tmux.window}`, "#{pane_start_command}"]);
+  return started.includes("npm run dev:stack");
+}
+
+async function waitForHealth(instance: string) {
   const deadline = Date.now() + 120_000;
   while (Date.now() < deadline) {
-    if (await healthy()) return;
+    if (await healthy(instance)) return;
     await delay(250);
   }
   throw new Error("TRUST server did not become healthy within 120 seconds");
 }
 
-async function requireHealth() {
-  if (!await healthy()) throw new Error("TRUST server is unavailable on 127.0.0.1:4318");
+async function waitForWeb(instance: string) {
+  const deadline = Date.now() + 120_000;
+  while (Date.now() < deadline) {
+    if (await webHealthy(instance)) return;
+    await delay(250);
+  }
+  throw new Error(`TRUST web did not become healthy on 127.0.0.1:${webPort} within 120 seconds`);
 }
 
-async function healthy() {
+async function requireHealth() {
+  const instance = await sessionInstance();
+  if (!instance || !await healthy(instance)) {
+    throw new Error(`TRUST server is unavailable or is not owned by tmux session '${tmux.session}'`);
+  }
+}
+
+async function healthy(instance?: string) {
   try {
     const response = await fetch(`${endpoint}/health`);
-    return response.ok;
+    return response.ok && (!instance || response.headers.get("x-trust-runtime-instance") === instance);
+  } catch {
+    return false;
+  }
+}
+
+async function webHealthy(instance?: string) {
+  try {
+    const [page, proxy] = await Promise.all([
+      fetch(webEndpoint),
+      fetch(`${webEndpoint}/health`),
+    ]);
+    return page.ok
+      && proxy.ok
+      && (!instance || proxy.headers.get("x-trust-runtime-instance") === instance);
   } catch {
     return false;
   }
@@ -237,8 +298,44 @@ async function hasSession() {
   return await exitCode(["tmux", "has-session", "-t", tmux.session]) === 0;
 }
 
-async function run(argv: string[]) {
-  const code = await childExit(argv, "inherit");
+async function sessionInstance(): Promise<string | undefined> {
+  if (!await hasSession()) return undefined;
+  try {
+    const output = await capture(["tmux", "show-environment", "-t", tmux.session, "TRUST_RUNTIME_INSTANCE"]);
+    const prefix = "TRUST_RUNTIME_INSTANCE=";
+    const value = output.trim();
+    return value.startsWith(prefix) ? value.slice(prefix.length) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+async function waitForAvailablePort(value: number, service: "runtime" | "web"): Promise<void> {
+  const deadline = Date.now() + 5_000;
+  while (Date.now() < deadline) {
+    if (await portAvailable(value)) return;
+    await delay(100);
+  }
+  throw portOwnerError(value, service);
+}
+
+function portAvailable(value: number): Promise<boolean> {
+  return new Promise((resolveAvailability) => {
+    const server = createNetServer();
+    server.unref();
+    server.once("error", () => resolveAvailability(false));
+    server.listen(value, "127.0.0.1", () => {
+      server.close(() => resolveAvailability(true));
+    });
+  });
+}
+
+function portOwnerError(value: number, service: "runtime" | "web"): Error {
+  return new Error(`TRUST ${service} port ${value} is already owned outside tmux session '${tmux.session}'`);
+}
+
+async function run(argv: string[], stdio: "inherit" | "ignore" = "inherit") {
+  const code = await childExit(argv, stdio);
   if (code !== 0) throw new Error(`${argv[0]} failed with exit ${code}`);
 }
 

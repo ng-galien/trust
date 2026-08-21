@@ -8,10 +8,10 @@ order: 5
 
 `compileProcedure` reçoit une source et le catalogue des Opérations compilées. Il :
 
-- vérifie la forme du document (exactement les trois tags, un `Background: Plan context`, au moins un Scénario taggé, les phrases de clôture, pas de `Rule`/`Scenario Outline`) ;
+- vérifie la forme du document (exactement les trois tags, un `Background: Plan context`, au moins un Scénario taggé contenant un Check, pas de `Rule`/`Scenario Outline`) ;
 - lit les rôles ; valide les rôles fixes (`one string`/`reference`), les scopes parents (déclarés, acycliques), l'unicité des noms ;
 - résout chaque `runs Operation` dans le catalogue ; valide chaque liaison `on` / `using` (Input existant, type, cardinalité, chaque Input lié une fois) et chaque `materializes` (rôle et champ existants, forme concordante, un fournisseur par rôle, aucun rôle fixe ou déclaré) ;
-- valide chaque ligne d'attente (champ existant, relation applicable à la forme, forme et type de l'attente, domaine enum, rôle ou Check référencé atteignable depuis un Scénario prérequis) ;
+- analyse le DocString `js` avec JSEP ; valide la surface d'expression fermée, les types statiques, les littéraux enum et les rôles ou Checks référencés atteignables depuis un Scénario prérequis ; émet les gardes JSON Logic canoniques ;
 - vérifie que les prérequis des Scénarios forment un graphe acyclique et que chaque rôle matérialisé n'est utilisé qu'après son Scénario fournisseur ;
 - embarque les Opérations compilées exactes utilisées (triées par nom), calcule les digests.
 
@@ -19,7 +19,7 @@ L'interface compile à chaque frappe (onglet Source) ; la publication compile à
 
 ## La révision publiée
 
-Une Procédure publiée est `procedure@version`, immuable, contenant : les rôles, les Scénarios (avec leurs prérequis), les Checks (cible, liaisons, matérialisations, prédicats, raison de succès), les Opérations embarquées avec leurs digests, et un digest de la définition entière.
+Une Procédure publiée est `procedure@version`, immuable, contenant : les rôles, les Scénarios (avec leurs prérequis), les Checks (cible, liaisons, matérialisations, qualification, raison de succès), les Opérations embarquées avec leurs digests, et un digest de la définition entière.
 
 - La révision est autonome : elle ne dépend d'aucun état du catalogue après publication.
 - Publier à nouveau le même `procedure@version` avec une définition différente est refusé (`already published with another immutable definition`) ; la même définition est acceptée telle quelle. Montez `@version` pour publier un changement.
@@ -27,13 +27,13 @@ Une Procédure publiée est `procedure@version`, immuable, contenant : les rôle
 - Il n'y a pas de suppression : une version publiée reste pour les Plans et l'historique qui la référencent.
 
 <Callout kind="rule">
-  Le formatage de la source, les commentaires, les lignes de continuation et la description ne changent pas le digest ; le titre, un rôle, un titre de Scénario, une liaison, une ligne, une raison, l'ordre des rôles, des Scénarios ou des Checks, ou une Opération utilisée, le changent.
+  Le formatage de la source, les commentaires, les lignes de continuation, le formatage de la qualification et la description ne changent pas le digest ; le titre, un rôle, un titre de Scénario, une liaison, la sémantique d'une qualification, une raison, l'ordre des rôles, des Scénarios ou des Checks, ou une Opération utilisée, le changent.
 </Callout>
 
 ## Versions et Opérations
 
 Une Procédure nomme une Opération sans version ; le compilateur embarque la version courante du catalogue. Un changement ultérieur de l'Opération dans le catalogue n'affecte pas la Procédure publiée ; republier la Procédure (nouvelle version) embarque la nouvelle Opération.
 
-<Details title="Contrat" expert>
-Le contrat compilé est `trust.compiled-procedure@3` : `{ procedure, version, title, description?, operations [{ operation, version, digest, definition }], roles [{ name, type, cardinality, parents [{ role, each }], source }], scenarios [{ slug, title, dependencies, checks }], checks [...], source, definitionDigest }`. `definitionDigest` = SHA-256 du JSON canonique de `{ procedure, version, title, operations, roles, scenarios, checks }`, chaque Opération embarquée étant réduite à sa sémantique (source exclue, JSONata réduit à son arbre syntaxique sans positions). Le runtime refuse un Check dont l'`operationDigest` ne correspond pas à une Opération embarquée.
+<Details title="Structure compilée" expert>
+La Procédure compilée est `{ procedure, version, title, description?, operations [{ operation, version, digest, definition }], roles [{ name, type, cardinality, parents [{ role, each }], source }], scenarios [{ slug, title, dependencies, checks }], checks [...], source, definitionDigest }`. `definitionDigest` = SHA-256 du JSON canonique de `{ procedure, version, title, operations, roles, scenarios, checks }`, chaque Opération embarquée étant réduite à sa sémantique (source exclue, JSONata réduit à son arbre syntaxique sans positions). Le runtime refuse un Check dont l'`operationDigest` ne correspond pas à une Opération embarquée.
 </Details>

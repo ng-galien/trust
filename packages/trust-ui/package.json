@@ -18,6 +18,8 @@
     "@monaco-editor/react": "^4.7.0",
     "@tanstack/react-query": "^5.101.4",
     "@trust/gherkin": "file:../trust-gherkin",
+    "@trust/operation": "file:../trust-operation",
+    "@trust/procedure": "file:../trust-procedure",
     "@xyflow/react": "^12.11.3",
     "i18next": "^25.10.10",
     "lucide-react": "^1.31.0",

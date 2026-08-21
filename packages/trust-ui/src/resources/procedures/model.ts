@@ -1,3 +1,5 @@
+import { procedureLanguage } from "@trust/procedure/language";
+
 import { i18next } from "../../i18n/index.js";
 import type { CompiledProcedure, JsonObject, PlanSummary, PublishedProcedure } from "../../types.js";
 import { type Family, familyOf, otherFamily } from "../operations/classification.js";
@@ -178,27 +180,4 @@ export function orderedScenarios(procedure: CompiledProcedure): CompiledProcedur
   return ordered;
 }
 
-/** Human reading of a predicate expectation (compiler kinds: value, number, valid-rfc3339, context, check-field). */
-export function describeExpectation(expectation: JsonObject): string {
-  const kind = expectation.kind;
-  if (kind === "value" || kind === "number") return JSON.stringify(expectation.value);
-  if (kind === "valid-rfc3339") return i18next.t("procedures.model.validRfc3339");
-  if (kind === "context") return i18next.t("procedures.model.contextRole", { role: String(expectation.role ?? "") });
-  if (kind === "check-field") return i18next.t("procedures.model.checkField", { check: String(expectation.check ?? ""), field: String(expectation.field ?? "") });
-  return JSON.stringify(expectation);
-}
-
-export const procedureTemplate = `# language: en
-@trust-dsl:1 @procedure:domain.action @version:1.0.0
-Feature: Describe what this procedure establishes
-
-  Background: Plan context
-    Given one reference "repository"
-
-  @scenario:repository-status
-  Scenario: Read the repository status
-    Then Check "repository status" runs Operation "git.head-read" on "repository" as Input "project" and must establish "the repository has local changes"
-      | field       | relation | expectation   | failure reason                        |
-      | workingTree | equals   | value "dirty" | "the repository has no local changes" |
-    And the Scenario is satisfied when every Check is validated
-`;
+export const procedureTemplate = procedureLanguage.template;

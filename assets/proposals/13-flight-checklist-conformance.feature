@@ -36,11 +36,20 @@ Feature: Establish from flight telemetry that every required checklist was actua
         on "flight" as Input "flight"
         using "aircraft" as Input "aircraft"
         and must establish "the flight is closed and its telemetry is complete"
-      | field             | relation | expectation       | failure reason                            |
-      | flightStatus      | equals   | value "closed"    | "the flight is not closed"                |
-      | telemetryStatus   | equals   | value "recovered" | "the flight telemetry is not recovered"   |
-      | parameterCoverage | at least | number 99         | "the telemetry parameter coverage is too low" |
-    And the Scenario is satisfied when every Check is validated
+      """js
+      (
+        fact.flightStatus === "closed" ||
+        fail("the flight is not closed")
+      ) &&
+      (
+        fact.telemetryStatus === "recovered" ||
+        fail("the flight telemetry is not recovered")
+      ) &&
+      (
+        fact.parameterCoverage >= 99 ||
+        fail("the telemetry parameter coverage is too low")
+      )
+      """
 
   @scenario:required-checklists
   Scenario: Read the checklists required on this flight from the operations configuration
@@ -50,9 +59,10 @@ Feature: Establish from flight telemetry that every required checklist was actua
         using "aircraft" as Input "aircraft"
         and materializes "required checklist" from field "requiredChecklists"
         and must establish "the required checklists of the flight are established by the operations manual"
-      | field               | relation | expectation      | failure reason                                 |
-      | configurationStatus | equals   | value "resolved" | "the checklist requirements could not be resolved" |
-    And the Scenario is satisfied when every Check is validated
+      """js
+      fact.configurationStatus === "resolved" ||
+      fail("the checklist requirements could not be resolved")
+      """
 
   @scenario:phase-gates
   Scenario: Locate the phase gate of every required checklist in the telemetry
@@ -62,9 +72,10 @@ Feature: Establish from flight telemetry that every required checklist was actua
         using "flight" as Input "flight"
         and materializes "phase gate time" from field "gateAt"
         and must establish "the phase gate of every required checklist is detected in the telemetry"
-      | field       | relation | expectation      | failure reason                                |
-      | phaseStatus | equals   | value "detected" | "a phase gate was not found in the telemetry" |
-    And the Scenario is satisfied when every Check is validated
+      """js
+      fact.phaseStatus === "detected" ||
+      fail("a phase gate was not found in the telemetry")
+      """
 
   @scenario:checklist-log
   Scenario: Confirm the electronic checklist log against the phase gates
@@ -73,10 +84,16 @@ Feature: Establish from flight telemetry that every required checklist was actua
         on each "required checklist" as Input "checklist"
         using "flight" as Input "flight"
         and must establish "every required checklist was logged complete before its phase gate"
-      | field       | relation | expectation               | failure reason                                  |
-      | logStatus   | equals   | value "completed"         | "a checklist was not logged complete"           |
-      | completedAt | before   | context "phase gate time" | "a checklist was logged after its phase gate"   |
-    And the Scenario is satisfied when every Check is validated
+      """js
+      (
+        fact.logStatus === "completed" ||
+        fail("a checklist was not logged complete")
+      ) &&
+      (
+        fact.completedAt < context["phase gate time"] ||
+        fail("a checklist was logged after its phase gate")
+      )
+      """
 
   @scenario:telemetry-evidence
   Scenario: Recompute every declared telemetry signature on the telemetry store
@@ -85,12 +102,24 @@ Feature: Establish from flight telemetry that every required checklist was actua
         on each "telemetry evidence" as Input "segment"
         using "flight" as Input "flight"
         and must establish "every declared segment proves its checklist in the flight telemetry"
-      | field       | relation | expectation                  | failure reason                                       |
-      | matchStatus | equals   | value "matched"              | "a declared segment does not match the checklist signature" |
-      | checklist   | equals   | context "required checklist" | "a segment is declared for another checklist"        |
-      | flight      | equals   | context "flight"             | "a segment belongs to another flight"                |
-      | signatureAt | before   | context "phase gate time"    | "the checklist actions happened after the phase gate" |
-    And the Scenario is satisfied when every Check is validated
+      """js
+      (
+        fact.matchStatus === "matched" ||
+        fail("a declared segment does not match the checklist signature")
+      ) &&
+      (
+        fact.checklist === context["required checklist"] ||
+        fail("a segment is declared for another checklist")
+      ) &&
+      (
+        fact.flight === context.flight ||
+        fail("a segment belongs to another flight")
+      ) &&
+      (
+        fact.signatureAt < context["phase gate time"] ||
+        fail("the checklist actions happened after the phase gate")
+      )
+      """
 
   @scenario:findings
   Scenario: Confirm every finding is investigated and recorded at the safety office
@@ -99,11 +128,20 @@ Feature: Establish from flight telemetry that every required checklist was actua
     Then Check "finding" runs Operation "flightops.finding-read"
         on each "finding" as Input "finding"
         and must establish "every finding has an identified cause and reached the safety office"
-      | field          | relation | expectation        | failure reason                            |
-      | causeStatus    | equals   | value "identified" | "a finding has no identified cause"       |
-      | dispatchStatus | equals   | value "recorded"   | "a finding did not reach the safety office" |
-      | flight         | equals   | context "flight"   | "a finding belongs to another flight"     |
-    And the Scenario is satisfied when every Check is validated
+      """js
+      (
+        fact.causeStatus === "identified" ||
+        fail("a finding has no identified cause")
+      ) &&
+      (
+        fact.dispatchStatus === "recorded" ||
+        fail("a finding did not reach the safety office")
+      ) &&
+      (
+        fact.flight === context.flight ||
+        fail("a finding belongs to another flight")
+      )
+      """
 
   @scenario:conformance
   Scenario: Confirm every required checklist is either evidenced or covered by a finding
@@ -115,7 +153,13 @@ Feature: Establish from flight telemetry that every required checklist was actua
     Then Check "assessment" runs Operation "flightops.assessment-read"
         on "flight" as Input "flight"
         and must establish "no required checklist is left without evidence or finding"
-      | field                    | relation | expectation | failure reason                                          |
-      | unresolvedChecklistCount | equals   | number 0    | "a required checklist has neither evidence nor finding" |
-      | openFdmEventCount        | equals   | number 0    | "an auto-detected FDM event was not treated"            |
-    And the Scenario is satisfied when every Check is validated
+      """js
+      (
+        fact.unresolvedChecklistCount === 0 ||
+        fail("a required checklist has neither evidence nor finding")
+      ) &&
+      (
+        fact.openFdmEventCount === 0 ||
+        fail("an auto-detected FDM event was not treated")
+      )
+      """

@@ -1,8 +1,15 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
+    "composite": true,
     "rootDir": ".",
-    "outDir": "dist"
+    "outDir": "dist",
+    "tsBuildInfoFile": "dist/.tsbuildinfo"
   },
-  "include": ["src/**/*.ts", "acceptance/**/*.ts"]
+  "include": ["src/**/*.ts", "acceptance/**/*.ts"],
+  "references": [
+    { "path": "../trust-operation" },
+    { "path": "../trust-procedure" },
+    { "path": "../trust-language-server" }
+  ]
 }

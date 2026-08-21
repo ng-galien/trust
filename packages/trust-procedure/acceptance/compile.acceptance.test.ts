@@ -43,7 +43,6 @@ describe("Procedure compiler", () => {
     const catalog = operations();
     for (const file of files) {
       const compiled = compileProcedure({ source: source(file), sourceName: file, operations: catalog });
-      expect(compiled.contract).toBe("trust.compiled-procedure@3");
       expect(compiled.checks.length).toBeGreaterThan(0);
       expect(compiled.operations.length).toBeGreaterThan(0);
       expect(compiled.operations.every((item) => item.definition.operation === item.operation)).toBe(true);
@@ -61,7 +60,12 @@ describe("Procedure compiler", () => {
     expect(compiled.checks[0]).toMatchObject({
       operation: "git.head-read",
       inputBindings: [{ input: "project", role: "repository", selection: "one" }],
-      predicates: [{ field: "workingTree", expectation: { kind: "value", value: "dirty" } }],
+      qualification: {
+        guards: [{
+          conditionLogic: { "===": [{ var: "fact.workingTree" }, "dirty"] },
+          failureReasonLogic: "the repository has no local changes",
+        }],
+      },
     });
   });
 
@@ -127,14 +131,77 @@ describe("Procedure compiler", () => {
         { input: "documents", role: "required document", selection: "all" },
         { input: "documentRecordedAt", role: "document record time", selection: "all" },
       ]),
-      predicates: expect.arrayContaining([
+      qualification: {
+        guards: expect.arrayContaining([
         expect.objectContaining({
-          field: "admittedAt",
-          relation: "after",
-          expectation: { kind: "check-field", check: "consent", field: "signedAt" },
+          conditionLogic: { ">": [{ var: "fact.admittedAt" }, { var: "checks.consent.signedAt" }] },
+          references: expect.arrayContaining([
+            expect.objectContaining({ kind: "check", check: "consent", field: "signedAt", valueType: "instant" }),
+          ]),
         }),
-      ]),
+        ]),
+      },
     });
+  });
+
+  test("compiles the closed JavaScript expression surface to typed JSON Logic guards", () => {
+    const procedure = `# language: en
+@trust-dsl:1 @procedure:expression-surface @version:1.0.0
+Feature: Exercise the closed qualification expression surface
+
+  Background: Plan context
+    Given one reference "project"
+    And one reference "baseline revision"
+    And many number "limits"
+    And one number "threshold"
+    And one string "prefix"
+
+  @scenario:surface
+  Scenario: Qualify the comparison
+    Then Check "surface" runs Operation "git.head-compare"
+        on "project" as Input "project"
+        using "baseline revision" as Input "baseRevision"
+        and must establish "the expression surface is satisfied"
+      """js
+      (
+        Math.min(fact.commitsAhead + 2, Math.max(context.threshold, 1)) >= 1 &&
+        Math.abs(-fact.commitsAhead) >= 0 &&
+        Math.floor(fact.commitsAhead / 2) <= Math.ceil(fact.commitsAhead / 2) &&
+        Math.round(fact.commitsAhead / 2) >= 0 &&
+        Math.sqrt(Math.pow(fact.commitsAhead, 2)) >= 0 &&
+        fact.commitsAhead % 2 >= 0 &&
+        context.limits.length >= 1 &&
+        context.limits.includes(context.threshold) &&
+        context.limits.some(value => value === context.threshold) &&
+        context.limits.every(value => value >= 0) &&
+        context.limits.filter(value => value >= 0).length === context.limits.length &&
+        context.limits.map(value => value + 1).includes(context.threshold + 1) &&
+        context.limits.reduce((total, value) => total + value, 0) >= context.threshold &&
+        fact.workingTree.includes("lea") &&
+        fact.workingTree.startsWith(context.prefix) &&
+        fact.workingTree.endsWith("ean") &&
+        fact.workingTree.substring(0, 5).toUpperCase().toLowerCase().trim() === "clean" &&
+        fact.headRevision !== context["baseline revision"] &&
+        !false &&
+        (fact.workingTree === "clean" ? true : false) &&
+        [fact.workingTree, "dirty"].includes("clean")
+      ) ||
+      fail(\`Expression failed for \${fact.workingTree} at \${fact.commitsAhead}\`)
+      """
+`;
+    const compiled = compileProcedure({ source: procedure, sourceName: "expression-surface.feature", operations: operations() });
+    const guard = compiled.checks[0]?.qualification.guards[0];
+    expect(guard).toBeDefined();
+    expect(JSON.stringify(guard?.conditionLogic)).toContain("trust.substring");
+    expect(JSON.stringify(guard?.conditionLogic)).toContain("trust.sqrt");
+    expect(JSON.stringify(guard?.conditionLogic)).toContain("reduce");
+    expect(guard?.failureReasonLogic).toEqual({
+      cat: ["Expression failed for ", { var: "fact.workingTree" }, " at ", { var: "fact.commitsAhead" }],
+    });
+    expect(guard?.references).toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: "context", role: "limits", valueType: "number", cardinality: "many" }),
+      expect.objectContaining({ kind: "context", role: "baseline revision", valueType: "reference", cardinality: "one" }),
+    ]));
   });
 
   test("binds the Plan identifier to one string Input with using plan through the synthesised plan role", () => {
@@ -149,9 +216,10 @@ Feature: Pass the Plan identifier to an Operation
   @scenario:comparison
   Scenario: Compare with the baseline, tagged with the Plan
     Then Check "comparison" runs Operation "git.head-compare" on "project" as Input "project" using plan as Input "baseRevision" and must establish "the revision is ahead"
-      | field        | relation | expectation | failure reason           |
-      | commitsAhead | at least | number 1    | "the revision is behind" |
-    And the Scenario is satisfied when every Check is validated
+      """js
+      fact.commitsAhead >= 1 ||
+      fail("the revision is behind")
+      """
 `;
 
     const compiled = compileProcedure({ source: procedure, sourceName: "plan-identifier.feature", operations: operations() });
@@ -225,9 +293,10 @@ Feature: Bind the Plan identifier to a number Input
   @scenario:count
   Scenario: Count
     Then Check "count" runs Operation "shell.count-read" on "project" as Input "project" using plan as Input "count" and must establish "the project is echoed"
-      | field   | relation | expectation       | failure reason             |
-      | project | equals   | context "project" | "another project answered" |
-    And the Scenario is satisfied when every Check is validated
+      """js
+      fact.project === context.project ||
+      fail("another project answered")
+      """
 `,
       });
     } catch (error) {
@@ -270,7 +339,7 @@ Feature: Bind the Plan identifier to a number Input
 
   test("rejects a value outside the produced field domain", () => {
     expectCompilationError(
-      source("00-git-status.feature").replace('value "dirty"', 'value "unknown"'),
+      source("00-git-status.feature").replace('=== "dirty"', '=== "unknown"'),
       "incompatible-type",
     );
   });
@@ -301,16 +370,18 @@ Feature: Compare a role before its provider Scenario
   @scenario:baseline
   Scenario: Read the baseline
     Then Check "baseline" runs Operation "git.head-read" on "project" as Input "project" and materializes "baseline revision" from field "headRevision" and must establish "the baseline exists"
-      | field       | relation | expectation   | failure reason          |
-      | workingTree | equals   | value "clean" | "the project is dirty" |
-    And the Scenario is satisfied when every Check is validated
+      """js
+      fact.workingTree === "clean" ||
+      fail("the project is dirty")
+      """
 
   @scenario:comparison
   Scenario: Compare without a dependency
     Then Check "comparison" runs Operation "git.head-read" on "project" as Input "project" and must establish "the revision matches"
-      | field        | relation | expectation                 | failure reason                |
-      | headRevision | equals   | context "baseline revision" | "the revision does not match" |
-    And the Scenario is satisfied when every Check is validated
+      """js
+      fact.headRevision === context["baseline revision"] ||
+      fail("the revision does not match")
+      """
 `;
 
     expectCompilationError(procedure, "invalid-dependency");

@@ -42,19 +42,15 @@ Les étapes sont désignées **par nom**, jamais par position.
 
 ## Le sous-ensemble fermé
 
-Le compilateur accepte une petite partie prévisible de JSONata :
+Le compilateur accepte les littéraux, les clés d'objet fixes, les conditionnelles, le groupement et la
+surface de référence générée suivante :
 
-| Sorte | Accepté |
-| --- | --- |
-| Littéraux | chaînes, nombres, `true`, `false`, `null` |
-| Chemins | `input.x`, `environment.y`, `steps.name.result[.deeper]` dans les règles de profondeur ci-dessus |
-| Objet | un littéral d'objet au sommet, avec des clés chaînes fixes |
-| Conditionnelle | `condition ? a : b` |
-| Opérateurs binaires | `=` `!=` `<` `<=` `>` `>=` `+` `-` `*` `/` `%` `&` (concaténation) `and` `or` |
-| Fonctions | `$boolean` `$count` `$exists` `$lowercase` `$number` `$string` `$trim` `$uppercase` |
-| Groupement | parenthèses |
+<OperationLanguageReference />
 
-Refusé : toute autre fonction (`$map`, `$filter`, `$sum`, `$now`, `$eval`…), les lambdas, la chaîne `~>`, les expressions régulières, les opérateurs de tri et de transformation, les jokers et descendants, les constructeurs de tableau `[…]`, le moins unaire, les filtres de chemin et sélecteurs d'index (`items[0]`, `items[status = "ok"]`), la liaison de variables.
+Refusé : les fonctions absentes de cette table (dont `$now` et `$eval`), les lambdas, la chaîne `~>`,
+les expressions régulières, les opérateurs de transformation, les jokers et descendants, les
+constructeurs de tableau `[…]`, le moins unaire, les filtres de chemin et sélecteurs d'index
+(`items[0]`, `items[status = "ok"]`), la liaison de variables.
 
 <Callout kind="note" title="Pourquoi un sous-ensemble">
   La projection fait partie de ce qui rend un Fact digne de confiance : elle doit faire la même chose sur le Runner et dans Simuler, terminer, et être lisible en revue. Le calcul qui n'y tient pas appartient au système externe (un script, un endpoint) dont l'Opération lit ensuite le résultat.

@@ -43,13 +43,13 @@ The Runner returns one of:
 | Result | Meaning | What the agent does |
 | --- | --- | --- |
 | **completed · validated** | the Operation ran, the Facts were accepted, the Check is satisfied | read the Plan again: dependent Checks may have opened |
-| **completed · not validated** | the Operation ran, the Facts were accepted, the expectations do not hold — the reason says which | address the observed condition; do not reinterpret it as progress |
+| **completed · not validated** | the Operation ran, the Facts were accepted, a qualification guard is false — its computed reason explains the observation | address the observed condition; do not reinterpret it as progress |
 | **refused** | nothing ran: the Check is not current, its prerequisites are open, the Session is closed, the contract or Environment does not match | read the Check or the Plan and follow the reason |
 | **error** | admission, execution, reporting or finalisation was interrupted: nothing is established | read the Check; retrying is normal (an incomplete Fact batch was rejected whole; the Runner may run the Operation again) |
 
 ## What TRUST checks before delegating
 
-Admission validates, in this order: the Check exists in the **current revision** of the Plan; the **Session** is open; every prerequisite Scenario is validated and every Check referenced by an expectation has an active verdict; the Operation embedded in the Procedure is the one the Runner will get; the **Environment** of the Plan provides every value the Operation needs. Only then does the Runner receive the compiled Operation, the admitted Input (resolved from the Plan context) and the Environment values.
+Admission validates, in this order: the Check exists in the **current revision** of the Plan; the **Session** is open; every prerequisite Scenario is validated and every Check referenced by the qualification has an active verdict; the Operation embedded in the Procedure is the one the Runner will get; the **Environment** of the Plan provides every value the Operation needs. Only then does the Runner receive the compiled Operation, the admitted Input (resolved from the Plan context) and the Environment values.
 
 Admission is a **grant**: it correlates the Check, the Operation, the context and one attempt key. It is not proof that the action happened — the Facts are.
 

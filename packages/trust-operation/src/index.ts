@@ -7,6 +7,7 @@ export {
 export type {
   OperationCompilationInput,
 } from "./compile.js";
+export { evaluateOperationProjection, operationProjectionContext } from "./evaluate.js";
 export type {
   FileFormat,
   FileJsonResult,
@@ -14,6 +15,7 @@ export type {
   FileTextResult,
 } from "./file-read.js";
 export { renderHttpUrl } from "./http.js";
+export { operationAuthoringSnippets, operationHighlightVocabulary, operationLanguage } from "./language.js";
 export type {
   HttpFormat,
   Http,

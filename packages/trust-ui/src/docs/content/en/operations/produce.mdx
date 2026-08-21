@@ -42,19 +42,14 @@ Steps are addressed **by name**, never by position.
 
 ## The closed subset
 
-The compiler accepts a small, predictable part of JSONata:
+The compiler accepts literals, fixed object keys, conditionals, grouping and the following generated
+reference surface:
 
-| Kind | Accepted |
-| --- | --- |
-| Literals | strings, numbers, `true`, `false`, `null` |
-| Paths | `input.x`, `environment.y`, `steps.name.result[.deeper]` within the depth rules above |
-| Object | one object literal at the top, with fixed string keys |
-| Conditional | `condition ? a : b` |
-| Binary operators | `=` `!=` `<` `<=` `>` `>=` `+` `-` `*` `/` `%` `&` (concatenation) `and` `or` |
-| Functions | `$boolean` `$count` `$exists` `$lowercase` `$number` `$string` `$trim` `$uppercase` |
-| Grouping | parentheses |
+<OperationLanguageReference />
 
-Refused: any other function (`$map`, `$filter`, `$sum`, `$now`, `$eval`…), lambdas, the `~>` chain, regular expressions, sorting and transform operators, wildcards and descendants, array constructors `[…]`, unary minus, path filters and index selectors (`items[0]`, `items[status = "ok"]`), variable binding.
+Refused: functions outside this table (including `$now` and `$eval`), lambdas, the `~>` chain,
+regular expressions, transform operators, wildcards and descendants, array constructors `[…]`, unary
+minus, path filters and index selectors (`items[0]`, `items[status = "ok"]`), variable binding.
 
 <Callout kind="note" title="Why a subset">
   The projection is part of what makes a Fact trustworthy: it must do the same thing on the Runner and in Simulate, terminate, and be readable in a review. Computation that does not fit belongs in the external system (a script, an endpoint) whose result the Operation then reads.

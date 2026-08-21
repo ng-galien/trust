@@ -21,7 +21,7 @@ L'entrée **Procédures** de la barre latérale ouvre le catalogue. Sélectionne
 <Screenshot id="procedure-overview" caption="Une Procédure, onglet Aperçu." legend={{
   "overlay.header": "Version, statut (publiée, ou l'état du brouillon), marque des Plans en cours, titre.",
   "overlay.actions": "Dupliquer · Simuler · Modifier la source · Publier (quand la source compile et a changé).",
-  "overlay.tabs": "Aperçu, Source, Graphe, Simuler — et Contrat JSON en mode expert.",
+  "overlay.tabs": "Aperçu, Source, Graphe, Simuler — et JSON compilé en mode expert.",
   "overlay.status": "Le statut de compilation : diagnostic et ligne, ou le nombre de Scénarios et de Checks.",
   "procedure.summary": "Description, puis Nécessite (les entrées de Plan et leurs types) et Fait (chaque Scénario, ses prérequis, ses Checks avec leur Opération, cible et raison de succès).",
   "overlay.inspector": "Exécutée par : les Plans de cette Procédure. Utilise : ses Opérations. En mode expert : entrées de Plan et liste des Scénarios (clic → Graphe).",
@@ -29,17 +29,19 @@ L'entrée **Procédures** de la barre latérale ouvre le catalogue. Sélectionne
 
 ### Aperçu
 
-La Procédure en mots : description, les entrées de Plan qu'un engagement doit fournir, puis chaque Scénario dans l'ordre des dépendances avec ses Checks. En mode expert, un bloc s'ouvre avec le contrat complet de chaque Check : liaisons d'Input, table d'attentes, valeurs matérialisées.
+La Procédure en mots : description, les entrées de Plan qu'un engagement doit fournir, puis chaque Scénario dans l'ordre des dépendances avec ses Checks. En mode expert, un bloc s'ouvre avec les liaisons d'Input, la qualification `js` et les valeurs matérialisées de chaque Check.
 
 ### Source
 
 <Screenshot id="procedure-source" caption="Onglet Source." legend={{
-  "editor": "La source Gherkin, compilée à chaque modification contre le catalogue d'Opérations. Les complétions proposent les phrases et les Opérations du catalogue.",
+  "editor": "La source Gherkin, connectée au serveur de langage TRUST. Les diagnostics et complétions suivent chaque modification contre le catalogue d'Opérations.",
   "editor.format": "Formater la source : replie les longues phrases de Check sur des lignes de continuation.",
   "overlay.status": "Compile / ne compile pas, avec le message et la ligne.",
 }} />
 
-- La complétion **Procedure feature** insère un squelette ; **Context role**, **Scenario**, **Check** et **Use `<operation>`** insèrent les phrases, avec les Opérations du catalogue.
+- L'éditeur utilise un seul serveur de langage pour les Procédures et les Opérations. Il fournit diagnostics, complétion, formatage, repli et symboles du document à partir des mêmes compilateurs que la publication.
+- Dans le DocString `js` d'un Check, la complétion est typée par l'Opération sélectionnée : `fact.` propose ses Produced fields ; `context.`, `checks.` et la surface `Math` fermée n'exposent que les valeurs disponibles pour ce Check. Une erreur de compilation est marquée dans l'éditeur pendant que la source reste un brouillon.
+- Les complétions de grammaire insèrent une Procédure, un rôle de contexte, un Scénario ou un Check. À la position pertinente, elles proposent aussi les Opérations, Inputs, rôles, identifiants de Scénario et Produced fields connus de la source courante.
 - **Publier** compile une fois de plus sur le runtime et stocke une nouvelle révision `procedure@version`. Publier n'est disponible que lorsque la source compile et diffère de la version publiée ; une version déjà publiée est refusée — montez `@version`.
 - Une version publiée ne change jamais : l'interface n'a ni suppression ni écrasement pour une Procédure.
 
@@ -63,9 +65,9 @@ Le graphe est la structure de dépendances qu'utilise le runtime : **a besoin de
 
 Simuler n'exécute rien et ne crée rien : il joue l'ordre des Scénarios pour lire une Procédure. Répéter avec des Facts est un **dry-run** ([Plans, Sessions et dry-runs](/docs/plans)).
 
-### Contrat JSON (expert)
+### JSON compilé (expert)
 
-La révision compilée : rôles, Scénarios, Checks avec leurs liaisons et leurs prédicats, digests, et les Opérations embarquées. C'est ce à partir de quoi un Plan est engagé.
+La révision compilée : rôles, Scénarios, Checks avec leurs liaisons et leurs gardes de qualification, digests, et les Opérations embarquées. C'est ce à partir de quoi un Plan est engagé.
 
 ## Créer, dupliquer, publier
 

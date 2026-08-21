@@ -8,9 +8,9 @@ order: 3
   <Step title="Démarrer le dry-run">Barre latérale → **Dry-runs** → **Nouveau dry-run**. Choisissez la Procédure, gardez l'environnement courant (rien ne lui est délégué), donnez un identifiant (`rehearsal-pay-42`), remplissez les entrées racines, **Démarrer le dry-run**.</Step>
   <Step title="Ouvrir le cockpit">Le Plan s'ouvre avec le **cockpit de répétition** ancré à droite (**Répéter** dans la barre d'onglets s'il est masqué). Progression, Suivant et les Checks actionnables sont dans le bandeau de synthèse.</Step>
   <Step title="Déclarer le contexte si demandé">Quand la Procédure a des rôles `declared by agent`, le cockpit commence par *Déclarer le contexte* : un champ par rôle, par valeur parente quand il est scopé. **Appliquer les déclarations**.</Step>
-  <Step title="Choisir un Check">Dans **À faire maintenant**, choisissez-en un. L'établi affiche les valeurs que son Opération produirait ; **Remplir en succès** propose des valeurs qui satisfont chaque attente, **Remplir en échec** des valeurs qui cassent la première.</Step>
+  <Step title="Choisir un Check">Dans **À faire maintenant**, choisissez-en un. L'établi affiche sa qualification `js` et les valeurs que son Opération produirait.</Step>
   <Step title="Soumettre comme l'agent">Lisez le résultat : le verdict, sa raison, ce qui est devenu satisfait, ce qui a été rouvert. La checklist et le graphe sont passés à la révision suivante.</Step>
-  <Step title="Répéter un échec">Sur le Check suivant, **Remplir en échec** puis soumettez : le Check reste ouvert avec la raison d'échec que vous avez écrite dans la Procédure. Corrigez les valeurs, soumettez à nouveau.</Step>
+  <Step title="Répéter un échec">Sur le Check suivant, soumettez des valeurs qui ne satisfont pas la qualification affichée : le Check reste ouvert avec la raison d'échec calculée. Corrigez les valeurs, soumettez à nouveau.</Step>
   <Step title="Ré-observer">Dans **Fait**, choisissez un Check satisfait et soumettez de nouvelles valeurs : il est requalifié et chaque Check qui en dépend se rouvre — la cascade que vous verrez en live.</Step>
   <Step title="Réinitialiser ou supprimer">**Réinitialiser** relance la même répétition depuis la révision 1 ; **Supprimer** l'efface. Chaque verdict reste dans l'Historique des Checks.</Step>
 </Steps>

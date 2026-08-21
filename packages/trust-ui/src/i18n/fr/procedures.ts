@@ -50,7 +50,7 @@ export const procedures: Translation<typeof en> = {
     publishHintFix: "Corrigez d'abord la source",
     publishing: "Publication…",
     publish: "Publier la version",
-    tabs: { overview: "Aperçu", source: "Source", graph: "Graphe", simulate: "Simuler", contract: "Contrat JSON" },
+    tabs: { overview: "Aperçu", source: "Source", graph: "Graphe", simulate: "Simuler", contract: "JSON compilé" },
     compileLocation: "{{detail}} (ligne {{line}})",
     mustCompile: "La source doit d'abord compiler.",
     executedBy: "Exécutée par",
@@ -66,7 +66,7 @@ export const procedures: Translation<typeof en> = {
     showInGraph: "Afficher dans le graphe",
     afterList: "après {{list}}",
     noGraphTitle: "Aucun graphe pour l'instant",
-    noContractTitle: "Aucun contrat compilé",
+    noContractTitle: "Aucune Procédure compilée",
   },
   overview: {
     emptyTitle: "Rien à résumer pour l'instant",
@@ -82,7 +82,7 @@ export const procedures: Translation<typeof en> = {
     checksTitle: "Checks",
     input: "Entrée",
     fromRole: "← rôle",
-    columns: { field: "Champ", relation: "Relation", expectation: "Attente", failureReason: "Motif d'échec" },
+    qualification: "Qualification",
     materializes: "Matérialise {{list}}",
   },
   simulation: {

@@ -9,22 +9,31 @@
   "bin": {
     "trust-language-server": "bin/trust-language-server.js"
   },
+  "exports": {
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "development": "./src/index.ts",
+      "import": "./dist/src/index.js"
+    }
+  },
   "files": [
     "bin",
     "dist/src"
   ],
   "scripts": {
-    "prebuild": "npm run build --workspace=@trust/operation",
-    "build": "npm run clean && tsc -p tsconfig.json",
+    "build": "tsc -b tsconfig.json",
     "clean": "node --input-type=module -e \"import { rmSync } from 'node:fs'; rmSync('dist', { recursive: true, force: true })\"",
     "test:acceptance": "npm run build && node --test dist/acceptance/*.acceptance.test.js",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@cucumber/messages": "^31.0.0",
     "@trust/gherkin": "file:../trust-gherkin",
     "@trust/operation": "file:../trust-operation",
+    "@trust/procedure": "file:../trust-procedure",
     "vscode-languageserver": "^10.1.0",
-    "vscode-languageserver-textdocument": "^1.0.12"
+    "vscode-languageserver-textdocument": "^1.0.12",
+    "vscode-ws-jsonrpc": "^3.5.0"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",

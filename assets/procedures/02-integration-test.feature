@@ -14,15 +14,22 @@ Feature: Run one integration test and confirm its trace markers
   @scenario:test
   Scenario: Run the integration test
     Then Check "integration test" runs Operation "karate.test-run" on "test project" as Input "project" using "test revision" as Input "revision" using "test argument" as Input "testArgument" and must establish "the integration test succeeds"
-      | field          | relation | expectation             | failure reason                    |
-      | testedRevision | equals   | context "test revision" | "the test ran on another revision" |
-      | testStatus     | equals   | value "successful"       | "the integration test failed"      |
-    And the Scenario is satisfied when every Check is validated
+      """js
+      (
+        fact.testedRevision === context["test revision"] ||
+        fail("the test ran on another revision")
+      ) &&
+      (
+        fact.testStatus === "successful" ||
+        fail("the integration test failed")
+      )
+      """
 
   @scenario:trace
   Scenario: Confirm the integration trace marker
     Given scenario "test" is validated
     Then Check "trace marker" runs Operation "telemetry.trace-read" on "trace" as Input "traceId" and must establish "the integration trace was recorded"
-      | field     | relation | expectation | failure reason                      |
-      | spanCount | at least | number 1    | "the integration trace has no span" |
-    And the Scenario is satisfied when every Check is validated
+      """js
+      fact.spanCount >= 1 ||
+      fail("the integration trace has no span")
+      """

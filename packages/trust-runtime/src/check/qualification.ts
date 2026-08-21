@@ -1,5 +1,10 @@
 import { validateOperationProduced } from "@trust/operation";
-import type { CompiledProcedureExpectation } from "@trust/procedure";
+import {
+  evaluateQualificationCondition,
+  evaluateQualificationRule,
+  procedureLanguage,
+  type CompiledExpressionReference,
+} from "@trust/procedure";
 
 import type {
   CheckValues,
@@ -14,7 +19,7 @@ export interface ValidatedFacts {
 
 export interface CheckQualification {
   readonly verdict: "VALIDATED" | "NOT_VALIDATED";
-  readonly reasonCode: "check-qualified" | "predicate-not-satisfied";
+  readonly reasonCode: "check-qualified" | "qualification-not-satisfied";
   readonly reason: string;
 }
 
@@ -46,14 +51,18 @@ export function qualifyCheck(
   facts: ValidatedFacts,
   available: readonly CheckValues[],
 ): CheckQualification {
-  for (const predicate of check.check.predicates) {
-    const actual = facts.values[predicate.field];
-    const expected = expectationValue(predicate.expectation, check, available);
-    if (!matches(predicate.relation, actual, expected)) {
+  const rawData = expressionData(check, facts.values, available);
+  for (const guard of check.check.qualification.guards) {
+    const conditionData = normalizeInstants(rawData, guard.references);
+    if (!evaluateQualificationCondition(guard.conditionLogic, conditionData)) {
+      const reason = evaluateQualificationRule(guard.failureReasonLogic, rawData);
+      if (typeof reason !== "string" || reason.length === 0) {
+        throw new TypeError("A failed qualification guard must produce a non-empty reason");
+      }
       return {
         verdict: "NOT_VALIDATED",
-        reasonCode: "predicate-not-satisfied",
-        reason: predicate.failureReason,
+        reasonCode: "qualification-not-satisfied",
+        reason,
       };
     }
   }
@@ -64,57 +73,91 @@ export function qualifyCheck(
   };
 }
 
-function expectationValue(
-  expectation: CompiledProcedureExpectation,
+function expressionData(
   check: PlanCheck,
+  facts: RuntimeJsonObject,
   available: readonly CheckValues[],
-): unknown {
-  switch (expectation.kind) {
-    case "value": return expectation.value;
-    case "number": return expectation.value;
-    case "valid-rfc3339": return VALID_RFC3339;
-    case "context": return check.context[expectation.role];
-    case "check-field": {
-      const providers = new Set(
-        check.checkDependencies
-          .filter((dependency) => dependency.checkName === expectation.check)
-          .map((dependency) => dependency.providerCheckUri),
-      );
-      const candidates = available.filter((item) =>
-        item.checkName === expectation.check
-        && (providers.size === 0 || providers.has(item.providerCheckUri))
-      );
-      if (candidates.length !== 1) {
-        throw new TypeError(`Check "${expectation.check}" does not provide one unambiguous value`);
-      }
-      return candidates[0]?.values[expectation.field];
+): RuntimeJsonObject {
+  const roots = procedureLanguage.qualification.roots;
+  const referencedChecks = new Set(
+    check.check.qualification.guards
+      .flatMap((guard) => guard.references)
+      .filter((reference): reference is Extract<CompiledExpressionReference, { readonly kind: "check" }> =>
+        reference.kind === "check")
+      .map((reference) => reference.check),
+  );
+  const checks: Record<string, RuntimeJsonObject> = {};
+  for (const checkName of referencedChecks) {
+    const providers = new Set(
+      check.checkDependencies
+        .filter((dependency) => dependency.checkName === checkName)
+        .map((dependency) => dependency.providerCheckUri),
+    );
+    const candidates = available.filter((item) =>
+      item.checkName === checkName
+      && (providers.size === 0 || providers.has(item.providerCheckUri))
+    );
+    if (candidates.length !== 1) {
+      throw new TypeError(`Check "${checkName}" does not provide one unambiguous value`);
     }
+    checks[checkName] = candidates[0]!.values;
   }
+  return Object.freeze({
+    [roots.fact]: facts,
+    [roots.context]: check.context,
+    [roots.checks]: Object.freeze(checks),
+  });
 }
 
-const VALID_RFC3339 = Symbol("valid-rfc3339");
-
-function matches(
-  relation: PlanCheck["check"]["predicates"][number]["relation"],
-  actual: unknown,
-  expected: unknown,
-): boolean {
-  if (expected === VALID_RFC3339) {
-    return typeof actual === "string" && !Number.isNaN(Date.parse(actual));
+function normalizeInstants(
+  data: RuntimeJsonObject,
+  references: readonly CompiledExpressionReference[],
+): RuntimeJsonObject {
+  const roots = procedureLanguage.qualification.roots;
+  const normalized = cloneJson(data) as Record<string, unknown>;
+  for (const reference of references) {
+    if (reference.valueType !== "instant") continue;
+    const path = reference.kind === "fact"
+      ? [roots.fact, reference.field]
+      : reference.kind === "context"
+        ? [roots.context, reference.role]
+        : [roots.checks, reference.check, reference.field];
+    const value = readPath(normalized, path);
+    const converted = reference.cardinality === "many"
+      ? requireArray(value, path).map((item) => instant(item, path))
+      : instant(value, path);
+    writePath(normalized, path, converted);
   }
-  switch (relation) {
-    case "equals": return canonicalJson(actual) === canonicalJson(expected);
-    case "at least": return typeof actual === "number" && typeof expected === "number" && actual >= expected;
-    case "has at least": return Array.isArray(actual) && typeof expected === "number" && actual.length >= expected;
-    case "is in": return Array.isArray(expected) && expected.some((item) => canonicalJson(item) === canonicalJson(actual));
-    case "before": return instant(actual) < instant(expected);
-    case "after": return instant(actual) > instant(expected);
-  }
+  return Object.freeze(normalized);
 }
 
-function instant(value: unknown): number {
-  if (typeof value !== "string") return Number.NaN;
-  return Date.parse(value);
+function instant(value: unknown, path: readonly string[]): number {
+  if (typeof value !== "string") throw new TypeError(`Expression value "${path.join(".")}" must be an instant`);
+  const parsed = Date.parse(value);
+  if (Number.isNaN(parsed)) throw new TypeError(`Expression value "${path.join(".")}" must be an RFC3339 instant`);
+  return parsed;
+}
+
+function requireArray(value: unknown, path: readonly string[]): readonly unknown[] {
+  if (!Array.isArray(value)) throw new TypeError(`Expression value "${path.join(".")}" must be an array`);
+  return value;
+}
+
+function readPath(value: unknown, path: readonly string[]): unknown {
+  let current = value;
+  for (const segment of path) {
+    if (current === null || typeof current !== "object" || !Object.hasOwn(current, segment)) {
+      throw new TypeError(`Expression value "${path.join(".")}" is unavailable`);
+    }
+    current = (current as Record<string, unknown>)[segment];
+  }
+  return current;
+}
+
+function writePath(value: Record<string, unknown>, path: readonly string[], replacement: unknown): void {
+  let current = value;
+  for (const segment of path.slice(0, -1)) current = current[segment] as Record<string, unknown>;
+  current[path.at(-1)!] = replacement;
 }
 
 function canonicalJson(value: unknown): string {
@@ -124,4 +167,8 @@ function canonicalJson(value: unknown): string {
       .map(([key, item]) => `${JSON.stringify(key)}:${canonicalJson(item)}`).join(",")}}`;
   }
   return JSON.stringify(value);
+}
+
+function cloneJson<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value)) as T;
 }

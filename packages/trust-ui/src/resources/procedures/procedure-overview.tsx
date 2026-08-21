@@ -9,9 +9,9 @@ import { Expert } from "../../ui/expert.js";
 import { Disclosure } from "../../ui/schema.js";
 import { EmptyState } from "../../ui/states.js";
 import { useOrigin } from "../shared/origin.js";
-import { describeExpectation, orderedScenarios } from "./model.js";
+import { orderedScenarios } from "./model.js";
 
-/** Reading of a procedure: its description, what it needs, what it does (Scenarios and their Checks); the Check expectations for experts. */
+/** Reading of a procedure: its description, what it needs, what it does (Scenarios and their Checks); the Check qualifications for experts. */
 export function ProcedureOverview({ compiled, error }: { compiled: CompiledProcedure | undefined; error?: string | undefined }) {
   const origin = useOrigin();
   const { t } = useTranslation();
@@ -57,7 +57,7 @@ export function ProcedureOverview({ compiled, error }: { compiled: CompiledProce
         </div>
       </section>
 
-      {/* Expectations of each Check (bindings, predicates, materialized values): the contract detail. Operation, Scenario and success reason are read above. */}
+      {/* Details of each Check: bindings, qualification and materialized values. */}
       <Expert>
         <Disclosure title={t("procedures.overview.checksTitle")} defaultOpen={false}>
           <div className="flex flex-col gap-2">
@@ -67,21 +67,8 @@ export function ProcedureOverview({ compiled, error }: { compiled: CompiledProce
                 {check.inputBindings?.length ? <p className="mt-1 text-muted">{t("procedures.overview.input")} {check.inputBindings.map((binding) => (
                   <span key={binding.input}><span className="mono text-text">{binding.input}</span> {t("procedures.overview.fromRole")} <span className="mono text-text">{binding.role}</span>{binding.selection !== "one" ? ` (${binding.selection})` : ""} </span>
                 ))}</p> : null}
-                {check.predicates.length ? (
-                  <table className="mt-1 w-full border-collapse">
-                    <thead><tr className="text-left text-meta uppercase tracking-[0.06em] text-faint"><th className="py-0.5 pr-3 font-semibold">{t("procedures.overview.columns.field")}</th><th className="py-0.5 pr-3 font-semibold">{t("procedures.overview.columns.relation")}</th><th className="py-0.5 pr-3 font-semibold">{t("procedures.overview.columns.expectation")}</th><th className="py-0.5 font-semibold">{t("procedures.overview.columns.failureReason")}</th></tr></thead>
-                    <tbody>
-                      {check.predicates.map((predicate, index) => (
-                        <tr key={index} className="border-t border-border">
-                          <td className="mono py-1 pr-3">{predicate.field}</td>
-                          <td className="py-1 pr-3 text-muted">{predicate.relation}</td>
-                          <td className="mono py-1 pr-3">{describeExpectation(predicate.expectation)}</td>
-                          <td className="py-1 text-muted">{predicate.failureReason}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                ) : null}
+                <p className="mt-2 text-meta font-semibold uppercase tracking-[0.06em] text-faint">{t("procedures.overview.qualification")}</p>
+                <pre className="mono mt-1 overflow-x-auto whitespace-pre-wrap rounded-(--radius-1) bg-bg p-2 text-label text-text"><code>{check.qualification.source}</code></pre>
                 {check.materializes?.length ? <p className="mt-1 text-muted">{t("procedures.overview.materializes", { list: check.materializes.map((entry) => `${entry.role} ← ${entry.field}`).join(", ") })}</p> : null}
               </div>
             ))}

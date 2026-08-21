@@ -32,7 +32,7 @@ k8s/                      retained integration test environment
   explicit `VALIDATED` or `NOT_VALIDATED` checklist verdict with a useful reason. Without accepted
   Facts there is no qualification: a refusal, crash or transport interruption leaves the Check
   unchanged and the agent may invoke the runner again.
-- A Fact batch missing any observation required by the Check's compiled predicates is rejected
+- A Fact batch missing any observation required by the Operation's complete Produced schema is rejected
   atomically before persistence. It produces no Fact, Snapshot, verdict or checklist delta; the runner
   may re-observe and resubmit without repeating a known external action.
 - Replaying after missing Facts is the normal rule. TRUST deduplicates identical Facts and the
@@ -51,7 +51,7 @@ k8s/                      retained integration test environment
   requires it. The runner acts with its own external permissions. Domain-specific idempotency or
   reconciliation may remain local runner safeguards, but advanced retry, shared journals, high
   availability and automatic recovery are not generic product gates.
-- Gherkin plus a closed DSL owns Check intent, expected capability, typed predicate and semantic
+- Gherkin plus a closed expression language owns Check intent, expected capability, typed qualification and semantic
   reasons. The generic server contains no procedure-specific business rule. A step may continue on
   the following lines when they are indented deeper than its keyword and are not a table row, doc
   string, comment, tag or keyword line; `@trust/gherkin` folds them before parsing and keeps every

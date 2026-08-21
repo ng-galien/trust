@@ -179,6 +179,94 @@ test("a dry-run Plan is driven end to end from the RPC boundary without any envi
   }
 });
 
+test("typed qualification expressions run through JSON Logic and return their computed reason", async () => {
+  const runtime = await startPublicRuntime("trust-expression-runtime-", {
+    operationsDirectory,
+    environments: { unused: { workspaceRoot: repositoryRoot } },
+  });
+  const source = `# language: en
+@trust-dsl:1 @procedure:expression-runtime @version:1.0.0
+Feature: Evaluate the typed qualification expression surface
+
+  Background: Plan context
+    Given one reference "project"
+    And one reference "baseline revision"
+    And many number "limits"
+    And one number "threshold"
+    And one string "prefix"
+
+  @scenario:surface
+  Scenario: Qualify the comparison
+    Then Check "surface" runs Operation "git.head-compare"
+        on "project" as Input "project"
+        using "baseline revision" as Input "baseRevision"
+        and must establish "the expression is satisfied"
+      """js
+      (Math.sqrt(Math.pow(fact.commitsAhead, 2)) >= context.threshold || fail("sqrt and pow failed")) &&
+      (Math.min(fact.commitsAhead + 2, Math.max(context.threshold, 1)) >= 1 || fail("min and max failed")) &&
+      (context.limits.some(value => value === context.threshold) || fail("some failed")) &&
+      (context.limits.every(value => value >= 0) || fail("every failed")) &&
+      (context.limits.filter(value => value < 0).every(value => value >= 0) || fail("empty every failed")) &&
+      (context.limits.filter(value => value >= 0).length === context.limits.length || fail("filter failed")) &&
+      (context.limits.map(value => value + 1).includes(context.threshold + 1) || fail("map failed")) &&
+      (context.limits.reduce((total, value) => total + value, 0) >= context.threshold || fail("reduce failed")) &&
+      (fact.workingTree.startsWith(context.prefix) || fail("startsWith failed")) &&
+      (fact.workingTree.substring(0, 5).toUpperCase().toLowerCase().trim() === "clean" || fail("string transform failed")) &&
+      (fact.headRevision !== context["baseline revision"] || fail("strict inequality failed")) &&
+      (
+        fact.comparedBaseRevision === context["baseline revision"] ||
+        fail(\`Expected \${context["baseline revision"]}, observed \${fact.comparedBaseRevision}\`)
+      )
+      """
+`;
+  try {
+    await rpc(runtime.endpoint, "procedure.publish", { source, sourceName: "expression-runtime.feature" });
+    await rpc(runtime.endpoint, "plan.engage", {
+      contract: "trust.plan-engagement-request@1",
+      procedure: "expression-runtime",
+      procedureVersion: "1.0.0",
+      plan: "expression-runtime",
+      environment: "unused",
+      rootInputs: {
+        project: "payment-api",
+        "baseline revision": "base",
+        limits: [1, 3],
+        threshold: 3,
+        prefix: "c",
+      },
+      mode: "dry-run",
+    });
+    let view = await readPlan(runtime.endpoint, "expression-runtime");
+    const checkUri = view.actionableChecks[0]!;
+    const admitted = await admit(runtime.endpoint, checkUri, "expression-pass");
+    assert.deepEqual(admitted.actionInput, { project: "payment-api", baseRevision: "base" });
+    await rpc(runtime.endpoint, "check.attempt.facts", factBatch(admitted, {
+      headRevision: "head",
+      comparedBaseRevision: "base",
+      commitsAhead: 3,
+      workingTree: "clean",
+    }));
+    const passed = await finalize(runtime.endpoint, admitted.attemptHandle);
+    assert.equal(passed.verdict, "VALIDATED", JSON.stringify(passed));
+    assert.equal(passed.reasonCode, "check-qualified");
+
+    view = await readPlan(runtime.endpoint, "expression-runtime");
+    const reobserved = await admit(runtime.endpoint, view.checks[0]!.checkUri, "expression-fail", true);
+    await rpc(runtime.endpoint, "check.attempt.facts", factBatch(reobserved, {
+      headRevision: "head",
+      comparedBaseRevision: "other",
+      commitsAhead: 3,
+      workingTree: "clean",
+    }));
+    const failed = await finalize(runtime.endpoint, reobserved.attemptHandle);
+    assert.equal(failed.verdict, "NOT_VALIDATED");
+    assert.equal(failed.reasonCode, "qualification-not-satisfied");
+    assert.equal(failed.reason, "Expected base, observed other");
+  } finally {
+    await runtime.close();
+  }
+});
+
 test("a live Plan keeps handing out its environment and declarations are replaced over RPC", async () => {
   const runtime = await startPublicRuntime("trust-live-declarations-", {
     operationsDirectory,
@@ -473,8 +561,8 @@ async function admit(endpoint: string, checkUri: string, attemptKey: string, reo
   }) as Promise<Admission>;
 }
 
-async function finalize(endpoint: string, attemptHandle: string): Promise<{ verdict: string; reason: string }> {
-  return rpc(endpoint, "check.attempt.finalize", { contract: "trust.attempt-finalization-request@1", attemptHandle }) as Promise<{ verdict: string; reason: string }>;
+async function finalize(endpoint: string, attemptHandle: string): Promise<{ verdict: string; reasonCode: string; reason: string }> {
+  return rpc(endpoint, "check.attempt.finalize", { contract: "trust.attempt-finalization-request@1", attemptHandle }) as Promise<{ verdict: string; reasonCode: string; reason: string }>;
 }
 
 async function postOtlpFacts(endpoint: string, batch: ReturnType<typeof factBatch>): Promise<{

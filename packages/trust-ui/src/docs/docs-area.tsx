@@ -13,6 +13,7 @@ import { IconButton } from "../ui/button.js";
 import { EmptyState } from "../ui/states.js";
 import { Callout, Compare, Details, Figure, Legend, PageCards, Step, Steps, Term } from "./components/blocks.js";
 import { Diagram } from "./components/diagram.js";
+import { OperationLanguageReference, ProcedureLanguageReference } from "./components/language-reference.js";
 import { Screenshot } from "./components/screenshot.js";
 import { MdxPre, Snippet } from "./components/snippet.js";
 import { ArchitectureFigure, ModelFigure } from "./figures/index.js";
@@ -255,5 +256,6 @@ const mdxComponents = {
   table: ({ children }: { children?: ReactNode }) => <div className="docs-table-wrap my-4 overflow-x-auto"><table>{children}</table></div>,
   Callout, Details, Term, PageCards, Figure, Legend, Steps, Step, Compare,
   Diagram, Screenshot, Snippet,
+  OperationLanguageReference, ProcedureLanguageReference,
   ModelFigure, ArchitectureFigure,
 };

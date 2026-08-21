@@ -10,22 +10,27 @@ import {
   StreamMessageWriter,
   type MessageConnection,
 } from "vscode-jsonrpc/node";
+import { compileOperation } from "@trust/operation";
+import { operationLanguage } from "@trust/operation/language";
+import { compileProcedure } from "@trust/procedure";
 
 test("the Microsoft LSP server exposes the Operation language through standard JSON-RPC", async (context) => {
-  const session = await startLanguageServer(context, true);
+  const session = await startLanguageServer(context);
   const { connection } = session;
 
   await assertIgnoredDocument(connection);
   await assertInvalidOperationOpenedDirectly(connection);
   await assertValidCatalog(connection);
+  await assertDefaultTemplates(connection);
   await assertInvalidFixtures(connection);
   await assertIncrementalDiagnostics(connection);
+  await assertProcedureEditing(connection);
 
   await session.shutdown();
 });
 
 test("the server accepts step continuation lines and formats long steps onto them", async (context) => {
-  const session = await startLanguageServer(context, true);
+  const session = await startLanguageServer(context);
   const uri = "file:///workspace/format/git.head-read.feature";
   const original = operationFixture("valid/git.head-read.feature");
   const longStep = 'When Shell "head" runs "git" with cwd from Environment "workspaceRoot" and Input "project"';
@@ -50,36 +55,6 @@ test("the server accepts step continuation lines and formats long steps onto the
     textDocument: { uri: reopened, languageId: "gherkin", version: 1, text: formatted },
   });
   assert.deepEqual(await reopenedDiagnostics, { uri: reopened, version: 1, diagnostics: [] });
-  await session.shutdown();
-});
-
-test("the server returns flat symbols when the client does not support hierarchy", async (context) => {
-  const session = await startLanguageServer(context, false);
-  const uri = "file:///workspace/flat/git.head-read.feature";
-  const diagnostics = waitForDiagnostics(session.connection, uri, 1);
-  session.connection.sendNotification("textDocument/didOpen", {
-    textDocument: {
-      uri,
-      languageId: "gherkin",
-      version: 1,
-      text: operationFixture("valid/git.head-read.feature"),
-    },
-  });
-  assert.deepEqual(await diagnostics, { uri, version: 1, diagnostics: [] });
-
-  const symbols = await session.connection.sendRequest<SymbolInformation[]>(
-    "textDocument/documentSymbol",
-    { textDocument: { uri } },
-  );
-  assert.deepEqual(symbols.map(({ name, containerName }) => ({ name, containerName })), [
-    { name: "git.head-read", containerName: undefined },
-    { name: "workspaceRoot", containerName: "git.head-read" },
-    { name: "project", containerName: "git.head-read" },
-    { name: "head", containerName: "git.head-read" },
-    { name: "status", containerName: "git.head-read" },
-    { name: "headRevision", containerName: "git.head-read" },
-    { name: "workingTree", containerName: "git.head-read" },
-  ]);
   await session.shutdown();
 });
 
@@ -213,8 +188,57 @@ async function assertValidCatalog(connection: MessageConnection): Promise<void> 
         start: { line: 10, character: 8 },
         end: { line: 10, character: 15 },
       });
+      const stepsPosition = positionAt(source, source.indexOf("steps.head") + "steps.".length);
+      const steps = await connection.sendRequest<CompletionItem[]>("textDocument/completion", {
+        textDocument: { uri }, position: stepsPosition,
+      });
+      assert.deepEqual(steps.map(({ label }) => label).sort(), ["head", "status"]);
+
+      const resultPosition = positionAt(source, source.indexOf("steps.head.stdout") + "steps.head.".length);
+      const shellResult = await connection.sendRequest<CompletionItem[]>("textDocument/completion", {
+        textDocument: { uri }, position: resultPosition,
+      });
+      assert.deepEqual(shellResult.map(({ label }) => label).sort(), ["exitCode", "stderr", "stdout"]);
+
+      const jsonataPosition = positionAt(source, source.indexOf("$trim"));
+      const jsonata = await connection.sendRequest<CompletionItem[]>("textDocument/completion", {
+        textDocument: { uri }, position: jsonataPosition,
+      });
+      assert.deepEqual(
+        jsonata.map(({ label }) => label).filter((label) => label.startsWith("$")).sort(),
+        operationLanguage.jsonata.functions.map((name) => `$${name}`).sort(),
+      );
+
+      const semantic = await connection.sendRequest<SemanticTokens>("textDocument/semanticTokens/full", {
+        textDocument: { uri },
+      });
+      assert.ok(semantic.data.length > 0);
     }
   }
+}
+
+async function assertDefaultTemplates(connection: MessageConnection): Promise<void> {
+  const operationUri = "file:///workspace/new-operation.feature";
+  connection.sendNotification("textDocument/didOpen", {
+    textDocument: { uri: operationUri, languageId: "trust-operation", version: 1, text: "" },
+  });
+  const operationItems = await connection.sendRequest<CompletionItem[]>("textDocument/completion", {
+    textDocument: { uri: operationUri }, position: { line: 0, character: 0 },
+  });
+  const operationTemplate = operationItems.find(({ label }) => label === "Operation feature")?.insertText;
+  assert.ok(operationTemplate);
+  compileOperation({ source: operationTemplate });
+
+  const procedureUri = "file:///workspace/new-procedure.feature";
+  connection.sendNotification("textDocument/didOpen", {
+    textDocument: { uri: procedureUri, languageId: "trust-procedure", version: 1, text: "" },
+  });
+  const procedureItems = await connection.sendRequest<CompletionItem[]>("textDocument/completion", {
+    textDocument: { uri: procedureUri }, position: { line: 0, character: 0 },
+  });
+  const procedureTemplate = procedureItems.find(({ label }) => label === "Procedure feature")?.insertText;
+  assert.ok(procedureTemplate);
+  compileProcedure({ source: procedureTemplate, operations: [compileOperation({ source: operationFixture("valid/git.head-read.feature") })] });
 }
 
 async function assertInvalidFixtures(connection: MessageConnection): Promise<void> {
@@ -350,10 +374,122 @@ async function assertIncrementalDiagnostics(connection: MessageConnection): Prom
   );
 }
 
-async function startLanguageServer(
-  context: TestContext,
-  hierarchicalDocumentSymbols: boolean,
-): Promise<LanguageServerSession> {
+async function assertProcedureEditing(connection: MessageConnection): Promise<void> {
+  const uri = "file:///workspace/procedures/git-status.feature";
+  const source = procedureFixture("00-git-status.feature");
+  const opened = waitForDiagnostics(connection, uri, 1);
+  connection.sendNotification("textDocument/didOpen", {
+    textDocument: { uri, languageId: "gherkin", version: 1, text: source },
+  });
+  assert.deepEqual(await opened, { uri, version: 1, diagnostics: [] });
+
+  const operationPosition = positionAt(source, source.indexOf('Operation "') + 'Operation "'.length);
+  const operations = await connection.sendRequest<CompletionItem[]>("textDocument/completion", {
+    textDocument: { uri }, position: operationPosition,
+  });
+  assert.ok(operations.some(({ label }) => label === "git.head-read"));
+
+  const factPosition = positionAt(source, source.indexOf("fact.") + "fact.".length);
+  const facts = await connection.sendRequest<CompletionItem[]>("textDocument/completion", {
+    textDocument: { uri }, position: factPosition,
+  });
+  assert.deepEqual(facts.map(({ label }) => label).sort(), ["headRevision", "workingTree"]);
+
+  const roots = await connection.sendRequest<CompletionItem[]>("textDocument/completion", {
+    textDocument: { uri }, position: positionAt(source, source.indexOf("fact.")),
+  });
+  assert.ok(roots.some(({ label }) => label === "fail"));
+  assert.ok(!roots.some(({ label }) => label === "failed"));
+
+  const folds = await connection.sendRequest<FoldingRange[]>("textDocument/foldingRange", {
+    textDocument: { uri },
+  });
+  assert.ok(folds.some(({ startLine, endLine }) => startLine === 14 && endLine === 17));
+
+  const symbols = await connection.sendRequest<DocumentSymbol[]>("textDocument/documentSymbol", {
+    textDocument: { uri },
+  });
+  assert.equal(symbols[0]?.name, "git-status");
+  assert.ok(symbols[0]?.children?.some(({ name, detail }) => name === "repository status" && detail === "Check"));
+
+  const occurrence = source.indexOf("workingTree");
+  const start = positionAt(source, occurrence);
+  const end = positionAt(source, occurrence + "workingTree".length);
+  const invalid = waitForDiagnostics(connection, uri, 2, (message) => message.diagnostics.length > 0);
+  connection.sendNotification("textDocument/didChange", {
+    textDocument: { uri, version: 2 },
+    contentChanges: [{ range: { start, end }, text: "missingField" }],
+  });
+  const published = await invalid;
+  assert.equal(published.diagnostics[0]?.code, "unknown-field");
+  assert.equal(published.diagnostics[0]?.source, "trust-procedure");
+
+  const restored = waitForDiagnostics(connection, uri, 3);
+  connection.sendNotification("textDocument/didChange", {
+    textDocument: { uri, version: 3 },
+    contentChanges: [{ range: { start, end: positionAt(source, occurrence + "missingField".length) }, text: "workingTree" }],
+  });
+  assert.deepEqual(await restored, { uri, version: 3, diagnostics: [] });
+
+  const naturalUri = "file:///workspace/procedures/natural-role.feature";
+  const naturalSource = source
+    .replace('Given one reference "repository"', 'Given one reference "repository"\n    And one reference "baseline revision"')
+    .replace('fail("the repository has no local changes")', 'fail(`No changes since ${context["baseline revision"]}`)');
+  const naturalDiagnostics = waitForDiagnostics(connection, naturalUri, 1);
+  connection.sendNotification("textDocument/didOpen", {
+    textDocument: { uri: naturalUri, languageId: "trust-procedure", version: 1, text: naturalSource },
+  });
+  assert.deepEqual(await naturalDiagnostics, { uri: naturalUri, version: 1, diagnostics: [] });
+  const contextEnd = naturalSource.indexOf("context[") + "context".length;
+  const roles = await connection.sendRequest<CompletionItem[]>("textDocument/completion", {
+    textDocument: { uri: naturalUri }, position: positionAt(naturalSource, contextEnd),
+  });
+  assert.deepEqual(roles.find(({ label }) => label === "baseline revision")?.textEdit, {
+    range: { start: positionAt(naturalSource, contextEnd), end: positionAt(naturalSource, contextEnd) },
+    newText: '["baseline revision"]',
+  });
+
+  const incompleteUri = "file:///workspace/procedures/incomplete-natural-role.feature";
+  const completeAccessor = 'context["baseline revision"]';
+  const incompleteAccessor = 'context["base';
+  const incompleteSource = naturalSource.replace(completeAccessor, incompleteAccessor);
+  const incompleteDiagnostics = waitForDiagnostics(connection, incompleteUri, 1, (message) => message.diagnostics.length > 0);
+  connection.sendNotification("textDocument/didOpen", {
+    textDocument: { uri: incompleteUri, languageId: "trust-procedure", version: 1, text: incompleteSource },
+  });
+  await incompleteDiagnostics;
+  const incompleteEnd = incompleteSource.indexOf(incompleteAccessor) + incompleteAccessor.length;
+  const incompleteRoles = await connection.sendRequest<CompletionItem[]>("textDocument/completion", {
+    textDocument: { uri: incompleteUri }, position: positionAt(incompleteSource, incompleteEnd),
+  });
+  assert.deepEqual(incompleteRoles.find(({ label }) => label === "baseline revision")?.textEdit, {
+    range: {
+      start: positionAt(incompleteSource, incompleteSource.indexOf(incompleteAccessor) + "context".length),
+      end: positionAt(incompleteSource, incompleteEnd),
+    },
+    newText: '["baseline revision"]',
+  });
+
+  const multipleUri = "file:///workspace/procedures/multiple-errors.feature";
+  const multipleSource = source.replace("fact.workingTree", "fact.missingOne").trimEnd() + `
+
+    And Check "second status" runs Operation "git.head-read" on "repository" as Input "project" and must establish "the second observation is valid"
+      """js
+      fact.missingTwo === "dirty" ||
+      fail("the second observation is invalid")
+      """
+`;
+  const multipleDiagnostics = waitForDiagnostics(connection, multipleUri, 1, (message) => message.diagnostics.length === 2);
+  connection.sendNotification("textDocument/didOpen", {
+    textDocument: { uri: multipleUri, languageId: "trust-procedure", version: 1, text: multipleSource },
+  });
+  assert.deepEqual((await multipleDiagnostics).diagnostics.map(({ code, message }) => ({ code, message })), [
+    { code: "unknown-field", message: 'Operation "git.head-read" produces no field "missingOne"' },
+    { code: "unknown-field", message: 'Operation "git.head-read" produces no field "missingTwo"' },
+  ]);
+}
+
+async function startLanguageServer(context: TestContext): Promise<LanguageServerSession> {
   const server = spawn(process.execPath, [
     new URL("../../bin/trust-language-server.js", import.meta.url).pathname,
     "--stdio",
@@ -377,13 +513,9 @@ async function startLanguageServer(
   }>("initialize", {
     processId: null,
     rootUri: null,
-    capabilities: hierarchicalDocumentSymbols
-      ? {
-          textDocument: {
-            documentSymbol: { hierarchicalDocumentSymbolSupport: true },
-          },
-        }
-      : {},
+    capabilities: {
+      textDocument: { documentSymbol: { hierarchicalDocumentSymbolSupport: true } },
+    },
   });
   assert.equal(initialized.capabilities.textDocumentSync, 2);
   assert.equal(initialized.capabilities.documentSymbolProvider, true);
@@ -406,6 +538,10 @@ function operationFixture(path: string): string {
     new URL(`../../../trust-operation/acceptance/fixtures/${path}`, import.meta.url),
     "utf8",
   );
+}
+
+function procedureFixture(path: string): string {
+  return readFileSync(new URL(`../../../../assets/procedures/${path}`, import.meta.url), "utf8");
 }
 
 function positionAt(source: string, offset: number): Position {
@@ -487,11 +623,9 @@ interface DocumentSymbol {
   readonly children?: readonly DocumentSymbol[];
 }
 
-interface SymbolInformation {
-  readonly name: string;
-  readonly containerName?: string;
-  readonly location: { readonly uri: string; readonly range: Range };
-}
+interface CompletionItem { readonly label: string; readonly insertText?: string; readonly textEdit?: { readonly range: Range; readonly newText: string } }
+interface FoldingRange { readonly startLine: number; readonly endLine: number }
+interface SemanticTokens { readonly data: readonly number[] }
 
 interface LanguageServerSession {
   readonly connection: MessageConnection;

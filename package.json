@@ -17,9 +17,13 @@
     "packages/trust-ui"
   ],
   "scripts": {
-    "dev": "node scripts/server.ts start",
+    "dev": "node scripts/server.ts start --web",
+    "dev:runtime": "NODE_OPTIONS=--conditions=development CHOKIDAR_USEPOLLING=1 CHOKIDAR_INTERVAL=300 tsx watch --clear-screen=false --include \"${TRUST_DEV_WATCH_INCLUDE:-./packages/*/src/**/*.ts}\" packages/trust-runtime/src/index.ts",
+    "dev:types": "tsc -b --watch --preserveWatchOutput",
+    "dev:server": "concurrently --kill-others-on-fail --names types,runtime \"npm run dev:types\" \"npm run dev:runtime\"",
+    "dev:stack": "concurrently --kill-others-on-fail --names types,runtime,web \"npm run dev:types\" \"npm run dev:runtime\" \"npm run dev:web\"",
     "dev:web": "npm run dev --workspace=@trust/web",
-    "build": "npm run build --workspaces --if-present",
+    "build": "tsc -b && npm run build --workspace=@trust/ui && npm run build --workspace=@trust/web",
     "package:skill": "npm run package:skill --workspace=@trust/runner",
     "check:dependencies": "node scripts/check-workspace-dependencies.mjs",
     "typecheck": "npm run check:dependencies && npm run typecheck --workspaces --if-present",
@@ -29,6 +33,8 @@
     "start:web": "npm run preview --workspace=@trust/web"
   },
   "devDependencies": {
+    "concurrently": "^10.0.5",
+    "tsx": "^4.23.12",
     "typescript": "^5.7.2"
   }
 }

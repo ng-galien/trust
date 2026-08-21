@@ -11,6 +11,7 @@ import {
   parseGherkin,
   sourceLineRange,
   sourceValueRange,
+  SentenceCursor,
   tokenizeSentence,
   type Located,
   type SentenceToken,
@@ -18,6 +19,7 @@ import {
 import jsonata from "jsonata";
 
 import type { HttpQueryParameter } from "./http.js";
+import { operationLanguage } from "./language.js";
 import type {
   CompiledOperation,
   EnvironmentField,
@@ -41,11 +43,11 @@ import type {
   SourceRange,
 } from "./source.js";
 
-const OPERATION_TAG = "@operation:";
-const VERSION_TAG = "@version:";
-const TRUST_DSL_TAG = "@trust-dsl:";
-const TRUST_DSL_VERSION = "1";
-const CLASSIFICATION_TAG = "@x-";
+const OPERATION_TAG = operationLanguage.tags.operation;
+const VERSION_TAG = operationLanguage.tags.version;
+const TRUST_DSL_TAG = operationLanguage.tags.dsl;
+const TRUST_DSL_VERSION = operationLanguage.dslVersion;
+const CLASSIFICATION_TAG = operationLanguage.tags.classification;
 const CLASSIFICATION = /^@x-([a-z][a-z0-9]*(?:-[a-z0-9]+)*):([^\s:]+)$/;
 const OPERATION_NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*\.[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const FIELD_NAME = /^[a-z][A-Za-z0-9]*$/;
@@ -53,51 +55,13 @@ const SEMANTIC_VERSION = /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)$/;
 const SECRET_LIKE = /(?:^|[^a-z0-9])(?:sk-[a-z0-9_-]{8,}|gh[pousr]_[a-z0-9]{8,}|bearer\s+[a-z0-9._-]{8,})/i;
 const ENUM_DOMAIN = /^enum "[^"]+"(?:, "[^"]+")*$/;
 const ENUM_VALUE = /"([^"]+)"/g;
-const VALUE_TYPES = new Set<OperationValueType>([
-  "string",
-  "number",
-  "instant",
-  "reference",
-]);
-const JSONATA_NODE_TYPES = new Set([
-  "binary",
-  "block",
-  "condition",
-  "function",
-  "name",
-  "number",
-  "path",
-  "string",
-  "unary",
-  "value",
-  "variable",
-]);
-const JSONATA_FUNCTIONS = new Set([
-  "boolean",
-  "count",
-  "exists",
-  "lowercase",
-  "number",
-  "string",
-  "trim",
-  "uppercase",
-]);
-const JSONATA_BINARY_OPERATORS = new Set([
-  "!=",
-  "%",
-  "&",
-  "*",
-  "+",
-  "-",
-  "/",
-  "<",
-  "<=",
-  "=",
-  ">",
-  ">=",
-  "and",
-  "or",
-]);
+const VALUE_TYPES = new Set<OperationValueType>(operationLanguage.valueTypes);
+const ENVIRONMENT_TYPES = new Set<EnvironmentValueType>(operationLanguage.environmentTypes);
+const CARDINALITIES = new Set<"one" | "many">(operationLanguage.cardinalities);
+const JSONATA_NODE_TYPES = new Set<string>(operationLanguage.jsonata.nodeTypes);
+const JSONATA_FUNCTIONS = new Set<string>(operationLanguage.jsonata.functions);
+const JSONATA_BINARY_OPERATORS = new Set<string>(operationLanguage.jsonata.binaryOperators);
+const [STEPS_ROOT, INPUT_ROOT, ENVIRONMENT_ROOT] = operationLanguage.jsonata.roots;
 
 export class OperationCompilationError extends Error {
   constructor(
@@ -324,12 +288,12 @@ function readOperationDocument(
   for (const background of feature.children.flatMap((child) => child.background ? [child.background] : [])) {
     for (const step of background.steps) {
       const rows = step.dataTable?.rows.slice(1) ?? [];
-      if (step.text === "Environment") {
+      if (step.text === operationLanguage.phrases.environment) {
         for (const row of rows) {
           const nameCell = row.cells[0];
           const name = nameCell?.value.trim() ?? "";
           const type = row.cells[1]?.value.trim();
-          if (!nameCell || (type !== "directory" && type !== "url")) continue;
+          if (!nameCell || !isEnvironmentValueType(type)) continue;
           environment.push({
             name,
             type,
@@ -339,14 +303,13 @@ function readOperationDocument(
         }
         continue;
       }
-      if (step.text === "Input") {
+      if (step.text === operationLanguage.phrases.input) {
         for (const row of rows) {
           const nameCell = row.cells[0];
           const name = nameCell?.value.trim() ?? "";
           const type = row.cells[1]?.value.trim();
           const cardinality = row.cells[2]?.value.trim();
-          if (!nameCell || !isOperationValueType(type)
-            || (cardinality !== "one" && cardinality !== "many")) continue;
+          if (!nameCell || !isOperationValueType(type) || !isCardinality(cardinality)) continue;
           input.push({
             name,
             type,
@@ -357,7 +320,7 @@ function readOperationDocument(
         }
         continue;
       }
-      if (step.text === "Produced fields") {
+      if (step.text === operationLanguage.phrases.produced) {
         for (const row of rows) {
           const nameCell = row.cells[0];
           const name = nameCell?.value.trim() ?? "";
@@ -366,8 +329,7 @@ function readOperationDocument(
           const domain = isOperationValueType(type)
             ? readSourceDomain(row.cells[3]?.value.trim() ?? "", type)
             : undefined;
-          if (!nameCell || !isOperationValueType(type) || !domain
-            || (cardinality !== "one" && cardinality !== "many")) continue;
+          if (!nameCell || !isOperationValueType(type) || !domain || !isCardinality(cardinality)) continue;
           produced.push({
             name,
             type,
@@ -428,6 +390,14 @@ function isOperationValueType(value: string | undefined): value is OperationValu
   return value !== undefined && VALUE_TYPES.has(value as OperationValueType);
 }
 
+function isEnvironmentValueType(value: string | undefined): value is EnvironmentValueType {
+  return value !== undefined && ENVIRONMENT_TYPES.has(value as EnvironmentValueType);
+}
+
+function isCardinality(value: string | undefined): value is "one" | "many" {
+  return value !== undefined && CARDINALITIES.has(value as "one" | "many");
+}
+
 function tagValueRange(source: string, tag: Tag, prefix: string): SourceRange {
   return sourceValueRange(source, tag, tag.name.slice(prefix.length), prefix.length);
 }
@@ -449,7 +419,7 @@ function parseInterface(steps: readonly Step[], context: CompileContext): {
     if (keyword !== "Given" && keyword !== "And") {
       fail(context, "invalid-operation", "Operation interface must use Given or And", step);
     }
-    if (step.text === "Environment") {
+    if (step.text === operationLanguage.phrases.environment) {
       if (hasEnvironment) {
         fail(context, "invalid-operation", "Operation repeats Environment", step);
       }
@@ -461,14 +431,14 @@ function parseInterface(steps: readonly Step[], context: CompileContext): {
         if (environment.has(name)) {
           fail(context, "duplicate-environment", `Environment "${name}" is repeated`, row);
         }
-        if (type !== "directory" && type !== "url") {
+        if (!isEnvironmentValueType(type)) {
           fail(context, "invalid-operation", `Environment "${name}" has invalid type "${type}"`, row);
         }
         environment.set(name, { type });
       }
       continue;
     }
-    if (step.text === "Input") {
+    if (step.text === operationLanguage.phrases.input) {
       if (hasInputs) fail(context, "invalid-operation", "Operation repeats Input", step);
       hasInputs = true;
       for (const row of requireTable(step, ["input", "type", "cardinality"], context)) {
@@ -483,7 +453,7 @@ function parseInterface(steps: readonly Step[], context: CompileContext): {
       }
       continue;
     }
-    if (step.text === "Produced fields") {
+    if (step.text === operationLanguage.phrases.produced) {
       if (hasProduces) fail(context, "invalid-operation", "Operation repeats Produce fields", step);
       hasProduces = true;
       for (const row of requireTable(step, ["field", "type", "cardinality", "domain"], context)) {
@@ -770,7 +740,7 @@ function parseRun(
       continue;
     }
 
-    if (step.text === "Produce with JSONata") {
+    if (step.text === operationLanguage.phrases.produce) {
       if (step.keyword.trim() !== "Then" || step.dataTable || !step.docString) {
         fail(context, "unknown-step", "Produce with JSONata must use Then and one DocString", step);
       }
@@ -843,12 +813,15 @@ interface ParsedArgumentSource {
   readonly prefixed: boolean;
 }
 
-const ARGUMENT_SOURCE = /^(literal\s+\+\s+)?Input\s+"([a-z][A-Za-z0-9]*)"$/;
-
 /** `Input "<name>"` or `literal + Input "<name>"`. */
 function parseArgumentSource(source: string): ParsedArgumentSource | undefined {
-  const match = ARGUMENT_SOURCE.exec(source);
-  return match ? { input: match[2] ?? "", prefixed: match[1] !== undefined } : undefined;
+  const tokens = tryTokenize(source);
+  if (!tokens) return undefined;
+  const cursor = new SentenceCursor(tokens);
+  const prefixed = cursor.takeWords("literal", "+");
+  if (!cursor.takeText("Input")) return undefined;
+  const input = takeField(cursor);
+  return input && cursor.done ? { input, prefixed } : undefined;
 }
 
 function tryTokenize(source: string): readonly SentenceToken[] | undefined {
@@ -859,84 +832,17 @@ function tryTokenize(source: string): readonly SentenceToken[] | undefined {
   }
 }
 
-/** `Text` or `JSON` as a step format. */
-function formatOf(token: SentenceToken | undefined): "text" | "json" | undefined {
-  if (token?.kind !== "text" || (token.value !== "Text" && token.value !== "JSON")) return undefined;
-  return token.value.toLowerCase() as "text" | "json";
-}
-
-/** Sequential reader over one tokenized sentence: every `take…` consumes on success and stays put on failure. */
-class SentenceCursor {
-  readonly #tokens: readonly SentenceToken[];
-  #index = 0;
-
-  constructor(tokens: readonly SentenceToken[]) {
-    this.#tokens = tokens;
-  }
-
-  get done(): boolean {
-    return this.#index >= this.#tokens.length;
-  }
-
-  peek(): SentenceToken | undefined {
-    return this.#tokens[this.#index];
-  }
-
-  peekText(value: string): boolean {
-    const token = this.peek();
-    return token?.kind === "text" && token.value === value;
-  }
-
-  takeText(value: string): boolean {
-    if (!this.peekText(value)) return false;
-    this.#index += 1;
-    return true;
-  }
-
-  /** Every listed word, in order. */
-  takeWords(...values: readonly string[]): boolean {
-    const start = this.#index;
-    if (values.every((value) => this.takeText(value))) return true;
-    this.#index = start;
-    return false;
-  }
-
-  /** Any quoted value, empty included. */
-  takeLiteral(): string | undefined {
-    const token = this.peek();
-    if (token?.kind !== "quoted") return undefined;
-    this.#index += 1;
-    return token.value;
-  }
-
-  /** A non-empty quoted value. */
-  takeQuoted(): string | undefined {
-    const token = this.peek();
-    if (token?.kind !== "quoted" || token.value.length === 0) return undefined;
-    this.#index += 1;
-    return token.value;
-  }
-
-  /** A quoted lower camel case name. */
-  takeField(): string | undefined {
-    const token = this.peek();
-    if (token?.kind !== "quoted" || !FIELD_NAME.test(token.value)) return undefined;
-    this.#index += 1;
-    return token.value;
-  }
-
-  takeFormat(): "text" | "json" | undefined {
-    const format = formatOf(this.peek());
-    if (format) this.#index += 1;
-    return format;
-  }
-}
+const takeField = (cursor: SentenceCursor): string | undefined => cursor.takeQuoted((value) => FIELD_NAME.test(value));
+const takeFormat = (cursor: SentenceCursor): "text" | "json" | undefined => {
+  const format = cursor.takeOneOf(operationLanguage.formats);
+  return format?.toLowerCase() as "text" | "json" | undefined;
+};
 
 /** Optional `and Input "<name>"` closing a `from Environment` clause; `undefined` when absent, `null` when malformed. */
 function takeAppendInput(cursor: SentenceCursor): string | undefined | null {
   if (cursor.done) return undefined;
   if (!cursor.takeWords("and", "Input")) return null;
-  const input = cursor.takeField();
+  const input = takeField(cursor);
   return input && cursor.done ? input : null;
 }
 
@@ -946,7 +852,7 @@ function parseRunStepSentence(source: string): ParsedRunStepSentence | undefined
   const cursor = new SentenceCursor(tokens);
 
   if (cursor.takeText("Shell")) {
-    const name = cursor.takeField();
+    const name = takeField(cursor);
     if (!name) return undefined;
     if (cursor.takeText("accepts")) {
       return cursor.takeText("exits") && cursor.done ? { type: "shell-exits", name } : undefined;
@@ -954,7 +860,7 @@ function parseRunStepSentence(source: string): ParsedRunStepSentence | undefined
     if (!cursor.takeText("runs")) return undefined;
     const executable = cursor.takeQuoted();
     if (!executable || !cursor.takeWords("with", "cwd", "from", "Environment")) return undefined;
-    const environment = cursor.takeField();
+    const environment = takeField(cursor);
     if (!environment) return undefined;
     const appendInput = takeAppendInput(cursor);
     if (appendInput === null) return undefined;
@@ -962,13 +868,13 @@ function parseRunStepSentence(source: string): ParsedRunStepSentence | undefined
   }
 
   if (cursor.takeText("File")) {
-    const name = cursor.takeField();
+    const name = takeField(cursor);
     if (!name || !cursor.takeText("reads")) return undefined;
     const path = cursor.takeQuoted();
     if (!path || !cursor.takeText("as")) return undefined;
-    const format = cursor.takeFormat();
+    const format = takeFormat(cursor);
     if (!format || !cursor.takeWords("from", "Environment")) return undefined;
-    const environment = cursor.takeField();
+    const environment = takeField(cursor);
     if (!environment) return undefined;
     const appendInput = takeAppendInput(cursor);
     if (appendInput === null) return undefined;
@@ -976,11 +882,11 @@ function parseRunStepSentence(source: string): ParsedRunStepSentence | undefined
   }
 
   if (cursor.takeText("HTTP")) {
-    const name = cursor.takeField();
+    const name = takeField(cursor);
     if (!name) return undefined;
     if (cursor.takeText("gets")) return parseHttpGetSentence(cursor, name);
     if (!cursor.takeText("posts")) return undefined;
-    const environment = cursor.takeWords("Input", "as", "JSON", "to", "Environment") ? cursor.takeField() : undefined;
+    const environment = cursor.takeWords("Input", "as", "JSON", "to", "Environment") ? takeField(cursor) : undefined;
     if (environment && cursor.takeWords("and", "reads", "JSON") && cursor.done) {
       return { type: "http-post", name, environment };
     }
@@ -1003,13 +909,13 @@ function parseHttpGetSentence(cursor: SentenceCursor, name: string): ParsedHttpG
   const malformed = (reason: string): ParsedHttpGetSentence => ({ type: "http-malformed", name, reason });
 
   if (!cursor.takeText("Environment")) return malformed(`sentence must be: ${expected}`);
-  const environment = cursor.takeField();
+  const environment = takeField(cursor);
   if (!environment) return malformed(`sentence must be: ${expected}`);
 
   const appendInputs: string[] = [];
   if (cursor.takeText("appending")) {
     do {
-      const input = cursor.takeText("Input") ? cursor.takeField() : undefined;
+      const input = cursor.takeText("Input") ? takeField(cursor) : undefined;
       if (!input) return malformed(`appending expects Input "<name>" [and Input "<name>"]…`);
       appendInputs.push(input);
     } while (cursor.takeText("and"));
@@ -1021,13 +927,13 @@ function parseHttpGetSentence(cursor: SentenceCursor, name: string): ParsedHttpG
     const parameterName = cursor.takeQuoted();
     if (!parameterName) return malformed(`with query expects a non-empty "<name>"`);
     if (cursor.takeText("from")) {
-      const input = cursor.takeText("Input") ? cursor.takeField() : undefined;
+      const input = cursor.takeText("Input") ? takeField(cursor) : undefined;
       if (!input) return malformed(`with query "${parameterName}" from expects Input "<name>"`);
       query.push({ name: parameterName, input });
       continue;
     }
     if (cursor.takeText("as")) {
-      const value = cursor.takeLiteral();
+      const value = cursor.takeQuoted(() => true);
       if (value === undefined) return malformed(`with query "${parameterName}" as expects one quoted literal`);
       query.push({ name: parameterName, value });
       continue;
@@ -1039,7 +945,7 @@ function parseHttpGetSentence(cursor: SentenceCursor, name: string): ParsedHttpG
     return malformed(`appending must precede with query: ${expected}`);
   }
   if (!cursor.takeText("as")) return malformed(`sentence must end with as Text|JSON: ${expected}`);
-  const format = cursor.takeFormat();
+  const format = takeFormat(cursor);
   if (!format) return malformed(`sentence must end with as Text|JSON: ${expected}`);
   const formatWord = format === "text" ? "Text" : "JSON";
   if (!cursor.done) {
@@ -1056,7 +962,7 @@ function parseCardinality(
   context: CompileContext,
   located: Located,
 ): "one" | "many" {
-  if (value !== "one" && value !== "many") {
+  if (!isCardinality(value)) {
     fail(context, "invalid-operation", `Cardinality "${value}" must be one or many`, located);
   }
   return value;
@@ -1202,17 +1108,13 @@ function validateProduce(
       .filter((value): value is string => typeof value === "string");
     const [root, field, result] = names;
 
-    if (root === "steps") {
+    if (root === STEPS_ROOT) {
       const step = steps.find((candidate) => candidate.name === field);
       if (!field || !step) {
         fail(context, "invalid-operation", `Produce references unknown Operation step "${field ?? ""}"`);
       }
-      const allowed = step.type === "shell"
-        ? ["exitCode", "stdout", "stderr"]
-        : step.type === "file-read"
-          ? ["relativePath", "content"]
-          : ["status", "headers", "body"];
-      if (!result || !allowed.includes(result)) {
+      const allowed = operationLanguage.stepResults[step.type];
+      if (!result || !(allowed as readonly string[]).includes(result)) {
         fail(context, "invalid-operation", `Produce references unknown ${step.type} result "${result ?? ""}"`);
       }
       if (step.type === "shell" && names.length > 3) {
@@ -1232,7 +1134,7 @@ function validateProduce(
       }
       return;
     }
-    if (root === "input") {
+    if (root === INPUT_ROOT) {
       if (!field || !Object.hasOwn(input, field)) {
         fail(context, "invalid-operation", `Produce references unknown Input field "${field ?? ""}"`);
       }
@@ -1241,7 +1143,7 @@ function validateProduce(
       }
       return;
     }
-    if (root === "environment") {
+    if (root === ENVIRONMENT_ROOT) {
       if (!field || !Object.hasOwn(environment, field)) {
         fail(context, "invalid-operation", `Produce references unknown Environment field "${field ?? ""}"`);
       }

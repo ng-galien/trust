@@ -71,3 +71,70 @@ export function tokenizeSentence(source: string): readonly SentenceToken[] {
   }
   return tokens;
 }
+
+/** Shared sequential reader for sentences already tokenized by the Gherkin authority. */
+export class SentenceCursor {
+  #index = 0;
+
+  constructor(
+    readonly tokens: readonly SentenceToken[],
+    readonly reject?: (expectation: string) => never,
+  ) {}
+
+  get done(): boolean { return this.#index >= this.tokens.length; }
+  peek(): SentenceToken | undefined { return this.tokens[this.#index]; }
+
+  peekText(value: string): boolean {
+    const token = this.peek();
+    return token?.kind === "text" && token.value === value;
+  }
+
+  takeText(value: string): boolean {
+    if (!this.peekText(value)) return false;
+    this.#index += 1;
+    return true;
+  }
+
+  takeWords(...values: readonly string[]): boolean {
+    const start = this.#index;
+    if (values.every((value) => this.takeText(value))) return true;
+    this.#index = start;
+    return false;
+  }
+
+  takeOneOf(values: readonly string[]): string | undefined {
+    const token = this.peek();
+    if (token?.kind !== "text" || !values.includes(token.value)) return undefined;
+    this.#index += 1;
+    return token.value;
+  }
+
+  takeQuoted(accept: (value: string) => boolean = (value) => value.length > 0): string | undefined {
+    const token = this.peek();
+    if (token?.kind !== "quoted" || !accept(token.value)) return undefined;
+    this.#index += 1;
+    return token.value;
+  }
+
+  requireText(value: string): void {
+    if (!this.takeText(value)) this.failure(`Expected ${value}`);
+  }
+
+  requireOneOf(values: readonly string[]): string {
+    return this.takeOneOf(values) ?? this.failure(`Expected one of: ${values.join(", ")}`);
+  }
+
+  requireQuoted(): string {
+    return this.takeQuoted() ?? this.failure("Expected a quoted value");
+  }
+
+  private failure(expectation: string): never {
+    if (this.reject) return this.reject(expectation);
+    throw new SentenceSyntaxError(expectation, this.peek()?.start ?? this.tokens.at(-1)?.end ?? 0);
+  }
+}
+
+export const isExpressionIdentifierStart = (character: string): boolean => character === "_" || character === "$"
+  || (character >= "A" && character <= "Z") || (character >= "a" && character <= "z");
+export const isExpressionIdentifierPart = (character: string): boolean => isExpressionIdentifierStart(character)
+  || (character >= "0" && character <= "9");

@@ -1,4 +1,6 @@
 import {
+  evaluateOperationProjection,
+  operationProjectionContext,
   renderHttpUrl,
   renderShellArgument,
   validateCompiledOperation,
@@ -13,7 +15,6 @@ import { type DiagnosticsSink, now, nullSink, type StepReporter, summarizeValue 
 import { runFileRead } from "../file-read/run.js";
 import { runHttp } from "../http/run.js";
 import { isJsonObject, type JsonObject, type JsonValue } from "../lib/json.js";
-import { transformJsonata } from "../lib/jsonata.js";
 import { runShell } from "../shell/run.js";
 
 export interface OperationResult {
@@ -56,11 +57,10 @@ export async function runOperation(
       }
     }
 
-    const producedValue = await transformJsonata(operation.produce.expression, {
-      input,
-      environment,
-      steps,
-    });
+    const producedValue = await evaluateOperationProjection(
+      operation.produce.expression,
+      operationProjectionContext(input, environment, steps),
+    );
     validateOperationProduced(operation, producedValue);
     const produced = jsonObject(producedValue, "Operation Produced values");
     diagnostics.emit({ type: "operation.end", at: now(), ok: true, durationMs: Date.now() - startedAt, produced, steps });

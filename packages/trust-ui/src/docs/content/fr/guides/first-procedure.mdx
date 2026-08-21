@@ -1,6 +1,6 @@
 ---
 title: "Écrire et publier une Procédure"
-summary: "De Nouvelle procédure à une version publiée — rôles de contexte, Scénarios, Checks, attentes, graphe."
+summary: "De Nouvelle procédure à une version publiée — rôles de contexte, Scénarios, Checks, qualifications, graphe."
 order: 2
 ---
 
@@ -9,8 +9,8 @@ order: 2
   <Step title="La nommer">Renseignez `@procedure:<slug>` et `@version:1.0.0` ; gardez `@trust-dsl:1`. Donnez-lui un titre et, dessous, quelques lignes décrivant ce qu'elle établit.</Step>
   <Step title="Déclarer le contexte">Dans `Background: Plan context`, une ligne par rôle : ce qu'un engagement doit donner (`Given one reference "project"`), ce qu'un Check remplira plus tard (`And one reference "fix revision" for "project"`), ce que l'agent déclare, ce qui est fixe.</Step>
   <Step title="Écrire le premier Scénario">`@scenario:<slug>`, un titre, puis un Check : `Then Check "…" runs Operation "…" on "<role>" as Input "<input>" … and must establish "…"`. Utilisez la complétion **Check** ou **Use `<operation>`** : les noms d'Opération viennent du catalogue.</Step>
-  <Step title="Écrire les attentes">Une ligne par champ produit à tester : `field · relation · expectation · failure reason`. Terminez par `And the Scenario is satisfied when every Check is validated`.</Step>
-  <Step title="Enchaîner les Scénarios">Scénario suivant : `Given scenario "<slug>" is validated` d'abord, puis ses Checks. Liez des valeurs de Checks antérieurs avec `using "<role>"` (rôles matérialisés) ou des attentes `field "…" from Check "…"`.</Step>
+  <Step title="Écrire la qualification">Attachez un DocString `js` au Check. Écrivez chaque garde sous la forme `condition || fail(reason)` ; joignez les gardes indépendantes avec `&&`.</Step>
+  <Step title="Enchaîner les Scénarios">Scénario suivant : `Given scenario "<slug>" is validated` d'abord, puis ses Checks. Liez les rôles matérialisés avec `using "<role>"` ; lisez un Check antérieur par `checks["<check>"].field` dans la qualification.</Step>
   <Step title="Lire le graphe">Onglet Graphe : vérifiez les liens d'ordre et les liens de données en pointillés ; sélectionnez un Check pour voir ce dont il a besoin et ce qu'il réinitialiserait.</Step>
   <Step title="Simuler, puis publier">Onglet Simuler pour jouer l'ordre des Scénarios. **Publier** stocke la version ; un Plan ou un dry-run peut être engagé depuis elle.</Step>
 </Steps>

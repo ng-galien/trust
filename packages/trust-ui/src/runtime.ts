@@ -67,6 +67,15 @@ export class RuntimeError extends Error {
 export class TrustRuntimeClient {
   constructor(readonly baseUrl: string) {}
 
+  languageServerUrl = (): string => {
+    const base = new URL(this.baseUrl || window.location.origin, window.location.origin);
+    base.protocol = base.protocol === "https:" ? "wss:" : "ws:";
+    base.pathname = `${base.pathname.replace(/\/$/, "")}/lsp`;
+    base.search = "";
+    base.hash = "";
+    return base.toString();
+  };
+
   async call<T>(method: string, params: JsonObject = {}): Promise<T> {
     const response = await fetch(`${this.baseUrl}/rpc`, {
       method: "POST",

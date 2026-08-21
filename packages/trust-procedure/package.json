@@ -8,22 +8,34 @@
   },
   "exports": {
     ".": {
-      "types": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "development": "./src/index.ts",
       "import": "./dist/index.js"
+    },
+    "./language": {
+      "types": "./dist/language.d.ts",
+      "development": "./src/language.ts",
+      "import": "./dist/language.js"
     }
   },
-  "files": ["src", "dist"],
+  "files": [
+    "src",
+    "dist"
+  ],
   "scripts": {
-    "prebuild": "npm run build --workspace=@trust/operation",
-    "build": "npm run clean && tsc -p tsconfig.json",
+    "build": "tsc -b tsconfig.json",
     "clean": "node --input-type=module -e \"import { rmSync } from 'node:fs'; rmSync('dist', { recursive: true, force: true })\"",
     "test:acceptance": "npm run build && vitest run acceptance",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.acceptance.json"
   },
   "dependencies": {
     "@cucumber/messages": "^31.0.0",
+    "@jsep-plugin/arrow": "^1.0.6",
+    "@jsep-plugin/template": "^1.0.5",
     "@trust/gherkin": "file:../trust-gherkin",
     "@trust/operation": "file:../trust-operation",
+    "jsep": "^1.4.0",
+    "json-logic-engine": "^5.0.7",
     "jsonata": "^2.2.1"
   },
   "devDependencies": {

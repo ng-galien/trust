@@ -13,7 +13,7 @@ TRUST runs software tasks operated by agents under a compliance rule: **the agen
 ## In short
 
 - An <Term id="operation">Operation</Term> describes one call to an external system and the typed fields it returns.
-- A <Term id="procedure">Procedure</Term> assembles Operations into Scenarios and Checks, each Check with the expectations that make it validated.
+- A <Term id="procedure">Procedure</Term> assembles Operations into Scenarios and Checks, each Check with the typed qualification that makes it validated.
 - Engaging a Procedure with concrete inputs in an <Term id="environment">Environment</Term> creates a <Term id="plan">Plan</Term>.
 - The agent reads the Plan and hands one Check at a time to the <Term id="runner">Runner</Term> shipped with the TRUST skill. The Runner performs the Operation and reports the Facts.
 - TRUST qualifies the Facts and returns a <Term id="verdict">verdict</Term> with a reason. New Facts on a Check reopen every Check that depends on it; the agent resumes from a consistent state.

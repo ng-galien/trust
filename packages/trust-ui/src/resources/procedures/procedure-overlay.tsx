@@ -27,7 +27,7 @@ import { PlansMark } from "./procedures-home.js";
 
 type Tab = "overview" | "source" | "dag" | "simulation" | "contract";
 const TABS: readonly Tab[] = ["overview", "source", "dag", "simulation", "contract"];
-/** The Contract JSON tab is expert-only: in operator mode a `?tab=contract` URL falls back to the default tab. */
+/** The Compiled JSON tab is expert-only: in operator mode a `?tab=contract` URL falls back to the default tab. */
 const OPERATOR_TABS: readonly Tab[] = TABS.filter((tab) => tab !== "contract");
 
 export function ProcedureOverlay({ mode = "item" }: { mode?: "item" | "new" }) {
@@ -168,7 +168,7 @@ export function ProcedureOverlay({ mode = "item" }: { mode?: "item" | "new" }) {
     >
       {tab === "overview" ? <ProcedureOverview compiled={compiled} error={compileError?.detail} /> : null}
       {tab === "source" ? (
-        <GherkinEditor kind="procedure" value={source} onChange={setDraft} theme={theme} markers={markers} fontSize={editorFontSize} operations={operations.data?.map((operation) => operation.operation)} />
+        <GherkinEditor kind="procedure" value={source} onChange={setDraft} theme={theme} languageServerUrl={runtime.languageServerUrl()} markers={markers} fontSize={editorFontSize} />
       ) : null}
       {tab === "dag" ? (
         compiled ? (

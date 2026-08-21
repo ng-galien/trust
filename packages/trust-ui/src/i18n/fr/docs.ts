@@ -57,6 +57,14 @@ export const docs: Translation<typeof en> = {
     warning: "Attention",
     rule: "Règle",
   },
+  language: {
+    roots: "Racines",
+    operators: "Opérateurs",
+    functions: "Fonctions",
+    math: "Fonctions Math",
+    collections: "Méthodes de collection",
+    strings: "Méthodes de chaîne",
+  },
   figures: {
     model: {
       alt: "Le modèle TRUST : les objets écrits en haut, ce que produit un Plan qui tourne en bas",
@@ -69,7 +77,7 @@ export const docs: Translation<typeof en> = {
       scenario: "Scénario",
       scenarioSub: "satisfait quand chaque Check est validé",
       check: "Check",
-      checkSub: "exécute une Opération sur une cible · prédicats",
+      checkSub: "exécute une Opération sur une cible · qualification",
       usedBy: "utilisée par",
       engagedAs: "engagée comme",
       plan: "Plan",
@@ -111,7 +119,7 @@ export const docs: Translation<typeof en> = {
   glossary: {
     label: "Glossaire",
     operation: { term: "Opération", definition: "La description d'un appel à un système externe : son Input typé, les valeurs d'Environnement dont il a besoin, des étapes Shell, File ou HTTP ordonnées et les champs exacts qu'il produit. Elle ne qualifie jamais rien." },
-    check: { term: "Check", definition: "Une question à laquelle un Plan doit répondre : l'exécution nommée d'une Opération sur une cible, qualifiée par des prédicats. Un Check est OPEN ou SATISFIED." },
+    check: { term: "Check", definition: "Une question à laquelle un Plan doit répondre : l'exécution nommée d'une Opération sur une cible, qualifiée par des gardes typées. Un Check est OPEN ou SATISFIED." },
     scenario: { term: "Scénario", definition: "Un groupe de Checks satisfait quand chaque Check est validé. Un Scénario peut exiger d'autres Scénarios avant lui." },
     procedure: { term: "Procédure", definition: "Une définition Gherkin publiée et versionnée d'un Plan : rôles de contexte typés, Scénarios et Checks liés à des Opérations. Une version publiée ne change jamais." },
     plan: { term: "Plan", definition: "Un engagement d'une Procédure avec des entrées concrètes dans un Environnement. Il porte la révision courante de ses Checks et de leurs verdicts." },
@@ -119,7 +127,7 @@ export const docs: Translation<typeof en> = {
     attempt: { term: "Tentative", definition: "Une exécution admise de l'Opération d'un Check — par le Runner sur un Plan live, par l'opérateur sur un dry-run." },
     fact: { term: "Fact", definition: "Une observation typée renvoyée par une exécution. Un lot complet de Facts est ce qui qualifie un Check ; un lot incomplet est rejeté en bloc." },
     verdict: { term: "Verdict", definition: "Le résultat de la qualification : le Check est validé ou non, avec une raison exploitable par l'agent." },
-    qualification: { term: "Qualification", definition: "L'application des prédicats compilés d'un Check aux Facts acceptés pour calculer son verdict. Seul TRUST qualifie ; ni le Runner ni l'agent." },
+    qualification: { term: "Qualification", definition: "L'évaluation des gardes typées d'un Check sur les Facts acceptés pour calculer son verdict et sa raison. Seul TRUST qualifie ; ni le Runner ni l'agent." },
     cascade: { term: "Cascade", definition: "De nouveaux Facts sur un Check le recalculent et rouvrent tous les Checks qui en dépendent, via les prérequis de Scénario et les références de champs." },
     environment: { term: "Environnement", definition: "Un contexte d'exécution nommé : valeurs de répertoires et d'URL plus des références de credentials. Le Runner reçoit ses valeurs à l'admission ; l'interface connaît un Environnement courant." },
     credential: { term: "Credential", definition: "Un secret stocké en écriture seule par le runtime et référencé par un Environnement. Il n'est jamais affiché ni injecté pendant un dry-run." },

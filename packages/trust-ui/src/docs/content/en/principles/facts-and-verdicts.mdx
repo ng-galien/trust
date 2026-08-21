@@ -8,13 +8,13 @@ order: 3
 
 A **Fact** is one typed observation: a produced field of an Operation with its value, reported by one execution. On a live Plan the Runner reports them after running the Operation; on a dry-run the operator types them.
 
-A Check is qualified from a **complete batch**: every field its expectations name, and every field it materializes, must be present. An incomplete batch is **rejected as a whole** — no Fact, no record, no verdict, no change to the Plan. The execution may be repeated; that is the normal answer to a rejection.
+A Check is qualified from a **complete batch**: every field declared by its Operation's Product Action Contract must be present. An incomplete batch is **rejected as a whole** — no Fact, no record, no verdict, no change to the Plan. The execution may be repeated; that is the normal answer to a rejection.
 
 Identical Facts submitted twice give the same record once: TRUST deduplicates the batch, the record and the verdict.
 
 ## Verdicts
 
-The expectations of the Check are evaluated in table order against the Facts and the current Plan context.
+The qualification guards are evaluated in source order against the Facts and the current Plan context.
 
 - All rows hold → **validated**, with the Check's success reason.
 - A row fails → **not validated**, with that row's failure reason.
@@ -27,7 +27,7 @@ New accepted Facts on a Check recompute its verdict and **reopen every Check tha
 
 - the Checks of Scenarios that require its Scenario;
 - the Checks that use a role it materializes;
-- the Checks whose expectations compare with one of its fields.
+- the Checks whose qualification references one of its fields.
 
 Reopened Checks return to *open*; their previous verdicts stay in the history. The agent resumes from any Check whose dependencies are satisfied.
 

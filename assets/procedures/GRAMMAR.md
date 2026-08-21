@@ -72,36 +72,35 @@ compiled Operation.
 A materialization names both its Plan role and its Operation field. There is no implicit output,
 binding or registry lookup.
 
-Every Check has this exact table:
+Every Check has exactly one `js` DocString attached to its Check step:
 
 ```gherkin
-| field       | relation | expectation   | failure reason             |
-| workingTree | equals   | value "clean" | "the repository is not clean" |
+"""js
+fact.workingTree === "clean" ||
+fail(`The working tree is ${fact.workingTree}`)
+"""
 ```
 
-Relations are `equals`, `at least`, `has at least`, `is in`, `before` and `after`.
-Expectations are:
+One guard is `booleanExpression || fail(stringExpression)`. Independent guards join with `&&` and
+retain source order. The expression sees only:
 
-```text
-value "clean"
-number 1
-valid rfc3339
-context "fix revision"
-field "builtRevision" from Check "Docker image"
-```
+- `fact.<field>` for the current Check's Produced values;
+- `context.<role>` or `context["natural role name"]` for visible Plan roles;
+- `checks.<check>.<field>` or bracket access for Produced values of prerequisite Checks.
+
+The compiler accepts a closed expression surface: finite literals and homogeneous arrays; strict
+comparisons; arithmetic; boolean and ternary operators; template strings; the documented `Math`,
+array and string methods. It rejects assignments, statements, mutation, arbitrary calls, host APIs
+and dynamic properties. JSEP parses the expression, TRUST resolves and statically types it, and the
+compiler emits canonical JSON Logic guards. JavaScript source is never executed.
 
 An upstream Check field or a materialized context value must come from a prerequisite Scenario.
-Types and cardinalities must match.
-
-Every Scenario ends exactly with:
-
-```gherkin
-And the Scenario is satisfied when every Check is validated
-```
+Names, types and cardinalities must match. Every Scenario contains at least one Check; its
+satisfaction follows from the state of those Checks and requires no closing step.
 
 ## Compiled revision
 
-The compiler emits `trust.compiled-procedure@3` with roles, Scenarios, Checks, deterministic
+The compiler emits the current Procedure structure with roles, Scenarios, Checks, deterministic
 digests and the exact `CompiledOperation` definitions used by the Procedure. Source formatting,
 comments and JSONata formatting do not change an Operation digest; a semantic Operation change
 does.

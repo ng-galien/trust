@@ -140,7 +140,7 @@ The digest is calculated and verified by TRUST; exposing it as an authored Gherk
 separate product choice and is not required to select an exact published version.
 
 **Product owner decision required:** choose where the exact child version is authored. Every example
-and the compiled contract must then use that one form consistently.
+and the compiled structure must then use that one form consistently.
 
 ### Bindings and materialization
 
@@ -215,7 +215,7 @@ published children or whether the public compiler accepts a multi-Procedure comp
 Compilation must reject:
 
 - an unknown child Procedure or exact version;
-- a child whose persisted digest or contract is inconsistent;
+- a child whose persisted digest or definition is inconsistent;
 - a recursive composition cycle, direct or transitive;
 - missing, duplicate or extra Input bindings;
 - incompatible types, cardinalities or substituted parent topology;
@@ -225,8 +225,7 @@ Compilation must reject:
 - consumption of a Result before the provider Scenario is a transitive prerequisite;
 - duplicate runtime identity after canonical path construction.
 
-This is a replacement compiled contract and requires a new `trust.compiled-procedure` version. No
-compatibility adapter is implied.
+The compiler emits the composed Procedure structure described here.
 
 ## Embedded Operation identity
 

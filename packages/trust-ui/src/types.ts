@@ -29,9 +29,22 @@ export interface ProcedureCheck {
   target?: { role: string; selection: string };
   inputBindings?: Array<{ input: string; role: string; selection: string }>;
   materializes?: Array<{ role: string; field: string }>;
-  predicates: Array<{ field: string; relation: string; expectation: JsonObject; failureReason: string }>;
+  qualification: {
+    source: string;
+    guards: Array<{
+      conditionLogic: JsonLogicRule;
+      failureReasonLogic: JsonLogicRule;
+      references: Array<
+        ({ kind: "fact"; field: string } | { kind: "context"; role: string } | { kind: "check"; check: string; field: string })
+        & { valueType: string; cardinality: "one" | "many" }
+      >;
+    }>;
+    location: { line: number; column: number };
+  };
   successReason: string;
 }
+
+export type JsonLogicRule = null | boolean | number | string | JsonLogicRule[] | { [operator: string]: JsonLogicRule };
 
 export interface ProcedureScenario {
   slug: string;
@@ -41,7 +54,6 @@ export interface ProcedureScenario {
 }
 
 export interface CompiledProcedure {
-  contract: "trust.compiled-procedure@3";
   procedure: string;
   version: string;
   title: string;

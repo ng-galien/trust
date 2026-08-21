@@ -8,13 +8,13 @@ order: 3
 
 Un **Fact** est une observation typée : un champ produit d'une Opération avec sa valeur, rapporté par une exécution. Sur un Plan live, le Runner les rapporte après avoir exécuté l'Opération ; sur un dry-run, l'opérateur les saisit.
 
-Un Check est qualifié à partir d'un **lot complet** : chaque champ nommé par ses attentes, et chaque champ qu'il matérialise, doivent être présents. Un lot incomplet est **rejeté en entier** — pas de Fact, pas d'enregistrement, pas de verdict, aucun changement du Plan. L'exécution peut être répétée ; c'est la réponse normale à un rejet.
+Un Check est qualifié à partir d'un **lot complet** : chaque champ déclaré par le Product Action Contract de son Opération doit être présent. Un lot incomplet est **rejeté en entier** — pas de Fact, pas d'enregistrement, pas de verdict, aucun changement du Plan. L'exécution peut être répétée ; c'est la réponse normale à un rejet.
 
 Des Facts identiques soumis deux fois donnent le même enregistrement une seule fois : TRUST déduplique le lot, l'enregistrement et le verdict.
 
 ## Verdicts
 
-Les attentes du Check sont évaluées dans l'ordre du tableau au regard des Facts et du contexte courant du Plan.
+Les gardes de qualification du Check sont évaluées dans l'ordre de la source au regard des Facts et du contexte courant du Plan.
 
 - Toutes les lignes tiennent → **validé**, avec la raison de succès du Check.
 - Une ligne échoue → **non validé**, avec la raison d'échec de cette ligne.
@@ -27,7 +27,7 @@ De nouveaux Facts acceptés sur un Check recalculent son verdict et **rouvrent c
 
 - les Checks des Scénarios qui requièrent son Scénario ;
 - les Checks qui utilisent un rôle qu'il matérialise ;
-- les Checks dont les attentes comparent avec l'un de ses champs.
+- les Checks dont la qualification référence l'un de ses champs.
 
 Les Checks rouverts reviennent à *ouvert* ; leurs verdicts précédents restent dans l'historique. L'agent reprend depuis n'importe quel Check dont les dépendances sont satisfaites.
 

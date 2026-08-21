@@ -54,6 +54,14 @@ export const docs = {
     warning: "Careful",
     rule: "Rule",
   },
+  language: {
+    roots: "Roots",
+    operators: "Operators",
+    functions: "Functions",
+    math: "Math functions",
+    collections: "Collection methods",
+    strings: "String methods",
+  },
   figures: {
     model: {
       alt: "The TRUST model: authored objects on top, what a running Plan produces below",
@@ -66,7 +74,7 @@ export const docs = {
       scenario: "Scenario",
       scenarioSub: "satisfied when every Check is validated",
       check: "Check",
-      checkSub: "runs one Operation on a target · predicates",
+      checkSub: "runs one Operation on a target · qualification",
       usedBy: "used by",
       engagedAs: "engaged as",
       plan: "Plan",
@@ -108,7 +116,7 @@ export const docs = {
   glossary: {
     label: "Glossary",
     operation: { term: "Operation", definition: "The description of one call to an external system: its typed Input, the Environment values it needs, ordered Shell, File or HTTP steps and the exact fields it produces. It never qualifies anything." },
-    check: { term: "Check", definition: "One question a Plan must answer: a named run of an Operation on a target, qualified by predicates. A Check is either OPEN or SATISFIED." },
+    check: { term: "Check", definition: "One question a Plan must answer: a named run of an Operation on a target, qualified by typed guards. A Check is either OPEN or SATISFIED." },
     scenario: { term: "Scenario", definition: "A group of Checks that is satisfied when every Check is validated. A Scenario can require other Scenarios first." },
     procedure: { term: "Procedure", definition: "A published, versioned Gherkin definition of a Plan: typed context roles, Scenarios and Checks bound to Operations. A published version never changes." },
     plan: { term: "Plan", definition: "One engagement of a Procedure with concrete inputs in one Environment. It carries the current revision of its Checks and their verdicts." },
@@ -116,7 +124,7 @@ export const docs = {
     attempt: { term: "Attempt", definition: "One admitted execution of a Check's Operation — by the Runner on a live Plan, by the operator on a dry-run." },
     fact: { term: "Fact", definition: "One typed observation returned by an execution. A complete Fact batch is what qualifies a Check; an incomplete batch is rejected as a whole." },
     verdict: { term: "Verdict", definition: "The result of qualification: the Check is validated or not, with a reason the agent can act on." },
-    qualification: { term: "Qualification", definition: "Applying the compiled predicates of a Check to accepted Facts to compute its verdict. Only TRUST qualifies; the Runner and the agent never do." },
+    qualification: { term: "Qualification", definition: "Evaluating the typed guards of a Check against accepted Facts to compute its verdict and reason. Only TRUST qualifies; the Runner and the agent never do." },
     cascade: { term: "Cascade", definition: "New Facts on one Check recompute it and reopen every Check that depends on it, through Scenario prerequisites and field references." },
     environment: { term: "Environment", definition: "A named execution context: directory and URL values plus credential references. The Runner receives its values at admission; the interface knows one current Environment." },
     credential: { term: "Credential", definition: "A secret stored write-only by the runtime and referenced by an Environment. It is never displayed nor injected during a dry-run." },

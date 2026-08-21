@@ -413,7 +413,7 @@ function resolveActionInput(
 }
 
 /** Roles a Check depends on: its target and the target's lineage, the roles bound to its inputs,
-    the roles its predicates compare against, and the parents of the roles it materializes. */
+    the roles referenced by its qualification, and the parents of the roles it materializes. */
 function consumedContext(
   compiledCheck: CompiledProcedure["checks"][number],
   roles: readonly CompiledProcedureRole[],
@@ -422,8 +422,10 @@ function consumedContext(
 ): RuntimeJsonObject {
   const names = new Set<string>([compiledCheck.target.role, ...Object.keys(scope.parents)]);
   for (const binding of compiledCheck.inputBindings) names.add(binding.role);
-  for (const predicate of compiledCheck.predicates) {
-    if (predicate.expectation.kind === "context") names.add(predicate.expectation.role);
+  for (const guard of compiledCheck.qualification.guards) {
+    for (const reference of guard.references) {
+      if (reference.kind === "context") names.add(reference.role);
+    }
   }
   for (const production of compiledCheck.materializes) {
     const role = roles.find((candidate) => candidate.name === production.role);
@@ -444,7 +446,7 @@ function contextForTarget(
     );
     const selected = related.length > 0
       ? related
-      : candidates.length === 1 && Object.keys(candidates[0]!.parents).length === 0
+      : candidates.length > 0 && candidates.every((candidate) => Object.keys(candidate.parents).length === 0)
         ? candidates
         : [];
     if (selected.length === 1) values[role] = cloneJson(selected[0]?.value);
@@ -557,8 +559,10 @@ function requiredCheckNames(
   roles: readonly CompiledProcedureRole[],
 ): readonly string[] {
   const names = new Set<string>();
-  for (const predicate of check.check.predicates) {
-    if (predicate.expectation.kind === "check-field") names.add(predicate.expectation.check);
+  for (const guard of check.check.qualification.guards) {
+    for (const reference of guard.references) {
+      if (reference.kind === "check") names.add(reference.check);
+    }
   }
   for (const binding of check.check.inputBindings) {
     const role = roles.find((candidate) => candidate.name === binding.role);

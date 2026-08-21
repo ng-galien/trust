@@ -21,14 +21,16 @@ Feature: <title>
         [using [all] "<role>" as Input "<input>" | using plan as Input "<input>"]…
         [and materializes "<role>" from field "<field>"]…
         and must establish "<success reason>"
-      | field | relation | expectation | failure reason |
-    And the Scenario is satisfied when every Check is validated
+      """js
+      <boolean expression> || fail(<string expression>)
+      """
 ```
 
 | | |
 | --- | --- |
-| **Relations** | `equals` · `at least` · `has at least` · `is in` · `before` · `after` |
-| **Attentes** | `value "<text>"` · `number <n>` · `valid rfc3339` · `context "<role>"` · `field "<field>" from Check "<check>"` |
+| **Racines injectées** | `fact` · `context` · `checks` |
+| **Expressions** | comparaisons strictes, arithmétique, logique booléenne, tableaux, chaînes, instants typés, méthodes fermées de `Math` et de collections |
+| **Échec** | `condition || fail(reason)` ; plusieurs gardes peuvent être jointes avec `&&` |
 | **Liaisons intégrées** | `using plan as Input "<input>"` — l'identifiant du Plan, pour un Input `string` ou `reference` ; compile en un rôle synthétisé `"plan"` de source `plan-identifier` |
 
 | Sujet | Page |
@@ -36,5 +38,5 @@ Feature: <title>
 | Tags, titre, description, publication, versions | [Compiler et publier](/docs/procedures/publishing) |
 | Rôles et leurs sources, portée parente | [Contexte du Plan](/docs/procedures/context) |
 | Scénarios, prérequis, phrase de Check, `each` / `all`, matérialisation | [Scénarios et Checks](/docs/procedures/scenarios-and-checks) |
-| Relations et formes d'attentes, qualification | [Attentes](/docs/procedures/expectations) |
+| Expressions typées, qualification et raisons | [Qualifications](/docs/procedures/expectations) |
 | Erreurs | [Diagnostics](/docs/procedures/diagnostics) |

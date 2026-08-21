@@ -3,10 +3,11 @@ import { createHash } from "node:crypto";
 import type { GherkinDocument, Scenario, Step, Tag } from "@cucumber/messages";
 import {
   GherkinSyntaxError,
+  hasGherkinTag,
   normalizeGherkinSource,
   parseGherkin,
+  SentenceCursor,
   tokenizeSentence,
-  type SentenceToken,
 } from "@trust/gherkin";
 import {
   CompiledOperationValidationError,
@@ -20,24 +21,27 @@ import {
   CatalogProcedureCompilationError,
   type CompiledProcedure,
   type CompiledProcedureCheck,
-  type CompiledProcedureExpectation,
-  type CompiledProcedurePredicate,
   type CompiledProcedureRole,
   type ProcedureCompilationErrorCode,
   type ProcedureCompilationInput,
+  type ProcedureAnalysis,
   type ProcedureValueType,
 } from "./procedure.js";
+import {
+  compileQualificationExpression,
+  QualificationExpressionError,
+} from "./expression.js";
+import { transitiveScenarioDependencies } from "./dependencies.js";
+import { procedureLanguage } from "./language.js";
 
-const PROCEDURE_TAG = "@procedure:";
-const VERSION_TAG = "@version:";
-const TRUST_DSL_TAG = "@trust-dsl:";
-const SCENARIO_TAG = "@scenario:";
+const PROCEDURE_TAG = procedureLanguage.tags.procedure;
+const VERSION_TAG = procedureLanguage.tags.version;
+const TRUST_DSL_TAG = procedureLanguage.tags.dsl;
+const SCENARIO_TAG = procedureLanguage.tags.scenario;
 const SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const SEMVER = /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)$/;
-const AGGREGATION = "the Scenario is satisfied when every Check is validated";
 /** Reserved role: the Plan identifier, synthesised when a Check uses `using plan as Input`. */
 const PLAN_ROLE = "plan";
-const RELATIONS = new Set(["equals", "at least", "has at least", "is in", "before", "after"]);
 
 interface Located {
   readonly location?: { readonly line: number; readonly column?: number };
@@ -76,16 +80,13 @@ interface CheckSource {
   readonly using: readonly UsingSource[];
   readonly materializes: readonly { readonly role: string; readonly field: string }[];
   readonly successReason: string;
-  readonly predicates: readonly PredicateSource[];
+  readonly qualification: QualificationSource;
   readonly location?: { readonly line: number; readonly column?: number };
 }
 
-interface PredicateSource {
-  readonly field: string;
-  readonly relation: string;
-  readonly expectation: string;
-  readonly failureReason: string;
-  readonly location?: { readonly line: number; readonly column?: number };
+interface QualificationSource {
+  readonly source: string;
+  readonly location: { readonly line: number; readonly column: number };
 }
 
 interface ScenarioSource {
@@ -97,6 +98,30 @@ interface ScenarioSource {
 }
 
 export function compileProcedure(input: ProcedureCompilationInput): CompiledProcedure {
+  return compileProcedureInternal(input);
+}
+
+export function analyzeProcedure(input: ProcedureCompilationInput): ProcedureAnalysis {
+  const diagnostics: ProcedureAnalysis["diagnostics"][number][] = [];
+  try {
+    const compiled = compileProcedureInternal(input, (error, qualification) => diagnostics.push({
+      code: error.code,
+      message: error.message,
+      sourceName: input.sourceName ?? "<procedure>",
+      location: qualification.location,
+    }));
+    return { compiled, diagnostics };
+  } catch (error) {
+    if (!(error instanceof CatalogProcedureCompilationError)) throw error;
+    diagnostics.push({ code: error.code, message: error.message, sourceName: error.sourceName ?? "<procedure>", ...(error.location ? { location: error.location } : {}) });
+    return { diagnostics };
+  }
+}
+
+function compileProcedureInternal(
+  input: ProcedureCompilationInput,
+  reportQualificationError?: (error: QualificationExpressionError, qualification: QualificationSource) => void,
+): CompiledProcedure {
   const sourceName = input.sourceName ?? "<procedure>";
   const source = normalizeGherkinSource(input.source);
   let document: GherkinDocument;
@@ -120,7 +145,7 @@ export function compileProcedure(input: ProcedureCompilationInput): CompiledProc
   const dsl = uniqueTag(feature.tags, TRUST_DSL_TAG, "TRUST DSL", sourceName, feature);
   if (!SLUG.test(procedure)) fail("invalid-identifier", `Procedure "${procedure}" must be a lowercase slug`, sourceName, feature);
   if (!SEMVER.test(version)) fail("invalid-identifier", `Version "${version}" must be semantic`, sourceName, feature);
-  if (dsl !== "1") fail("invalid-procedure", `TRUST DSL "${dsl}" is unsupported`, sourceName, feature);
+  if (dsl !== procedureLanguage.dslVersion) fail("invalid-procedure", `TRUST DSL "${dsl}" is unsupported`, sourceName, feature);
   assertOnlyTags(feature.tags, [PROCEDURE_TAG, VERSION_TAG, TRUST_DSL_TAG], sourceName, feature);
 
   const operationByName = new Map<string, CompiledOperation>();
@@ -138,7 +163,7 @@ export function compileProcedure(input: ProcedureCompilationInput): CompiledProc
   }
 
   const backgrounds = feature.children.flatMap((child) => child.background ? [child.background] : []);
-  if (backgrounds.length !== 1 || !backgrounds[0] || backgrounds[0].name !== "Plan context") {
+  if (backgrounds.length !== 1 || !backgrounds[0] || backgrounds[0].name !== procedureLanguage.phrases.context) {
     fail("invalid-procedure", "Procedure must declare exactly one Background named Plan context", sourceName, feature);
   }
   const roleSources = parseRoles(backgrounds[0].steps, sourceName);
@@ -222,17 +247,36 @@ export function compileProcedure(input: ProcedureCompilationInput): CompiledProc
         materialized.set(item.role, { check: check.name, field: item.field });
       }
 
-      const predicates = check.predicates.map((predicate) => compilePredicate(
-        predicate,
+      const expressionInput = {
         operation,
-        roleByName,
-        checkByName,
-        operationByName,
-        scenario,
-        check,
-        scenarioSources,
-        sourceName,
-      ));
+        contextRoles: new Map([...roleByName].map(([name, role]) => {
+          const targetRole = roleByName.get(check.target.role);
+          const schema = check.target.selection === "each" && role.cardinality === "many"
+            && targetRole !== undefined && sameScope(role, targetRole)
+            ? baseSchema(schemaForRole(role))
+            : schemaForRole(role);
+          return [name, schema];
+        })),
+        checks: new Map(
+          [...checkByName].flatMap(([name, provider]) => {
+            const providerOperation = operationByName.get(provider.check.operation);
+            return providerOperation ? [[name, { operation: providerOperation, scenario: provider.scenario.slug }] as const] : [];
+          }),
+        ),
+        canReferenceCheck: (providerScenario: string) => isTransitiveDependency(scenario.slug, providerScenario, scenarioSources),
+      };
+      let guards;
+      try {
+        guards = compileQualificationExpression({
+          source: check.qualification.source,
+          ...expressionInput,
+        });
+      } catch (error) {
+        if (!(error instanceof QualificationExpressionError)) throw error;
+        if (!reportQualificationError) fail(error.code, error.message, sourceName, check.qualification);
+        reportQualificationError(error, check.qualification);
+        guards = compileQualificationExpression({ source: 'true || fail("invalid qualification")', ...expressionInput });
+      }
       compiledChecks.push({
         name: check.name,
         scenario: scenario.slug,
@@ -242,7 +286,11 @@ export function compileProcedure(input: ProcedureCompilationInput): CompiledProc
         target: { role: check.target.role, selection: check.target.selection },
         inputBindings: bindings.map((binding) => ({ input: binding.input, role: binding.role, selection: binding.selection })),
         materializes: check.materializes,
-        predicates,
+        qualification: {
+          source: check.qualification.source,
+          guards,
+          location: check.qualification.location,
+        },
         successReason: check.successReason,
       });
     }
@@ -282,15 +330,15 @@ export function compileProcedure(input: ProcedureCompilationInput): CompiledProc
         }
       }
       const compiledCheck = compiledChecks.find((candidate) => candidate.name === check.name);
-      for (const predicate of compiledCheck?.predicates ?? []) {
-        if (predicate.expectation.kind !== "context") continue;
-        const provider = materialized.get(predicate.expectation.role);
+      for (const reference of compiledCheck?.qualification.guards.flatMap((guard) => guard.references) ?? []) {
+        if (reference.kind !== "context") continue;
+        const provider = materialized.get(reference.role);
         if (!provider) continue;
         const providerScenario = checkByName.get(provider.check)?.scenario.slug;
         if (!providerScenario || !isTransitiveDependency(scenario.slug, providerScenario, scenarioSources)) {
           fail(
             "invalid-dependency",
-            `Check "${check.name}" compares with role "${predicate.expectation.role}" before its provider Scenario is validated`,
+            `Check "${check.name}" reads role "${reference.role}" before its provider Scenario is validated`,
             sourceName,
             check,
           );
@@ -317,15 +365,28 @@ export function compileProcedure(input: ProcedureCompilationInput): CompiledProc
       ...operation,
       definition: operationSemantics(definition),
     })),
+    checks: compiledChecks.map((check) => ({
+      ...check,
+      qualification: { guards: check.qualification.guards },
+    })),
   };
   const description = readDescription(feature.description);
   return {
-    contract: "trust.compiled-procedure@3",
     ...body,
     ...(description === undefined ? {} : { description }),
     source,
     definitionDigest: digest(semanticBody),
   };
+}
+
+export function isProcedureSource(source: string): boolean {
+  const normalized = normalizeGherkinSource(source);
+  try {
+    return parseGherkin(normalized).feature?.tags.some((tag) => tag.name.startsWith(PROCEDURE_TAG)) ?? false;
+  } catch (error) {
+    if (error instanceof GherkinSyntaxError) return hasGherkinTag(source, PROCEDURE_TAG);
+    throw error;
+  }
 }
 
 /** Free-text block under `Feature:` — the human description. Lines are de-indented, blank runs kept as paragraphs. */
@@ -346,29 +407,29 @@ function parseRoles(steps: readonly Step[], sourceName: string): RoleSource[] {
     if (step.dataTable || step.docString || (step.keyword.trim() !== "Given" && step.keyword.trim() !== "And")) {
       fail("invalid-procedure", "Plan context accepts only role sentences", sourceName, step);
     }
-    const cursor = new TokenCursor(step.text, sourceName, step);
-    const cardinality = cursor.takeTextOneOf(["one", "many"]) as "one" | "many";
-    const type = cursor.takeTextOneOf(["string", "number", "instant", "reference"]) as ProcedureValueType;
-    const name = cursor.takeQuoted();
+    const cursor = sentenceCursor(step.text, sourceName, step);
+    const cardinality = cursor.requireOneOf(procedureLanguage.cardinalities) as "one" | "many";
+    const type = cursor.requireOneOf(procedureLanguage.valueTypes) as ProcedureValueType;
+    const name = cursor.requireQuoted();
     if (name === PLAN_ROLE) fail("invalid-procedure", `Role "${PLAN_ROLE}" is reserved for the Plan identifier`, sourceName, step);
     let declared = false;
     let fixed: string | undefined;
     const parents: { role: string; each: boolean }[] = [];
-    while (!cursor.done()) {
-      if (cursor.takeIfText("declared")) {
-        cursor.takeText("by");
-        cursor.takeText("agent");
+    while (!cursor.done) {
+      if (cursor.takeText("declared")) {
+        cursor.requireText("by");
+        cursor.requireText("agent");
         declared = true;
         continue;
       }
-      if (cursor.takeIfText("fixed")) {
-        cursor.takeText("as");
-        fixed = cursor.takeQuoted();
+      if (cursor.takeText("fixed")) {
+        cursor.requireText("as");
+        fixed = cursor.requireQuoted();
         continue;
       }
-      cursor.takeText("for");
-      const each = cursor.takeIfText("each");
-      parents.push({ role: cursor.takeQuoted(), each });
+      cursor.requireText("for");
+      const each = cursor.takeText("each");
+      parents.push({ role: cursor.requireQuoted(), each });
     }
     if (declared && fixed !== undefined) fail("invalid-procedure", `Role "${name}" cannot be declared and fixed`, sourceName, step);
     if (fixed !== undefined && cardinality !== "one") {
@@ -388,25 +449,23 @@ function parseScenario(scenario: Scenario, sourceName: string): ScenarioSource {
   if (!SLUG.test(slug)) fail("invalid-identifier", `Scenario "${slug}" must be a lowercase slug`, sourceName, scenario);
   const dependencies: string[] = [];
   const checks: CheckSource[] = [];
-  let aggregated = false;
   for (const step of scenario.steps) {
-    if (step.text === AGGREGATION) {
-      if (aggregated || step.keyword.trim() !== "And" || step.dataTable || step.docString) fail("invalid-procedure", "Scenario aggregation is invalid", sourceName, step);
-      aggregated = true;
-      continue;
-    }
     const dependency = parseDependency(step.text);
     if (dependency) {
-      if (checks.length > 0 || aggregated || (step.keyword.trim() !== "Given" && step.keyword.trim() !== "And") || step.dataTable || step.docString) {
+      if (checks.length > 0 || (step.keyword.trim() !== "Given" && step.keyword.trim() !== "And") || step.dataTable || step.docString) {
         fail("invalid-dependency", "Scenario dependencies must precede Checks", sourceName, step);
       }
       dependencies.push(dependency);
       continue;
     }
-    if (aggregated || (step.keyword.trim() !== "Then" && step.keyword.trim() !== "And")) fail("invalid-procedure", "Check placement is invalid", sourceName, step);
-    checks.push({ ...parseCheckSentence(step.text, sourceName, step), predicates: parsePredicates(step, sourceName), location: step.location });
+    if (step.keyword.trim() !== "Then" && step.keyword.trim() !== "And") fail("invalid-procedure", "Check placement is invalid", sourceName, step);
+    checks.push({
+      ...parseCheckSentence(step.text, sourceName, step),
+      qualification: parseQualification(step, sourceName),
+      location: step.location,
+    });
   }
-  if (!aggregated || checks.length === 0) fail("invalid-procedure", `Scenario "${slug}" must contain Checks and its aggregation`, sourceName, scenario);
+  if (checks.length === 0) fail("invalid-procedure", `Scenario "${slug}" must contain at least one Check`, sourceName, scenario);
   return { slug, title: scenario.name, dependencies, checks, location: scenario.location };
 }
 
@@ -425,49 +484,49 @@ function parseDependency(text: string): string | undefined {
   }
 }
 
-function parseCheckSentence(text: string, sourceName: string, located: Located): Omit<CheckSource, "predicates" | "location"> {
-  const cursor = new TokenCursor(text, sourceName, located);
-  cursor.takeText("Check");
-  const name = cursor.takeQuoted();
-  cursor.takeText("runs");
-  cursor.takeText("Operation");
-  const operation = cursor.takeQuoted();
-  cursor.takeText("on");
-  const selection = cursor.takeTextOneOfIf(["each", "all"]) as "each" | "all" | undefined;
-  const role = cursor.takeQuoted();
-  cursor.takeText("as");
-  cursor.takeText("Input");
-  const input = cursor.takeQuoted();
+function parseCheckSentence(text: string, sourceName: string, located: Located): Omit<CheckSource, "qualification" | "location"> {
+  const cursor = sentenceCursor(text, sourceName, located);
+  cursor.requireText("Check");
+  const name = cursor.requireQuoted();
+  cursor.requireText("runs");
+  cursor.requireText("Operation");
+  const operation = cursor.requireQuoted();
+  cursor.requireText("on");
+  const selection = cursor.takeOneOf(["each", "all"]) as "each" | "all" | undefined;
+  const role = cursor.requireQuoted();
+  cursor.requireText("as");
+  cursor.requireText("Input");
+  const input = cursor.requireQuoted();
   const using: UsingSource[] = [];
   const materializes: { role: string; field: string }[] = [];
   let successReason: string | undefined;
-  while (!cursor.done()) {
-    if (cursor.takeIfText("using")) {
-      if (cursor.takeIfText(PLAN_ROLE)) {
-        cursor.takeText("as");
-        cursor.takeText("Input");
-        using.push({ role: PLAN_ROLE, selection: "one", input: cursor.takeQuoted() });
+  while (!cursor.done) {
+    if (cursor.takeText("using")) {
+      if (cursor.takeText(PLAN_ROLE)) {
+        cursor.requireText("as");
+        cursor.requireText("Input");
+        using.push({ role: PLAN_ROLE, selection: "one", input: cursor.requireQuoted() });
         continue;
       }
-      const useSelection = cursor.takeIfText("all") ? "all" : "one";
-      const useRole = cursor.takeQuoted();
-      cursor.takeText("as");
-      cursor.takeText("Input");
-      using.push({ role: useRole, selection: useSelection, input: cursor.takeQuoted() });
+      const useSelection = cursor.takeText("all") ? "all" : "one";
+      const useRole = cursor.requireQuoted();
+      cursor.requireText("as");
+      cursor.requireText("Input");
+      using.push({ role: useRole, selection: useSelection, input: cursor.requireQuoted() });
       continue;
     }
-    cursor.takeText("and");
-    if (cursor.takeIfText("materializes")) {
-      const materializedRole = cursor.takeQuoted();
-      cursor.takeText("from");
-      cursor.takeText("field");
-      materializes.push({ role: materializedRole, field: cursor.takeQuoted() });
+    cursor.requireText("and");
+    if (cursor.takeText("materializes")) {
+      const materializedRole = cursor.requireQuoted();
+      cursor.requireText("from");
+      cursor.requireText("field");
+      materializes.push({ role: materializedRole, field: cursor.requireQuoted() });
       continue;
     }
-    cursor.takeText("must");
-    cursor.takeText("establish");
-    successReason = cursor.takeQuoted();
-    if (!cursor.done()) fail("invalid-procedure", `Check "${name}" has trailing words`, sourceName, located);
+    cursor.requireText("must");
+    cursor.requireText("establish");
+    successReason = cursor.requireQuoted();
+    if (!cursor.done) fail("invalid-procedure", `Check "${name}" has trailing words`, sourceName, located);
   }
   if (!successReason) fail("invalid-procedure", `Check "${name}" must establish one reason`, sourceName, located);
   return {
@@ -480,132 +539,19 @@ function parseCheckSentence(text: string, sourceName: string, located: Located):
   };
 }
 
-function parsePredicates(step: Step, sourceName: string): PredicateSource[] {
-  const rows = step.dataTable?.rows;
-  if (!rows || rows.length < 2) fail("invalid-procedure", "Every Check requires a predicate table", sourceName, step);
-  const headers = rows[0]?.cells.map((cell) => cell.value.trim()) ?? [];
-  const expected = ["field", "relation", "expectation", "failure reason"];
-  if (headers.length !== expected.length || headers.some((header, index) => header !== expected[index])) {
-    fail("invalid-procedure", `Check table must use: ${expected.join(" | ")}`, sourceName, step);
+function parseQualification(step: Step, sourceName: string): QualificationSource {
+  if (step.dataTable) {
+    fail("invalid-procedure", "Check DataTables are not part of the Procedure language; every Check requires one js DocString", sourceName, step);
   }
-  return rows.slice(1).map((row) => {
-    if (row.cells.length !== 4) fail("invalid-procedure", "Check predicate row must contain four cells", sourceName, row);
-    return {
-      field: row.cells[0]?.value.trim() ?? "",
-      relation: row.cells[1]?.value.trim() ?? "",
-      expectation: row.cells[2]?.value.trim() ?? "",
-      failureReason: unquoteTableCell(row.cells[3]?.value.trim() ?? ""),
-      location: row.location,
-    };
-  });
-}
-
-function unquoteTableCell(value: string): string {
-  const match = value.match(/^"([^"]*)"$/);
-  return match?.[1] ?? value;
-}
-
-function compilePredicate(
-  source: PredicateSource,
-  operation: CompiledOperation,
-  roles: ReadonlyMap<string, RoleSource>,
-  checks: ReadonlyMap<string, { readonly check: CheckSource; readonly scenario: ScenarioSource }>,
-  operations: ReadonlyMap<string, CompiledOperation>,
-  scenario: ScenarioSource,
-  currentCheck: CheckSource,
-  scenarios: readonly ScenarioSource[],
-  sourceName: string,
-): CompiledProcedurePredicate {
-  const fieldSchema = operation.produced.properties[source.field];
-  if (!fieldSchema) fail("unknown-field", `Operation "${operation.operation}" produces no field "${source.field}"`, sourceName, source);
-  if (!RELATIONS.has(source.relation)) fail("invalid-procedure", `Relation "${source.relation}" is unknown`, sourceName, source);
-  if (source.failureReason === "") fail("invalid-procedure", "Failure reason cannot be empty", sourceName, source);
-  const expectation = parseExpectation(source.expectation, sourceName, source);
-  let expectationSchema: ValueSchema;
-  if (expectation.kind === "context") {
-    const role = roles.get(expectation.role);
-    if (!role) fail("unknown-role", `Expectation references unknown role "${expectation.role}"`, sourceName, source);
-    const targetRole = roles.get(currentCheck.target.role);
-    expectationSchema = currentCheck.target.selection === "each" && role.cardinality === "many"
-      && targetRole !== undefined && sameScope(role, targetRole)
-      ? baseSchema(schemaForRole(role))
-      : schemaForRole(role);
-    assertContextShape(
-      role,
-      fieldSchema,
-      targetRole,
-      currentCheck.target.selection,
-      `expectation for field "${source.field}"`,
-      sourceName,
-      source,
-    );
-  } else if (expectation.kind === "check-field") {
-    const provider = checks.get(expectation.check);
-    if (!provider) fail("invalid-dependency", `Expectation references unknown Check "${expectation.check}"`, sourceName, source);
-    const providerOperation = operations.get(provider.check.operation);
-    const providerField = providerOperation?.produced.properties[expectation.field];
-    if (!providerField) fail("unknown-field", `Check "${expectation.check}" produces no field "${expectation.field}"`, sourceName, source);
-    expectationSchema = providerField;
-    if (!isTransitiveDependency(scenario.slug, provider.scenario.slug, scenarios)) {
-      fail("invalid-dependency", `Check "${expectation.check}" is not in a prerequisite Scenario`, sourceName, source);
-    }
-    assertSchemasEqual(fieldSchema, providerField, `field "${source.field}" and upstream field "${expectation.field}"`, sourceName, source);
-  } else if (expectation.kind === "number") {
-    expectationSchema = { type: "number" };
-    if (baseSchema(fieldSchema).type !== "number") fail("incompatible-type", `Field "${source.field}" is not a number`, sourceName, source);
-  } else if (expectation.kind === "valid-rfc3339") {
-    expectationSchema = { type: "string", format: "date-time" };
-    const base = baseSchema(fieldSchema);
-    if (base.type !== "string" || base.format !== "date-time") fail("incompatible-type", `Field "${source.field}" is not an instant`, sourceName, source);
-  } else if (baseSchema(fieldSchema).type !== "string") {
-    fail("incompatible-type", `Field "${source.field}" cannot be compared with a string value`, sourceName, source);
-  } else {
-    expectationSchema = { type: "string" };
-    const field = baseSchema(fieldSchema);
-    if (field.type === "string" && field.enum && !field.enum.includes(expectation.value)) {
-      fail("incompatible-type", `Value "${expectation.value}" is outside field "${source.field}" domain`, sourceName, source);
-    }
-  }
-  assertRelation(source.relation, fieldSchema, expectationSchema, expectation, sourceName, source);
+  const docString = step.docString;
+  if (!docString) fail("invalid-procedure", "Every Check requires one js qualification DocString", sourceName, step);
+  if (docString.mediaType !== procedureLanguage.qualification.mediaType) fail("invalid-procedure", "Check qualification DocString content type must be js", sourceName, docString);
+  if (docString.content.trim() === "") fail("invalid-procedure", "Check qualification DocString cannot be empty", sourceName, docString);
+  const location = docString.location ?? step.location;
   return {
-    field: source.field,
-    relation: source.relation as CompiledProcedurePredicate["relation"],
-    expectation,
-    failureReason: source.failureReason,
+    source: docString.content,
+    location: { line: location.line, column: location.column ?? 1 },
   };
-}
-
-function parseExpectation(text: string, sourceName: string, located: Located): CompiledProcedureExpectation {
-  const cursor = new TokenCursor(text, sourceName, located);
-  const kind = cursor.takeTextOneOf(["value", "number", "valid", "context", "field"]);
-  if (kind === "value") {
-    const value = cursor.takeQuoted();
-    cursor.assertDone();
-    return { kind: "value", value };
-  }
-  if (kind === "number") {
-    const token = cursor.takeTextValue();
-    cursor.assertDone();
-    const value = Number(token);
-    if (!Number.isFinite(value)) fail("invalid-procedure", `Number expectation "${token}" is invalid`, sourceName, located);
-    return { kind: "number", value };
-  }
-  if (kind === "valid") {
-    cursor.takeText("rfc3339");
-    cursor.assertDone();
-    return { kind: "valid-rfc3339" };
-  }
-  if (kind === "context") {
-    const role = cursor.takeQuoted();
-    cursor.assertDone();
-    return { kind: "context", role };
-  }
-  const field = cursor.takeQuoted();
-  cursor.takeText("from");
-  cursor.takeText("Check");
-  const check = cursor.takeQuoted();
-  cursor.assertDone();
-  return { kind: "check-field", check, field };
 }
 
 function validateRoleParents(roles: readonly RoleSource[], byName: ReadonlyMap<string, RoleSource>, sourceName: string): void {
@@ -692,23 +638,6 @@ function assertMaterializationShape(
   }
 }
 
-function assertContextShape(
-  role: RoleSource,
-  schema: ValueSchema,
-  targetRole: RoleSource | undefined,
-  targetSelection: "one" | "each" | "all",
-  label: string,
-  sourceName: string,
-  located: Located,
-): void {
-  const cardinality = schema.type === "array" ? "many" : "one";
-  const scoped = targetSelection === "each" && cardinality === "one" && role.cardinality === "many"
-    && targetRole !== undefined && sameScope(role, targetRole);
-  if ((!scoped && role.cardinality !== cardinality) || role.type !== schemaType(baseSchema(schema))) {
-    fail("incompatible-type", `${label} does not match role type and cardinality`, sourceName, located);
-  }
-}
-
 function sameScope(left: RoleSource, right: RoleSource): boolean {
   if (left.name === right.name) return true;
   if (left.parents.some((parent) => parent.each && parent.role === right.name)) return true;
@@ -718,59 +647,6 @@ function sameScope(left: RoleSource, right: RoleSource): boolean {
   return leftParents.length > 0
     && leftParents.length === rightParents.length
     && leftParents.every((parent, index) => parent === rightParents[index]);
-}
-
-function assertSchemasEqual(left: ValueSchema, right: ValueSchema, label: string, sourceName: string, located: Located): void {
-  const leftCardinality = left.type === "array" ? "many" : "one";
-  const rightCardinality = right.type === "array" ? "many" : "one";
-  if (leftCardinality !== rightCardinality || schemaType(baseSchema(left)) !== schemaType(baseSchema(right))) {
-    fail("incompatible-type", `${label} have incompatible types`, sourceName, located);
-  }
-}
-
-function assertRelation(
-  relation: string,
-  field: ValueSchema,
-  expectation: ValueSchema,
-  compiledExpectation: CompiledProcedureExpectation,
-  sourceName: string,
-  located: Located,
-): void {
-  const fieldMany = field.type === "array";
-  const expectationMany = expectation.type === "array";
-  const fieldType = schemaType(baseSchema(field));
-  const expectationType = schemaType(baseSchema(expectation));
-  if (relation === "equals") {
-    if (compiledExpectation.kind === "valid-rfc3339") {
-      if (fieldMany || fieldType !== "instant") fail("incompatible-type", "valid rfc3339 requires one instant field", sourceName, located);
-      return;
-    }
-    if (fieldMany !== expectationMany || fieldType !== expectationType) {
-      fail("incompatible-type", "equals requires the same type and cardinality", sourceName, located);
-    }
-    return;
-  }
-  if (relation === "at least") {
-    if (fieldMany || expectationMany || fieldType !== "number" || expectationType !== "number") {
-      fail("incompatible-type", "at least requires one number field and one number expectation", sourceName, located);
-    }
-    return;
-  }
-  if (relation === "has at least") {
-    if (!fieldMany || expectationMany || expectationType !== "number") {
-      fail("incompatible-type", "has at least requires a collection field and one number expectation", sourceName, located);
-    }
-    return;
-  }
-  if (relation === "is in") {
-    if (fieldMany || !expectationMany || fieldType !== expectationType) {
-      fail("incompatible-type", "is in requires one field and a collection expectation of the same type", sourceName, located);
-    }
-    return;
-  }
-  if (fieldMany || expectationMany || fieldType !== "instant" || expectationType !== "instant") {
-    fail("incompatible-type", `${relation} requires one instant field and one instant expectation`, sourceName, located);
-  }
 }
 
 function schemaForRole(role: RoleSource): ValueSchema {
@@ -796,17 +672,7 @@ function schemaType(schema: Exclude<ValueSchema, { readonly type: "array" }>): P
 }
 
 function isTransitiveDependency(current: string, expected: string, scenarios: readonly ScenarioSource[]): boolean {
-  const bySlug = new Map(scenarios.map((scenario) => [scenario.slug, scenario]));
-  const pending = [...(bySlug.get(current)?.dependencies ?? [])];
-  const visited = new Set<string>();
-  while (pending.length > 0) {
-    const slug = pending.pop();
-    if (!slug || visited.has(slug)) continue;
-    if (slug === expected) return true;
-    visited.add(slug);
-    pending.push(...(bySlug.get(slug)?.dependencies ?? []));
-  }
-  return false;
+  return transitiveScenarioDependencies(current, scenarios).has(expected);
 }
 
 function operationSemantics(operation: CompiledOperation): unknown {
@@ -875,61 +741,13 @@ function fail(code: ProcedureCompilationErrorCode, message: string, sourceName: 
   );
 }
 
-class TokenCursor {
-  readonly #tokens: readonly SentenceToken[];
-  #index = 0;
-
-  constructor(text: string, readonly sourceName: string, readonly located: Located) {
-    try {
-      this.#tokens = tokenizeSentence(text);
-    } catch {
-      fail("invalid-procedure", `Invalid sentence "${text}"`, sourceName, located);
-    }
-  }
-
-  done(): boolean { return this.#index >= this.#tokens.length; }
-
-  assertDone(): void {
-    if (!this.done()) fail("invalid-procedure", "Sentence has trailing words", this.sourceName, this.located);
-  }
-
-  takeText(value: string): void {
-    const token = this.#tokens[this.#index];
-    if (token?.kind !== "text" || token.value !== value) fail("invalid-procedure", `Expected ${value}`, this.sourceName, this.located);
-    this.#index += 1;
-  }
-
-  takeIfText(value: string): boolean {
-    const token = this.#tokens[this.#index];
-    if (token?.kind !== "text" || token.value !== value) return false;
-    this.#index += 1;
-    return true;
-  }
-
-  takeTextOneOf(values: readonly string[]): string {
-    const value = this.takeTextOneOfIf(values);
-    if (!value) fail("invalid-procedure", `Expected one of: ${values.join(", ")}`, this.sourceName, this.located);
-    return value;
-  }
-
-  takeTextOneOfIf(values: readonly string[]): string | undefined {
-    const token = this.#tokens[this.#index];
-    if (token?.kind !== "text" || !values.includes(token.value)) return undefined;
-    this.#index += 1;
-    return token.value;
-  }
-
-  takeTextValue(): string {
-    const token = this.#tokens[this.#index];
-    if (token?.kind !== "text") fail("invalid-procedure", "Expected an unquoted value", this.sourceName, this.located);
-    this.#index += 1;
-    return token.value;
-  }
-
-  takeQuoted(): string {
-    const token = this.#tokens[this.#index];
-    if (token?.kind !== "quoted" || token.value === "") fail("invalid-procedure", "Expected a quoted value", this.sourceName, this.located);
-    this.#index += 1;
-    return token.value;
+function sentenceCursor(text: string, sourceName: string, located: Located): SentenceCursor {
+  try {
+    return new SentenceCursor(
+      tokenizeSentence(text),
+      (expectation) => fail("invalid-procedure", expectation, sourceName, located),
+    );
+  } catch {
+    return fail("invalid-procedure", `Invalid sentence "${text}"`, sourceName, located);
   }
 }

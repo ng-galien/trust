@@ -1,11 +1,11 @@
 import Editor, { type BeforeMount, type Monaco, type OnMount } from "@monaco-editor/react";
-import { useEffect, useMemo, useRef, useState } from "react";
-import { formatGherkinSource } from "@trust/gherkin/format";
+import { useEffect, useRef, useState } from "react";
 import { WrapText } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import type { TFunction } from "i18next";
 import type { editor, IDisposable } from "monaco-editor";
+import { isExpressionIdentifierPart } from "@trust/gherkin";
 
+import { monacoCompletionKind, monacoMarker, TrustLspClient } from "./lsp-client.js";
 import { IconButton } from "./ui/button.js";
 
 type LanguageKind = "operation" | "procedure";
@@ -29,7 +29,7 @@ interface GherkinEditorProps {
   value: string;
   onChange: (value: string) => void;
   theme: "light" | "dark";
-  operations?: string[] | undefined;
+  languageServerUrl?: string | undefined;
   readOnly?: boolean | undefined;
   markers?: EditorMarker[] | undefined;
   decorations?: EditorDecoration[] | undefined;
@@ -37,22 +37,26 @@ interface GherkinEditorProps {
   onSave?: (() => void) | undefined;
 }
 
-const commonKeywords = ["Feature", "Background", "Scenario", "Given", "When", "Then", "And", "But"];
 const markerOwner = "trust";
+const lspMarkerOwner = "trust-lsp";
 
-export function GherkinEditor({ kind, value, onChange, theme, operations = [], readOnly, markers = [], decorations = [], fontSize = 13, onSave }: GherkinEditorProps) {
+export function GherkinEditor({ kind, value, onChange, theme, languageServerUrl, readOnly, markers = [], decorations = [], fontSize = 13, onSave }: GherkinEditorProps) {
   const { t } = useTranslation();
-  const provider = useRef<IDisposable | undefined>(undefined);
+  const providers = useRef<IDisposable[]>([]);
+  const lspRef = useRef<TrustLspClient | null>(null);
   const monacoRef = useRef<Monaco | null>(null);
   const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
   const decorationsRef = useRef<editor.IEditorDecorationsCollection | null>(null);
   const [mountedAt, setMountedAt] = useState(0);
+  const [languageServerStatus, setLanguageServerStatus] = useState<"connecting" | "ready" | "unavailable">("connecting");
   const saveRef = useRef(onSave);
   saveRef.current = onSave;
   const language = `trust-${kind}`;
-  const completions = useMemo(() => completionItems(kind, operations, t), [kind, operations, t]);
 
-  useEffect(() => () => provider.current?.dispose(), []);
+  useEffect(() => () => {
+    providers.current.forEach((provider) => provider.dispose());
+    lspRef.current?.dispose();
+  }, []);
 
   // Themes are rebuilt from the token layer whenever the theme flips.
   useEffect(() => {
@@ -85,6 +89,12 @@ export function GherkinEditor({ kind, value, onChange, theme, operations = [], r
     );
   }, [markers]);
 
+  // React Router can reuse the same editor while the selected resource changes.
+  // Keep the LSP document synchronized with controlled-value updates as well as typing.
+  useEffect(() => {
+    if (mountedAt > 0) void lspRef.current?.change(value);
+  }, [mountedAt, value]);
+
   // Hydration decorations: whole-line tone + inline note; re-applied whenever they change (or the editor mounts).
   useEffect(() => {
     const instance = editorRef.current;
@@ -106,71 +116,6 @@ export function GherkinEditor({ kind, value, onChange, theme, operations = [], r
     monacoRef.current = monaco;
     if (!monaco.languages.getLanguages().some((entry: { id: string }) => entry.id === language)) {
       monaco.languages.register({ id: language });
-      monaco.languages.setMonarchTokensProvider(language, {
-        cellTypes: ["string", "number", "instant", "reference", "directory", "url", "one", "many", "literal", "input", "any", "JSON", "Text", "text", "json"],
-        tokenizer: {
-          root: [
-            [/^\s*#.*$/, "comment"],
-            [/(@[\w-]+:)([\w.-]+)/, ["tag", "tag.value"]],
-            [/@[\w.:-]+/, "tag"],
-            [/^\s*"""\s*$/, { token: "string.doc.fence", next: "@docstring" }],
-            [/^(\s*)(Feature)(:)(.*)$/, ["", "keyword.control", "delimiter", "title"]],
-            [/^(\s*)(Background|Scenario(?: Outline)?|Examples)(:)(.*)$/, ["", "keyword.control", "delimiter", "title.section"]],
-            [/^\s*(Given|When|Then)\b/, "keyword"],
-            [/^\s*(And|But)\b/, "keyword.continuation"],
-            [/\b(Environment|Input|Produced fields|Shell|File|HTTP|Check|Plan input|Operation)\b/, "type"],
-            [/\b(runs|with cwd from|accepts exits|gets|appending|and Input|with query|from Input|posts|as JSON to|as|from|reads|and reads|Produce with JSONata|uses operation|using plan|using all|using|must establish|is satisfied when every|is validated|equals|value|failure reason|success reason|no prerequisite scenario|one reference)\b/, "verb"],
-            [/^\s*\|/, { token: "delimiter.table", next: "@tableHeader" }],
-            [/"[^"\\]*(?:\\.[^"\\]*)*"/, "string"],
-            [/\b\d+(?:\.\d+)?\b/, "number"],
-            [/<[^>]+>/, "variable"],
-          ],
-          // Header row: entered from root on the first "|" of a table; the state survives to the next line,
-          // where a leading "|" means a data row and anything else hands the line back to root.
-          tableHeader: [
-            [/^\s*\|/, { token: "delimiter.table", switchTo: "@tableRows" }],
-            [/^\s*(?=\S)/, { token: "@rematch", next: "@pop" }],
-            [/\|/, "delimiter.table"],
-            [/[^|]+/, "string.table.header"],
-          ],
-          tableRows: [
-            [/^\s*(?=\S)(?!\|)/, { token: "@rematch", next: "@pop" }],
-            [/\|/, "delimiter.table"],
-            [/\s+/, ""],
-            [/"[^"\\]*(?:\\.[^"\\]*)*"/, "string"],
-            [/\b\d+(?:\.\d+)?\b/, "number"],
-            [/enum\b/, "verb"],
-            [/literal \+ Input\b/, "verb"],
-            [/[A-Za-z][\w-]*/, { cases: { "@cellTypes": "type.cell", "@default": "string.table.cell" } }],
-            [/[^|\s"]+/, "string.table.cell"],
-          ],
-          docstring: [
-            [/^\s*"""\s*$/, { token: "string.doc.fence", next: "@pop" }],
-            [/"[^"\\]*(?:\\.[^"\\]*)*"(?=\s*:)/, "string.doc.key"],
-            [/"[^"\\]*(?:\\.[^"\\]*)*"/, "string.doc.value"],
-            [/\$[a-zA-Z]+/, "string.doc.function"],
-            [/\b(input|environment|steps)\b/, "string.doc.root"],
-            [/\b\d+(?:\.\d+)?\b/, "number"],
-            [/[{}\[\]()]/, "delimiter.bracket"],
-            [/[?:=<>!&|]+/, "operator"],
-            [/[.,]/, "delimiter"],
-            [/[A-Za-z_][\w]*/, "string.doc.path"],
-            [/\s+/, ""],
-            [/./, "string.doc"],
-          ],
-        },
-      });
-      // "Format document" (Shift+Alt+F / context menu): re-flows long steps onto continuation lines.
-      monaco.languages.registerDocumentFormattingEditProvider(language, {
-        provideDocumentFormattingEdits: (model: editor.ITextModel) => {
-          const source = model.getValue();
-          const formatted = formatGherkinSource(source);
-          return formatted === source ? [] : [{ range: model.getFullModelRange(), text: formatted }];
-        },
-      });
-      monaco.languages.registerFoldingRangeProvider(language, {
-        provideFoldingRanges: (model: editor.ITextModel) => foldingRanges(model.getLinesContent(), monaco),
-      });
       monaco.languages.setLanguageConfiguration(language, {
         comments: { lineComment: "#" },
         brackets: [["{", "}"], ["[", "]"], ["(", ")"]],
@@ -183,23 +128,79 @@ export function GherkinEditor({ kind, value, onChange, theme, operations = [], r
   const mounted: OnMount = (instance, monaco) => {
     editorRef.current = instance;
     setMountedAt((count) => count + 1);
-    provider.current?.dispose();
-    provider.current = monaco.languages.registerCompletionItemProvider(language, {
-      triggerCharacters: [" ", '"', "@"],
-      provideCompletionItems: (model: editor.ITextModel, position: { lineNumber: number; column: number }) => ({
-        suggestions: completions.map((item) => ({
-          ...item,
-          range: wordRange(model, position),
-          kind: monaco.languages.CompletionItemKind.Snippet,
-          insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+    providers.current.forEach((provider) => provider.dispose());
+    providers.current = [];
+    lspRef.current?.dispose();
+    if (languageServerUrl) {
+      const client = new TrustLspClient({
+        url: languageServerUrl,
+        kind,
+        source: instance.getValue(),
+        diagnostics: (diagnostics) => {
+          const model = instance.getModel();
+          if (model) monaco.editor.setModelMarkers(model, lspMarkerOwner, diagnostics.map(monacoMarker));
+        },
+        status: setLanguageServerStatus,
+      });
+      lspRef.current = client;
+      if (!readOnly) {
+        providers.current.push(monaco.languages.registerCompletionItemProvider(language, {
+        triggerCharacters: [" ", '"', ".", "$", "@"],
+        provideCompletionItems: async (model: editor.ITextModel, position: { lineNumber: number; column: number }) => {
+          const completions = await client.complete(position.lineNumber - 1, position.column - 1).catch(() => []);
+          return {
+            suggestions: completions.map((completion) => ({
+              label: completion.label,
+              detail: completion.detail,
+              documentation: typeof completion.documentation === "string" ? completion.documentation : completion.documentation?.value,
+              insertText: completion.textEdit?.newText ?? completion.insertText ?? completion.label,
+              kind: monacoCompletionKind(completion.kind, monaco),
+              range: completion.textEdit ? {
+                startLineNumber: completion.textEdit.range.start.line + 1,
+                startColumn: completion.textEdit.range.start.character + 1,
+                endLineNumber: completion.textEdit.range.end.line + 1,
+                endColumn: completion.textEdit.range.end.character + 1,
+              } : wordRange(model, position),
+              ...(completion.insertTextFormat === 2 ? { insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet } : {}),
+            })),
+          };
+        },
+        }));
+        providers.current.push(monaco.languages.registerDocumentFormattingEditProvider(language, {
+          provideDocumentFormattingEdits: async () => (await client.format(2, true).catch(() => [])).map((edit) => ({
+            range: {
+              startLineNumber: edit.range.start.line + 1,
+              startColumn: edit.range.start.character + 1,
+              endLineNumber: edit.range.end.line + 1,
+              endColumn: edit.range.end.character + 1,
+            },
+            text: edit.newText,
+          })),
+        }));
+      }
+      providers.current.push(monaco.languages.registerFoldingRangeProvider(language, {
+        provideFoldingRanges: async () => (await client.foldingRanges().catch(() => [])).map((range) => ({
+          start: range.startLine + 1,
+          end: range.endLine + 1,
+          kind: range.kind === "comment" ? monaco.languages.FoldingRangeKind.Comment : monaco.languages.FoldingRangeKind.Region,
         })),
-      }),
-    });
+      }));
+      providers.current.push(monaco.languages.registerDocumentSemanticTokensProvider(language, {
+        getLegend: () => ({ tokenTypes: ["comment", "keyword", "string", "number", "operator", "type", "variable", "function", "property"], tokenModifiers: [] }),
+        provideDocumentSemanticTokens: async () => ({ data: new Uint32Array((await client.semanticTokens().catch(() => ({ data: [] }))).data) }),
+        releaseDocumentSemanticTokens: () => undefined,
+      }));
+    }
     instance.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => saveRef.current?.());
   };
 
   return (
     <div className="relative h-full" data-doc="editor">
+    {languageServerUrl && languageServerStatus === "unavailable" ? (
+      <div role="status" className="absolute top-2 left-14 z-10 rounded-(--radius-1) bg-danger-soft px-2 py-1 text-caption text-danger">
+        {t("shared.gherkinEditor.unavailable")}
+      </div>
+    ) : null}
     {!readOnly ? (
       <div className="absolute top-2 right-4 z-10" data-doc="editor.format">
         <IconButton size="sm" label={t("shared.gherkinEditor.format")} title={t("shared.gherkinEditor.formatHint")} onClick={() => void editorRef.current?.getAction("editor.action.formatDocument")?.run()}>
@@ -208,12 +209,16 @@ export function GherkinEditor({ kind, value, onChange, theme, operations = [], r
       </div>
     ) : null}
     <Editor
+      key={`${language}:${languageServerUrl ?? "offline"}`}
       height="100%"
       language={language}
       value={value}
       beforeMount={configure}
       onMount={mounted}
-      onChange={(next) => onChange(next ?? "")}
+      onChange={(next) => {
+        const source = next ?? "";
+        onChange(source);
+      }}
       theme={`trust-${theme}`}
       loading={<div className="p-4 text-body text-muted">{t("shared.gherkinEditor.loading")}</div>}
       options={{
@@ -226,6 +231,8 @@ export function GherkinEditor({ kind, value, onChange, theme, operations = [], r
         scrollBeyondLastLine: false,
         wordWrap: "off",
         quickSuggestions: true,
+        wordBasedSuggestions: "off",
+        "semanticHighlighting.enabled": true,
         suggestOnTriggerCharacters: true,
         automaticLayout: true,
         renderLineHighlight: "line",
@@ -256,34 +263,17 @@ export function defineThemes(monaco: Monaco) {
     monaco.editor.defineTheme(name, {
       base,
       inherit: true,
+      semanticHighlighting: true,
       rules: [
         { token: "keyword", foreground: hex(token("--color-editor-keyword", "1E4FC2")), fontStyle: "bold" },
-        { token: "keyword.continuation", foreground: hex(token("--color-editor-keyword", "1E4FC2")) },
-        { token: "keyword.control", foreground: hex(token("--color-editor-keyword-control", "6B3FA0")), fontStyle: "bold" },
-        { token: "title", foreground: hex(token("--color-text", "161A20")), fontStyle: "bold" },
-        { token: "title.section", foreground: hex(token("--color-text", "161A20")) },
         { token: "type", foreground: hex(token("--color-editor-type", "0F766E")) },
-        { token: "type.cell", foreground: hex(token("--color-editor-type", "0F766E")) },
-        { token: "verb", foreground: hex(token("--color-editor-verb", "7C4A0F")), fontStyle: "italic" },
         { token: "string", foreground: hex(token("--color-editor-string", "1F7A4A")) },
         { token: "number", foreground: hex(token("--color-editor-number", "A2620B")) },
-        { token: "string.doc", foreground: hex(token("--color-text", "161A20")) },
-        { token: "string.doc.fence", foreground: hex(token("--color-editor-comment", "8A93A1")) },
-        { token: "string.doc.key", foreground: hex(token("--color-editor-keyword", "1E4FC2")) },
-        { token: "string.doc.value", foreground: hex(token("--color-editor-string", "1F7A4A")) },
-        { token: "string.doc.function", foreground: hex(token("--color-editor-keyword-control", "6B3FA0")) },
-        { token: "string.doc.root", foreground: hex(token("--color-editor-type", "0F766E")), fontStyle: "bold" },
-        { token: "string.doc.path", foreground: hex(token("--color-text", "161A20")) },
         { token: "operator", foreground: hex(token("--color-editor-verb", "7C4A0F")) },
-        { token: "delimiter.bracket", foreground: hex(token("--color-text-muted", "5B6472")) },
-        { token: "delimiter", foreground: hex(token("--color-text-muted", "5B6472")) },
-        { token: "string.table.header", foreground: hex(token("--color-editor-table-header", "5B6472")), fontStyle: "bold" },
-        { token: "string.table.cell", foreground: hex(token("--color-text", "161A20")) },
-        { token: "delimiter.table", foreground: hex(token("--color-editor-table-line", "C3C9D2")) },
-        { token: "tag", foreground: hex(token("--color-editor-comment", "8A93A1")), fontStyle: "italic" },
-        { token: "tag.value", foreground: hex(token("--color-editor-type", "0F766E")), fontStyle: "italic" },
         { token: "comment", foreground: hex(token("--color-editor-comment", "8A93A1")), fontStyle: "italic" },
         { token: "variable", foreground: hex(token("--color-editor-verb", "7C4A0F")) },
+        { token: "function", foreground: hex(token("--color-editor-keyword-control", "6B3FA0")) },
+        { token: "property", foreground: hex(token("--color-editor-table-header", "5B6472")), fontStyle: "bold" },
       ],
       colors: {
         "editor.background": token("--color-editor-bg", dark ? "#161a21" : "#ffffff"),
@@ -305,124 +295,15 @@ export function defineThemes(monaco: Monaco) {
   define("trust-dark", "vs-dark");
 }
 
-interface CompletionTemplate { label: string; insertText: string; detail: string; documentation?: string | undefined }
-const snippet = (label: string, insertText: string, documentation?: string) => ({ label, insertText, documentation });
-
-function completionItems(kind: LanguageKind, operations: string[], t: TFunction): CompletionTemplate[] {
-  const grammar =
-    kind === "operation"
-      ? [
-          snippet(
-            t("shared.gherkinEditor.snippets.operationFeature"),
-            '# language: en\n@trust-dsl:1 @operation:${1:domain.action} @version:${2:1.0.0}\nFeature: ${3:What this operation observes}\n\n  Background: Operation interface\n    Given Environment\n      | name        | type      |\n      | ${4:workspaceRoot} | ${5:directory} |\n    And Input\n      | input   | type      | cardinality |\n      | ${6:project} | ${7:reference} | one         |\n    And Produced fields\n      | field  | type   | cardinality | domain |\n      | ${8:result} | ${9:string} | one         | any    |\n\n  Scenario: Run\n    When Shell "${10:step}" runs "${11:git}" with cwd from Environment "${4:workspaceRoot}"\n      | argument | source  |\n      | ${12:status} | literal |\n    Then Produce with JSONata\n      """\n      {\n        "${8:result}": $trim(steps.${10:step}.stdout)\n      }\n      """',
-            t("shared.gherkinEditor.snippets.operationFeatureDoc"),
-          ),
-          snippet(t("shared.gherkinEditor.snippets.environmentTable"), "Given Environment\n  | name | type |\n  | ${1:workspaceRoot} | ${2|directory,url|} |"),
-          snippet(t("shared.gherkinEditor.snippets.inputTable"), "And Input\n  | input | type | cardinality |\n  | ${1:project} | ${2|string,number,instant,reference|} | ${3|one,many|} |"),
-          snippet(t("shared.gherkinEditor.snippets.producedFieldsTable"), 'And Produced fields\n  | field | type | cardinality | domain |\n  | ${1:field} | ${2|string,number,instant,reference|} | ${3|one,many|} | ${4:any} |'),
-          snippet(t("shared.gherkinEditor.snippets.shellStep"), 'When Shell "${1:step}" runs "${2:git}" with cwd from Environment "${3:workspaceRoot}"\n  | argument | source  |\n  | ${4:status} | literal |'),
-          snippet(t("shared.gherkinEditor.snippets.shellArgumentFromInput"), "| ${1:value} | input ${2:project} |"),
-          snippet(t("shared.gherkinEditor.snippets.shellAcceptedExits"), 'And Shell "${1:step}" accepts exits\n  | exit code | stdout contains | stderr contains |\n  | 0         |                 |                 |\n  | ${2:1}         |                 |                 |'),
-          snippet(t("shared.gherkinEditor.snippets.httpGetStep"), 'When HTTP "${1:step}" gets Environment "${2:serviceUrl}" as ${3|JSON,Text|}'),
-          snippet(t("shared.gherkinEditor.snippets.httpGetStepAppendingInput"), 'When HTTP "${1:step}" gets Environment "${2:serviceUrl}" appending Input "${3:id}" as JSON'),
-          snippet(t("shared.gherkinEditor.snippets.httpGetStepQuery"), 'When HTTP "${1:step}" gets Environment "${2:serviceUrl}" appending Input "${3:id}" with query "${4:name}" from Input "${5:value}" as JSON'),
-          snippet(t("shared.gherkinEditor.snippets.shellArgumentPrefixedInput"), '| ${1:-Dname=} | literal + Input "${2:project}" |'),
-          snippet(t("shared.gherkinEditor.snippets.httpPostStep"), 'When HTTP "${1:step}" posts Input as JSON to Environment "${2:serviceUrl}" and reads JSON'),
-          snippet(t("shared.gherkinEditor.snippets.fileReadStep"), 'When File "${1:step}" reads "${2:relative/path.txt}" as ${3|Text,JSON|} from Environment "${4:workspaceRoot}"'),
-          snippet(t("shared.gherkinEditor.snippets.produceWithJsonata"), 'Then Produce with JSONata\n  """\n  {\n    "${1:field}": ${2:steps.step.stdout}\n  }\n  """'),
-        ]
-      : [
-          snippet(
-            t("shared.gherkinEditor.snippets.procedureFeature"),
-            '# language: en\n@trust-dsl:1 @procedure:${1:my-procedure} @version:${2:1.0.0}\nFeature: ${3:What this procedure establishes}\n\n  Background: Plan context\n    Given one reference "${4:project}"\n\n  @scenario:${5:first}\n  Scenario: ${6:First scenario}\n    Then Check "${7:check name}" runs Operation "${8:git.head-read}"\n        on "${4:project}" as Input "${9:project}"\n        and must establish "${10:the requirement is met}"\n      | field | relation | expectation | failure reason |\n      | ${11:workingTree} | equals | value "${12:clean}" | "${13:the requirement is not met}" |\n    And the Scenario is satisfied when every Check is validated',
-          ),
-          snippet(
-            t("shared.gherkinEditor.snippets.role"),
-            'And ${1|one,many|} ${2|reference,string,number,instant|} "${3:role}"',
-          ),
-          snippet(
-            t("shared.gherkinEditor.snippets.scenario"),
-            '@scenario:${1:slug}\nScenario: ${2:Title}\n  Given scenario "${3:previous}" is validated\n  Then Check "${4:check name}" runs Operation "${5:operation}"\n      on "${6:role}" as Input "${7:input}"\n      and must establish "${8:the requirement is met}"\n    | field | relation | expectation | failure reason |\n    | ${9:field} | equals | value "${10:value}" | "${11:the requirement is not met}" |\n  And the Scenario is satisfied when every Check is validated',
-          ),
-          snippet(
-            t("shared.gherkinEditor.snippets.check"),
-            'Then Check "${1:check name}" runs Operation "${2:operation}"\n    on "${3:role}" as Input "${4:input}"\n    and must establish "${5:the requirement is met}"\n  | field | relation | expectation | failure reason |\n  | ${6:field} | equals | value "${7:value}" | "${8:the requirement is not met}" |',
-          ),
-          ...operations.map((operation) => snippet(t("shared.gherkinEditor.snippets.useOperation", { operation }), `Then Check "\${1:check name}" runs Operation "${operation}"\n    on "\${2:role}" as Input "\${3:input}"\n    and must establish "\${4:the requirement is met}"`)),
-        ];
-  return [
-    ...commonKeywords.map((keyword) => ({ label: keyword, insertText: `${keyword}: `, detail: t("shared.gherkinEditor.gherkinKeyword") })),
-    ...grammar.map(({ label, insertText, documentation }) => ({ label, insertText, documentation, detail: t("shared.gherkinEditor.grammar", { kind }) })),
-  ];
-}
-
-/* Folding: Background / Scenario blocks, each step with its table, tables and doc strings. */
-function foldingRanges(lines: string[], monaco: Monaco) {
-  const ranges: Array<{ start: number; end: number; kind?: import("monaco-editor").languages.FoldingRangeKind }> = [];
-  const isBlock = (line: string) => /^\s*(Background|Scenario(?: Outline)?|Examples)\b/.test(line);
-  const isStep = (line: string) => /^\s*(Given|When|Then|And|But)\b/.test(line);
-  const isTable = (line: string) => /^\s*\|/.test(line);
-  const isDoc = (line: string) => /^\s*"""\s*$/.test(line);
-  const lastContent = (from: number, to: number) => {
-    let end = to;
-    while (end > from && lines[end]!.trim() === "") end -= 1;
-    return end;
-  };
-
-  let block = -1;
-  let step = -1;
-  let table = -1;
-  let doc = -1;
-  const closeStep = (index: number) => {
-    if (step >= 0 && index - 1 > step) ranges.push({ start: step + 1, end: lastContent(step, index - 1) + 1 });
-    step = -1;
-  };
-  const closeTable = (index: number) => {
-    if (table >= 0 && index - 1 > table) ranges.push({ start: table + 1, end: index, kind: monaco.languages.FoldingRangeKind.Region });
-    table = -1;
-  };
-
-  lines.forEach((line, index) => {
-    if (doc >= 0) {
-      if (isDoc(line)) {
-        ranges.push({ start: doc + 1, end: index + 1 });
-        doc = -1;
-      }
-      return;
-    }
-    if (isDoc(line)) {
-      closeTable(index);
-      doc = index;
-      return;
-    }
-    if (isTable(line)) {
-      if (table < 0) table = index;
-      return;
-    }
-    closeTable(index);
-    if (isBlock(line)) {
-      closeStep(index);
-      if (block >= 0) ranges.push({ start: block + 1, end: lastContent(block, index - 1) + 1 });
-      block = index;
-      return;
-    }
-    if (isStep(line)) {
-      closeStep(index);
-      step = index;
-    }
-  });
-  closeTable(lines.length);
-  closeStep(lines.length);
-  if (block >= 0 && lines.length - 1 > block) ranges.push({ start: block + 1, end: lastContent(block, lines.length - 1) + 1 });
-  return ranges.filter((range) => range.end > range.start);
-}
-
 function wordRange(model: editor.ITextModel, position: { lineNumber: number; column: number }) {
   const word = model.getWordUntilPosition(position);
+  const prefix = model.getLineContent(position.lineNumber).slice(0, position.column - 1);
+  let start = prefix.length;
+  while (start > 0 && isExpressionIdentifierPart(prefix[start - 1]!)) start -= 1;
   return {
     startLineNumber: position.lineNumber,
     endLineNumber: position.lineNumber,
-    startColumn: word.startColumn,
+    startColumn: prefix[start] === "$" ? start + 1 : word.startColumn,
     endColumn: word.endColumn,
   };
 }

@@ -1,3 +1,3 @@
 #!/usr/bin/env node
 
-import "../dist/src/server.js";
+import "../dist/src/stdio.js";

@@ -34,10 +34,16 @@ Feature: Certify and release one sterile batch under Qualified Person responsibi
         on "batch" as Input "batch"
         and materializes "required test" from field "requiredTests"
         and must establish "the executed batch record is complete and in quarantine"
-      | field        | relation | expectation        | failure reason                            |
-      | batchStatus  | equals   | value "quarantine" | "the batch is not in quarantine"          |
-      | recordStatus | equals   | value "complete"   | "the executed batch record is incomplete" |
-    And the Scenario is satisfied when every Check is validated
+      """js
+      (
+        fact.batchStatus === "quarantine" ||
+        fail("the batch is not in quarantine")
+      ) &&
+      (
+        fact.recordStatus === "complete" ||
+        fail("the executed batch record is incomplete")
+      )
+      """
 
   @scenario:qc-results
   Scenario: Confirm every required QC test passed
@@ -47,24 +53,33 @@ Feature: Certify and release one sterile batch under Qualified Person responsibi
         using "batch" as Input "batch"
         and materializes "test time" from field "testedAt"
         and must establish "every test required by the specification passed on this batch"
-      | field        | relation | expectation     | failure reason                        |
-      | resultStatus | equals   | value "pass"    | "a required QC test did not pass"     |
-      | batch        | equals   | context "batch" | "a test result belongs to another batch" |
-    And the Scenario is satisfied when every Check is validated
+      """js
+      (
+        fact.resultStatus === "pass" ||
+        fail("a required QC test did not pass")
+      ) &&
+      (
+        fact.batch === context.batch ||
+        fail("a test result belongs to another batch")
+      )
+      """
 
   @scenario:cold-chain
   Scenario: Confirm the storage cold chain
     Given scenario "batch-record" is validated
-    # DSL GAP — upper bound: the storage temperature must stay AT MOST 8 degrees. The relation
-    # set has `at least` but no upper-bound counterpart. Written here as the missing relation
-    # `at most`.
     Then Check "storage" runs Operation "pharma.storage-read"
         on "batch" as Input "batch"
         and must establish "the batch cold chain has no excursion"
-      | field           | relation | expectation | failure reason                             |
-      | excursionCount  | equals   | number 0    | "the cold chain recorded an excursion"     |
-      | peakTemperature | at most  | number 8    | "the storage temperature exceeded 8 degrees" |
-    And the Scenario is satisfied when every Check is validated
+      """js
+      (
+        fact.excursionCount === 0 ||
+        fail("the cold chain recorded an excursion")
+      ) &&
+      (
+        fact.peakTemperature <= 8 ||
+        fail("the storage temperature exceeded 8 degrees")
+      )
+      """
 
   @scenario:deviations
   Scenario: Confirm every deviation is closed with an effective CAPA
@@ -72,16 +87,27 @@ Feature: Certify and release one sterile batch under Qualified Person responsibi
     Then Check "deviation" runs Operation "pharma.deviation-read"
         on each "deviation" as Input "deviation"
         and must establish "every deviation of the batch is closed with an effective CAPA"
-      | field           | relation | expectation      | failure reason                          |
-      | deviationStatus | equals   | value "closed"   | "a deviation is not closed"             |
-      | capaStatus      | equals   | value "effective" | "a CAPA is not effective"              |
-      | batch           | equals   | context "batch"  | "a deviation belongs to another batch"  |
+      """js
+      (
+        fact.deviationStatus === "closed" ||
+        fail("a deviation is not closed")
+      ) &&
+      (
+        fact.capaStatus === "effective" ||
+        fail("a CAPA is not effective")
+      ) &&
+      (
+        fact.batch === context.batch ||
+        fail("a deviation belongs to another batch")
+      )
+      """
     And Check "deviation log" runs Operation "pharma.deviation-log-read"
         on "batch" as Input "batch"
         and must establish "the QMS holds no open deviation the agent did not declare"
-      | field              | relation | expectation | failure reason                                |
-      | openDeviationCount | equals   | number 0    | "the QMS still holds an open deviation"       |
-    And the Scenario is satisfied when every Check is validated
+      """js
+      fact.openDeviationCount === 0 ||
+      fail("the QMS still holds an open deviation")
+      """
 
   @scenario:qualified-person
   Scenario: Confirm the Qualified Person authorization for the site
@@ -91,10 +117,16 @@ Feature: Certify and release one sterile batch under Qualified Person responsibi
         using "manufacturing site" as Input "site"
         and materializes "authorization expiry" from field "expiresAt"
         and must establish "the Qualified Person is authorized on the manufacturing site"
-      | field               | relation | expectation                  | failure reason                              |
-      | authorizationStatus | equals   | value "valid"                | "the Qualified Person authorization is not valid" |
-      | site                | equals   | context "manufacturing site" | "the authorization covers another site"     |
-    And the Scenario is satisfied when every Check is validated
+      """js
+      (
+        fact.authorizationStatus === "valid" ||
+        fail("the Qualified Person authorization is not valid")
+      ) &&
+      (
+        fact.site === context["manufacturing site"] ||
+        fail("the authorization covers another site")
+      )
+      """
 
   @scenario:certification
   Scenario: Confirm the batch certification by the Qualified Person
@@ -102,19 +134,28 @@ Feature: Certify and release one sterile batch under Qualified Person responsibi
     And scenario "cold-chain" is validated
     And scenario "deviations" is validated
     And scenario "qualified-person" is validated
-    # DSL GAP — quantified temporal: the certification must come after EVERY test result
-    # (one instant compared against a many-instant role). Written here as the missing
-    # quantifier `after every`.
     Then Check "certification" runs Operation "pharma.batch-certify"
         on "batch" as Input "batch"
         using "qualified person" as Input "person"
         and must establish "the batch is certified by the authorized Qualified Person"
-      | field               | relation    | expectation                    | failure reason                                    |
-      | certificationStatus | equals      | value "certified"              | "the batch was not certified"                     |
-      | certifiedBy         | equals      | context "qualified person"     | "the batch was certified by another person"       |
-      | certifiedAt         | before      | context "authorization expiry" | "the authorization expired before certification"  |
-      | certifiedAt         | after every | context "test time"            | "the certification predates a test result"        |
-    And the Scenario is satisfied when every Check is validated
+      """js
+      (
+        fact.certificationStatus === "certified" ||
+        fail("the batch was not certified")
+      ) &&
+      (
+        fact.certifiedBy === context["qualified person"] ||
+        fail("the batch was certified by another person")
+      ) &&
+      (
+        fact.certifiedAt < context["authorization expiry"] ||
+        fail("the authorization expired before certification")
+      ) &&
+      (
+        context["test time"].every(value => fact.certifiedAt > value) ||
+        fail("the certification predates a test result")
+      )
+      """
 
   @scenario:release
   Scenario: Confirm the batch release follows the certification
@@ -122,7 +163,13 @@ Feature: Certify and release one sterile batch under Qualified Person responsibi
     Then Check "release" runs Operation "pharma.batch-read"
         on "batch" as Input "batch"
         and must establish "the batch was released after its certification"
-      | field       | relation | expectation                                     | failure reason                              |
-      | batchStatus | equals   | value "released"                                | "the batch is not released"                 |
-      | releasedAt  | after    | field "certifiedAt" from Check "certification"  | "the release predates the certification"    |
-    And the Scenario is satisfied when every Check is validated
+      """js
+      (
+        fact.batchStatus === "released" ||
+        fail("the batch is not released")
+      ) &&
+      (
+        fact.releasedAt > checks.certification.certifiedAt ||
+        fail("the release predates the certification")
+      )
+      """

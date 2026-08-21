@@ -13,9 +13,9 @@ order: 2
 | Object | Is | Lives |
 | --- | --- | --- |
 | <Term id="operation" /> | how to call one external system and the typed fields it returns | in the catalog, one file per version — [Operations](/docs/operations) |
-| <Term id="procedure" /> | typed context roles, Scenarios, Checks; each Check runs one Operation on a target and states its expectations | published as `procedure@version`, embedding its Operations — [Procedures](/docs/procedures) |
+| <Term id="procedure" /> | typed context roles, Scenarios, Checks; each Check runs one Operation on a target and states its qualification | published as `procedure@version`, embedding its Operations — [Procedures](/docs/procedures) |
 | <Term id="scenario" /> | a group of Checks with prerequisites; satisfied when every Check is validated | inside a Procedure |
-| <Term id="check" /> | one Operation on one target role, Input bindings, expectations, reasons | inside a Scenario |
+| <Term id="check" /> | one Operation on one target role, Input bindings, typed qualification, reasons | inside a Scenario |
 
 ## Run lane — one Plan, revision after revision
 
@@ -38,5 +38,5 @@ order: 2
 
 ## Two objects that are not in the model
 
-- **Proof, evidence, binding**: there is none. A Check is validated by Facts qualified against expectations, nothing else is stored as "proof".
+- **Proof, evidence, binding**: there is none. A Check is validated by Facts evaluated against its qualification, nothing else is stored as "proof".
 - **A manual override**: an operator cannot mark a live Check validated by hand. On a dry-run the operator plays the agent and enters Facts; the same rules apply.

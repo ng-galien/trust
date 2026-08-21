@@ -5,9 +5,9 @@ order: 2
 screen: /operations
 ---
 
-An <Term id="operation">Operation</Term> says **how to call one external system** and **which typed fields that call produces**. It does not decide whether a result is good, does not know Plans or Checks, and never qualifies. A Procedure can therefore reuse one Operation in several Checks with different expectations.
+An <Term id="operation">Operation</Term> says **how to call one external system** and **which typed fields that call produces**. It does not decide whether a result is good, does not know Plans or Checks, and never qualifies. A Procedure can therefore reuse one Operation in several Checks with different qualifications.
 
-> An Operation observes or acts; the expectation belongs to the Check that uses it.
+> An Operation observes or acts; the qualification belongs to the Check that uses it.
 
 ```gherkin operation id="git.head-read" title="git.head-read — a complete Operation"
 # language: en
@@ -64,7 +64,7 @@ flowchart LR
   P -->|"a Check binds its Input"| C["Check"]
   C -->|"admitted, handed to"| R["Runner"]
   R -->|"runs the steps, evaluates the projection"| F["Facts = produced fields"]
-  F -->|"expectations of the Check"| V["Verdict"]
+  F -->|"qualification of the Check"| V["Verdict"]
 ```
 
 1. **Authoring.** The `.feature` is written in the interface or an editor. The compiler returns one compiled Operation, or a diagnostic with a line.

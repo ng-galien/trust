@@ -10,6 +10,8 @@ export {
   joinContinuations,
 } from "./continuation.js";
 export { formatGherkinSource, type FormatOptions } from "./format.js";
+export { highlightExpressionSource, highlightGherkinSource } from "./highlight.js";
+export type { HighlightKind, HighlightLine, HighlightToken, HighlightVocabulary } from "./highlight.js";
 export {
   documentRange,
   sourceLineRange,
@@ -21,6 +23,9 @@ export type {
   SourceRange,
 } from "./source.js";
 export {
+  isExpressionIdentifierPart,
+  isExpressionIdentifierStart,
+  SentenceCursor,
   SentenceSyntaxError,
   tokenizeSentence,
 } from "./sentence.js";

@@ -47,7 +47,7 @@ export const procedures = {
     publishHintFix: "Fix the source first",
     publishing: "Publishing…",
     publish: "Publish version",
-    tabs: { overview: "Overview", source: "Source", graph: "Graph", simulate: "Simulate", contract: "Contract JSON" },
+    tabs: { overview: "Overview", source: "Source", graph: "Graph", simulate: "Simulate", contract: "Compiled JSON" },
     compileLocation: "{{detail}} (line {{line}})",
     mustCompile: "The source must compile first.",
     executedBy: "Executed by",
@@ -63,7 +63,7 @@ export const procedures = {
     showInGraph: "Show in the graph",
     afterList: "after {{list}}",
     noGraphTitle: "No graph yet",
-    noContractTitle: "No compiled contract",
+    noContractTitle: "No compiled Procedure",
   },
   overview: {
     emptyTitle: "Nothing to summarise yet",
@@ -79,7 +79,7 @@ export const procedures = {
     checksTitle: "Checks",
     input: "Input",
     fromRole: "← role",
-    columns: { field: "Field", relation: "Relation", expectation: "Expectation", failureReason: "Failure reason" },
+    qualification: "Qualification",
     materializes: "Materializes {{list}}",
   },
   simulation: {

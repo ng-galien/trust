@@ -52,7 +52,7 @@ function parseRanges(value: string): number[] {
 export function Snippet({ code, language = "text", meta = {}, className }: { code: string; language?: string; meta?: SnippetMeta; className?: string }) {
   const { t } = useTranslation();
   const [copied, setCopied] = useState(false);
-  const lines = highlight(code, language);
+  const lines = highlight(code, language, meta.kind);
   const marks = new Map((meta.marks ?? []).map((line, index) => [line, index + 1]));
   const highlighted = new Set(meta.lines ?? []);
   const copy = () => {

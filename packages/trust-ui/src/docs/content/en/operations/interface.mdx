@@ -78,7 +78,9 @@ The same four types serve Input and Produced fields; Environment has its own two
 - Required, once, at least one row. The header is exactly `| field | type | cardinality | domain |`.
 - `domain` is `any`, or — for `string` fields only — an enumeration written exactly `enum "a", "b"` (comma and one space; values non-empty and distinct).
 - The projection must return **exactly** this set of fields: same names, nothing missing, nothing extra. Values are validated against the type and the enumeration when the Operation runs (and when you simulate it).
-- These fields are the Facts a Check qualifies. A Check predicate names one of them: `| verificationStatus | equals | value "successful" | "the build failed" |`. A materialization also names one: `and materializes "fix revision" from field "verifiedRevision"`.
+- These fields are the Facts a Check qualifies. Its `js` DocString reads them through `fact`, for example `fact.verificationStatus === "successful" || fail("the build failed")`. A materialization also names one: `and materializes "fix revision" from field "verifiedRevision"`.
+
+In the Source editor, the JSONata projection is an embedded language rather than plain Gherkin text. It has JSONata syntax highlighting and the TRUST language server completes `steps.`, `input.` and `environment.` from the Operation being edited. The same Operation compiler reports invalid JSONata and projection errors before publication.
 
 <Callout kind="note" title="What a produced field attests">
   A field copied from `input` (for example `"verifiedRevision": input.revision`) attests the **admitted context** the action ran with — it does not claim the external system re-observed that value. A field derived from a step result attests the **action result** itself.

@@ -38,10 +38,16 @@ Feature: Release one aircraft to service after a maintenance visit
     Then Check "aircraft status" runs Operation "aviation.aircraft-status-read"
         on "aircraft" as Input "aircraft"
         and must establish "the aircraft is in maintenance with no overdue airworthiness directive"
-      | field                  | relation | expectation            | failure reason                          |
-      | aircraftStatus         | equals   | value "in-maintenance" | "the aircraft is not in maintenance"    |
-      | overdueDirectiveCount  | equals   | number 0               | "an airworthiness directive is overdue" |
-    And the Scenario is satisfied when every Check is validated
+      """js
+      (
+        fact.aircraftStatus === "in-maintenance" ||
+        fail("the aircraft is not in maintenance")
+      ) &&
+      (
+        fact.overdueDirectiveCount === 0 ||
+        fail("an airworthiness directive is overdue")
+      )
+      """
 
   @scenario:work-orders
   Scenario: Confirm every work order of the visit is closed
@@ -50,15 +56,23 @@ Feature: Release one aircraft to service after a maintenance visit
         on "maintenance visit" as Input "visit"
         using "aircraft" as Input "aircraft"
         and must establish "the maintenance visit has no open work order"
-      | field              | relation | expectation | failure reason                                  |
-      | openWorkOrderCount | equals   | number 0    | "the visit still has an open work order"        |
+      """js
+      fact.openWorkOrderCount === 0 ||
+      fail("the visit still has an open work order")
+      """
     And Check "work order" runs Operation "aviation.work-order-read"
         on each "work order" as Input "workOrder"
         and must establish "every declared work order is closed on this visit"
-      | field           | relation | expectation                 | failure reason                                |
-      | workOrderStatus | equals   | value "closed"              | "a declared work order is not closed"         |
-      | visit           | equals   | context "maintenance visit" | "a work order belongs to another visit"       |
-    And the Scenario is satisfied when every Check is validated
+      """js
+      (
+        fact.workOrderStatus === "closed" ||
+        fail("a declared work order is not closed")
+      ) &&
+      (
+        fact.visit === context["maintenance visit"] ||
+        fail("a work order belongs to another visit")
+      )
+      """
 
   @scenario:part-certificates
   Scenario: Confirm one valid release certificate per fitted part
@@ -67,10 +81,16 @@ Feature: Release one aircraft to service after a maintenance visit
         on each "fitted part" as Input "part"
         and materializes "certificate release time" from field "releasedAt"
         and must establish "every fitted part carries a valid release certificate for its serial"
-      | field             | relation | expectation           | failure reason                                     |
-      | certificateStatus | equals   | value "valid"         | "a part has no valid release certificate"          |
-      | certifiedSerial   | equals   | context "fitted part" | "a certificate covers another serial number"       |
-    And the Scenario is satisfied when every Check is validated
+      """js
+      (
+        fact.certificateStatus === "valid" ||
+        fail("a part has no valid release certificate")
+      ) &&
+      (
+        fact.certifiedSerial === context["fitted part"] ||
+        fail("a certificate covers another serial number")
+      )
+      """
 
   @scenario:part-fitment
   Scenario: Confirm every part was fitted after its certificate release
@@ -78,25 +98,37 @@ Feature: Release one aircraft to service after a maintenance visit
     Then Check "fitment" runs Operation "aviation.part-fitment-read"
         on each "fitted part" as Input "part"
         and must establish "every part fitment is recorded after its certificate release"
-      | field         | relation | expectation                        | failure reason                                |
-      | fitmentStatus | equals   | value "recorded"                   | "a part fitment is not recorded"              |
-      | workOrder     | equals   | context "work order"               | "a part is fitted under another work order"   |
-      | fittedAt      | after    | context "certificate release time" | "a part was fitted before its certificate"    |
-    And the Scenario is satisfied when every Check is validated
+      """js
+      (
+        fact.fitmentStatus === "recorded" ||
+        fail("a part fitment is not recorded")
+      ) &&
+      (
+        fact.workOrder === context["work order"] ||
+        fail("a part is fitted under another work order")
+      ) &&
+      (
+        fact.fittedAt > context["certificate release time"] ||
+        fail("a part was fitted before its certificate")
+      )
+      """
 
   @scenario:duplicate-inspection
   Scenario: Confirm the independent duplicate inspection of every flight-control task
     Given scenario "work-orders" is validated
-    # DSL GAP — "differs from": the regulation requires the inspector to be a DIFFERENT person
-    # from the mechanic who performed the task (independence / four-eyes). The relation set has
-    # no inequality. Written here as the missing relation `differs from`.
     Then Check "independent inspection" runs Operation "aviation.inspection-read"
         on each "duplicate inspection task" as Input "task"
         and must establish "every flight-control task passed an independent duplicate inspection"
-      | field            | relation     | expectation             | failure reason                                       |
-      | inspectionStatus | equals       | value "passed"          | "a duplicate inspection did not pass"                |
-      | inspectorLicence | differs from | field "mechanicLicence" | "a task was inspected by the person who performed it" |
-    And the Scenario is satisfied when every Check is validated
+      """js
+      (
+        fact.inspectionStatus === "passed" ||
+        fail("a duplicate inspection did not pass")
+      ) &&
+      (
+        fact.inspectorLicence !== fact.mechanicLicence ||
+        fail("a task was inspected by the person who performed it")
+      )
+      """
 
   @scenario:signing-engineer
   Scenario: Confirm the signing engineer licence covers the aircraft type
@@ -106,30 +138,45 @@ Feature: Release one aircraft to service after a maintenance visit
         using "aircraft" as Input "aircraft"
         and materializes "licence expiry" from field "expiresAt"
         and must establish "the signing engineer holds a valid licence covering the type"
-      | field            | relation | expectation   | failure reason                                    |
-      | licenceStatus    | equals   | value "valid" | "the signing engineer licence is not valid"       |
-      | typeRatingStatus | equals   | value "valid" | "the licence does not cover this aircraft type"   |
-    And the Scenario is satisfied when every Check is validated
+      """js
+      (
+        fact.licenceStatus === "valid" ||
+        fail("the signing engineer licence is not valid")
+      ) &&
+      (
+        fact.typeRatingStatus === "valid" ||
+        fail("the licence does not cover this aircraft type")
+      )
+      """
 
   @scenario:release-certificate
   Scenario: Confirm the certificate of release to service
     Given scenario "part-fitment" is validated
     And scenario "duplicate-inspection" is validated
     And scenario "signing-engineer" is validated
-    # DSL GAP — quantified temporal: the signature must come after EVERY work order closure
-    # (a one-instant field compared against a many-instant role). Written here as the missing
-    # quantifier `after every`.
     Then Check "crs" runs Operation "aviation.release-record"
         on "maintenance visit" as Input "visit"
         using "aircraft" as Input "aircraft"
         using "signing engineer" as Input "engineer"
         and must establish "the certificate of release to service is signed under a valid licence"
-      | field     | relation    | expectation                  | failure reason                                     |
-      | crsStatus | equals      | value "issued"               | "the release certificate was not issued"           |
-      | signedBy  | equals      | context "signing engineer"   | "the certificate was signed by another engineer"   |
-      | signedAt  | before      | context "licence expiry"     | "the licence expired before the signature"         |
-      | signedAt  | after every | context "work order closure" | "the certificate predates a work order closure"    |
-    And the Scenario is satisfied when every Check is validated
+      """js
+      (
+        fact.crsStatus === "issued" ||
+        fail("the release certificate was not issued")
+      ) &&
+      (
+        fact.signedBy === context["signing engineer"] ||
+        fail("the certificate was signed by another engineer")
+      ) &&
+      (
+        fact.signedAt < context["licence expiry"] ||
+        fail("the licence expired before the signature")
+      ) &&
+      (
+        context["work order closure"].every(value => fact.signedAt > value) ||
+        fail("the certificate predates a work order closure")
+      )
+      """
 
   @scenario:back-in-service
   Scenario: Confirm the aircraft is serviceable after the release certificate
@@ -137,7 +184,13 @@ Feature: Release one aircraft to service after a maintenance visit
     Then Check "serviceability" runs Operation "aviation.aircraft-status-read"
         on "aircraft" as Input "aircraft"
         and must establish "the aircraft returned to service after its release certificate"
-      | field           | relation | expectation                          | failure reason                                  |
-      | aircraftStatus  | equals   | value "serviceable"                  | "the aircraft is not serviceable"               |
-      | statusChangedAt | after    | field "signedAt" from Check "crs"    | "the aircraft returned to service before the certificate" |
-    And the Scenario is satisfied when every Check is validated
+      """js
+      (
+        fact.aircraftStatus === "serviceable" ||
+        fail("the aircraft is not serviceable")
+      ) &&
+      (
+        fact.statusChangedAt > checks.crs.signedAt ||
+        fail("the aircraft returned to service before the certificate")
+      )
+      """

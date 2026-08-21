@@ -1,49 +1,58 @@
 default_rules = false
 
 [aliases]
-active_source = "(source ~ '**/dir:apps/**' OR source ~ '**/dir:packages/**') AND NOT source ~ '**/dir:legacy/**'"
-legacy_target = "target ~ '**/dir:legacy/**'"
-domain_source = "source ~ '**/dir:domain/**' AND NOT source ~ '**/dir:legacy/**'"
-application_source = "source ~ '**/dir:application/**' AND NOT source ~ '**/dir:legacy/**'"
-application_target = "target ~ '**/dir:application/**'"
-ports_target = "target ~ '**/dir:ports/**'"
-infrastructure_target = "target ~ '**/dir:infrastructure/**'"
-presentation_target = "target ~ '**/dir:presentation/**'"
-sdk_source = "source ~ '**/dir:packages/dir:trust-skill-sdk/**' AND NOT source ~ '**/dir:legacy/**'"
-runtime_target = "target ~ '**/dir:apps/dir:trust-runtime/**'"
+gherkin_source = "source ~ '**/dir:packages/dir:trust-gherkin/**'"
+operation_source = "source ~ '**/dir:packages/dir:trust-operation/**'"
+procedure_source = "source ~ '**/dir:packages/dir:trust-procedure/**'"
+authority_source = "$gherkin_source OR $operation_source OR $procedure_source"
+gherkin_target = "target ~ '**/dir:packages/dir:trust-gherkin/**'"
+operation_target = "target ~ '**/dir:packages/dir:trust-operation/**'"
+procedure_target = "target ~ '**/dir:packages/dir:trust-procedure/**'"
+lsp_source = "source ~ '**/dir:packages/dir:trust-language-server/**'"
+lsp_target = "target ~ '**/dir:packages/dir:trust-language-server/**'"
+runtime_target = "target ~ '**/dir:packages/dir:trust-runtime/**'"
+ui_target = "target ~ '**/dir:packages/dir:trust-ui/**'"
 
-[profiles.greenfield]
+[profiles.language-authority]
 enable = [
-  "^refs\\.active-does-not-depend-on-legacy$",
-  "^refs\\.domain-is-independent$",
-  "^refs\\.application-does-not-depend-on-adapters$",
-  "^refs\\.sdk-does-not-depend-on-private-runtime$",
+  "^refs\\.gherkin-is-foundational$",
+  "^refs\\.operation-owns-operation-language$",
+  "^refs\\.procedure-owns-procedure-language$",
+  "^refs\\.language-server-is-an-adapter$",
+  "^refs\\.authorities-do-not-depend-on-ui$",
 ]
 
 [[refs.where]]
-id = "active-does-not-depend-on-legacy"
+id = "gherkin-is-foundational"
 severity = "error"
-rationale = "The two archived generations are anti-models, not dependencies of the greenfield product."
-expr = "$active_source => NOT $legacy_target"
-message = "Active code must not depend on legacy code."
+rationale = "The shared Gherkin parser, tokenizer, locations, formatter and highlighter cannot depend on product languages or adapters."
+expr = "$gherkin_source => NOT ($operation_target OR $procedure_target OR $lsp_target OR $runtime_target OR $ui_target)"
+message = "The Gherkin authority must remain independent from product languages and adapters."
 
 [[refs.where]]
-id = "domain-is-independent"
+id = "operation-owns-operation-language"
 severity = "error"
-rationale = "Domain types must remain independent from application orchestration and adapters."
-expr = "$domain_source => NOT ($application_target OR $ports_target OR $infrastructure_target OR $presentation_target)"
-message = "Domain code must not depend on outer layers."
+rationale = "The Operation compiler and language descriptor are authoritative and cannot depend on Procedure, LSP, runtime or UI implementations."
+expr = "$operation_source => NOT ($procedure_target OR $lsp_target OR $runtime_target OR $ui_target)"
+message = "The Operation language authority crosses an outer boundary."
 
 [[refs.where]]
-id = "application-does-not-depend-on-adapters"
+id = "procedure-owns-procedure-language"
 severity = "error"
-rationale = "Application services depend on ports, never infrastructure or presentation adapters."
-expr = "$application_source => NOT ($infrastructure_target OR $presentation_target)"
-message = "Application code must not depend on adapters."
+rationale = "The Procedure compiler, expression compiler and evaluator are authoritative and cannot depend on LSP, runtime or UI implementations."
+expr = "$procedure_source => NOT ($lsp_target OR $runtime_target OR $ui_target)"
+message = "The Procedure language authority crosses an outer boundary."
 
 [[refs.where]]
-id = "sdk-does-not-depend-on-private-runtime"
+id = "language-server-is-an-adapter"
 severity = "error"
-rationale = "The distributed Skill SDK is independent from the private runtime implementation."
-expr = "$sdk_source => NOT $runtime_target"
-message = "The Skill SDK must not import the private runtime."
+rationale = "No compiler, runtime or UI implementation may import the LSP adapter as a language authority."
+expr = "(NOT $lsp_source) => NOT $lsp_target"
+message = "Only the language-server package may depend on its adapter implementation."
+
+[[refs.where]]
+id = "authorities-do-not-depend-on-ui"
+severity = "error"
+rationale = "Grammar, compilation and evaluation never depend on presentation code."
+expr = "$authority_source => NOT $ui_target"
+message = "A language authority depends on UI code."

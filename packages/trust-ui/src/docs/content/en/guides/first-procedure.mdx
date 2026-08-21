@@ -1,6 +1,6 @@
 ---
 title: "Write and publish a Procedure"
-summary: "From New procedure to a published version — context roles, Scenarios, Checks, expectations, graph."
+summary: "From New procedure to a published version — context roles, Scenarios, Checks, qualifications, graph."
 order: 2
 ---
 
@@ -9,8 +9,8 @@ order: 2
   <Step title="Name it">Set `@procedure:<slug>` and `@version:1.0.0`; keep `@trust-dsl:1`. Give it a title and, under it, a few lines describing what it establishes.</Step>
   <Step title="Declare the context">In `Background: Plan context`, one line per role: what an engagement must give (`Given one reference "project"`), what a Check will fill later (`And one reference "fix revision" for "project"`), what the agent declares, what is fixed.</Step>
   <Step title="Write the first Scenario">`@scenario:<slug>`, a title, then a Check: `Then Check "…" runs Operation "…" on "<role>" as Input "<input>" … and must establish "…"`. Use the **Check** or **Use `<operation>`** completion: Operation names come from the catalog.</Step>
-  <Step title="Write the expectations">One row per produced field to test: `field · relation · expectation · failure reason`. Close with `And the Scenario is satisfied when every Check is validated`.</Step>
-  <Step title="Chain Scenarios">Next Scenario: `Given scenario "<slug>" is validated` first, then its Checks. Bind values from earlier Checks with `using "<role>"` (materialized roles) or `field "…" from Check "…"` expectations.</Step>
+  <Step title="Write the qualification">Attach one `js` DocString to the Check. Write each guard as `condition || fail(reason)`; join independent guards with `&&`.</Step>
+  <Step title="Chain Scenarios">Next Scenario: `Given scenario "<slug>" is validated` first, then its Checks. Bind materialized roles with `using "<role>"`; read an earlier Check through `checks["<check>"].field` in the qualification.</Step>
   <Step title="Read the graph">Graph tab: check the order links and the dashed data links; select a Check to see what it needs and what it would reset.</Step>
   <Step title="Simulate, then publish">Simulate tab to play the Scenario order. **Publish** stores the version; a Plan or a dry-run can be engaged from it.</Step>
 </Steps>

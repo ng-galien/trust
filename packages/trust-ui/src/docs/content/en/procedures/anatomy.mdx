@@ -1,6 +1,6 @@
 ---
 title: "Anatomy of a Procedure"
-summary: "A complete Procedure read line by line — tags, context roles, Scenarios, Checks, expectations — with the rules the compiler enforces at each line."
+summary: "A complete Procedure read line by line — tags, context roles, Scenarios, Checks, qualifications — with the rules the compiler enforces at each line."
 order: 1
 ---
 
@@ -24,37 +24,59 @@ Feature: Fix one Jira defect in one Maven project
   @scenario:issue
   Scenario: Read the Jira defect
     Then Check "issue" runs Operation "jira.issue-read" on "jira issue" as Input "issue" and must establish "the Jira issue is ready for correction"
-      | field          | relation | expectation    | failure reason                  |
-      | issueType      | equals   | value "defect" | "the Jira issue is not a defect" |
-      | workflowStatus | equals   | value "todo"   | "the Jira issue is not ready"    |
-    And the Scenario is satisfied when every Check is validated
+      """js
+      (
+        fact.issueType === "defect" ||
+        fail("the Jira issue is not a defect")
+      ) &&
+      (
+        fact.workflowStatus === "todo" ||
+        fail("the Jira issue is not ready")
+      )
+      """
 
   @scenario:baseline
   Scenario: Establish the project baseline
     Given scenario "issue" is validated
     Then Check "baseline" runs Operation "git.head-read" on "project" as Input "project" and materializes "baseline revision" from field "headRevision" and must establish "the project baseline is clean"
-      | field       | relation | expectation   | failure reason                       |
-      | workingTree | equals   | value "clean" | "the project has uncommitted changes" |
-    And the Scenario is satisfied when every Check is validated
+      """js
+      fact.workingTree === "clean" ||
+      fail("the project has uncommitted changes")
+      """
 
   @scenario:fix
   Scenario: Establish the committed fix
     Given scenario "baseline" is validated
     Then Check "fix" runs Operation "git.head-compare" on "project" as Input "project" using "baseline revision" as Input "baseRevision" and materializes "fix revision" from field "headRevision" and must establish "the fix is committed after the baseline"
-      | field                | relation | expectation                 | failure reason                       |
-      | comparedBaseRevision | equals   | context "baseline revision" | "the fix uses another baseline"       |
-      | commitsAhead         | at least | number 1                    | "the fix is not committed"            |
-      | workingTree          | equals   | value "clean"               | "the project has uncommitted changes"  |
-    And the Scenario is satisfied when every Check is validated
+      """js
+      (
+        fact.comparedBaseRevision === context["baseline revision"] ||
+        fail("the fix uses another baseline")
+      ) &&
+      (
+        fact.commitsAhead >= 1 ||
+        fail("the fix is not committed")
+      ) &&
+      (
+        fact.workingTree === "clean" ||
+        fail("the project has uncommitted changes")
+      )
+      """
 
   @scenario:verification
   Scenario: Verify the committed fix
     Given scenario "fix" is validated
     Then Check "Maven verification" runs Operation "maven.project-verify" on "project" as Input "project" using "fix revision" as Input "revision" and must establish "the committed fix passes Maven verification"
-      | field              | relation | expectation           | failure reason                   |
-      | verifiedRevision   | equals   | context "fix revision" | "Maven verified another revision" |
-      | verificationStatus | equals   | value "successful"     | "Maven verification failed"       |
-    And the Scenario is satisfied when every Check is validated
+      """js
+      (
+        fact.verifiedRevision === context["fix revision"] ||
+        fail("Maven verified another revision")
+      ) &&
+      (
+        fact.verificationStatus === "successful" ||
+        fail("Maven verification failed")
+      )
+      """
 ```
 
 <Legend items={[
@@ -65,9 +87,8 @@ Feature: Fix one Jira defect in one Maven project
   <>**Scoped role.** <code>for "project"</code> attaches the role to a parent role; here a revision belongs to one project. Nothing declares its source yet: it is materialized by a Check below.</>,
   <>**Scenario tag.** Exactly one <code>@scenario:&lt;slug&gt;</code> per Scenario, unique in the Procedure.</>,
   <>**Check sentence.** <code>Then Check "&lt;name&gt;" runs Operation "&lt;domain.action&gt;" on "&lt;role&gt;" as Input "&lt;input&gt;" … and must establish "&lt;success reason&gt;"</code>. <code>on</code> names the target and binds one Input. See [Scenarios and Checks](/docs/procedures/scenarios-and-checks).</>,
-  <>**Expectation table.** Exactly the four columns <code>field · relation · expectation · failure reason</code>; one row per predicate on a produced field of the Operation. See [Expectations](/docs/procedures/expectations).</>,
-  <>**Failure reason.** Quoted; returned with the verdict when the row is not satisfied.</>,
-  <>**Closing sentence.** Every Scenario ends with exactly <code>And the Scenario is satisfied when every Check is validated</code>.</>,
+  <>**Qualification.** One <code>js</code> DocString attached to the Check; each guard is a typed condition followed by <code>|| fail(reason)</code>. See [Qualifications](/docs/procedures/expectations).</>,
+  <>**Failure reason.** A string expression evaluated and returned only when its guard is false.</>,
   <>**Prerequisite.** <code>Given scenario "issue" is validated</code>: this Scenario's Checks are actionable only after that Scenario is satisfied.</>,
   <>**Materialization.** <code>and materializes "baseline revision" from field "headRevision"</code>: the value of a produced field becomes the value of a context role, for later Checks.</>,
   <>**Using.** <code>using "baseline revision" as Input "baseRevision"</code> binds a further Input; every required Input of the Operation is bound exactly once.</>,
@@ -92,8 +113,9 @@ Feature: <title>
         [using [all] "<role>" as Input "<input>"]…
         [and materializes "<role>" from field "<field>"]…
         and must establish "<success reason>"
-      | field | relation | expectation | failure reason |   exactly these columns
-    And the Scenario is satisfied when every Check is validated
+      """js
+      <boolean expression> || fail(<string expression>)
+      """
 ```
 
 ## Reading the graph

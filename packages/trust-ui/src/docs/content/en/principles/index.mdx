@@ -17,7 +17,7 @@ TRUST is a compliance runtime for work done by agents: **the agent performs acti
 </Callout>
 
 <Callout kind="rule" title="A Check is validated by Facts, or it is not validated">
-  A Check is either open or satisfied. Its verdict comes from observed Facts qualified against the expectations written in the Procedure. A refusal, a crash or an interrupted execution leaves the Check unchanged.
+  A Check is either open or satisfied. Its verdict comes from observed Facts evaluated against the typed qualification written in the Procedure. A refusal, a crash or an interrupted execution leaves the Check unchanged.
 </Callout>
 
 <Callout kind="rule" title="Nothing runs before admission">
@@ -38,7 +38,7 @@ TRUST is a compliance runtime for work done by agents: **the agent performs acti
 | --- | --- |
 | <Term id="operation" /> | how to call one external system, and the typed fields it returns |
 | <Term id="procedure" /> | typed context roles, Scenarios and Checks bound to Operations — versioned, published |
-| <Term id="check" /> | one Operation on one target, with expectations on its fields; open or satisfied |
+| <Term id="check" /> | one Operation on one target, with a qualification over its fields; open or satisfied |
 | <Term id="scenario" /> | a group of Checks, satisfied when all are validated; may require other Scenarios |
 | <Term id="plan" /> | one Procedure engaged with concrete inputs in one Environment |
 | <Term id="environment" /> | named directories, URLs and credential references an execution needs |

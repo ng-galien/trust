@@ -78,7 +78,9 @@ La **cardinalité** est `one` (un scalaire) ou `many` (un tableau du type). Il n
 - Requis, une fois, au moins une ligne. L'en-tête est exactement `| field | type | cardinality | domain |`.
 - `domain` vaut `any`, ou — pour les champs `string` seulement — une énumération écrite exactement `enum "a", "b"` (virgule et une espace ; valeurs non vides et distinctes).
 - La projection doit renvoyer **exactement** cet ensemble de champs : mêmes noms, rien de manquant, rien en trop. Les valeurs sont validées contre le type et l'énumération quand l'Opération s'exécute (et quand vous la simulez).
-- Ces champs sont les Facts qu'un Check qualifie. Un prédicat de Check nomme l'un d'eux : `| verificationStatus | equals | value "successful" | "the build failed" |`. Une matérialisation en nomme un aussi : `and materializes "fix revision" from field "verifiedRevision"`.
+- Ces champs sont les Facts qu'un Check qualifie. Son DocString `js` les lit par `fact`, par exemple `fact.verificationStatus === "successful" || fail("the build failed")`. Une matérialisation en nomme un aussi : `and materializes "fix revision" from field "verifiedRevision"`.
+
+Dans l'éditeur Source, la projection JSONata est un langage embarqué plutôt que du simple texte Gherkin. Elle reçoit une coloration JSONata et le serveur de langage TRUST complète `steps.`, `input.` et `environment.` à partir de l'Opération en cours d'édition. Le même compilateur d'Opération signale les erreurs JSONata et de projection avant publication.
 
 <Callout kind="note" title="Ce qu'atteste un champ produit">
   Un champ copié depuis `input` (par exemple `"verifiedRevision": input.revision`) atteste le **contexte admis** avec lequel l'action s'est exécutée — il n'affirme pas que le système externe a ré-observé cette valeur. Un champ dérivé d'un résultat d'étape atteste le **résultat de l'action** lui-même.

@@ -36,6 +36,18 @@ export interface ProcedureCompilationInput {
   readonly operations: readonly CompiledOperation[];
 }
 
+export interface ProcedureDiagnostic {
+  readonly code: ProcedureCompilationErrorCode;
+  readonly message: string;
+  readonly sourceName: string;
+  readonly location?: { readonly line: number; readonly column: number };
+}
+
+export interface ProcedureAnalysis {
+  readonly compiled?: CompiledProcedure;
+  readonly diagnostics: readonly ProcedureDiagnostic[];
+}
+
 export interface CompiledProcedureRole {
   readonly name: string;
   readonly type: ProcedureValueType;
@@ -58,18 +70,35 @@ export interface CompiledProcedureInputBinding {
   readonly selection: "one" | "each" | "all";
 }
 
-export type CompiledProcedureExpectation =
-  | { readonly kind: "value"; readonly value: string }
-  | { readonly kind: "number"; readonly value: number }
-  | { readonly kind: "valid-rfc3339" }
-  | { readonly kind: "context"; readonly role: string }
-  | { readonly kind: "check-field"; readonly check: string; readonly field: string };
+export type JsonLogicRule =
+  | null
+  | boolean
+  | number
+  | string
+  | readonly JsonLogicRule[]
+  | { readonly [operator: string]: JsonLogicRule };
 
-export interface CompiledProcedurePredicate {
-  readonly field: string;
-  readonly relation: "equals" | "at least" | "has at least" | "is in" | "before" | "after";
-  readonly expectation: CompiledProcedureExpectation;
-  readonly failureReason: string;
+interface CompiledExpressionReferenceType {
+  readonly valueType: ProcedureValueType;
+  readonly cardinality: "one" | "many";
+}
+
+export type CompiledExpressionReference = CompiledExpressionReferenceType & (
+  | { readonly kind: "fact"; readonly field: string }
+  | { readonly kind: "context"; readonly role: string }
+  | { readonly kind: "check"; readonly check: string; readonly field: string }
+);
+
+export interface CompiledProcedureGuard {
+  readonly conditionLogic: JsonLogicRule;
+  readonly failureReasonLogic: JsonLogicRule;
+  readonly references: readonly CompiledExpressionReference[];
+}
+
+export interface CompiledProcedureQualification {
+  readonly source: string;
+  readonly guards: readonly CompiledProcedureGuard[];
+  readonly location: { readonly line: number; readonly column: number };
 }
 
 export interface CompiledProcedureCheck {
@@ -81,7 +110,7 @@ export interface CompiledProcedureCheck {
   readonly target: { readonly role: string; readonly selection: "one" | "each" | "all" };
   readonly inputBindings: readonly CompiledProcedureInputBinding[];
   readonly materializes: readonly { readonly role: string; readonly field: string }[];
-  readonly predicates: readonly CompiledProcedurePredicate[];
+  readonly qualification: CompiledProcedureQualification;
   readonly successReason: string;
 }
 
@@ -100,7 +129,6 @@ export interface CompiledProcedureOperation {
 }
 
 export interface CompiledProcedure {
-  readonly contract: "trust.compiled-procedure@3";
   readonly procedure: string;
   readonly version: string;
   readonly title: string;

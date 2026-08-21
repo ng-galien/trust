@@ -1,4 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
+import { parseGherkin, tokenizeSentence } from "@trust/gherkin";
 import { ChevronRight, FileCode2, FlaskConical, History, ListChecks, LockKeyhole, Network, RotateCcw, Server, Trash2, Workflow, X } from "lucide-react";
 import type { TFunction } from "i18next";
 import { type ReactNode, useMemo, useState } from "react";
@@ -347,9 +348,10 @@ function PlanHistory({ plan }: { plan: PlanView }) {
 
 /** The procedure source, hydrated with the Plan: role values on Background lines, live state on Scenario and Check lines. */
 function hydrate(compiled: CompiledProcedure, plan: PlanView, t: TFunction): EditorDecoration[] {
-  const lines = compiled.source.split("\n");
   const decorations: EditorDecoration[] = [];
-  const byTitle = new Map(compiled.scenarios.map((scenario) => [scenario.title.toLowerCase(), scenario.slug]));
+  const byTitle = new Map(compiled.scenarios.map((scenario) => [scenario.title, scenario.slug]));
+  const roles = new Map(compiled.roles.map((role) => [role.name, role]));
+  const checkNames = new Set(compiled.checks.map((check) => check.name));
   const stateOf = (checks: PlanCheck[]) => {
     if (checks.length === 0) return undefined;
     if (checks.every((check) => check.state === "SATISFIED")) return "satisfied" as const;
@@ -370,34 +372,37 @@ function hydrate(compiled: CompiledProcedure, plan: PlanView, t: TFunction): Edi
     const targets = checks.map((check) => String(check.target.value)).join(", ");
     return `${t("plans.hydrate.expansion", { count: checks.length, targets, satisfied })}${failed.length ? t("plans.hydrate.expansionNotValidated", { count: failed.length }) : ""}${actionable ? t("plans.hydrate.expansionActionable", { count: actionable }) : ""}`;
   };
-  lines.forEach((line, index) => {
-    const number = index + 1;
-    const scenario = line.match(/^\s*Scenario:\s*(.+)$/);
-    if (scenario) {
-      const slug = byTitle.get(scenario[1]!.trim().toLowerCase());
+  const document = parseGherkin(compiled.source);
+  for (const child of document.feature?.children ?? []) {
+    if (child.scenario) {
+      const slug = byTitle.get(child.scenario.name);
       const checks = plan.checks.filter((check) => check.scenario === slug);
       const tone = stateOf(checks);
-      if (tone) decorations.push({ line: number, tone, text: checks.length ? t("plans.hydrate.satisfiedRatio", { satisfied: checks.filter((check) => check.state === "SATISFIED").length, total: checks.length }) : undefined });
-      else if (slug) decorations.push({ line: number, tone: "open", text: t("plans.hydrate.noCheckYet") });
-      return;
+      if (tone) decorations.push({ line: child.scenario.location.line, tone, text: checks.length ? t("plans.hydrate.satisfiedRatio", { satisfied: checks.filter((check) => check.state === "SATISFIED").length, total: checks.length }) : undefined });
+      else if (slug) decorations.push({ line: child.scenario.location.line, tone: "open", text: t("plans.hydrate.noCheckYet") });
+      for (const step of child.scenario.steps) {
+        const name = firstQuoted(step.text);
+        if (!name || !checkNames.has(name)) continue;
+        const instances = plan.checks.filter((entry) => entry.name === name);
+        const checkTone = stateOf(instances);
+        if (checkTone) decorations.push({ line: step.location.line, tone: checkTone, text: summarize(instances) });
+      }
     }
-    const check = line.match(/\bCheck\s+"([^"]+)"/);
-    if (check) {
-      const checks = plan.checks.filter((entry) => entry.name === check[1]);
-      const tone = stateOf(checks);
-      if (tone) decorations.push({ line: number, tone, text: summarize(checks) });
-      return;
-    }
-    const role = line.match(/^\s*(?:Given|And)\s+(?:one|many)\s+\w+\s+"([^"]+)"/);
-    if (role) {
-      const name = role[1]!;
+    if (child.background) for (const step of child.background.steps) {
+      const name = firstQuoted(step.text);
+      const role = name ? roles.get(name) : undefined;
+      if (!name || !role) continue;
       const value = plan.rootInputs[name] ?? plan.declarations[name];
-      if (value !== undefined) decorations.push({ line: number, tone: "info", text: t("plans.hydrate.value", { value: describeValue(value) }) });
-      else if (plan.missingDeclarations.includes(name)) decorations.push({ line: number, tone: "open", text: t("plans.hydrate.notDeclared") });
-      else if (line.includes("declared by agent")) decorations.push({ line: number, tone: "open", text: t("plans.hydrate.waitsForParent") });
+      if (value !== undefined) decorations.push({ line: step.location.line, tone: "info", text: t("plans.hydrate.value", { value: describeValue(value) }) });
+      else if (plan.missingDeclarations.includes(name)) decorations.push({ line: step.location.line, tone: "open", text: t("plans.hydrate.notDeclared") });
+      else if (role.source.kind === "agent-declaration") decorations.push({ line: step.location.line, tone: "open", text: t("plans.hydrate.waitsForParent") });
     }
-  });
+  }
   return decorations;
+}
+
+function firstQuoted(source: string): string | undefined {
+  return tokenizeSentence(source).find((token) => token.kind === "quoted")?.value;
 }
 
 function describeValue(value: unknown): string {
@@ -442,4 +447,3 @@ function groupExpanded(checks: readonly PlanCheck[]): Array<{ key: string; check
 function checkName(plan: PlanView, uri: string): string {
   return plan.checks.find((check) => check.checkUri === uri)?.name ?? uri;
 }
-

@@ -8,8 +8,14 @@
   },
   "exports": {
     ".": {
-      "types": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "development": "./src/index.ts",
       "import": "./dist/index.js"
+    },
+    "./language": {
+      "types": "./dist/language.d.ts",
+      "development": "./src/language.ts",
+      "import": "./dist/language.js"
     }
   },
   "files": [
@@ -17,8 +23,7 @@
     "dist"
   ],
   "scripts": {
-    "prebuild": "npm run build --workspace=@trust/gherkin",
-    "build": "npm run clean && tsc -p tsconfig.json",
+    "build": "tsc -b tsconfig.json",
     "clean": "node --input-type=module -e \"import { rmSync } from 'node:fs'; rmSync('dist', { recursive: true, force: true })\"",
     "test:acceptance": "npm run build && vitest run acceptance",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.acceptance.json"

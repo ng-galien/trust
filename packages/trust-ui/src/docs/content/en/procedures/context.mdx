@@ -51,7 +51,7 @@ Engagement accepts **exactly** the Plan inputs — no fixed, declared or materia
 
 - The parent must be a declared role; parent relations form an acyclic graph.
 - `for "<parent>"`: one shared parent value. `for each "<parent>"`: one value per value of the parent — the relation keeps **which value belongs to which parent**. When a Check runs `on each "affected project"`, a `using "fix revision"` selects the revision of *that* project, not the whole collection — the selection follows the scope, never an array position.
-- Two roles are in the **same scope** when one is `for each` the other, or when they share the same parents. Same scope is what allows a `many` role to feed a `one` Input under `on each`, a produced scalar to compare with `context "<many role>"`, and a scalar field to materialize a `many` role.
+- Two roles are in the **same scope** when one is `for each` the other, or when they share the same parents. Same scope is what allows a `many` role to feed a `one` Input under `on each`, a produced scalar to compare with `context["<many role>"]`, and a scalar field to materialize a `many` role.
 
 ```gherkin fragment title="From the aircraft departure Procedure: values scoped to one flight"
     Given one reference "flight"
@@ -63,7 +63,7 @@ Engagement accepts **exactly** the Plan inputs — no fixed, declared or materia
 
 - **A Check target**: `on "<role>"` — one Check (`on "project"`), one Check per value (`on each "affected project"`), or one Check with the whole collection (`on all "…"`).
 - **Other Inputs**: `using "<role>" as Input "<input>"` (`using all` for a collection).
-- **An expectation**: `context "<role>"` compares a produced field with the value of a role — see [Expectations](/docs/procedures/expectations).
+- **A qualification reference**: `context["<role>"]` reads the value of a visible Plan role — see [Qualifications](/docs/procedures/expectations).
 
 Types and cardinalities must match the Operation's Input at each binding: a `many reference` role cannot feed a `one` Input without `each`; a `string` role cannot feed a `reference` Input.
 

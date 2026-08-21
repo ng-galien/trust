@@ -1,6 +1,5 @@
-import jsonata from "jsonata";
-
 import { compileOperation, type OperationCompilationInput } from "./compile.js";
+import { evaluateOperationProjection, operationProjectionContext } from "./evaluate.js";
 import type { JsonValue } from "./json.js";
 import type { CompiledOperation } from "./operation.js";
 import {
@@ -40,11 +39,10 @@ export async function simulateOperation(
       `Operation simulation step results must contain exactly: ${expectedSteps.join(", ")}`,
     );
   }
-  const producedValue = await jsonata(operation.produce.expression).evaluate({
-    input: operationInput,
-    environment,
-    steps,
-  });
+  const producedValue = await evaluateOperationProjection(
+    operation.produce.expression,
+    operationProjectionContext(operationInput, environment, steps),
+  );
   validateOperationProduced(operation, producedValue);
   return {
     contract: "trust.operation-simulation@1",

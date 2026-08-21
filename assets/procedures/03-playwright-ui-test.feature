@@ -13,7 +13,13 @@ Feature: Run one Playwright user-interface test
   @scenario:test
   Scenario: Run the selected Playwright test
     Then Check "Playwright test" runs Operation "playwright.test-run" on "web project" as Input "project" using "web revision" as Input "revision" using "test selector" as Input "testSelector" and must establish "the selected user-interface behavior succeeds"
-      | field          | relation | expectation            | failure reason                     |
-      | testedRevision | equals   | context "web revision" | "Playwright used another revision"  |
-      | testStatus     | equals   | value "successful"      | "the Playwright test failed"        |
-    And the Scenario is satisfied when every Check is validated
+      """js
+      (
+        fact.testedRevision === context["web revision"] ||
+        fail("Playwright used another revision")
+      ) &&
+      (
+        fact.testStatus === "successful" ||
+        fail("the Playwright test failed")
+      )
+      """

@@ -148,7 +148,7 @@ Iteration numbers are deterministic, start at one and increase only after the pr
 Procedure is satisfied and its stop expression is false. Concurrent finalization must not create two
 instances with the same next number.
 
-## Compiled contract
+## Compiled structure
 
 The repeated Requirement extends a compiled Procedure invocation with a typed stop expression:
 

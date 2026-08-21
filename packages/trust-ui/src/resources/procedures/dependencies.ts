@@ -3,7 +3,7 @@ import type { CompiledProcedure, JsonObject, ProcedureCheck } from "../../types.
 
 /* Dependency reading of a compiled procedure, mirroring the runtime rules:
    - a Check DEPENDS ON another Check when it binds a role that Check materializes (operation-field role)
-     or when a predicate expects a field of that Check (check-field expectation);
+     or when its qualification references a field of that Check;
    - a Check WAITS FOR every Check of the Scenarios its Scenario declares as prerequisites;
    - a new verdict on a Check RESETS, transitively, every Check that depends on it or waits for it. */
 
@@ -25,7 +25,7 @@ export interface RoleProvenance {
 export interface DataLink {
   from: string;
   to: string;
-  /** Materialized role bound as input (input name), or expected field (check-field predicate). */
+  /** Materialized role bound as input (input name), or field used by a qualification. */
   role?: string;
   input?: string;
   field?: string;
@@ -67,10 +67,11 @@ export function dataLinks(procedure: CompiledProcedure): DataLink[] {
         links.push({ from: provenance.check, to: check.name, role: binding.role, input: binding.input });
       }
     }
-    for (const predicate of check.predicates) {
-      const expectation = predicate.expectation as JsonObject;
-      if (expectation.kind === "check-field" && typeof expectation.check === "string" && expectation.check !== check.name) {
-        links.push({ from: expectation.check, to: check.name, field: String(expectation.field ?? predicate.field) });
+    for (const guard of check.qualification.guards) {
+      for (const reference of guard.references) {
+        if (reference.kind === "check" && reference.check !== check.name) {
+          links.push({ from: reference.check, to: check.name, field: reference.field });
+        }
       }
     }
   }
@@ -147,4 +148,3 @@ export function upstreamOf(procedure: CompiledProcedure, seeds: readonly string[
   }
   return needed;
 }
-

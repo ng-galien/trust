@@ -9,6 +9,7 @@ Feature: Declare one branch for each repository
   @scenario:statuses
   Scenario: Read every repository status
     Then Check "repository status" runs Operation "git.head-read" on each "repository" as Input "project" and must establish "every repository status is read"
-      | field       | relation | expectation   | failure reason                    |
-      | workingTree | equals   | value "clean" | "a repository has local changes" |
-    And the Scenario is satisfied when every Check is validated
+      """js
+      fact.workingTree === "clean" ||
+      fail("a repository has local changes")
+      """

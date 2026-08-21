@@ -26,5 +26,5 @@ aviation, food or software-specific keyword.
 ## Compilation boundary
 
 `compileProcedure` receives one Procedure source and a catalog of compiled Operations. It resolves
-every referenced Operation, validates every Input binding and produced-field predicate, then embeds
+every referenced Operation, validates every Input binding and typed qualification, then embeds
 only the exact Operations used by the Procedure. The compiled revision is autonomous.

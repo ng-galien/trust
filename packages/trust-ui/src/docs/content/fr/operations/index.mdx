@@ -5,7 +5,7 @@ order: 2
 screen: /operations
 ---
 
-Une <Term id="operation">Opération</Term> dit **comment appeler un système externe** et **quels champs typés cet appel produit**. Elle ne décide pas si un résultat est bon, ne connaît ni les Plans ni les Checks, et ne qualifie jamais. Une Procédure peut donc réutiliser une même Opération dans plusieurs Checks avec des attentes différentes.
+Une <Term id="operation">Opération</Term> dit **comment appeler un système externe** et **quels champs typés cet appel produit**. Elle ne décide pas si un résultat est bon, ne connaît ni les Plans ni les Checks, et ne qualifie jamais. Une Procédure peut donc réutiliser une même Opération dans plusieurs Checks avec des qualifications différentes.
 
 > Une Opération observe ou agit ; l'attente appartient au Check qui l'utilise.
 
@@ -64,7 +64,7 @@ flowchart LR
   P -->|"un Check lie son Input"| C["Check"]
   C -->|"admis, confié au"| R["Runner"]
   R -->|"exécute les étapes, évalue la projection"| F["Facts = champs produits"]
-  F -->|"attentes du Check"| V["Verdict"]
+  F -->|"qualification du Check"| V["Verdict"]
 ```
 
 1. **Rédaction.** Le `.feature` s'écrit dans l'interface ou dans un éditeur. Le compilateur renvoie une Opération compilée, ou un diagnostic avec une ligne.

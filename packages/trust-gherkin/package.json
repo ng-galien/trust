@@ -8,11 +8,13 @@
   },
   "exports": {
     ".": {
-      "types": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "development": "./src/index.ts",
       "import": "./dist/index.js"
     },
     "./format": {
-      "types": "./src/format.ts",
+      "types": "./dist/format.d.ts",
+      "development": "./src/format.ts",
       "import": "./dist/format.js"
     }
   },
@@ -21,7 +23,7 @@
     "dist"
   ],
   "scripts": {
-    "build": "npm run clean && tsc -p tsconfig.json",
+    "build": "tsc -b tsconfig.json",
     "clean": "node --input-type=module -e \"import { rmSync } from 'node:fs'; rmSync('dist', { recursive: true, force: true })\"",
     "test:acceptance": "npm run build && vitest run acceptance",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.acceptance.json"

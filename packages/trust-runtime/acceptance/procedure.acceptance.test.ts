@@ -22,12 +22,10 @@ test("the runtime compiles, publishes and reads one Procedure with its exact Ope
       source,
       sourceName: "00-git-status.feature",
     }) as {
-      contract: string;
       procedure: string;
       version: string;
       operations: readonly { operation: string; definition: { operation: string } }[];
     };
-    assert.equal(compiled.contract, "trust.compiled-procedure@3");
     assert.equal(compiled.procedure, "git-status");
     assert.equal(compiled.version, "2.0.0");
     assert.deepEqual(compiled.operations.map((item) => item.operation), ["git.head-read"]);

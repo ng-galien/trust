@@ -54,9 +54,9 @@ describe("Compiled Procedure runner boundary", () => {
     );
 
     expect(result.produced.workingTree).toBe("dirty");
-    expect(check?.predicates).toContainEqual(expect.objectContaining({
-      field: "workingTree",
-      expectation: { kind: "value", value: "dirty" },
+    expect(check?.qualification.guards).toContainEqual(expect.objectContaining({
+      conditionLogic: { "===": [{ var: "fact.workingTree" }, "dirty"] },
+      failureReasonLogic: "the repository has no local changes",
     }));
   });
 });

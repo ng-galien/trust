@@ -10,10 +10,10 @@ test("the interface keeps Operations, Procedures, Plans and Checks connected", a
   await expect(page.locator("#procedure-title")).toHaveText("Establish whether a Git repository has local changes");
   await page.getByRole("tab", { name: "Graph" }).click();
   await expect(page).toHaveURL(/tab=dag/);
-  // The operator mode has no Contract JSON tab; the expert mode has it.
-  await expect(page.getByRole("tab", { name: "Contract JSON" })).toHaveCount(0);
+  // The operator mode has no Compiled JSON tab; the expert mode has it.
+  await expect(page.getByRole("tab", { name: "Compiled JSON" })).toHaveCount(0);
   await page.getByRole("tab", { name: "Expert" }).click();
-  await expect(page.getByRole("tab", { name: "Contract JSON" })).toBeVisible();
+  await expect(page.getByRole("tab", { name: "Compiled JSON" })).toBeVisible();
   await page.getByRole("tab", { name: "Operator" }).click();
 
   await page.goto("/plans/interface-acceptance");

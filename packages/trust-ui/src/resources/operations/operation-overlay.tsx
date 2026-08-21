@@ -161,7 +161,7 @@ export function OperationOverlay({ mode = "item" }: { mode?: "item" | "new" }) {
     >
       {saveError && tab !== "source" ? <div className="p-4"><ErrorBox message={saveError} /></div> : null}
       {tab === "overview" ? <OverviewView compiled={compiled} error={compileError?.detail} /> : null}
-      {tab === "source" ? <GherkinEditor kind="operation" value={source} onChange={setDraft} theme={theme} markers={markers} fontSize={editorFontSize} /> : null}
+      {tab === "source" ? <GherkinEditor kind="operation" value={source} onChange={setDraft} theme={theme} languageServerUrl={runtime.languageServerUrl()} markers={markers} fontSize={editorFontSize} /> : null}
       {tab === "contract" ? <ContractView compiled={compiled} error={compileError?.detail} /> : null}
       {tab === "simulation" ? <SimulationView source={source} compiled={compiled} /> : null}
       {tab === "run" ? <RunView source={source} compiled={compiled} dirty={authoring} /> : null}

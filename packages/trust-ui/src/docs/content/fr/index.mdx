@@ -13,7 +13,7 @@ TRUST exécute des tâches logicielles opérées par des agents sous une règle 
 ## En bref
 
 - Une <Term id="operation">Opération</Term> décrit un appel à un système externe et les champs typés qu'il renvoie.
-- Une <Term id="procedure">Procédure</Term> assemble des Opérations en Scénarios et en Checks, chaque Check avec les attentes qui le rendent validé.
+- Une <Term id="procedure">Procédure</Term> assemble des Opérations en Scénarios et en Checks, chaque Check avec la qualification typée qui le rend validé.
 - Engager une Procédure avec des entrées concrètes dans un <Term id="environment">Environnement</Term> crée un <Term id="plan">Plan</Term>.
 - L'agent lit le Plan et confie un Check à la fois au <Term id="runner">Runner</Term> livré avec le skill TRUST. Le Runner exécute l'Opération et rapporte les Facts.
 - TRUST qualifie les Facts et renvoie un <Term id="verdict">verdict</Term> avec une raison. De nouveaux Facts sur un Check rouvrent chaque Check qui en dépend ; l'agent reprend depuis un état cohérent.

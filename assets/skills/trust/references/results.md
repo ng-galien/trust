@@ -7,7 +7,7 @@ new Plan revision. Read the Plan again because dependent Checks may have opened 
 
 ## `COMPLETED` and `NOT_VALIDATED`
 
-The external Operation ran and TRUST accepted the complete Fact batch, but the compiled predicates
+The external Operation ran and TRUST accepted the complete Fact batch, but a compiled qualification guard
 did not satisfy the Check. Use `reasonCode`, `reason`, and `actionOutcome` to address the observed
 condition. Do not reinterpret the outcome as Plan progress.
 

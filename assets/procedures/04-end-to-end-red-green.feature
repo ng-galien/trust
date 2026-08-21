@@ -52,10 +52,16 @@ Feature: Validate a multi-project change through a traced Red-Green deployment c
         using "jira issue" as Input "branch"
         and materializes "acceptance baseline revision" from field "baseRevision"
         and must establish "the acceptance project starts the ticket branch from its clean baseline"
-      | field       | relation | expectation          | failure reason                                          |
-      | workingTree | equals   | value "clean"        | "the acceptance repository has local changes"           |
-      | branch      | equals   | context "jira issue" | "the acceptance repository is not on the ticket branch" |
-    And the Scenario is satisfied when every Check is validated
+      """js
+      (
+        fact.workingTree === "clean" ||
+        fail("the acceptance repository has local changes")
+      ) &&
+      (
+        fact.branch === context["jira issue"] ||
+        fail("the acceptance repository is not on the ticket branch")
+      )
+      """
 
   @scenario:jira-issue
   Scenario: Read the Jira defect
@@ -63,10 +69,16 @@ Feature: Validate a multi-project change through a traced Red-Green deployment c
     Then Check "issue" runs Operation "jira.issue-read"
         on "jira issue" as Input "issue"
         and must establish "the Jira issue is ready for correction"
-      | field          | relation | expectation    | failure reason                   |
-      | issueType      | equals   | value "defect" | "the Jira issue is not a defect" |
-      | workflowStatus | equals   | value "todo"   | "the Jira issue is not ready"    |
-    And the Scenario is satisfied when every Check is validated
+      """js
+      (
+        fact.issueType === "defect" ||
+        fail("the Jira issue is not a defect")
+      ) &&
+      (
+        fact.workflowStatus === "todo" ||
+        fail("the Jira issue is not ready")
+      )
+      """
 
   @scenario:code-baselines
   Scenario: Establish every clean code baseline and open its ticket branch
@@ -76,10 +88,16 @@ Feature: Validate a multi-project change through a traced Red-Green deployment c
         using "jira issue" as Input "branch"
         and materializes "code baseline revision" from field "baseRevision"
         and must establish "every affected project starts the ticket branch from its clean baseline"
-      | field       | relation | expectation          | failure reason                                    |
-      | workingTree | equals   | value "clean"        | "an affected project has local changes"           |
-      | branch      | equals   | context "jira issue" | "an affected project is not on the ticket branch" |
-    And the Scenario is satisfied when every Check is validated
+      """js
+      (
+        fact.workingTree === "clean" ||
+        fail("an affected project has local changes")
+      ) &&
+      (
+        fact.branch === context["jira issue"] ||
+        fail("an affected project is not on the ticket branch")
+      )
+      """
 
   @scenario:red
   Scenario: Reproduce the defect with the committed Karate change
@@ -92,12 +110,24 @@ Feature: Validate a multi-project change through a traced Red-Green deployment c
         using plan as Input "run"
         and materializes "acceptance test revision" from field "testedRevision"
         and must establish "the committed Karate change reproduces the defect"
-      | field                | relation | expectation                            | failure reason                                |
-      | comparedBaseRevision | equals   | context "acceptance baseline revision" | "the Karate change uses another baseline"     |
-      | commitsAhead         | at least | number 1                               | "the Karate change is not committed"          |
-      | workingTree          | equals   | value "clean"                          | "the acceptance repository has local changes" |
-      | testStatus           | equals   | value "defect-reproduced"              | "the defect was not reproduced"               |
-    And the Scenario is satisfied when every Check is validated
+      """js
+      (
+        fact.comparedBaseRevision === context["acceptance baseline revision"] ||
+        fail("the Karate change uses another baseline")
+      ) &&
+      (
+        fact.commitsAhead >= 1 ||
+        fail("the Karate change is not committed")
+      ) &&
+      (
+        fact.workingTree === "clean" ||
+        fail("the acceptance repository has local changes")
+      ) &&
+      (
+        fact.testStatus === "defect-reproduced" ||
+        fail("the defect was not reproduced")
+      )
+      """
 
   @scenario:fix-verify
   Scenario: Verify every committed fix with Maven
@@ -109,12 +139,24 @@ Feature: Validate a multi-project change through a traced Red-Green deployment c
         using "jira issue" as Input "ticket"
         and materializes "fix revision" from field "verifiedRevision"
         and must establish "every committed fix passes Maven verification"
-      | field                | relation | expectation                      | failure reason                          |
-      | comparedBaseRevision | equals   | context "code baseline revision" | "a fix uses another code baseline"      |
-      | commitsAhead         | at least | number 1                         | "a fix is not committed"                |
-      | workingTree          | equals   | value "clean"                    | "an affected project has local changes" |
-      | verificationStatus   | equals   | value "successful"               | "Maven verification failed"             |
-    And the Scenario is satisfied when every Check is validated
+      """js
+      (
+        fact.comparedBaseRevision === context["code baseline revision"] ||
+        fail("a fix uses another code baseline")
+      ) &&
+      (
+        fact.commitsAhead >= 1 ||
+        fail("a fix is not committed")
+      ) &&
+      (
+        fact.workingTree === "clean" ||
+        fail("an affected project has local changes")
+      ) &&
+      (
+        fact.verificationStatus === "successful" ||
+        fail("Maven verification failed")
+      )
+      """
 
   @scenario:deploy
   Scenario: Build, load and roll out every fix on Kind
@@ -125,10 +167,16 @@ Feature: Validate a multi-project change through a traced Red-Green deployment c
         using "Kind cluster" as Input "cluster"
         using "workload" as Input "workload"
         and must establish "every fix is built, loaded into Kind and rolled out"
-      | field         | relation | expectation            | failure reason                                    |
-      | builtRevision | equals   | context "fix revision" | "the image was built from another revision"       |
-      | deployStatus  | equals   | value "successful"     | "the build, the Kind load or the rollout failed"  |
-    And the Scenario is satisfied when every Check is validated
+      """js
+      (
+        fact.builtRevision === context["fix revision"] ||
+        fail("the image was built from another revision")
+      ) &&
+      (
+        fact.deployStatus === "successful" ||
+        fail("the build, the Kind load or the rollout failed")
+      )
+      """
 
   @scenario:green
   Scenario: Confirm the Karate change against the deployment
@@ -141,10 +189,16 @@ Feature: Validate a multi-project change through a traced Red-Green deployment c
         using "jira issue" as Input "ticket"
         using plan as Input "run"
         and must establish "the Karate change passes against the deployment"
-      | field          | relation | expectation                        | failure reason                            |
-      | testedRevision | equals   | context "acceptance test revision" | "the green run used another test revision" |
-      | testStatus     | equals   | value "successful"                 | "the deployed acceptance test failed"     |
-    And the Scenario is satisfied when every Check is validated
+      """js
+      (
+        fact.testedRevision === context["acceptance test revision"] ||
+        fail("the green run used another test revision")
+      ) &&
+      (
+        fact.testStatus === "successful" ||
+        fail("the deployed acceptance test failed")
+      )
+      """
 
   @scenario:trace
   Scenario: Confirm the green run trace
@@ -152,9 +206,10 @@ Feature: Validate a multi-project change through a traced Red-Green deployment c
     Then Check "green trace" runs Operation "telemetry.trace-read"
         on "trace" as Input "traceId"
         and must establish "the green run trace was recorded"
-      | field     | relation | expectation | failure reason                   |
-      | spanCount | at least | number 1    | "the green run trace has no span" |
-    And the Scenario is satisfied when every Check is validated
+      """js
+      fact.spanCount >= 1 ||
+      fail("the green run trace has no span")
+      """
 
   @scenario:merge
   Scenario: Merge every ticket branch into main
@@ -165,15 +220,28 @@ Feature: Validate a multi-project change through a traced Red-Green deployment c
         using "jira issue" as Input "branch"
         using "jira issue" as Input "ticket"
         and must establish "the acceptance change is merged into main"
-      | field       | relation | expectation    | failure reason                                         |
-      | mergeStatus | equals   | value "merged" | "the acceptance ticket branch did not merge into main" |
-      | workingTree | equals   | value "clean"  | "the acceptance repository has local changes"          |
+      """js
+      (
+        fact.mergeStatus === "merged" ||
+        fail("the acceptance ticket branch did not merge into main")
+      ) &&
+      (
+        fact.workingTree === "clean" ||
+        fail("the acceptance repository has local changes")
+      )
+      """
     And Check "fix merge" runs Operation "git.change-merge"
         on each "affected project" as Input "project"
         using "jira issue" as Input "branch"
         using "jira issue" as Input "ticket"
         and must establish "every fix is merged into main"
-      | field       | relation | expectation    | failure reason                                |
-      | mergeStatus | equals   | value "merged" | "a fix ticket branch did not merge into main" |
-      | workingTree | equals   | value "clean"  | "an affected project has local changes"       |
-    And the Scenario is satisfied when every Check is validated
+      """js
+      (
+        fact.mergeStatus === "merged" ||
+        fail("a fix ticket branch did not merge into main")
+      ) &&
+      (
+        fact.workingTree === "clean" ||
+        fail("an affected project has local changes")
+      )
+      """

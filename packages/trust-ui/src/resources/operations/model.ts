@@ -1,3 +1,5 @@
+import { operationLanguage } from "@trust/operation/language";
+
 import { i18next } from "../../i18n/index.js";
 import type { CompiledOperation, JsonObject, OperationEnvironments, PublishedProcedure } from "../../types.js";
 import { type Family, familyOf, type Nature, natureOf } from "./classification.js";
@@ -173,30 +175,4 @@ export function groupRows(rows: OperationRow[], group: GroupKey): Array<{ key: s
   return Array.from(map.values()).sort((a, b) => a.label.localeCompare(b.label));
 }
 
-export const operationTemplate = `# language: en
-@trust-dsl:1 @operation:domain.action @version:1.0.0
-Feature: Describe what this operation observes
-
-  Background: Operation interface
-    Given Environment
-      | name        | type      |
-      | workspaceRoot | directory |
-    And Input
-      | input   | type      | cardinality |
-      | project | reference | one         |
-    And Produced fields
-      | field       | type   | cardinality | domain                |
-      | workingTree | string | one         | enum "clean", "dirty" |
-
-  Scenario: Run
-    When Shell "status" runs "git" with cwd from Environment "workspaceRoot"
-      | argument       | source  |
-      | status         | literal |
-      | --porcelain=v1 | literal |
-    Then Produce with JSONata
-      """
-      {
-        "workingTree": $trim(steps.status.stdout) = "" ? "clean" : "dirty"
-      }
-      """
-`;
+export const operationTemplate = operationLanguage.template;

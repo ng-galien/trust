@@ -9,15 +9,22 @@ Feature: Reopen a Check when an upstream Check keeps its URI but changes its con
   @scenario:baseline
   Scenario: Compare the workspace with the declared baseline
     Then Check "baseline" runs Operation "git.head-compare" on "workspace" as Input "project" using "baseline revision" as Input "baseRevision" and must establish "the workspace is based on the declared revision"
-      | field                | relation | expectation                 | failure reason                       |
-      | comparedBaseRevision | equals   | context "baseline revision" | "the workspace uses another baseline" |
-      | workingTree          | equals   | value "clean"               | "the workspace has local changes"     |
-    And the Scenario is satisfied when every Check is validated
+      """js
+      (
+        fact.comparedBaseRevision === context["baseline revision"] ||
+        fail("the workspace uses another baseline")
+      ) &&
+      (
+        fact.workingTree === "clean" ||
+        fail("the workspace has local changes")
+      )
+      """
 
   @scenario:consumer
   Scenario: Confirm the resulting revision
     Given scenario "baseline" is validated
     Then Check "consumer" runs Operation "git.head-read" on "workspace" as Input "project" and must establish "the resulting revision is confirmed"
-      | field        | relation | expectation                              | failure reason                    |
-      | headRevision | equals   | field "headRevision" from Check "baseline" | "the resulting revision changed" |
-    And the Scenario is satisfied when every Check is validated
+      """js
+      fact.headRevision === checks.baseline.headRevision ||
+      fail("the resulting revision changed")
+      """

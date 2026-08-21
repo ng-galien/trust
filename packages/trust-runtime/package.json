@@ -7,8 +7,7 @@
     "node": ">=24.10.0"
   },
   "scripts": {
-    "prebuild": "npm run build --workspace=@trust/procedure",
-    "build": "npm run clean && tsc -p tsconfig.json",
+    "build": "tsc -b tsconfig.json",
     "clean": "node --input-type=module -e \"import { rmSync } from 'node:fs'; rmSync('dist', { recursive: true, force: true })\"",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "pretest:acceptance": "npm run package:skill --workspace=@trust/runner",
@@ -16,15 +15,18 @@
     "start": "node dist/src/index.js"
   },
   "dependencies": {
+    "@trust/language-server": "file:../trust-language-server",
     "@trust/operation": "file:../trust-operation",
     "@trust/procedure": "file:../trust-procedure",
     "awilix": "^13.0.5",
     "express": "^4.21.2",
-    "kysely": "^0.29.5"
+    "kysely": "^0.29.5",
+    "ws": "^8.21.3"
   },
   "devDependencies": {
     "@types/express": "^5.0.0",
     "@types/node": "^24.0.0",
+    "@types/ws": "^8.18.1",
     "typescript": "^5.7.2"
   }
 }

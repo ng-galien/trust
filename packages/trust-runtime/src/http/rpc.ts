@@ -593,7 +593,6 @@ function procedureSummary(published: Awaited<ReturnType<Procedures["list"]>>[num
   const procedure = published.procedure;
   return {
     procedure: {
-      contract: procedure.contract,
       procedure: procedure.procedure,
       version: procedure.version,
       title: procedure.title,

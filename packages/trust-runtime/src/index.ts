@@ -26,6 +26,7 @@ if (!Number.isInteger(port) || port < 0 || port > 65_535) {
 const runtime = await startRuntime({
   host,
   port,
+  ...(process.env.TRUST_RUNTIME_INSTANCE ? { instance: process.env.TRUST_RUNTIME_INSTANCE } : {}),
   databasePath,
   semanticAuthority,
   ...(operationsDirectory === undefined ? {} : { operationsDirectory }),
