@@ -88,12 +88,13 @@ export function PlanEngage({ planMode, base, onClose, listSearch }: { planMode: 
         <div className="flex min-h-0 flex-col gap-4 overflow-y-auto p-4 [&>*]:shrink-0" data-doc="engage.form">
           <Field label={t("plans.engage.procedure")}>
             <Select ariaLabel={t("plans.engage.procedure")} value={procedureId} onChange={setProcedureId} placeholder={t("plans.engage.chooseProcedure")} options={(procedures.data ?? []).map(({ procedure }) => ({ value: procedure.procedure, label: procedure.title, meta: expert ? `${procedure.procedure} · v${procedure.version}` : procedure.procedure }))} />
+            {procedures.error ? <ErrorBox message={procedures.error.message} /> : null}
           </Field>
           <Field label={t("plans.engage.environment")}>
             <Select ariaLabel={t("plans.engage.environment")} value={environment} onChange={setEnvironment} placeholder={t("plans.engage.chooseEnvironment")} options={(environments.data ?? []).map((entry) => ({ value: entry.name, label: entry.name }))} />
           </Field>
           <Field label={t("plans.engage.identifier")} hint={t("plans.engage.identifierHint")}>
-            <TextInput value={slug} onChange={(event) => setSlug(event.target.value)} placeholder={planMode === "dry-run" ? "rehearsal-pay-42" : "pay-42"} className="w-72" aria-invalid={touchedAll && !slugOk} />
+            <TextInput value={slug} onChange={(event) => setSlug(event.target.value)} placeholder={planMode === "dry-run" ? "simulation-pay-42" : "pay-42"} className="w-72" aria-invalid={touchedAll && !slugOk} />
             {touchedAll && !slugOk ? <span className="text-caption text-danger">{t("plans.engage.identifierInvalid")}</span> : null}
           </Field>
           <Field label={t("plans.engage.rootInputs")}>

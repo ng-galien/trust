@@ -37,7 +37,7 @@ export function PlansHome({ mode }: { mode: PlanMode }) {
       title={mode === "dry-run" ? t("plans.anchor.dryRuns") : t("plans.anchor.plans")}
       total={rows.length}
       visible={visible.length}
-      createTo={`${base}/new${location.search}`}
+      createTo={`${base}/new`}
       createLabel={mode === "dry-run" ? t("plans.home.createDryRun") : t("plans.home.createLive")}
       filterBox={<PlanFilters rows={rows} filters={filters} update={update} />}
       display={{

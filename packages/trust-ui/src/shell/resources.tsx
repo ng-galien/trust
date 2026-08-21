@@ -156,7 +156,7 @@ export function useAnchorItems(anchor: AnchorId): AnchorItems {
             to: `/${anchor}/${encodeURIComponent(plan.plan)}`,
             meta: `${plan.satisfiedChecks}/${plan.checkCount}`,
             state: plan.workState,
-            ...(plan.mode === "dry-run" ? { remove: { body: t("shell.items.removeDryRunBody"), run: () => removePlan.mutateAsync({ plan: plan.plan }) } } : {}),
+            ...(plan.mode === "dry-run" ? { remove: { body: t("shell.items.removeDryRunBody"), run: () => removePlan.mutateAsync(plan.plan) } } : {}),
             group: {
               id: plan.procedure,
               label: procedures.data?.find(({ procedure }) => procedure.procedure === plan.procedure)?.procedure.title ?? plan.procedure,

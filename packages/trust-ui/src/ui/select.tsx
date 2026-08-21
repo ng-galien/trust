@@ -38,7 +38,7 @@ export function Select<T extends string>({
     <Popover
       align={align}
       className={className}
-      panelClassName="min-w-full p-1"
+      panelClassName="p-1"
       trigger={({ open, toggle }) => (
         <button
           type="button"

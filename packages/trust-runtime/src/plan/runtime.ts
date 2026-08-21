@@ -183,7 +183,7 @@ export class PlanRuntime {
     this.#sessionDurationMs = dependencies.sessionDurationMs;
   }
 
-  async engage(input: PlanEngagementInput): Promise<PlanEngagementResult> {
+  async #initialRevision(input: PlanEngagementInput): Promise<PlanRevision> {
     if (input.contract !== "trust.plan-engagement-request@1") {
       throw new PlanRuntimeError("invalid-plan-engagement", "Unsupported Plan engagement contract");
     }
@@ -195,9 +195,8 @@ export class PlanRuntime {
       throw new PlanRuntimeError("invalid-plan-engagement", `Environment "${input.environment}" is not configured`);
     }
     const mode: PlanMode = input.mode ?? "live";
-    let revision: PlanRevision;
     try {
-      revision = buildPlanRevision({
+      return buildPlanRevision({
         authority: this.#authority,
         procedure: published.procedure,
         plan: input.plan,
@@ -209,6 +208,26 @@ export class PlanRuntime {
     } catch (error) {
       throw new PlanRuntimeError("invalid-plan-engagement", message(error), { cause: error });
     }
+  }
+
+  async #saveInitialRevision(database: Database, revision: PlanRevision, at: Date, sessionId: string): Promise<void> {
+    await this.#plans.using(database).saveRevision(revision, at.toISOString());
+    await this.#sessions.using(database).create({
+      id: sessionId,
+      planSlug: revision.planSlug,
+      state: "open",
+      openedAt: at.toISOString(),
+      expiresAt: new Date(at.getTime() + this.#sessionDurationMs).toISOString(),
+    });
+  }
+
+  #publishEngagement(plan: string, at: Date, sessionId: string): void {
+    this.#events.publish({ type: "plan.engaged", at: at.toISOString(), plan, revision: 1 });
+    this.#sessionEvent(sessionId, plan, "open", at.toISOString());
+  }
+
+  async engage(input: PlanEngagementInput): Promise<PlanEngagementResult> {
+    const revision = await this.#initialRevision(input);
     const existing = await this.#plans.findPlan(input.plan);
     if (existing) {
       const current = await this.#plans.readRevision(input.plan, existing.currentRevision);
@@ -222,24 +241,36 @@ export class PlanRuntime {
       return engagement(existing.currentRevision, current);
     }
     const now = this.#now();
+    const sessionId = randomUUID();
     await this.#database.transaction().execute(async (transaction) => {
-      await this.#plans.using(transaction).saveRevision(revision, now.toISOString());
-      await this.#sessions.using(transaction).create({
-        id: randomUUID(),
-        planSlug: input.plan,
-        state: "open",
-        openedAt: now.toISOString(),
-        expiresAt: new Date(now.getTime() + this.#sessionDurationMs).toISOString(),
-      });
+      await this.#saveInitialRevision(transaction, revision, now, sessionId);
     });
-    this.#events.publish({
-      type: "plan.engaged",
-      at: now.toISOString(),
-      plan: input.plan,
-      revision: 1,
+    this.#publishEngagement(input.plan, now, sessionId);
+    return engagement(1, revision);
+  }
+
+  /** Start one dry-run again from revision 1 without any externally visible deleted state. */
+  async reset(planSlug: string): Promise<PlanEngagementResult> {
+    const plan = await this.#plans.findPlan(planSlug);
+    if (!plan) throw new PlanRuntimeError("plan-conflict", `Plan ${planSlug} is unknown`);
+    if (plan.mode !== "dry-run") throw new PlanRuntimeError("plan-conflict", `Plan ${planSlug} is a live Plan and cannot be reset`);
+    const revision = await this.#initialRevision({
+      contract: "trust.plan-engagement-request@1",
+      procedure: plan.procedure,
+      procedureVersion: plan.procedureVersion,
+      plan: plan.slug,
+      environment: plan.environment,
+      rootInputs: plan.rootInputs,
+      mode: plan.mode,
     });
-    const session = await this.#sessions.findOpen(input.plan);
-    if (session) this.#sessionEvent(session.id, input.plan, "open", now.toISOString());
+    const now = this.#now();
+    const sessionId = randomUUID();
+    await this.#database.transaction().execute(async (transaction) => {
+      await this.#plans.using(transaction).remove(planSlug);
+      await this.#saveInitialRevision(transaction, revision, now, sessionId);
+    });
+    this.#events.publish({ type: "plan.removed", at: now.toISOString(), plan: planSlug });
+    this.#publishEngagement(planSlug, now, sessionId);
     return engagement(1, revision);
   }
 

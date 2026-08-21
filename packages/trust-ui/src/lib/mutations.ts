@@ -1,7 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { RuntimeError } from "../runtime.js";
-import type { JsonObject, PlanMode } from "../types.js";
 import { useRuntime } from "./runtime-context.js";
 
 /* Write hooks — every mutation the interface performs on the runtime, with the query invalidations that
@@ -45,16 +44,23 @@ export function useRemoveOperation() {
   });
 }
 
-/** Dry-runs only: erase the Plan (Delete), or erase and engage it again as it was (Reset). */
+/** Dry-runs only: erase the Plan (Delete). */
 export function useRemovePlan() {
   const runtime = useRuntime();
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async ({ plan, again }: { plan: string; again?: { procedure: string; procedureVersion: string; environment: string; rootInputs: JsonObject; mode: PlanMode } }) => {
-      await runtime.removePlan(plan);
-      if (again) await runtime.engagePlan({ ...again, plan });
-    },
-    onSuccess: (_result, { plan }) => invalidatePlan(queryClient, plan),
+    mutationFn: (plan: string) => runtime.removePlan(plan),
+    onSuccess: (_result, plan) => invalidatePlan(queryClient, plan),
+  });
+}
+
+/** Dry-runs only: reset the same Plan atomically from revision 1. */
+export function useResetPlan() {
+  const runtime = useRuntime();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (plan: string) => runtime.resetPlan(plan),
+    onSuccess: (_result, plan) => invalidatePlan(queryClient, plan),
   });
 }
 

@@ -153,6 +153,8 @@ export class TrustRuntimeClient {
   };
   /** Dry-runs only: erase the Plan entirely (the runtime refuses for a live Plan). */
   removePlan = (plan: string) => this.call<{ plan: string; removed: true }>("plan.remove", { plan });
+  /** Dry-runs only: atomically erase the execution history and engage the same Plan again from revision 1. */
+  resetPlan = (plan: string) => this.call<PlanEngagement>("plan.reset", { plan });
   /** Closes the Plan's open Session, if any (`closed: false` when none was open). */
   closePlan = (plan: string) => this.call<{ plan: string; closed: boolean }>("plan.close", { plan });
   finalizeAttempt = (attemptHandle: string) =>

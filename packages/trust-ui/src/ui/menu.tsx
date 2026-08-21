@@ -1,4 +1,5 @@
-import { type ReactNode, useCallback, useRef, useState } from "react";
+import { type CSSProperties, type ReactNode, useCallback, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 import { cx } from "../lib/format.js";
 import { useDismiss } from "../lib/use-dismiss.js";
@@ -88,17 +89,48 @@ export function Popover({
 }) {
   const [open, setOpen] = useState(false);
   const root = useRef<HTMLDivElement>(null);
+  const panel = useRef<HTMLDivElement>(null);
+  const [position, setPosition] = useState<CSSProperties>();
   const close = useCallback(() => setOpen(false), []);
 
-  useDismiss(open, root, close);
+  useDismiss(open, root, close, panel);
+
+  useLayoutEffect(() => {
+    if (!open) return;
+    const update = () => {
+      const anchor = root.current?.getBoundingClientRect();
+      const surface = panel.current?.getBoundingClientRect();
+      if (!anchor || !surface) return;
+      const gutter = 8;
+      const gap = 4;
+      const width = Math.max(anchor.width, surface.width);
+      const left = align === "end" ? anchor.right - width : anchor.left;
+      const below = anchor.bottom + gap;
+      const above = anchor.top - surface.height - gap;
+      setPosition({
+        position: "fixed",
+        top: below + surface.height <= window.innerHeight - gutter || above < gutter ? below : above,
+        left: Math.min(Math.max(gutter, left), Math.max(gutter, window.innerWidth - width - gutter)),
+        minWidth: anchor.width,
+      });
+    };
+    update();
+    window.addEventListener("resize", update);
+    window.addEventListener("scroll", update, true);
+    return () => {
+      window.removeEventListener("resize", update);
+      window.removeEventListener("scroll", update, true);
+    };
+  }, [align, open]);
 
   return (
     <div ref={root} className={cx("relative inline-flex", className)}>
       {trigger({ open, toggle: () => setOpen((value) => !value) })}
-      {open ? (
-        <div className={cx("absolute top-full z-50 mt-1 rounded-(--radius-2) border border-border bg-surface shadow-(--shadow-2)", align === "end" ? "right-0" : "left-0", panelClassName)}>
+      {open ? createPortal(
+        <div ref={panel} style={position} className={cx("z-50 rounded-(--radius-2) border border-border bg-surface shadow-(--shadow-2)", panelClassName)}>
           {typeof children === "function" ? children(() => setOpen(false)) : children}
-        </div>
+        </div>,
+        document.body,
       ) : null}
     </div>
   );

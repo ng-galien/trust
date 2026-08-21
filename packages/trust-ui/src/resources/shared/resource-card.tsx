@@ -34,7 +34,7 @@ export function ResourceCard({
   className?: string;
 }) {
   return (
-    <Link to={to} data-doc="home.card" className={cx("card-link flex flex-col rounded-(--radius-3) border border-border bg-surface transition-[border-color,box-shadow]", className)}>
+    <Link to={to} data-doc="home.card" className={cx("card-link min-w-0 flex flex-col rounded-(--radius-3) border border-border bg-surface transition-[border-color,box-shadow]", className)}>
       <div className="flex items-center gap-1.5 px-4 pt-3.5">
         {marks}
         {version ? <span className="mono ml-auto text-caption text-faint">v{version}</span> : null}
@@ -66,7 +66,7 @@ function FactRow({ label, value }: { label: string; value: ReactNode }) {
   return (
     <>
       <dt className="text-faint">{label}</dt>
-      <dd className="break-words">{value}</dd>
+      <dd className="min-w-0 overflow-hidden break-words">{value}</dd>
     </>
   );
 }

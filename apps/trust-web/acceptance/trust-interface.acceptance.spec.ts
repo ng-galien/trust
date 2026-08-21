@@ -26,3 +26,19 @@ test("the interface keeps Operations, Procedures, Plans and Checks connected", a
   await expect(page.locator("html")).toHaveClass(/dark/);
   await expect(page.getByRole("button", { name: "Use light theme" })).toBeVisible();
 });
+
+test("the procedure picker does not make the engagement form scroll", async ({ page }) => {
+  await page.goto("/dry-runs?q=aircraft");
+  await page.getByRole("link", { name: "New dry-run" }).click();
+  await expect(page).toHaveURL(/\/dry-runs\/new$/);
+  const form = page.locator('[data-doc="engage.form"]');
+  const before = await form.evaluate(({ scrollHeight, scrollTop }) => ({ scrollHeight, scrollTop }));
+
+  await page.getByRole("button", { name: "Procedure", exact: true }).click();
+  await expect(page.getByRole("listbox", { name: "Procedure" })).toBeVisible();
+  await expect.poll(() => form.evaluate(({ scrollHeight, scrollTop }) => ({ scrollHeight, scrollTop }))).toEqual(before);
+
+  await page.getByRole("option", { name: /Prepare and release one aircraft/ }).click();
+  await expect(page.getByRole("listbox", { name: "Procedure" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Procedure", exact: true })).toContainText("Prepare and release one aircraft");
+});

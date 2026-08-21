@@ -153,8 +153,25 @@ test("a dry-run Plan is driven end to end from the RPC boundary without any envi
     });
     assert.equal(conflict.data?.reason, "plan-conflict");
 
-    // A blocked rehearsal starts over: removing it clears its entire Plan context, so the same slug can be
-    // engaged again with different root Inputs and no value from the erased Plan survives.
+    // Reset is one public operation: it preserves the Plan identity and root Inputs, while clearing every
+    // attempt, verdict and revision after the new revision 1.
+    const reset = await rpc(runtime.endpoint, "plan.reset", { plan: "rehearsal" }) as { revision: number };
+    assert.equal(reset.revision, 1);
+    const resetView = await readPlan(runtime.endpoint, "rehearsal");
+    assert.deepEqual(resetView.rootInputs, { "jira issue": "PAY-42", project: "payment-api" });
+    assert.equal(resetView.revision, 1);
+    assert.equal(resetView.satisfiedChecks, 0);
+    assert.equal(resetView.latestQualification == null, true);
+    assert.equal(resetView.checks.every((check) => check.latestVerdict == null), true);
+    const resetCheck = await rpc(runtime.endpoint, "check.read", {
+      contract: "trust.check-read-request@1",
+      checkUri: resetView.checks[0]!.checkUri,
+    }) as { history: unknown[]; attempts: unknown[] };
+    assert.deepEqual(resetCheck.history, []);
+    assert.deepEqual(resetCheck.attempts, []);
+
+    // Removing a dry-run still clears its entire Plan context, so the same slug can then be engaged with
+    // different root Inputs and no value from the erased Plan survives.
     const removed = await rpc(runtime.endpoint, "plan.remove", { plan: "rehearsal" }) as { removed: boolean };
     assert.equal(removed.removed, true);
     assert.deepEqual((await rpc(runtime.endpoint, "plan.list", {}) as { plans: unknown[] }).plans, []);

@@ -16,6 +16,7 @@ export const SESSION_READ_METHOD = "session.read" as const;
 export const CHECK_READ_METHOD = "check.read" as const;
 export const PLAN_DECLARATIONS_REPLACE_METHOD = "plan.declarations.replace" as const;
 export const PLAN_REMOVE_METHOD = "plan.remove" as const;
+export const PLAN_RESET_METHOD = "plan.reset" as const;
 export const PLAN_CLOSE_METHOD = "plan.close" as const;
 export const CHECK_ATTEMPT_ADMIT_METHOD = "check.attempt.admit" as const;
 export const CHECK_ATTEMPT_FACTS_METHOD = "check.attempt.facts" as const;
@@ -45,6 +46,7 @@ export const PLAN_RUNTIME_RPC_METHODS = [
   PLAN_READ_METHOD,
   PLAN_DECLARATIONS_REPLACE_METHOD,
   PLAN_REMOVE_METHOD,
+  PLAN_RESET_METHOD,
   PLAN_CLOSE_METHOD,
   SESSION_READ_METHOD,
   CHECK_READ_METHOD,
@@ -116,6 +118,10 @@ export async function executePlanRuntimeRpc(
     case PLAN_REMOVE_METHOD: {
       const input = parsePlanRead(params);
       return dependencies.planRuntime.remove(input.plan);
+    }
+    case PLAN_RESET_METHOD: {
+      const input = parsePlanRead(params);
+      return dependencies.planRuntime.reset(input.plan);
     }
     case PLAN_CLOSE_METHOD: {
       const input = parsePlanRead(params);

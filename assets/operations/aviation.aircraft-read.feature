@@ -10,10 +10,11 @@ Feature: Read simulated aircraft release data
       | input    | type      | cardinality |
       | aircraft | reference | one         |
     And Produced fields
-      | field             | type      | cardinality | domain                            |
-      | aircraft          | reference | one         | any                               |
-      | maintenanceStatus | string    | one         | enum "released", "not-released"   |
-      | fuelStatus        | string    | one         | enum "sufficient", "insufficient"  |
+      | field                  | type      | cardinality | domain                          |
+      | aircraft               | reference | one         | any                             |
+      | maintenanceStatus      | string    | one         | enum "released", "not-released" |
+      | currentFuelLiters      | number    | one         | any                             |
+      | burnRateLitersPerHour  | number    | one         | any                             |
 
   Scenario: Run
     When HTTP "aircraft" gets Environment "aircraftUrl" appending Input "aircraft" as JSON
@@ -22,6 +23,7 @@ Feature: Read simulated aircraft release data
       {
         "aircraft": input.aircraft,
         "maintenanceStatus": steps.aircraft.body.maintenanceStatus,
-        "fuelStatus": steps.aircraft.body.fuelStatus
+        "currentFuelLiters": steps.aircraft.body.currentFuelLiters,
+        "burnRateLitersPerHour": steps.aircraft.body.burnRateLitersPerHour
       }
       """

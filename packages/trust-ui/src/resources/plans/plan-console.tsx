@@ -1,5 +1,5 @@
 import { useMutation } from "@tanstack/react-query";
-import { CheckCircle2, Clock3, FlaskConical, PanelRightClose, Send, XCircle } from "lucide-react";
+import { CheckCircle2, FlaskConical, PanelRightClose, Pause, Play, Send, XCircle } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Trans, useTranslation } from "react-i18next";
 
@@ -61,14 +61,14 @@ export function PlanCockpit({ plan, compiled, onChanged, runtime, selected: sele
             {showDone ? <ul>{done.map((check) => <li key={check.checkUri} className="border-t border-border"><CheckLine check={check} compact selected={check.checkUri === selected?.checkUri} onClick={() => onSelect(`check:${check.checkUri}`)} /></li>)}</ul> : null}
           </li>
           <li className="border-t border-border bg-accent-soft/40" data-doc="cockpit.todo">
-            <div className="flex items-center gap-2 px-3 py-1.5 text-label font-medium"><FlaskConical size={12} className="text-accent" /> {t("plans.cockpit.toDoNow")} <span className="text-faint">{actionable.length}</span><span className="ml-auto text-caption font-normal text-faint">{t("plans.cockpit.pickOne")}</span></div>
+            <div className="flex items-center gap-2 px-3 py-1.5 text-label font-medium"><Play size={12} className="fill-current text-accent" /> {t("plans.cockpit.toDoNow")} <span className="text-faint">{actionable.length}</span><span className="ml-auto text-caption font-normal text-faint">{t("plans.cockpit.pickOne")}</span></div>
             {actionable.length === 0 ? <p className="px-3 pb-2 text-body text-muted">{plan.missingDeclarations.length ? t("plans.cockpit.declareFirst") : plan.workState === "COMPLETE" ? t("plans.cockpit.rehearsalComplete") : t("plans.cockpit.nothingActionable")}</p> : null}
             <ul>{actionable.map((check) => <li key={check.checkUri} className="border-t border-border"><CheckLine check={check} compact selected={check.checkUri === selected?.checkUri} onClick={() => onSelect(`check:${check.checkUri}`)} /></li>)}</ul>
           </li>
           {waiting.length ? (
             <li className="border-t border-border">
               <button type="button" className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-label text-muted hover:bg-surface-2" onClick={() => setShowWaiting((open) => !open)}>
-                <Clock3 size={12} /> {t("plans.cockpit.waiting")} <span className="text-faint">{waiting.length}</span><span className="ml-auto text-faint">{showWaiting ? t("plans.cockpit.hideList") : t("plans.cockpit.showList")}</span>
+                <Pause size={12} className="fill-current" /> {t("plans.cockpit.waiting")} <span className="text-faint">{waiting.length}</span><span className="ml-auto text-faint">{showWaiting ? t("plans.cockpit.hideList") : t("plans.cockpit.showList")}</span>
               </button>
               {showWaiting ? <ul>{waiting.map((check) => <li key={check.checkUri} className="border-t border-border"><CheckLine check={check} compact onClick={() => onSelect(`check:${check.checkUri}`)} /></li>)}</ul> : null}
             </li>
@@ -254,7 +254,7 @@ function CheckWorkbench({ plan, check, compiled, onChanged, runtime, reobserve =
 
   const submit = useMutation({
     mutationFn: async () => {
-      const admission = await runtime.admitCheck(check.checkUri, `rehearse-${check.name}-${Date.now().toString(36)}`, { reobserve });
+      const admission = await runtime.admitCheck(check.checkUri, `simulate-${check.name}-${Date.now().toString(36)}`, { reobserve });
       if (admission.status !== "ADMITTED") return { refused: `${admission.reasonCode}: ${admission.reason}` };
       await runtime.postFacts({ attemptKey: admission.attemptKey, attemptHandle: admission.attemptHandle, checkUri: admission.checkUri, operation: admission.operation.operation }, values);
       return runtime.finalizeAttempt(admission.attemptHandle);

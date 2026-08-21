@@ -36,6 +36,8 @@ export function usePlanEventsBridge(): void {
   useEffect(() => {
     if (typeof EventSource === "undefined") return;
     const source = new EventSource(runtime.planEventsUrl());
+    let opened = false;
+    const invalidateRuntime = () => { void queryClient.invalidateQueries(); };
     const invalidatePlan = (plan: string | undefined) => {
       void queryClient.invalidateQueries({ queryKey: ["plans"] });
       void queryClient.invalidateQueries({ queryKey: ["history"] });
@@ -50,11 +52,17 @@ export function usePlanEventsBridge(): void {
     const onEvent = (raw: MessageEvent<string>) => {
       let event: PlanEvent;
       try { event = JSON.parse(raw.data) as PlanEvent; } catch { return; }
-      invalidatePlan(event.resync ? undefined : event.plan);
+      if (event.resync || event.type === "runtime.changed") invalidateRuntime();
+      else invalidatePlan(event.plan);
     };
     const types: PlanEventType[] = ["plan.engaged", "plan.revision", "plan.removed", "session.changed", "runtime.changed"];
     for (const type of types) source.addEventListener(type, onEvent as EventListener);
-    source.onopen = () => { setConnected(true); invalidatePlan(undefined); };
+    source.onopen = () => {
+      setConnected(true);
+      if (opened) invalidateRuntime();
+      else invalidatePlan(undefined);
+      opened = true;
+    };
     source.onerror = () => setConnected(false);
     return () => { source.close(); setConnected(false); };
   }, [runtime, queryClient]);
