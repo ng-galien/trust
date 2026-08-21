@@ -41,6 +41,7 @@ export function buildPlanRevision(input: BuildPlanRevisionInput): PlanRevision {
   const { declarations, context: declaredContext } = normalizeDeclarations(
     input.procedure.roles,
     rootInputs,
+    input.plan,
     input.declarations ?? Object.freeze({}),
   );
   const roleValues = input.roleValues ?? Object.freeze([]);
@@ -172,9 +173,10 @@ export function buildPlanRevision(input: BuildPlanRevisionInput): PlanRevision {
 export function validateAgentDeclarations(
   roles: readonly CompiledProcedureRole[],
   rootInputs: RuntimeJsonObject,
+  plan: string,
   declarations: RuntimeJsonObject,
 ): RuntimeJsonObject {
-  return normalizeDeclarations(roles, validateRootInputs(roles, rootInputs), declarations).declarations;
+  return normalizeDeclarations(roles, validateRootInputs(roles, rootInputs), plan, declarations).declarations;
 }
 
 function validateRootInputs(
@@ -217,6 +219,7 @@ function validateRootInputs(
 function normalizeDeclarations(
   roles: readonly CompiledProcedureRole[],
   roots: RuntimeJsonObject,
+  plan: string,
   value: RuntimeJsonObject,
 ): { readonly declarations: RuntimeJsonObject; readonly context: readonly ContextValue[] } {
   const allowed = new Set(
@@ -225,7 +228,7 @@ function normalizeDeclarations(
   const unknown = Object.keys(value).find((name) => !allowed.has(name));
   if (unknown !== undefined) throw new TypeError(`Role "${unknown}" is not declared by the Procedure`);
 
-  const context = baseContext(roles, roots);
+  const context = baseContext(roles, roots, plan);
   const normalized: Record<string, unknown> = {};
   const visiting = new Set<string>();
   const visited = new Set<string>();
@@ -250,9 +253,11 @@ function normalizeDeclarations(
   };
 }
 
+/** Root Plan Inputs, fixed roles and the Plan identifier: the context every Plan starts from. */
 function baseContext(
   roles: readonly CompiledProcedureRole[],
   roots: RuntimeJsonObject,
+  plan: string,
 ): ContextValue[] {
   const context: ContextValue[] = [];
   const appended = new Set<string>();
@@ -264,9 +269,12 @@ function baseContext(
     }
     if (role.source.kind === "plan-input") appendInputValues(role, roots[role.name], context, "Plan Input");
     if (role.source.kind === "fixed") appendInputValues(role, role.source.value, context, "fixed role");
+    if (role.source.kind === "plan-identifier") appendInputValues(role, plan, context, "Plan identifier");
     appended.add(role.name);
   };
-  for (const role of roles) if (role.source.kind === "plan-input" || role.source.kind === "fixed") append(role);
+  for (const role of roles) {
+    if (role.source.kind === "plan-input" || role.source.kind === "fixed" || role.source.kind === "plan-identifier") append(role);
+  }
   return context;
 }
 

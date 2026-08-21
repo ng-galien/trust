@@ -54,13 +54,18 @@ The complete Check sentence is:
 ```text
 Check "<name>" runs Operation "<domain.action>"
   on [each|all] "<role>" as Input "<input>"
-  [using [all] "<role>" as Input "<input>" ...]
+  [using [all] "<role>" as Input "<input>" | using plan as Input "<input>" ...]
   [and materializes "<role>" from field "<field>" ...]
   and must establish "<success reason>"
 ```
 
 `on` identifies the Check target and binds one Operation Input. `using` binds every remaining
-Input. Every required Input is bound exactly once. `each` creates one Check per role value; `all`
+Input. Every required Input is bound exactly once. `using plan as Input "<input>"` binds the Plan
+identifier given at engagement to one `string` or `reference` Input of cardinality `one`; `plan` is
+a reserved role name that no Background may declare: the binding compiles to a synthesised role
+`"plan"` with source `plan-identifier` (one string, seeded with the Plan slug at engagement) and an
+ordinary `{ input, role: "plan", selection: "one" }` binding; its value never changes, so it never
+reopens the Check. `each` creates one Check per role value; `all`
 passes one collection. The compiler validates types, cardinalities and parent scope against the
 compiled Operation.
 

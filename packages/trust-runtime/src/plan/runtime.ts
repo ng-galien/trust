@@ -1,5 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 
+import { projectOperationEnvironment } from "@trust/operation";
+
 import { checkDependenciesSatisfied } from "../check/actionability.js";
 import { qualifyCheck, validateFacts } from "../check/qualification.js";
 import type {
@@ -276,6 +278,7 @@ export class PlanRuntime {
       declarations = validateAgentDeclarations(
         published.procedure.roles,
         plan.rootInputs,
+        plan.slug,
         input.declarations,
       );
     } catch (error) {
@@ -346,7 +349,10 @@ export class PlanRuntime {
       operation: resolved.check.operation,
       actionInput: attempt.actionInput,
       // A dry-run never hands out environment values: nothing external is executed for it.
-      environment: resolved.plan.mode === "dry-run" ? {} : this.#environments.resolve(attempt.environment) ?? {},
+      // A live grant carries only the values the Operation declares (its environment schema is closed).
+      environment: resolved.plan.mode === "dry-run"
+        ? {}
+        : projectOperationEnvironment(resolved.check.operation, this.#environments.resolve(attempt.environment) ?? {}).environment,
       expiresAt: attempt.expiresAt,
     };
   }

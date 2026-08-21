@@ -16,6 +16,6 @@ export default defineConfig({
     emptyOutDir: true,
     assetsInlineLimit: 100_000_000,
     chunkSizeWarningLimit: 100_000,
-    rollupOptions: { input: "docs.html" },
+    rollupOptions: { input: "docs-site.html" },
   },
 });

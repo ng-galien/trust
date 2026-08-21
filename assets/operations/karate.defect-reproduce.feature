@@ -2,6 +2,12 @@
 @trust-dsl:1 @operation:karate.defect-reproduce @version:1.0.0
 Feature: Run one Karate test that must reproduce a defect
 
+  Runs `mvn -B test -Dtrust.phase=red <testArgument>` at the project HEAD and reports whether the
+  selected Karate tests fail (exit 1 with a Surefire summary = defect reproduced). `testedRevision`
+  is the observed HEAD, so a Procedure can compare it with the committed test revision. The
+  `trust.phase` property lets Karate features derive phase-specific run identities so that the
+  red run and the green run never share side effects.
+
   Background: Operation interface
     Given Environment
       | name          | type      |
@@ -18,11 +24,17 @@ Feature: Run one Karate test that must reproduce a defect
       | testStatus     | string    | one         | enum "defect-reproduced", "not-reproduced" |
 
   Scenario: Run
-    When Shell "test" runs "mvn" with cwd from Environment "workspaceRoot" and Input "project"
-      | argument     | source               |
-      | -B           | literal              |
-      | test         | literal              |
-      | testArgument | Input "testArgument" |
+    When Shell "head" runs "git" with cwd from Environment "workspaceRoot" and Input "project"
+      | argument  | source  |
+      | rev-parse | literal |
+      | --verify  | literal |
+      | HEAD      | literal |
+    And Shell "test" runs "mvn" with cwd from Environment "workspaceRoot" and Input "project"
+      | argument           | source               |
+      | -B                 | literal              |
+      | test               | literal              |
+      | -Dtrust.phase=red  | literal              |
+      | testArgument       | Input "testArgument" |
     And Shell "test" accepts exits
       | exit code | stdout contains | stderr contains |
       | 0         |                 |                 |
@@ -31,7 +43,7 @@ Feature: Run one Karate test that must reproduce a defect
       """
       {
         "testedProject": input.project,
-        "testedRevision": input.revision,
+        "testedRevision": $trim(steps.head.stdout),
         "testStatus": steps.test.exitCode = 1 ? "defect-reproduced" : "not-reproduced"
       }
       """

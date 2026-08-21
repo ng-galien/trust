@@ -7,7 +7,6 @@ import { relativeTime } from "../../lib/format.js";
 import { useExpert } from "../../lib/preferences.js";
 import { usePlans, useProcedures } from "../../lib/runtime-context.js";
 import type { PlanMode } from "../../types.js";
-import { StatusBadge } from "../../ui/badge.js";
 import { type FacetGroupSpec, FilterBox } from "../../ui/filter-box.js";
 import { facetHelpers } from "../shared/facets.js";
 import { CardGrid, ResourceCard } from "../shared/resource-card.js";
@@ -15,7 +14,7 @@ import { ResourceHome } from "../shared/resource-home.js";
 import { ResourceTable, TitleCell } from "../shared/resource-table.js";
 import { useUrlFilters } from "../shared/use-url-filters.js";
 import { applyFacets, applyFilters, emptyFilters, type Filters, groupRows, matchReason, type PlanRow, readFilters, toRows, writeFilters } from "./model.js";
-import { ModeBadge, ProgressBar } from "./parts.js";
+import { ModeBadge, PlanStateBadges, ProgressBar } from "./parts.js";
 
 /* Live Plans and dry-runs are the same object under the same rules, but they never share a list:
    `/plans` shows what agents execute, `/dry-runs` what the operator rehearses. */
@@ -117,7 +116,7 @@ function CardsView({ rows, base, search, q }: { rows: PlanRow[]; base: string; s
         <ResourceCard
           key={row.id}
           to={`${base}/${encodeURIComponent(row.id)}${search}`}
-          marks={<><ModeBadge mode={row.mode} /><StatusBadge state={row.sessionState === "UNAVAILABLE" ? "UNAVAILABLE" : row.workState} /></>}
+          marks={<><ModeBadge mode={row.mode} /><PlanStateBadges workState={row.workState} sessionState={row.sessionState} /></>}
           title={row.id}
           id={expert ? t("plans.home.card.id", { procedure: row.procedure, version: row.procedureVersion, revision: row.revision }) : row.procedure}
           note={matchReason(row, q)}
@@ -150,7 +149,7 @@ function ListView({ rows, base, search, q }: { rows: PlanRow[]; base: string; se
       rowKey={(row) => row.id}
       renderCells={(row) => [
         <TitleCell key="t" to={`${base}/${encodeURIComponent(row.id)}${search}`} title={row.id} id={expert ? t("plans.home.list.id", { revision: row.revision }) : ""} note={matchReason(row, q)} />,
-        <StatusBadge key="m" state={row.sessionState === "UNAVAILABLE" ? "UNAVAILABLE" : row.workState} />,
+        <span key="m" className="inline-flex flex-wrap items-center gap-1"><PlanStateBadges workState={row.workState} sessionState={row.sessionState} /></span>,
         <Link key="p" to={`/procedures/${encodeURIComponent(row.procedure)}`} className="text-body-lg text-accent hover:underline">{row.procedureTitle}{expert ? <span className="mono text-faint"> @{row.procedureVersion}</span> : null}</Link>,
         <span key="e" className="mono text-body">{row.environment}</span>,
         <ProgressBar key="g" satisfied={row.satisfied} total={row.total} />,

@@ -197,6 +197,46 @@ describe("Operation runner", () => {
     )).rejects.toMatchObject({ name: "ShellError" });
   });
 
+  test("glues a literal prefix to an Input value inside one Shell argument token", async () => {
+    const workspaceRoot = await temporaryDirectory("trust-runner-prefixed-argument-");
+
+    const result = await runOperation(
+      fixtureOperation("shell.prefixed-argument.feature"),
+      { issue: "TK-1" },
+      { workspaceRoot },
+    );
+
+    // printf "%s" received exactly one token: the prefix and the Input value, no separator.
+    expect(result.produced).toEqual({ argument: "-Dtrust.ticket=TK-1" });
+  });
+
+  test("appends several encoded path segments and a query string to an HTTP GET", async () => {
+    const baseUrl = await startHttpServer();
+
+    const result = await runOperation(
+      fixtureOperation("http.segments-query.feature"),
+      { issue: "PAY-1", resource: "comments", run: "r1" },
+      { issuesUrl: `${baseUrl}/issues` },
+    );
+
+    expect(result.produced).toEqual({ total: 2 });
+    expect(receivedHttpRequests).toContainEqual(expect.objectContaining({
+      method: "GET",
+      url: "/issues/PAY-1/comments?limit=5&run=r1",
+    }));
+  });
+
+  test("refuses to add a query to an Environment URL that already carries one", async () => {
+    const baseUrl = await startHttpServer();
+
+    await expect(runOperation(
+      fixtureOperation("http.segments-query.feature"),
+      { issue: "PAY-1", resource: "comments", run: "r1" },
+      { issuesUrl: `${baseUrl}/issues?page=2` },
+    )).rejects.toThrow("already carries a query string");
+    expect(receivedHttpRequests).toEqual([]);
+  });
+
   test("gets and decodes JSON from a real HTTP server", async () => {
     const baseUrl = await startHttpServer();
 
@@ -546,11 +586,16 @@ async function respond(request: IncomingMessage, response: ServerResponse): Prom
     }
     if (request.url === "/issue/TRUST-1") {
       response.writeHead(200, { "content-type": "application/json" });
+      // The real Jira payload shape (also served by k8s/connectors/jira-mock).
       response.end(JSON.stringify({
-        summary: "Runner integration",
-        issueType: "defect",
-        workflowStatus: "todo",
+        key: "TRUST-1",
+        fields: { summary: "Runner integration", issuetype: { name: "Defect" }, status: { name: "To Do" } },
       }));
+      return;
+    }
+    if (request.url === "/issues/PAY-1/comments?limit=5&run=r1") {
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(JSON.stringify({ total: 2, comments: ["first", "second"] }));
       return;
     }
     if (request.url === "/documents/DOCUMENT-1") {

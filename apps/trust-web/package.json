@@ -10,7 +10,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test:acceptance": "npm run build --workspace=@trust/runtime && playwright test --project acceptance",
     "docs:capture": "npm run build --workspace=@trust/runtime && playwright test --project docs-capture",
-    "build:docs": "vite build --config vite.docs.config.ts && mv dist-docs/docs.html dist-docs/index.html",
+    "build:docs": "vite build --config vite.docs.config.ts && mv dist-docs/docs-site.html dist-docs/index.html",
     "zip:docs": "npm run build:docs && cd dist-docs && rm -f ../trust-docs.zip && zip -q ../trust-docs.zip index.html && echo trust-docs.zip"
   },
   "dependencies": {

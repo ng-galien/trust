@@ -28,11 +28,19 @@ export function ContractView({ compiled, error }: { compiled: CompiledOperation 
 
 interface ShellStep {
   executable: string;
-  arguments: Array<{ kind: "literal"; value: string } | { kind: "input"; input: string }>;
+  arguments: Array<{ kind: "literal"; value: string } | { kind: "input"; input: string; prefix?: string }>;
   cwd?: { environment: string };
   acceptedExits?: Array<{ code: number; stdoutContains?: string; stderrContains?: string }>;
 }
-interface HttpStep { method: string; url: { environment: string }; appendInput?: string; format?: string; body?: string; response?: string }
+interface HttpStep {
+  method: string;
+  url: { environment: string };
+  appendInputs?: string[];
+  query?: Array<{ name: string; input: string } | { name: string; value: string }>;
+  format?: string;
+  body?: string;
+  response?: string;
+}
 interface FileStep { relativePath: string; root: { environment: string }; format: string }
 
 export function StepCard({ step, index }: { step: OperationStep; index: number }) {
@@ -66,7 +74,7 @@ function StepBody({ step }: { step: OperationStep }) {
             argument.kind === "literal" ? (
               <span key={index}> {argument.value}</span>
             ) : (
-              <span key={index} className="ml-1 rounded-(--radius-1) bg-accent-soft px-1 text-accent" title={t("operations.contract.inputHint", { name: argument.input })}>{`{input.${argument.input}}`}</span>
+              <span key={index} className="ml-1 rounded-(--radius-1) bg-accent-soft px-1 text-accent" title={t("operations.contract.inputHint", { name: argument.input })}>{`${argument.prefix ?? ""}{input.${argument.input}}`}</span>
             ),
           )}
         </dd>
@@ -91,7 +99,14 @@ function StepBody({ step }: { step: OperationStep }) {
         <Term>{t("operations.contract.request")}</Term>
         <dd className="mono">
           {http.method} environment.{http.url.environment}
-          {http.appendInput ? <span className="ml-1 rounded-(--radius-1) bg-accent-soft px-1 text-accent">/{`{input.${http.appendInput}}`}</span> : null}
+          {(http.appendInputs ?? []).map((input) => (
+            <span key={input} className="ml-1 rounded-(--radius-1) bg-accent-soft px-1 text-accent">/{`{input.${input}}`}</span>
+          ))}
+          {http.query?.length ? (
+            <span className="ml-1 rounded-(--radius-1) bg-accent-soft px-1 text-accent">
+              ?{http.query.map((parameter) => `${parameter.name}=${"input" in parameter ? `{input.${parameter.input}}` : parameter.value}`).join("&")}
+            </span>
+          ) : null}
         </dd>
         {http.method === "POST" ? <><Term>{t("operations.contract.body")}</Term><dd>{t("operations.contract.bodyValue")}</dd></> : null}
         <Term>{t("operations.contract.reads")}</Term>

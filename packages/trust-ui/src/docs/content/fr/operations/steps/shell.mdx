@@ -6,9 +6,10 @@ order: 1
 
 ```gherkin fragment title="Phrase + table d'arguments"
     When Shell "<name>" runs "<executable>" with cwd from Environment "<directory>" and Input "<input>"
-      | argument   | source          |
-      | <literal>  | literal         |
-      | <any text> | Input "<input>" |
+      | argument   | source                    |
+      | <literal>  | literal                   |
+      | <any text> | Input "<input>"           |
+      | <prefix>   | literal + Input "<input>" |
 ```
 
 ## La phrase
@@ -30,6 +31,7 @@ La table est **requise** (un en-tête seul est légal et signifie « aucun argum
 | --- | --- |
 | `literal` (ou la forme à une colonne) | la cellule `argument` est passée telle quelle, un argument |
 | `Input "<name>"` | la valeur de cet Input est passée comme un argument ; la cellule `argument` n'est qu'une étiquette pour le lecteur. L'Input doit être une chaîne |
+| `literal + Input "<name>"` | la cellule `argument` est un **préfixe** collé à la valeur de l'Input, en un seul argument, sans séparateur : `-Dtrust.ticket=` + `TK-8` donne l'unique token `-Dtrust.ticket=TK-8`. Mêmes règles d'Input ; la cellule `argument` ne peut pas être vide |
 
 Le Runner **n'analyse jamais une ligne de commande** : chaque ligne est exactement un argument, quel que soit son contenu (espaces compris). Il n'y a pas de shell, pas de quoting, pas d'expansion de glob, pas de substitution de variables d'environnement.
 
@@ -41,6 +43,14 @@ Le Runner **n'analyse jamais une ligne de commande** : chaque ligne est exacteme
       | HEAD         | literal              |
       | --not        | literal              |
       | baseRevision | Input "baseRevision" |
+```
+
+```gherkin fragment title="mvn -B -Dtrust.ticket=<issue> verify"
+    And Shell "verify" runs "mvn" with cwd from Environment "workspaceRoot" and Input "project"
+      | argument        | source                  |
+      | -B              | literal                 |
+      | -Dtrust.ticket= | literal + Input "issue" |
+      | verify          | literal                 |
 ```
 
 ## Sorties acceptées — ce qui compte comme résultat
@@ -134,7 +144,9 @@ Feature: Verify one Maven project revision
 | `Shell "x" requires an argument table` | l'étape n'a pas de table de données |
 | `Shell "x" argument table must use argument or argument \| source` | mauvais en-tête |
 | `Shell "x" argument row has the wrong number of cells` | une ligne ne correspond pas à l'en-tête |
-| `Shell "x" argument references unknown Input "i"` / `… must be one string` | la source `Input "…"` n'est pas déclarée, ou est un `number` / `many` |
+| `Shell "x" argument source "s" must be literal, Input "<name>" or literal + Input "<name>"` | la cellule `source` n'est aucune des trois formes |
+| `Shell "x" argument references unknown Input "i"` / `… must be one string` | la source `Input "…"` ou `literal + Input "…"` n'est pas déclarée, ou est un `number` / `many` |
+| `Shell "x" argument literal + Input "i" requires a non-empty argument cell` | la forme préfixée avec une cellule `argument` vide |
 | `Shell "x" narrows its directory with unknown Input "i"` / `… directory Input "i" must be one string` | mêmes règles pour `and Input` |
 | `Shell "x" is unknown` | `accepts exits` nomme une étape qui n'existe pas |
 | `Shell exit code "n" must be an integer from 0 to 255` · `Shell "x" accepted exits must be non-empty and unique` | table de sorties malformée |

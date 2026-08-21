@@ -45,9 +45,13 @@ export interface CompiledProcedureRole {
     | { readonly kind: "plan-input" }
     | { readonly kind: "agent-declaration" }
     | { readonly kind: "fixed"; readonly value: string }
-    | { readonly kind: "operation-field"; readonly check: string; readonly field: string };
+    | { readonly kind: "operation-field"; readonly check: string; readonly field: string }
+    /** The reserved role `plan`, synthesised when a Check uses `using plan as Input`: one string,
+        the Plan identifier (slug) supplied at engagement, fixed for the Plan's lifetime. */
+    | { readonly kind: "plan-identifier" };
 }
 
+/** An Operation Input bound from one role of the Plan context. */
 export interface CompiledProcedureInputBinding {
   readonly input: string;
   readonly role: string;

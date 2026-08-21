@@ -81,8 +81,8 @@ const inlineCode = <code className="text-body" />;
 
 function describeStep(step: OperationStep, t: TFunction): ReactNode {
   if (step.type === "shell") {
-    const shell = step.shell as { executable: string; arguments: Array<{ kind: "literal"; value: string } | { kind: "input"; input: string }>; cwd?: { environment: string }; acceptedExits?: Array<{ code: number }> };
-    const command = [shell.executable, ...shell.arguments.map((argument) => (argument.kind === "literal" ? argument.value : `<${argument.input}>`))].join(" ");
+    const shell = step.shell as { executable: string; arguments: Array<{ kind: "literal"; value: string } | { kind: "input"; input: string; prefix?: string }>; cwd?: { environment: string }; acceptedExits?: Array<{ code: number }> };
+    const command = [shell.executable, ...shell.arguments.map((argument) => (argument.kind === "literal" ? argument.value : `${argument.prefix ?? ""}<${argument.input}>`))].join(" ");
     const exits = shell.acceptedExits?.map((exit) => exit.code) ?? [0];
     return (
       <>
@@ -93,13 +93,15 @@ function describeStep(step: OperationStep, t: TFunction): ReactNode {
     );
   }
   if (step.type === "http") {
-    const http = step.http as { method: string; url: { environment: string }; appendInput?: string; format?: string };
+    const http = step.http as { method: string; url: { environment: string }; appendInputs?: string[]; query?: Array<{ name: string; input: string } | { name: string; value: string }>; format?: string };
+    const path = (http.appendInputs ?? []).map((input) => `/<${input}>`).join("");
+    const query = (http.query ?? []).map((parameter) => `${parameter.name}=${"input" in parameter ? `<${parameter.input}>` : parameter.value}`).join("&");
     return http.method === "POST" ? (
       <Trans i18nKey="operations.overview.step.httpPost" values={{ url: http.url.environment }} components={{ env: inlineCode }} />
     ) : (
       <>
         <Trans i18nKey="operations.overview.step.httpRead" values={{ format: http.format === "text" ? t("operations.overview.step.formatText") : t("operations.overview.step.formatJson"), url: http.url.environment }} components={{ env: inlineCode }} />
-        {http.appendInput ? <> <Trans i18nKey="operations.overview.step.httpFor" values={{ input: http.appendInput }} components={{ field: inlineCode }} /></> : null}
+        {path || query ? <> <Trans i18nKey="operations.overview.step.httpAt" values={{ path: `${path}${query ? `?${query}` : ""}` }} components={{ field: inlineCode }} /></> : null}
       </>
     );
   }

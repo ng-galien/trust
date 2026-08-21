@@ -124,7 +124,7 @@ export const operations = {
       exitsOr: " or ",
       httpPost: "posts the input as JSON to <env>{{url}}</env> and reads the JSON answer",
       httpRead: "reads {{format}} from <env>{{url}}</env>",
-      httpFor: "for <field>{{input}}</field>",
+      httpAt: "at <field>{{path}}</field>",
       formatText: "text",
       formatJson: "JSON",
       fileRead: "reads <path>{{path}}</path> ({{format}}) below <env>{{root}}</env>",

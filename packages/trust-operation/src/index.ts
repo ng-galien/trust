@@ -13,10 +13,12 @@ export type {
   FileRead,
   FileTextResult,
 } from "./file-read.js";
+export { renderHttpUrl } from "./http.js";
 export type {
   HttpFormat,
   Http,
   HttpJsonResult,
+  HttpQueryParameter,
   HttpTextResult,
 } from "./http.js";
 export type { JsonValue } from "./json.js";
@@ -39,6 +41,7 @@ export type {
   ValueSchema,
   ShellStep,
 } from "./operation.js";
+export { renderShellArgument } from "./shell.js";
 export type { AcceptedShellExit, EnvironmentPath, Shell, ShellArgument } from "./shell.js";
 export type {
   OperationAnalysis,
@@ -60,6 +63,7 @@ export type {
 export {
   CompiledOperationValidationError,
   OperationValidationError,
+  projectOperationEnvironment,
   validateCompiledOperation,
   validateOperationEnvironment,
   validateOperationInput,

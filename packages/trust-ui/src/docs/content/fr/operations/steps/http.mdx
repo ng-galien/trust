@@ -1,12 +1,12 @@
 ---
 title: "Étapes HTTP"
-summary: "GET une URL depuis l'Environnement (avec en option un Input comme segment de chemin), ou POST l'Input typé entier en JSON."
+summary: "GET une URL depuis l'Environnement (avec en option des Inputs comme segments de chemin et une query string), ou POST l'Input typé entier en JSON."
 order: 3
 ---
 
 ```gherkin fragment title="Les trois phrases (pas de table, pas de doc string)"
     When HTTP "<name>" gets Environment "<url>" as Text
-    And  HTTP "<name>" gets Environment "<url>" appending Input "<input>" as JSON
+    And  HTTP "<name>" gets Environment "<url>" appending Input "<a>" and Input "<b>" with query "<name>" from Input "<c>" with query "<name>" as "<literal>" as JSON
     And  HTTP "<name>" posts Input as JSON to Environment "<url>" and reads JSON
 ```
 
@@ -16,10 +16,12 @@ order: 3
 | --- | --- |
 | `"<name>"` | lower camel case, unique dans l'Opération |
 | `gets Environment "<url>"` | requis ; la valeur d'Environment doit être de type `url` ; utilisée telle quelle |
-| `appending Input "<input>"` | optionnel ; la valeur d'un Input, encodée pour l'URL, ajoutée comme **un seul segment de chemin** sous l'URL. L'Input doit être une chaîne |
+| `appending Input "<a>" [and Input "<b>"]…` | optionnel ; la valeur de chaque Input, encodée pour l'URL, ajoutée comme **un segment de chemin** chacune, dans l'ordre, sous l'URL. Chaque Input doit être une chaîne |
+| `with query "<name>" from Input "<in>"` | optionnel, répétable ; ajoute `name=<valeur de l'Input>` à la query string. L'Input doit être une chaîne |
+| `with query "<name>" as "<literal>"` | optionnel, répétable ; ajoute `name=<literal>` à la query string |
 | `as Text` / `as JSON` | comment le corps est lu : une chaîne opaque, ou une valeur JSON analysée que la projection peut traverser |
 
-Il n'y a ni en-tête rédigé, ni query string, ni interpolation libre d'URL. `https://jira.example/issues` + `appending Input "issue"` avec `issue = "PAY-12"` requête `https://jira.example/issues/PAY-12`.
+Les clauses viennent dans cet ordre : `appending …`, puis chaque `with query …`, puis `as Text|JSON` ; un autre ordre est refusé. Les valeurs de query sont encodées par le Runner (`URLSearchParams`), dans l'ordre de la phrase. L'URL d'Environment ne doit pas déjà porter de query string quand l'étape en déclare une (refusé à l'exécution). Il n'y a ni en-tête rédigé, ni interpolation libre d'URL. `https://jira.example/issues` + `appending Input "issue"` avec `issue = "PAY-12"` requête `https://jira.example/issues/PAY-12`.
 
 ```gherkin fragment
     When HTTP "issue" gets Environment "jiraIssueUrl" appending Input "issue" as JSON
@@ -27,6 +29,14 @@ Il n'y a ni en-tête rédigé, ni query string, ni interpolation libre d'URL. `h
       """
       { "issue": input.issue, "summary": steps.issue.body.summary, "workflowStatus": steps.issue.body.workflowStatus }
       """
+```
+
+```gherkin fragment title="GET <issuesUrl>/<issue>/comments?limit=5&run=<run>"
+    When HTTP "comments" gets Environment "issuesUrl"
+        appending Input "issue" and Input "resource"
+        with query "limit" as "5"
+        with query "run" from Input "run"
+        as JSON
 ```
 
 ## POST
@@ -90,6 +100,9 @@ Il n'y a pas d'authentification dans la phrase. Le Runner envoie la requête ave
 | `HTTP "x" requires Environment "e" to be a url` | l'Environment est un `directory` |
 | `HTTP "x" uses undeclared Environment "e"` | le nom n'est pas dans la table Environment |
 | `HTTP "x" path Input "i" must be one string` | `appending` d'un Input non déclaré, `number` ou `many` |
+| `HTTP "x" query Input "i" must be one string` | `with query … from Input` nommant un Input non déclaré, `number` ou `many` |
+| `HTTP "x" appending must precede with query: …` · `HTTP "x" appending and with query must precede as JSON: …` · `HTTP "x" has trailing words after as JSON` | clauses dans le mauvais ordre |
+| `HTTP "x" POST accepts no path segment or query: …` | `appending` ou `with query` sur une phrase POST |
 | `HTTP "x" cannot post an empty Input` | POST sans aucun Input déclaré |
 | `HTTP does not accept a table or DocString` · `HTTP cannot run after Produce` · `HTTP POST must precede Produce and accepts no table or DocString` | forme et ordre |
 | `Produce cannot traverse Text HTTP body` · `Produce cannot traverse HTTP result "status"` | un chemin descend sous une valeur opaque dans la projection |

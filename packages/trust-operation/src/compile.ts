@@ -17,6 +17,7 @@ import {
 } from "@trust/gherkin";
 import jsonata from "jsonata";
 
+import type { HttpQueryParameter } from "./http.js";
 import type {
   CompiledOperation,
   EnvironmentField,
@@ -386,7 +387,7 @@ function readOperationDocument(
       if (!parsed || parsed.type === "shell-exits") continue;
       steps.push({
         name: parsed.name,
-        type: parsed.type === "http-post" ? "http" : parsed.type,
+        type: parsed.type === "http-post" || parsed.type === "http-malformed" ? "http" : parsed.type,
         range: sourceLineRange(context.source, step.location),
         selectionRange: sourceValueRange(context.source, step, parsed.name),
       });
@@ -554,7 +555,7 @@ function parseRun(
           step,
         );
       }
-      if (appendInput !== undefined) assertPathInput(`Shell "${name}"`, appendInput, input, context, step);
+      if (appendInput !== undefined) assertStringInput(`Shell "${name}"`, "directory", appendInput, input, context, step);
       if (environment[environmentName]?.type !== "directory") {
         fail(
           context,
@@ -579,20 +580,17 @@ function parseRun(
         const value = row.cells[0]?.value ?? "";
         const source = row.cells[1]?.value.trim() ?? "literal";
         if (source === "literal") return { kind: "literal" as const, value };
-        const sourceTokens = tokenizeSentence(source);
-        const inputName = sourceTokens.length === 2
-          && sourceTokens[0]?.kind === "text" && sourceTokens[0].value === "Input"
-          && sourceTokens[1]?.kind === "quoted"
-          ? sourceTokens[1].value
-          : undefined;
-        if (!inputName || !Object.hasOwn(input, inputName)) {
-          fail(context, "invalid-operation", `Shell "${name}" argument references unknown Input "${inputName ?? source}"`, row);
+        const parsedSource = parseArgumentSource(source);
+        if (!parsedSource) {
+          fail(context, "invalid-operation", `Shell "${name}" argument source "${source}" must be literal, Input "<name>" or literal + Input "<name>"`, row);
         }
-        const schema = compileInputSchema(input).properties[inputName];
-        if (!schema || schema.type !== "string") {
-          fail(context, "invalid-operation", `Shell "${name}" argument Input "${inputName}" must be one string`, row);
+        const inputName = parsedSource.input;
+        assertStringInput(`Shell "${name}"`, "argument", inputName, input, context, row);
+        if (!parsedSource.prefixed) return { kind: "input" as const, input: inputName };
+        if (value === "") {
+          fail(context, "invalid-operation", `Shell "${name}" argument literal + Input "${inputName}" requires a non-empty argument cell`, row);
         }
-        return { kind: "input" as const, input: inputName };
+        return { kind: "input" as const, input: inputName, prefix: value };
       });
       names.add(name);
       compiled.push({
@@ -664,7 +662,7 @@ function parseRun(
           step,
         );
       }
-      if (appendInput !== undefined) assertPathInput(`File "${name}"`, appendInput, input, context, step);
+      if (appendInput !== undefined) assertStringInput(`File "${name}"`, "directory", appendInput, input, context, step);
       if (environment[environmentName]?.type !== "directory") {
         fail(
           context,
@@ -698,7 +696,7 @@ function parseRun(
       if (step.dataTable || step.docString) {
         fail(context, "unknown-step", "HTTP does not accept a table or DocString", step);
       }
-      const { name, environment: environmentName, format, appendInput } = parsed;
+      const { name, environment: environmentName, format, appendInputs, query } = parsed;
       if (names.has(name)) fail(context, "duplicate-step", `Step "${name}" is repeated`, step);
       if (!Object.hasOwn(environment, environmentName)) {
         fail(
@@ -716,11 +714,9 @@ function parseRun(
           step,
         );
       }
-      if (appendInput) {
-        const schema = compileInputSchema(input).properties[appendInput];
-        if (!schema || schema.type !== "string") {
-          fail(context, "invalid-operation", `HTTP "${name}" path Input "${appendInput}" must be one string`, step);
-        }
+      for (const appendInput of appendInputs) assertStringInput(`HTTP "${name}"`, "path", appendInput, input, context, step);
+      for (const parameter of query) {
+        if ("input" in parameter) assertStringInput(`HTTP "${name}"`, "query", parameter.input, input, context, step);
       }
       names.add(name);
       compiled.push({
@@ -729,11 +725,16 @@ function parseRun(
         http: {
           method: "GET",
           url: { environment: environmentName },
-          ...(appendInput ? { appendInput } : {}),
+          ...(appendInputs.length === 0 ? {} : { appendInputs }),
+          ...(query.length === 0 ? {} : { query }),
           format,
         },
       });
       continue;
+    }
+
+    if (parsed?.type === "http-malformed") {
+      fail(context, "unknown-step", `HTTP "${parsed.name}" ${parsed.reason}`, step);
     }
 
     if (parsed?.type === "http-post") {
@@ -814,135 +815,240 @@ type ParsedRunStepSentence =
       readonly environment: string;
       readonly appendInput?: string;
     }
-  | {
-      readonly type: "http";
-      readonly name: string;
-      readonly format: "text" | "json";
-      readonly environment: string;
-      readonly appendInput?: string;
-    }
+  | ParsedHttpGetSentence
   | {
       readonly type: "http-post";
       readonly name: string;
       readonly environment: string;
     };
 
-function parseRunStepSentence(source: string): ParsedRunStepSentence | undefined {
-  let tokens: readonly SentenceToken[];
+type ParsedHttpGetSentence =
+  | {
+      readonly type: "http";
+      readonly name: string;
+      readonly format: "text" | "json";
+      readonly environment: string;
+      readonly appendInputs: readonly string[];
+      readonly query: readonly HttpQueryParameter[];
+    }
+  | {
+      /** An `HTTP "<name>" gets|posts …` sentence whose clauses are malformed or misordered. */
+      readonly type: "http-malformed";
+      readonly name: string;
+      readonly reason: string;
+    };
+
+interface ParsedArgumentSource {
+  readonly input: string;
+  readonly prefixed: boolean;
+}
+
+const ARGUMENT_SOURCE = /^(literal\s+\+\s+)?Input\s+"([a-z][A-Za-z0-9]*)"$/;
+
+/** `Input "<name>"` or `literal + Input "<name>"`. */
+function parseArgumentSource(source: string): ParsedArgumentSource | undefined {
+  const match = ARGUMENT_SOURCE.exec(source);
+  return match ? { input: match[2] ?? "", prefixed: match[1] !== undefined } : undefined;
+}
+
+function tryTokenize(source: string): readonly SentenceToken[] | undefined {
   try {
-    tokens = tokenizeSentence(source);
+    return tokenizeSentence(source);
   } catch {
     return undefined;
   }
-  const text = (index: number, value: string): boolean =>
-    tokens[index]?.kind === "text" && tokens[index]?.value === value;
-  const quoted = (index: number): string | undefined => {
-    const token = tokens[index];
-    return token?.kind === "quoted" && token.value.length > 0 ? token.value : undefined;
-  };
-  const field = (index: number): string | undefined => {
-    const value = quoted(index);
-    return value && FIELD_NAME.test(value) ? value : undefined;
-  };
-  const format = (index: number): "text" | "json" | undefined => {
-    const token = tokens[index];
-    if (token?.kind !== "text" || (token.value !== "Text" && token.value !== "JSON")) {
-      return undefined;
+}
+
+/** `Text` or `JSON` as a step format. */
+function formatOf(token: SentenceToken | undefined): "text" | "json" | undefined {
+  if (token?.kind !== "text" || (token.value !== "Text" && token.value !== "JSON")) return undefined;
+  return token.value.toLowerCase() as "text" | "json";
+}
+
+/** Sequential reader over one tokenized sentence: every `take…` consumes on success and stays put on failure. */
+class SentenceCursor {
+  readonly #tokens: readonly SentenceToken[];
+  #index = 0;
+
+  constructor(tokens: readonly SentenceToken[]) {
+    this.#tokens = tokens;
+  }
+
+  get done(): boolean {
+    return this.#index >= this.#tokens.length;
+  }
+
+  peek(): SentenceToken | undefined {
+    return this.#tokens[this.#index];
+  }
+
+  peekText(value: string): boolean {
+    const token = this.peek();
+    return token?.kind === "text" && token.value === value;
+  }
+
+  takeText(value: string): boolean {
+    if (!this.peekText(value)) return false;
+    this.#index += 1;
+    return true;
+  }
+
+  /** Every listed word, in order. */
+  takeWords(...values: readonly string[]): boolean {
+    const start = this.#index;
+    if (values.every((value) => this.takeText(value))) return true;
+    this.#index = start;
+    return false;
+  }
+
+  /** Any quoted value, empty included. */
+  takeLiteral(): string | undefined {
+    const token = this.peek();
+    if (token?.kind !== "quoted") return undefined;
+    this.#index += 1;
+    return token.value;
+  }
+
+  /** A non-empty quoted value. */
+  takeQuoted(): string | undefined {
+    const token = this.peek();
+    if (token?.kind !== "quoted" || token.value.length === 0) return undefined;
+    this.#index += 1;
+    return token.value;
+  }
+
+  /** A quoted lower camel case name. */
+  takeField(): string | undefined {
+    const token = this.peek();
+    if (token?.kind !== "quoted" || !FIELD_NAME.test(token.value)) return undefined;
+    this.#index += 1;
+    return token.value;
+  }
+
+  takeFormat(): "text" | "json" | undefined {
+    const format = formatOf(this.peek());
+    if (format) this.#index += 1;
+    return format;
+  }
+}
+
+/** Optional `and Input "<name>"` closing a `from Environment` clause; `undefined` when absent, `null` when malformed. */
+function takeAppendInput(cursor: SentenceCursor): string | undefined | null {
+  if (cursor.done) return undefined;
+  if (!cursor.takeWords("and", "Input")) return null;
+  const input = cursor.takeField();
+  return input && cursor.done ? input : null;
+}
+
+function parseRunStepSentence(source: string): ParsedRunStepSentence | undefined {
+  const tokens = tryTokenize(source);
+  if (!tokens) return undefined;
+  const cursor = new SentenceCursor(tokens);
+
+  if (cursor.takeText("Shell")) {
+    const name = cursor.takeField();
+    if (!name) return undefined;
+    if (cursor.takeText("accepts")) {
+      return cursor.takeText("exits") && cursor.done ? { type: "shell-exits", name } : undefined;
     }
-    return token.value.toLowerCase() as "text" | "json";
-  };
-
-  const shellName = field(1);
-  const executable = quoted(3);
-  const shellEnvironment = field(8);
-  const shellCwd = text(0, "Shell") && shellName && text(2, "runs")
-    && executable && text(4, "with") && text(5, "cwd") && text(6, "from")
-    && text(7, "Environment") && shellEnvironment;
-  if (tokens.length === 9 && shellCwd) {
-    return {
-      type: "shell",
-      name: shellName,
-      executable,
-      environment: shellEnvironment,
-    };
-  }
-  const shellAppendInput = field(11);
-  if (tokens.length === 12 && shellCwd && text(9, "and") && text(10, "Input") && shellAppendInput) {
-    return {
-      type: "shell",
-      name: shellName,
-      executable,
-      environment: shellEnvironment,
-      appendInput: shellAppendInput,
-    };
+    if (!cursor.takeText("runs")) return undefined;
+    const executable = cursor.takeQuoted();
+    if (!executable || !cursor.takeWords("with", "cwd", "from", "Environment")) return undefined;
+    const environment = cursor.takeField();
+    if (!environment) return undefined;
+    const appendInput = takeAppendInput(cursor);
+    if (appendInput === null) return undefined;
+    return { type: "shell", name, executable, environment, ...(appendInput === undefined ? {} : { appendInput }) };
   }
 
-  if (tokens.length === 4 && text(0, "Shell") && shellName && text(2, "accepts")
-    && text(3, "exits")) {
-    return { type: "shell-exits", name: shellName };
+  if (cursor.takeText("File")) {
+    const name = cursor.takeField();
+    if (!name || !cursor.takeText("reads")) return undefined;
+    const path = cursor.takeQuoted();
+    if (!path || !cursor.takeText("as")) return undefined;
+    const format = cursor.takeFormat();
+    if (!format || !cursor.takeWords("from", "Environment")) return undefined;
+    const environment = cursor.takeField();
+    if (!environment) return undefined;
+    const appendInput = takeAppendInput(cursor);
+    if (appendInput === null) return undefined;
+    return { type: "file-read", name, path, format, environment, ...(appendInput === undefined ? {} : { appendInput }) };
   }
 
-  const fileName = field(1);
-  const path = quoted(3);
-  const fileFormat = format(5);
-  const fileEnvironment = field(8);
-  const fileRoot = text(0, "File") && fileName && text(2, "reads") && path
-    && text(4, "as") && fileFormat && text(6, "from") && text(7, "Environment")
-    && fileEnvironment;
-  if (tokens.length === 9 && fileRoot) {
+  if (cursor.takeText("HTTP")) {
+    const name = cursor.takeField();
+    if (!name) return undefined;
+    if (cursor.takeText("gets")) return parseHttpGetSentence(cursor, name);
+    if (!cursor.takeText("posts")) return undefined;
+    const environment = cursor.takeWords("Input", "as", "JSON", "to", "Environment") ? cursor.takeField() : undefined;
+    if (environment && cursor.takeWords("and", "reads", "JSON") && cursor.done) {
+      return { type: "http-post", name, environment };
+    }
     return {
-      type: "file-read",
-      name: fileName,
-      path,
-      format: fileFormat,
-      environment: fileEnvironment,
+      type: "http-malformed",
+      name,
+      reason: `POST sentence must be: HTTP "${name}" posts Input as JSON to Environment "<url>" and reads JSON`,
     };
-  }
-  const fileAppendInput = field(11);
-  if (tokens.length === 12 && fileRoot && text(9, "and") && text(10, "Input") && fileAppendInput) {
-    return {
-      type: "file-read",
-      name: fileName,
-      path,
-      format: fileFormat,
-      environment: fileEnvironment,
-      appendInput: fileAppendInput,
-    };
-  }
-
-  const httpName = field(1);
-  const httpEnvironment = field(4);
-  const httpFormat = format(6);
-  if (tokens.length === 7 && text(0, "HTTP") && httpName && text(2, "gets")
-    && text(3, "Environment") && httpEnvironment && text(5, "as") && httpFormat) {
-    return {
-      type: "http",
-      name: httpName,
-      environment: httpEnvironment,
-      format: httpFormat,
-    };
-  }
-  const httpAppendInput = field(7);
-  const appendedHttpFormat = format(9);
-  if (tokens.length === 10 && text(0, "HTTP") && httpName && text(2, "gets")
-    && text(3, "Environment") && httpEnvironment && text(5, "appending")
-    && text(6, "Input") && httpAppendInput && text(8, "as") && appendedHttpFormat) {
-    return {
-      type: "http",
-      name: httpName,
-      environment: httpEnvironment,
-      appendInput: httpAppendInput,
-      format: appendedHttpFormat,
-    };
-  }
-  const postEnvironment = field(8);
-  if (tokens.length === 12 && text(0, "HTTP") && httpName && text(2, "posts")
-    && text(3, "Input") && text(4, "as") && text(5, "JSON") && text(6, "to")
-    && text(7, "Environment") && postEnvironment && text(9, "and")
-    && text(10, "reads") && text(11, "JSON")) {
-    return { type: "http-post", name: httpName, environment: postEnvironment };
   }
   return undefined;
+}
+
+/**
+ * `HTTP "<n>" gets Environment "<url>" [appending Input "<a>" [and Input "<b>"]…]
+ *  [with query "<name>" from Input "<in>" | with query "<name>" as "<literal>"]… as Text|JSON`
+ * Clauses are ordered: path segments, then query parameters, then the format. The cursor stands after `gets`.
+ */
+function parseHttpGetSentence(cursor: SentenceCursor, name: string): ParsedHttpGetSentence {
+  const expected = `HTTP "${name}" gets Environment "<url>" [appending Input "<in>" [and Input "<in>"]…] [with query "<name>" from Input "<in>" | as "<literal>"]… as Text|JSON`;
+  const malformed = (reason: string): ParsedHttpGetSentence => ({ type: "http-malformed", name, reason });
+
+  if (!cursor.takeText("Environment")) return malformed(`sentence must be: ${expected}`);
+  const environment = cursor.takeField();
+  if (!environment) return malformed(`sentence must be: ${expected}`);
+
+  const appendInputs: string[] = [];
+  if (cursor.takeText("appending")) {
+    do {
+      const input = cursor.takeText("Input") ? cursor.takeField() : undefined;
+      if (!input) return malformed(`appending expects Input "<name>" [and Input "<name>"]…`);
+      appendInputs.push(input);
+    } while (cursor.takeText("and"));
+  }
+
+  const query: HttpQueryParameter[] = [];
+  while (cursor.takeText("with")) {
+    if (!cursor.takeText("query")) return malformed(`with expects query "<name>" from Input "<name>" or as "<literal>"`);
+    const parameterName = cursor.takeQuoted();
+    if (!parameterName) return malformed(`with query expects a non-empty "<name>"`);
+    if (cursor.takeText("from")) {
+      const input = cursor.takeText("Input") ? cursor.takeField() : undefined;
+      if (!input) return malformed(`with query "${parameterName}" from expects Input "<name>"`);
+      query.push({ name: parameterName, input });
+      continue;
+    }
+    if (cursor.takeText("as")) {
+      const value = cursor.takeLiteral();
+      if (value === undefined) return malformed(`with query "${parameterName}" as expects one quoted literal`);
+      query.push({ name: parameterName, value });
+      continue;
+    }
+    return malformed(`with query "${parameterName}" expects from Input "<name>" or as "<literal>"`);
+  }
+
+  if (cursor.peekText("appending")) {
+    return malformed(`appending must precede with query: ${expected}`);
+  }
+  if (!cursor.takeText("as")) return malformed(`sentence must end with as Text|JSON: ${expected}`);
+  const format = cursor.takeFormat();
+  if (!format) return malformed(`sentence must end with as Text|JSON: ${expected}`);
+  const formatWord = format === "text" ? "Text" : "JSON";
+  if (!cursor.done) {
+    if (cursor.peekText("appending") || cursor.peekText("with")) {
+      return malformed(`appending and with query must precede as ${formatWord}: ${expected}`);
+    }
+    return malformed(`has trailing words after as ${formatWord}`);
+  }
+  return { type: "http", name, environment, format, appendInputs, query };
 }
 
 function parseCardinality(
@@ -1245,20 +1351,23 @@ function readDescription(raw: string | undefined): string | undefined {
   return text === "" ? undefined : text;
 }
 
-/** An Input that narrows a directory Environment must be one declared string Input (a project name). */
-function assertPathInput(
+/** An Input rendered into a string position (a Shell argument, a directory narrowing, an HTTP path
+    segment or query value) must be one declared Input whose values are strings: `one` cardinality and
+    a `string`, `reference` or `instant` type — the types that compile to a string schema. */
+function assertStringInput(
   label: string,
+  noun: string,
   inputName: string,
   input: Readonly<Record<string, InputField>>,
   context: CompileContext,
   located: Located,
 ): void {
-  if (!Object.hasOwn(input, inputName)) {
-    fail(context, "invalid-operation", `${label} narrows its directory with unknown Input "${inputName}"`, located);
+  const field = Object.hasOwn(input, inputName) ? input[inputName] : undefined;
+  if (!field) {
+    fail(context, "invalid-operation", `${label} ${noun} references unknown Input "${inputName}"`, located);
   }
-  const schema = compileInputSchema(input).properties[inputName];
-  if (!schema || schema.type !== "string") {
-    fail(context, "invalid-operation", `${label} directory Input "${inputName}" must be one string`, located);
+  if (field.cardinality !== "one" || field.type === "number") {
+    fail(context, "invalid-operation", `${label} ${noun} Input "${inputName}" must be one string`, located);
   }
 }
 

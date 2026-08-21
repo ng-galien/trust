@@ -1,0 +1,79 @@
+{
+  "contract": "trust.compiled-operation@1",
+  "operation": "http.segments-query",
+  "version": "1.0.0",
+  "title": "Read the comments of one issue with a bounded page",
+  "input": {
+    "type": "object",
+    "properties": {
+      "issue": {
+        "type": "string",
+        "minLength": 1
+      },
+      "run": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "issue",
+      "run"
+    ],
+    "additionalProperties": false
+  },
+  "environment": {
+    "type": "object",
+    "properties": {
+      "issuesUrl": {
+        "type": "string",
+        "format": "trust-url"
+      }
+    },
+    "required": [
+      "issuesUrl"
+    ],
+    "additionalProperties": false
+  },
+  "steps": [
+    {
+      "name": "comments",
+      "type": "http",
+      "http": {
+        "method": "GET",
+        "url": {
+          "environment": "issuesUrl"
+        },
+        "appendInputs": [
+          "issue",
+          "run"
+        ],
+        "query": [
+          {
+            "name": "limit",
+            "value": "5"
+          },
+          {
+            "name": "run",
+            "input": "run"
+          }
+        ],
+        "format": "json"
+      }
+    }
+  ],
+  "produce": {
+    "language": "jsonata",
+    "expression": "{ \"status\": steps.comments.status }"
+  },
+  "produced": {
+    "type": "object",
+    "properties": {
+      "status": {
+        "type": "number"
+      }
+    },
+    "required": [
+      "status"
+    ],
+    "additionalProperties": false
+  }
+}

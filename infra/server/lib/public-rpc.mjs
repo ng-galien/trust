@@ -32,12 +32,16 @@ export async function publicRpc(endpoint, method, params, credential, processCre
     throw new TypeError(`TRUST RPC ${method} returned an invalid envelope`);
   }
   if (Object.hasOwn(envelope, "error")) {
-    const detail = typeof envelope.error?.data?.reason === "string"
-      ? `: ${envelope.error.data.reason}`
-      : typeof envelope.error?.message === "string"
-        ? `: ${envelope.error.message}`
-        : "";
-    throw new Error(`TRUST RPC ${method} was rejected${detail}`);
+    // Show everything the runtime says: reason code, message and source location when it is a compile error.
+    const data = envelope.error?.data ?? {};
+    const str = (value) => (typeof value === "string" ? value : undefined);
+    const parts = [
+      str(data.reason),
+      str(data.message) ?? str(envelope.error?.message),
+      typeof data.location?.line === "number" ? `line ${data.location.line}` : undefined,
+      str(data.sourceName),
+    ].filter(Boolean);
+    throw new Error(`TRUST RPC ${method} was rejected${parts.length ? `: ${parts.join(" — ")}` : ""}`);
   }
   if (!Object.hasOwn(envelope, "result")) {
     throw new TypeError(`TRUST RPC ${method} returned no result`);

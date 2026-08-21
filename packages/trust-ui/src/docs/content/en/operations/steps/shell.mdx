@@ -6,9 +6,10 @@ order: 1
 
 ```gherkin fragment title="Sentence + argument table"
     When Shell "<name>" runs "<executable>" with cwd from Environment "<directory>" and Input "<input>"
-      | argument   | source          |
-      | <literal>  | literal         |
-      | <any text> | Input "<input>" |
+      | argument   | source                    |
+      | <literal>  | literal                   |
+      | <any text> | Input "<input>"           |
+      | <prefix>   | literal + Input "<input>" |
 ```
 
 ## The sentence
@@ -30,6 +31,7 @@ The table is **required** (a header alone is legal and means "no argument"). Its
 | --- | --- |
 | `literal` (or the one-column form) | the `argument` cell is passed as-is, one argument |
 | `Input "<name>"` | the value of that Input is passed as one argument; the `argument` cell is only a label for the reader. The Input must be one string |
+| `literal + Input "<name>"` | the `argument` cell is a **prefix** glued to the Input value, in one argument, no separator: `-Dtrust.ticket=` + `TK-8` gives the single token `-Dtrust.ticket=TK-8`. Same Input rules; the `argument` cell cannot be empty |
 
 The Runner **never parses a command line**: each row is exactly one argument, whatever it contains (spaces included). There is no shell, no quoting, no glob expansion, no environment-variable substitution.
 
@@ -41,6 +43,14 @@ The Runner **never parses a command line**: each row is exactly one argument, wh
       | HEAD         | literal              |
       | --not        | literal              |
       | baseRevision | Input "baseRevision" |
+```
+
+```gherkin fragment title="mvn -B -Dtrust.ticket=<issue> verify"
+    And Shell "verify" runs "mvn" with cwd from Environment "workspaceRoot" and Input "project"
+      | argument        | source                  |
+      | -B              | literal                 |
+      | -Dtrust.ticket= | literal + Input "issue" |
+      | verify          | literal                 |
 ```
 
 ## Accepted exits — what counts as a result
@@ -134,7 +144,9 @@ Feature: Verify one Maven project revision
 | `Shell "x" requires an argument table` | the step has no data table |
 | `Shell "x" argument table must use argument or argument \| source` | wrong header |
 | `Shell "x" argument row has the wrong number of cells` | a row does not match the header |
-| `Shell "x" argument references unknown Input "i"` / `… must be one string` | the `Input "…"` source is undeclared, or is a `number` / `many` |
+| `Shell "x" argument source "s" must be literal, Input "<name>" or literal + Input "<name>"` | the `source` cell is none of the three forms |
+| `Shell "x" argument references unknown Input "i"` / `… must be one string` | the `Input "…"` or `literal + Input "…"` source is undeclared, or is a `number` / `many` |
+| `Shell "x" argument literal + Input "i" requires a non-empty argument cell` | the prefix form with an empty `argument` cell |
 | `Shell "x" narrows its directory with unknown Input "i"` / `… directory Input "i" must be one string` | same rules for `and Input` |
 | `Shell "x" is unknown` | `accepts exits` names a step that does not exist |
 | `Shell exit code "n" must be an integer from 0 to 255` · `Shell "x" accepted exits must be non-empty and unique` | malformed exit table |

@@ -10,7 +10,7 @@ Le `Scenario: Run` liste ce que fait le Runner, dans l'ordre. Il existe trois so
 | --- | --- | --- |
 | **Shell** | `Shell "<name>" runs "<executable>" with cwd from Environment "<dir>" [and Input "<in>"]` + table d'arguments | `exitCode`, `stdout`, `stderr` |
 | **File** | `File "<name>" reads "<path>" as Text\|JSON from Environment "<dir>" [and Input "<in>"]` | `relativePath`, `content` |
-| **HTTP GET** | `HTTP "<name>" gets Environment "<url>" [appending Input "<in>"] as Text\|JSON` | `status`, `headers`, `body` |
+| **HTTP GET** | `HTTP "<name>" gets Environment "<url>" [appending Input "<in>" [and Input "<in>"]…] [with query "<n>" from Input "<in>" \| as "<literal>"]… as Text\|JSON` | `status`, `headers`, `body` |
 | **HTTP POST** | `HTTP "<name>" posts Input as JSON to Environment "<url>" and reads JSON` | `status`, `headers`, `body` |
 
 ```gherkin fragment title="Trois sortes d'étape, puis la projection"
@@ -33,7 +33,7 @@ Le `Scenario: Run` liste ce que fait le Runner, dans l'ordre. Il existe trois so
 - Les **noms** sont en lower camel case (`head`, `verifyBuild`) et uniques au sein de l'Opération. La projection désigne une étape par son nom — jamais par sa position — donc réordonner les étapes ne la casse pas.
 - Les étapes s'exécutent **dans l'ordre**, l'une après l'autre. Quand une étape se termine d'une manière qui n'est pas un résultat accepté (une sortie Shell non acceptée, un fichier illisible, une erreur de transport HTTP), l'Opération est **interrompue avant qu'aucun champ soit produit** : pas de Facts, pas de verdict — le Check reste tel qu'il était et l'agent peut réessayer.
 - Une étape lit son répertoire ou son URL depuis l'**Environment**, jamais depuis un littéral dans la source. C'est ce qui rend la même Opération exécutable sur plusieurs Environnements.
-- Rien dans une étape n'est interpolé depuis du texte libre : les arguments Shell sont des lignes, les chemins HTTP sont un seul segment encodé, les chemins de fichier sont des chemins relatifs fixes, les corps POST sont l'Input typé entier.
+- Rien dans une étape n'est interpolé depuis du texte libre : les arguments Shell sont des lignes (un littéral, un Input, ou un préfixe littéral collé à un Input), les chemins HTTP sont des segments encodés et des paramètres de query nommés, les chemins de fichier sont des chemins relatifs fixes, les corps POST sont l'Input typé entier.
 
 <Callout kind="rule" title="Résultat contre erreur">
   Une Opération distingue une **observation** d'une **erreur**. Une suite de tests qui échoue et sort avec `1` peut être une observation légitime (`status: failed`) si l'Opération le dit avec `accepts exits` ; un compilateur qui ne démarre pas, un répertoire manquant ou une panne réseau sont des erreurs qui interrompent l'Opération. Cette distinction est ce qui permet à une Procédure de demander « le build passe-t-il ? » sans confondre « le build a échoué » avec « nous n'avons pas pu builder ».

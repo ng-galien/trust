@@ -9,7 +9,7 @@ export type Line = Token[];
 
 const CELL_TYPES = new Set(["string", "number", "instant", "reference", "directory", "url", "one", "many", "literal", "any", "JSON", "Text"]);
 const TYPES = /^(Environment|Input|Produced fields|Shell|File|HTTP|Check|Plan input|Operation|Plan context)\b/;
-const VERBS = /^(runs|with cwd from|accepts exits|gets|appending|posts|as JSON to|as|from|reads|and reads|and Input|and materializes|and must establish|Produce with JSONata|runs Operation|on each|on all|on|using all|using|is validated|is satisfied when every Check is validated|declared by agent for|for each|for|fixed as|scenario|must establish|equals|at least|has at least|is in|before|after|value|number|valid rfc3339|context|field|from Check|failure reason)\b/;
+const VERBS = /^(runs|with cwd from|accepts exits|gets|appending|posts|as JSON to|as|from|reads|and reads|and Input|and materializes|and must establish|with query|from Input|Produce with JSONata|runs Operation|on each|on all|on|using plan|using all|using|is validated|is satisfied when every Check is validated|declared by agent for|for each|for|fixed as|scenario|must establish|equals|at least|has at least|is in|before|after|value|number|valid rfc3339|context|field|from Check|failure reason)\b/;
 
 export function highlight(code: string, language: string): Line[] {
   const lines = code.replace(/\n$/, "").split("\n");
@@ -97,10 +97,11 @@ function tokenizeTableRow(line: string, header: boolean): Line {
     if (index > 0) tokens.push({ text: "|", cls: "delimiter" });
     if (!part) return;
     if (header) { tokens.push({ text: part, cls: "table-header" }); return; }
-    tokens.push(...splitTokens(part, /("[^"]*"|\b\d+(?:\.\d+)?\b|\benum\b|[A-Za-z][\w-]*)/g, (word) => {
+    tokens.push(...splitTokens(part, /("[^"]*"|\b\d+(?:\.\d+)?\b|\benum\b|[A-Za-z][\w-]*)/g, (word, next) => {
       if (word.startsWith("\"")) return "string";
       if (/^\d/.test(word)) return "number";
       if (word === "enum") return "verb";
+      if (word === "literal" && /^\s*\+\s*Input\b/.test(next)) return "verb";
       return CELL_TYPES.has(word) ? "type" : "table-cell";
     }));
   });

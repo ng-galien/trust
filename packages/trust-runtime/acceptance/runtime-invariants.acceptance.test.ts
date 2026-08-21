@@ -22,17 +22,17 @@ test("a Plan engages before future agent declarations exist", async () => {
     const engagement = await rpc(runtime.endpoint, "plan.engage", {
       contract: "trust.plan-engagement-request@1",
       procedure: "end-to-end-red-green",
-      procedureVersion: "2.0.0",
+      procedureVersion: "3.1.0",
       plan: "future-declarations",
       environment: "local",
-      rootInputs: { "jira issue": "TK-100", trace: "trace-100" },
+      rootInputs: { "jira issue": "TK-100" },
     }) as { revision: number; checkUris: readonly string[] };
 
     assert.equal(engagement.revision, 1);
     assert.equal(engagement.checkUris.length, 3);
-    assert.ok(engagement.checkUris.some((uri) => uri.includes("git-head-read")));
+    assert.ok(engagement.checkUris.some((uri) => uri.includes("git-change-start")));
     assert.ok(engagement.checkUris.some((uri) => uri.includes("jira-issue-read")));
-    assert.ok(engagement.checkUris.some((uri) => uri.includes("telemetry-trace-read")));
+    assert.ok(engagement.checkUris.some((uri) => uri.includes("git-change-merge")));
 
     const plan = await mcpTool(runtime.endpoint, "trust_plan_read", {
       checkUri: engagement.checkUris[0],
@@ -41,8 +41,7 @@ test("a Plan engages before future agent declarations exist", async () => {
     assert.match(plan, /Run 1 actionable Check with the TRUST Skill/);
     assert.match(plan, /Declare 5 missing declaration roles with trust_plan_declarations_replace/);
     assert.match(plan, /- affected project: many reference; parent: jira issue/);
-    assert.match(plan, /Scenario "green" has no current Check yet/);
-    assert.match(plan, /Its Checks will appear when their required context exists/);
+    assert.match(plan, /- trace: one reference\n  Value shape: <reference>/);
     assert.doesNotMatch(plan, /Declaration roles: \[/);
 
     const firstPageText = await mcpTool(runtime.endpoint, "trust_procedure_read", {

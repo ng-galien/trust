@@ -22,7 +22,7 @@ Feature: Run one integration test and confirm its trace markers
   @scenario:trace
   Scenario: Confirm the integration trace marker
     Given scenario "test" is validated
-    Then Check "trace marker" runs Operation "telemetry.trace-read" on "trace" as Input "traceId" and must establish "the integration trace contains a marker"
-      | field       | relation | expectation | failure reason                        |
-      | markerCount | at least | number 1    | "the integration trace has no marker" |
+    Then Check "trace marker" runs Operation "telemetry.trace-read" on "trace" as Input "traceId" and must establish "the integration trace was recorded"
+      | field     | relation | expectation | failure reason                      |
+      | spanCount | at least | number 1    | "the integration trace has no span" |
     And the Scenario is satisfied when every Check is validated

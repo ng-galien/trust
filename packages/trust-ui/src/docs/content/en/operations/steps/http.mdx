@@ -1,12 +1,12 @@
 ---
 title: "HTTP steps"
-summary: "GET a URL from the Environment (optionally one Input as path segment), or POST the whole typed Input as JSON."
+summary: "GET a URL from the Environment (optionally Inputs as path segments and a query string), or POST the whole typed Input as JSON."
 order: 3
 ---
 
 ```gherkin fragment title="The three sentences (no table, no doc string)"
     When HTTP "<name>" gets Environment "<url>" as Text
-    And  HTTP "<name>" gets Environment "<url>" appending Input "<input>" as JSON
+    And  HTTP "<name>" gets Environment "<url>" appending Input "<a>" and Input "<b>" with query "<name>" from Input "<c>" with query "<name>" as "<literal>" as JSON
     And  HTTP "<name>" posts Input as JSON to Environment "<url>" and reads JSON
 ```
 
@@ -16,10 +16,12 @@ order: 3
 | --- | --- |
 | `"<name>"` | lower camel case, unique in the Operation |
 | `gets Environment "<url>"` | required; the Environment value must be of type `url`; used as-is |
-| `appending Input "<input>"` | optional; the value of one Input, URL-encoded, appended as **one path segment** below the URL. The Input must be one string |
+| `appending Input "<a>" [and Input "<b>"]…` | optional; the value of each Input, URL-encoded, appended as **one path segment** each, in order, below the URL. Every Input must be one string |
+| `with query "<name>" from Input "<in>"` | optional, repeatable; adds `name=<value of the Input>` to the query string. The Input must be one string |
+| `with query "<name>" as "<literal>"` | optional, repeatable; adds `name=<literal>` to the query string |
 | `as Text` / `as JSON` | how the body is read: an opaque string, or a parsed JSON value the projection can traverse |
 
-There is no authored header, query string or free URL interpolation. `https://jira.example/issues` + `appending Input "issue"` with `issue = "PAY-12"` requests `https://jira.example/issues/PAY-12`.
+Clauses come in this order: `appending …`, then every `with query …`, then `as Text|JSON`; another order is refused. Query values are encoded by the Runner (`URLSearchParams`), in sentence order. The Environment URL must not already carry a query string when the step declares one (refused at run time). There is no authored header and no free URL interpolation. `https://jira.example/issues` + `appending Input "issue"` with `issue = "PAY-12"` requests `https://jira.example/issues/PAY-12`.
 
 ```gherkin fragment
     When HTTP "issue" gets Environment "jiraIssueUrl" appending Input "issue" as JSON
@@ -27,6 +29,14 @@ There is no authored header, query string or free URL interpolation. `https://ji
       """
       { "issue": input.issue, "summary": steps.issue.body.summary, "workflowStatus": steps.issue.body.workflowStatus }
       """
+```
+
+```gherkin fragment title="GET <issuesUrl>/<issue>/comments?limit=5&run=<run>"
+    When HTTP "comments" gets Environment "issuesUrl"
+        appending Input "issue" and Input "resource"
+        with query "limit" as "5"
+        with query "run" from Input "run"
+        as JSON
 ```
 
 ## POST
@@ -90,6 +100,9 @@ There is no authentication in the sentence. The Runner sends the request with it
 | `HTTP "x" requires Environment "e" to be a url` | the Environment is a `directory` |
 | `HTTP "x" uses undeclared Environment "e"` | the name is not in the Environment table |
 | `HTTP "x" path Input "i" must be one string` | `appending` an undeclared, `number` or `many` Input |
+| `HTTP "x" query Input "i" must be one string` | `with query … from Input` naming an undeclared, `number` or `many` Input |
+| `HTTP "x" appending must precede with query: …` · `HTTP "x" appending and with query must precede as JSON: …` · `HTTP "x" has trailing words after as JSON` | clauses out of order |
+| `HTTP "x" POST accepts no path segment or query: …` | `appending` or `with query` on a POST sentence |
 | `HTTP "x" cannot post an empty Input` | POST without any declared Input |
 | `HTTP does not accept a table or DocString` · `HTTP cannot run after Produce` · `HTTP POST must precede Produce and accepts no table or DocString` | shape and ordering |
 | `Produce cannot traverse Text HTTP body` · `Produce cannot traverse HTTP result "status"` | a path goes below an opaque value in the projection |

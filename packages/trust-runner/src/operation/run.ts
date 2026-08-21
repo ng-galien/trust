@@ -1,9 +1,12 @@
 import {
+  renderHttpUrl,
+  renderShellArgument,
   validateCompiledOperation,
   validateOperationEnvironment,
   validateOperationInput,
   validateOperationProduced,
   type CompiledOperation,
+  type Http,
 } from "@trust/operation";
 
 import { type DiagnosticsSink, now, nullSink, type StepReporter, summarizeValue } from "../diagnostics/events.js";
@@ -69,8 +72,9 @@ export async function runOperation(
 }
 
 function describeStep(step: CompiledOperation["steps"][number], input: JsonObject, environment: JsonObject): { summary: string; detail: JsonObject } {
+  const resolve = (name: string): string => String(input[name] ?? `<${name}>`);
   if (step.type === "shell") {
-    const args = step.shell.arguments.map((argument) => (argument.kind === "literal" ? argument.value : String(input[argument.input] ?? `<${argument.input}>`)));
+    const args = step.shell.arguments.map((argument) => renderShellArgument(argument, resolve));
     return {
       summary: [step.shell.executable, ...args].join(" "),
       detail: { executable: step.shell.executable, arguments: args, cwd: describePath(step.shell.cwd, input, environment), acceptedExits: step.shell.acceptedExits.map((exit) => exit.code) },
@@ -78,16 +82,30 @@ function describeStep(step: CompiledOperation["steps"][number], input: JsonObjec
   }
   if (step.type === "http") {
     const base = environment[step.http.url.environment];
-    const appended = step.http.appendInput ? input[step.http.appendInput] : undefined;
     return {
-      summary: `${step.http.method} ${typeof base === "string" ? base : `<${step.http.url.environment}>`}${appended === undefined ? "" : `/${String(appended)}`}`,
-      detail: { method: step.http.method, environment: step.http.url.environment, ...(step.http.appendInput ? { appendInput: step.http.appendInput } : {}), format: step.http.format },
+      summary: `${step.http.method} ${typeof base === "string" ? renderedUrl(step.http, base, resolve) : `<${step.http.url.environment}>`}`,
+      detail: {
+        method: step.http.method,
+        environment: step.http.url.environment,
+        ...(step.http.appendInputs?.length ? { appendInputs: [...step.http.appendInputs] } : {}),
+        ...(step.http.query?.length ? { query: step.http.query.map((parameter) => ({ ...parameter })) } : {}),
+        format: step.http.format,
+      },
     };
   }
   return {
     summary: `read ${step.file.relativePath} (${step.file.format})`,
     detail: { relativePath: step.file.relativePath, root: describePath(step.file.root, input, environment), format: step.file.format },
   };
+}
+
+/** Diagnostic only: a URL the step cannot render (a query on a base that already carries one) is reported by the step itself. */
+function renderedUrl(http: Http, base: string, resolve: (name: string) => string): string {
+  try {
+    return renderHttpUrl(http, base, resolve);
+  } catch {
+    return base;
+  }
 }
 
 function describePath(path: { environment: string; appendInput?: string }, input: JsonObject, environment: JsonObject): string | null {

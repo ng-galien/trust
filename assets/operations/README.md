@@ -32,17 +32,22 @@ from Environment "workspaceRoot" and Input "project"`): the Input must be one st
 directory directly below the root — no path separators, no traversal, no symbolic link out of the
 root. Without the `and Input` clause the step runs in the Environment directory itself.
 
-Shell arguments are structured. Each row is either `literal` or comes from one scalar Input. The
-runner never parses a shell command line. Exit code `0` is expected by default. An Operation may
+Shell arguments are structured. Each row is one argv token: `literal` (the cell as-is), `Input
+"<name>"` (the value of one string Input) or `literal + Input "<name>"` (the cell as a prefix glued
+to the value of one string Input, no separator: `-Dtrust.ticket=` + `TK-8` gives `-Dtrust.ticket=TK-8`).
+The runner never parses a shell command line. Exit code `0` is expected by default. An Operation may
 declare other expected exits and may require exact text to occur in their standard output or error
 output. An expected exit remains a step result and can produce fields. Any other exit interrupts
 the Operation before fields are produced. This distinction lets a failing test be an expected
 observation without mistaking a compilation or infrastructure error for that observation.
 
-HTTP GET can use an Environment URL directly or append one scalar Input as one encoded path
-segment. HTTP POST sends the complete typed Input as one JSON object and reads one JSON response.
-There is no authored header, body template or free URL interpolation. File read accepts one fixed
-relative path below a directory Environment.
+HTTP GET can use an Environment URL directly, append string Inputs as successive encoded path
+segments (`appending Input "a" and Input "b"`) and add named query parameters, each from one string
+Input or one literal (`with query "limit" as "5" with query "run" from Input "run"`), in that clause
+order, before `as Text|JSON`. The Environment URL must not already carry a query string when the step
+declares one. HTTP POST sends the complete typed Input as one JSON object and reads one JSON response;
+it accepts no path segment or query. There is no authored header, body template or free URL
+interpolation. File read accepts one fixed relative path below a directory Environment.
 
 Every step result has one stable shape:
 

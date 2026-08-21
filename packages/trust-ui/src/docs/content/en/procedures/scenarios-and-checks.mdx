@@ -37,7 +37,7 @@ A **Scenario** groups Checks and orders them: it is satisfied when every Check i
 ```text
 Then|And Check "<name>" runs Operation "<domain.action>"
     on [each|all] "<role>" as Input "<input>"
-    [using [all] "<role>" as Input "<input>"]…
+    [using [all] "<role>" as Input "<input>" | using plan as Input "<input>"]…
     [and materializes "<role>" from field "<field>"]…
     and must establish "<success reason>"
   | field | relation | expectation | failure reason |
@@ -50,6 +50,7 @@ Then|And Check "<name>" runs Operation "<domain.action>"
 | `runs Operation "<domain.action>"` | an Operation of the catalog, by name; the version embedded is the current one at publication |
 | `on [each\|all] "<role>" as Input "<input>"` | the **target**: one role bound to one Input of the Operation. `on "r"` — one Check; `on each "r"` — one Check per value of a `many` role; `on all "r"` — one Check receiving the whole collection |
 | `using [all] "<role>" as Input "<input>"` | binds another Input (no `and` before `using`); `all` passes a collection. Every Input of the Operation is bound **exactly once**, between `on` and `using` |
+| `using plan as Input "<input>"` | binds the **Plan identifier** (the slug given at engagement) to one `string` or `reference` Input of cardinality `one`. `plan` is a reserved role name (no Background may declare it): the binding compiles to a synthesised role `"plan"` with source `plan-identifier`, seeded with the Plan slug at engagement; the value is fixed for the Plan's lifetime and never reopens the Check. It lets an Operation tag what it does with the Plan (a Maven property, a trace attribute, a query parameter) |
 | `and materializes "<role>" from field "<field>"` | once the Check is validated, the value of the produced field fills the role. The role must be declared, neither fixed nor agent-declared; its type must match the field's; a role has **one** provider Check; a Check may materialize several roles |
 | `and must establish "<success reason>"` | required, **last** clause (trailing words are refused); the reason returned with a validated verdict |
 | table | the expectations, see [Expectations](/docs/procedures/expectations) — one row per predicate; the table is required |

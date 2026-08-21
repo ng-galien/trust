@@ -99,6 +99,8 @@ describe("Operation compiler", () => {
     ["file.license-read.feature", "file.license-read.compiled.json"],
     ["http.status-read.feature", "http.status-read.compiled.json"],
     ["http.text-read.feature", "http.text-read.compiled.json"],
+    ["shell.prefixed-argument.feature", "shell.prefixed-argument.compiled.json"],
+    ["http.segments-query.feature", "http.segments-query.compiled.json"],
   ])("compiles %s to the closed runner contract", (feature, artifact) => {
     const source = fixture(`valid/${feature}`);
     const expected = JSON.parse(fixture(`valid/${artifact}`));
@@ -119,6 +121,32 @@ describe("Operation compiler", () => {
         readFileSync(new URL(`../../../assets/operations/${feature}`, import.meta.url), "utf8"),
       );
     }
+  });
+
+  test("compiles the catalog Operations that append one Input as a one-segment path list", () => {
+    const source = readFileSync(new URL("../../../assets/operations/jira.issue-read.feature", import.meta.url), "utf8");
+
+    const compiled = compileOperation({ source, sourceName: "jira.issue-read.feature" });
+
+    expect(compiled.steps[0]).toMatchObject({
+      type: "http",
+      http: { method: "GET", url: { environment: "jiraIssueUrl" }, appendInputs: ["issue"], format: "json" },
+    });
+    expect(compiled.steps[0]).not.toHaveProperty("http.appendInput");
+    expect(compiled.steps[0]).not.toHaveProperty("http.query");
+  });
+
+  test("reports a misordered HTTP GET clause with the expected order", () => {
+    const analysis = analyzeOperation({
+      source: fixture("invalid/http-query-before-appending.feature"),
+      sourceName: "http-query-before-appending.feature",
+    });
+
+    expect(analysis.diagnostics).toEqual([expect.objectContaining({
+      code: "unknown-step",
+      message: expect.stringContaining("appending must precede with query"),
+    })]);
+    expect(analysis.document?.steps).toEqual([expect.objectContaining({ name: "comments", type: "http" })]);
   });
 
   test("exposes the free-text Feature description without touching the executable contract", () => {

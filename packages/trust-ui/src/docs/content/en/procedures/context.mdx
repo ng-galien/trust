@@ -38,7 +38,7 @@ The source of a role is not a keyword: it follows from the clauses and from the 
 
 | Source | How | Filled | Example |
 | --- | --- | --- | --- |
-| **Fixed value** | `fixed as "<value>"` | by the Procedure itself | `And one reference "Kind cluster" fixed as "trust"` |
+| **Fixed value** | `fixed as "<value>"` | by the Procedure itself | `And one reference "Kind cluster" fixed as "trust-test"` |
 | **Agent declaration** | `declared by agent` | after engagement, by the agent, through the closed declaration operation | `And many reference "affected project" declared by agent for "jira issue"` |
 | **Materialized field** | a Check of the Procedure `materializes "<role>" from field "<field>"` | by that Check, from one of its produced fields, once validated | `And one reference "baseline revision" for "project"` + `… and materializes "baseline revision" from field "headRevision"` |
 | **Plan input** | none of the above | at engagement, by whoever engages the Plan (root inputs) | `Given one reference "repository"` |
@@ -68,5 +68,5 @@ Engagement accepts **exactly** the Plan inputs — no fixed, declared or materia
 Types and cardinalities must match the Operation's Input at each binding: a `many reference` role cannot feed a `one` Input without `each`; a `string` role cannot feed a `reference` Input.
 
 <Details title="Compiled roles" expert>
-Each role compiles to `{ name, type, cardinality, source, parent? }` where `source.kind` is `plan-input`, `agent-declaration`, `fixed` (with `value`) or `materialized` (with the Check and field). The Procedure page lists Plan inputs in its inspector; a Plan's engagement form is generated from them.
+Each role compiles to `{ name, type, cardinality, source, parent? }` where `source.kind` is `plan-input`, `agent-declaration`, `fixed` (with `value`), `operation-field` (with the Check and field) or `plan-identifier` (the synthesised role `plan`, see [Scenarios and Checks](/docs/procedures/scenarios-and-checks)). The Procedure page lists Plan inputs in its inspector; a Plan's engagement form is generated from them.
 </Details>

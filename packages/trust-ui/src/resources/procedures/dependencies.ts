@@ -7,7 +7,7 @@ import type { CompiledProcedure, JsonObject, ProcedureCheck } from "../../types.
    - a Check WAITS FOR every Check of the Scenarios its Scenario declares as prerequisites;
    - a new verdict on a Check RESETS, transitively, every Check that depends on it or waits for it. */
 
-type RoleSourceKind = "plan-input" | "fixed" | "agent-declaration" | "operation-field";
+type RoleSourceKind = "plan-input" | "fixed" | "agent-declaration" | "operation-field" | "plan-identifier";
 
 export interface RoleProvenance {
   role: string;
@@ -52,6 +52,7 @@ export function describeProvenance(provenance: RoleProvenance | undefined): stri
     case "fixed": return i18next.t("procedures.provenance.fixed", { value: JSON.stringify(provenance.value) });
     case "agent-declaration": return i18next.t("procedures.provenance.agentDeclaration");
     case "operation-field": return i18next.t("procedures.provenance.operationField", { check: provenance.check ?? "", field: provenance.field ?? "" });
+    case "plan-identifier": return i18next.t("procedures.provenance.planIdentifier");
     default: return provenance.kind;
   }
 }

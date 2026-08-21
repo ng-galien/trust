@@ -1,4 +1,4 @@
-import type { Http, HttpJsonResult, HttpTextResult } from "@trust/operation";
+import { renderHttpUrl, type Http, type HttpJsonResult, type HttpTextResult } from "@trust/operation";
 
 import { clip, nullReporter, type StepReporter } from "../diagnostics/events.js";
 import type { JsonObject } from "../lib/json.js";
@@ -15,6 +15,14 @@ export class HttpStatusError extends Error {
   }
 }
 
+function buildHttpUrl(http: Http, input: JsonObject, baseUrl: string): string {
+  return renderHttpUrl(http, baseUrl, (name) => {
+    const value = input[name];
+    if (typeof value !== "string") throw new TypeError(`HTTP Input "${name}" must be one string.`);
+    return value;
+  });
+}
+
 export async function runHttp(
   http: Http,
   input: JsonObject,
@@ -25,14 +33,7 @@ export async function runHttp(
   if (typeof baseUrl !== "string") {
     throw new TypeError(`HTTP Environment "${http.url.environment}" must be a URL string.`);
   }
-  let url = baseUrl;
-  if (http.appendInput) {
-    const value = input[http.appendInput];
-    if (typeof value !== "string") {
-      throw new TypeError(`HTTP path Input "${http.appendInput}" must be one string.`);
-    }
-    url = new URL(encodeURIComponent(value), baseUrl.endsWith("/") ? baseUrl : `${baseUrl}/`).toString();
-  }
+  const url = buildHttpUrl(http, input, baseUrl);
   const requestBody = http.body === "input-json" ? JSON.stringify(input) : undefined;
   reporter.log("http.request", `${http.method} ${url}${requestBody === undefined ? "" : `\ncontent-type: application/json\n\n${clip(requestBody, 8_192)}`}`);
   const startedAt = Date.now();

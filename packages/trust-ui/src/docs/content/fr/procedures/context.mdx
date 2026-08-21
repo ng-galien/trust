@@ -38,7 +38,7 @@ La source d'un rôle n'est pas un mot-clé : elle découle des clauses et des Ch
 
 | Source | Comment | Remplie | Exemple |
 | --- | --- | --- | --- |
-| **Valeur fixe** | `fixed as "<value>"` | par la Procédure elle-même | `And one reference "Kind cluster" fixed as "trust"` |
+| **Valeur fixe** | `fixed as "<value>"` | par la Procédure elle-même | `And one reference "Kind cluster" fixed as "trust-test"` |
 | **Déclaration de l'agent** | `declared by agent` | après l'engagement, par l'agent, via l'opération de déclaration fermée | `And many reference "affected project" declared by agent for "jira issue"` |
 | **Champ matérialisé** | un Check de la Procédure `materializes "<role>" from field "<field>"` | par ce Check, à partir d'un de ses champs produits, une fois validé | `And one reference "baseline revision" for "project"` + `… and materializes "baseline revision" from field "headRevision"` |
 | **Entrée de Plan** | aucune des précédentes | à l'engagement, par qui engage le Plan (entrées racines) | `Given one reference "repository"` |
@@ -68,5 +68,5 @@ L'engagement accepte **exactement** les entrées de Plan — aucun rôle fixe, d
 Types et cardinalités doivent correspondre à l'Input de l'Opération à chaque liaison : un rôle `many reference` ne peut pas alimenter un Input `one` sans `each` ; un rôle `string` ne peut pas alimenter un Input `reference`.
 
 <Details title="Rôles compilés" expert>
-Chaque rôle compile en `{ name, type, cardinality, source, parent? }` où `source.kind` vaut `plan-input`, `agent-declaration`, `fixed` (avec `value`) ou `materialized` (avec le Check et le champ). La page de la Procédure liste les entrées de Plan dans son inspecteur ; le formulaire d'engagement d'un Plan est généré à partir d'elles.
+Chaque rôle compile en `{ name, type, cardinality, source, parent? }` où `source.kind` vaut `plan-input`, `agent-declaration`, `fixed` (avec `value`), `operation-field` (avec le Check et le champ) ou `plan-identifier` (le rôle synthétisé `plan`, voir [Scénarios et Checks](/docs/procedures/scenarios-and-checks)). La page de la Procédure liste les entrées de Plan dans son inspecteur ; le formulaire d'engagement d'un Plan est généré à partir d'elles.
 </Details>

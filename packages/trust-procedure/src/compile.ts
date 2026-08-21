@@ -35,6 +35,8 @@ const SCENARIO_TAG = "@scenario:";
 const SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const SEMVER = /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)$/;
 const AGGREGATION = "the Scenario is satisfied when every Check is validated";
+/** Reserved role: the Plan identifier, synthesised when a Check uses `using plan as Input`. */
+const PLAN_ROLE = "plan";
 const RELATIONS = new Set(["equals", "at least", "has at least", "is in", "before", "after"]);
 
 interface Located {
@@ -48,14 +50,30 @@ interface RoleSource {
   readonly parents: readonly { readonly role: string; readonly each: boolean }[];
   readonly declared: boolean;
   readonly fixed?: string;
+  readonly planIdentifier?: true;
   readonly location?: { readonly line: number; readonly column?: number };
 }
+
+interface UsingSource {
+  readonly role: string;
+  readonly selection: "one" | "all";
+  readonly input: string;
+}
+
+const PLAN_ROLE_SOURCE: RoleSource = {
+  name: PLAN_ROLE,
+  type: "string",
+  cardinality: "one",
+  parents: [],
+  declared: false,
+  planIdentifier: true,
+};
 
 interface CheckSource {
   readonly name: string;
   readonly operation: string;
   readonly target: { readonly role: string; readonly selection: "one" | "each" | "all"; readonly input: string };
-  readonly using: readonly { readonly role: string; readonly selection: "one" | "all"; readonly input: string }[];
+  readonly using: readonly UsingSource[];
   readonly materializes: readonly { readonly role: string; readonly field: string }[];
   readonly successReason: string;
   readonly predicates: readonly PredicateSource[];
@@ -135,6 +153,10 @@ export function compileProcedure(input: ProcedureCompilationInput): CompiledProc
   if (scenarioNodes.length === 0) fail("invalid-procedure", "Procedure must declare at least one Scenario", sourceName, feature);
   const scenarioSources = scenarioNodes.map((scenario) => parseScenario(scenario, sourceName));
   validateScenarios(scenarioSources, sourceName);
+  if (scenarioSources.some((scenario) => scenario.checks.some((check) => check.using.some((use) => use.role === PLAN_ROLE)))) {
+    roleSources.push(PLAN_ROLE_SOURCE);
+    roleByName.set(PLAN_ROLE, PLAN_ROLE_SOURCE);
+  }
 
   const checkByName = new Map<string, { readonly check: CheckSource; readonly scenario: ScenarioSource }>();
   for (const scenario of scenarioSources) {
@@ -163,7 +185,8 @@ export function compileProcedure(input: ProcedureCompilationInput): CompiledProc
         const schema = operation.input.properties[binding.input];
         if (!schema) fail("unknown-input", `Operation "${operation.operation}" has no Input "${binding.input}"`, sourceName, check);
         assertBinding(
-          role,
+          // The Plan identifier is a slug: it satisfies a reference Input as well as a string one.
+          role.planIdentifier && schemaType(baseSchema(schema)) === "reference" ? { ...role, type: "reference" } : role,
           binding.selection,
           schema,
           check.name,
@@ -183,7 +206,7 @@ export function compileProcedure(input: ProcedureCompilationInput): CompiledProc
       for (const item of check.materializes) {
         const role = roleByName.get(item.role);
         if (!role) fail("unknown-role", `Check "${check.name}" materializes unknown role "${item.role}"`, sourceName, check);
-        if (role.declared || role.fixed !== undefined) fail("invalid-procedure", `Check "${check.name}" cannot materialize declared or fixed role "${item.role}"`, sourceName, check);
+        if (role.declared || role.fixed !== undefined || role.planIdentifier) fail("invalid-procedure", `Check "${check.name}" cannot materialize declared or fixed role "${item.role}"`, sourceName, check);
         const field = operation.produced.properties[item.field];
         if (!field) fail("unknown-field", `Operation "${operation.operation}" produces no field "${item.field}"`, sourceName, check);
         assertMaterializationShape(
@@ -217,11 +240,7 @@ export function compileProcedure(input: ProcedureCompilationInput): CompiledProc
         operationVersion: operation.version,
         operationDigest,
         target: { role: check.target.role, selection: check.target.selection },
-        inputBindings: bindings.map((binding) => ({
-          input: binding.input,
-          role: binding.role,
-          selection: binding.selection,
-        })),
+        inputBindings: bindings.map((binding) => ({ input: binding.input, role: binding.role, selection: binding.selection })),
         materializes: check.materializes,
         predicates,
         successReason: check.successReason,
@@ -236,13 +255,15 @@ export function compileProcedure(input: ProcedureCompilationInput): CompiledProc
       type: role.type,
       cardinality: role.cardinality,
       parents: role.parents,
-      source: role.fixed !== undefined
-        ? { kind: "fixed", value: role.fixed }
-        : role.declared
-          ? { kind: "agent-declaration" }
-          : provider
-            ? { kind: "operation-field", check: provider.check, field: provider.field }
-            : { kind: "plan-input" },
+      source: role.planIdentifier
+        ? { kind: "plan-identifier" }
+        : role.fixed !== undefined
+          ? { kind: "fixed", value: role.fixed }
+          : role.declared
+            ? { kind: "agent-declaration" }
+            : provider
+              ? { kind: "operation-field", check: provider.check, field: provider.field }
+              : { kind: "plan-input" },
     };
   });
   for (const scenario of scenarioSources) {
@@ -329,6 +350,7 @@ function parseRoles(steps: readonly Step[], sourceName: string): RoleSource[] {
     const cardinality = cursor.takeTextOneOf(["one", "many"]) as "one" | "many";
     const type = cursor.takeTextOneOf(["string", "number", "instant", "reference"]) as ProcedureValueType;
     const name = cursor.takeQuoted();
+    if (name === PLAN_ROLE) fail("invalid-procedure", `Role "${PLAN_ROLE}" is reserved for the Plan identifier`, sourceName, step);
     let declared = false;
     let fixed: string | undefined;
     const parents: { role: string; each: boolean }[] = [];
@@ -416,11 +438,17 @@ function parseCheckSentence(text: string, sourceName: string, located: Located):
   cursor.takeText("as");
   cursor.takeText("Input");
   const input = cursor.takeQuoted();
-  const using: { role: string; selection: "one" | "all"; input: string }[] = [];
+  const using: UsingSource[] = [];
   const materializes: { role: string; field: string }[] = [];
   let successReason: string | undefined;
   while (!cursor.done()) {
     if (cursor.takeIfText("using")) {
+      if (cursor.takeIfText(PLAN_ROLE)) {
+        cursor.takeText("as");
+        cursor.takeText("Input");
+        using.push({ role: PLAN_ROLE, selection: "one", input: cursor.takeQuoted() });
+        continue;
+      }
       const useSelection = cursor.takeIfText("all") ? "all" : "one";
       const useRole = cursor.takeQuoted();
       cursor.takeText("as");

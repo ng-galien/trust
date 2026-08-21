@@ -1,19 +1,20 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { FileCode2, FlaskConical, History, ListChecks, LockKeyhole, Network, RotateCcw, Server, Trash2, Workflow, X } from "lucide-react";
+import { ChevronRight, FileCode2, FlaskConical, History, ListChecks, LockKeyhole, Network, RotateCcw, Server, Trash2, Workflow, X } from "lucide-react";
 import type { TFunction } from "i18next";
 import { type ReactNode, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useLocation, useNavigate, useParams } from "react-router";
 
-import { plural, relativeTime } from "../../lib/format.js";
+import { cx, plural, relativeTime } from "../../lib/format.js";
 import { useCurrentEnvironment } from "../../lib/environment.js";
 import { mutationError, mutationErrorDetails, useClosePlan, useRemovePlan } from "../../lib/mutations.js";
 import { useCheck, usePlan, useProcedures, useRuntime } from "../../lib/runtime-context.js";
 import type { CompiledProcedure, PlanCheck, PlanMode, PlanView } from "../../types.js";
 import { Badge, StatusBadge } from "../../ui/badge.js";
 import { Button, IconButton } from "../../ui/button.js";
+import { SegmentedControl } from "../../ui/controls.js";
 import { type EditorDecoration, GherkinEditor } from "../../gherkin-editor.js";
-import { updatePreferences, useExpert, usePreference, useResolvedTheme } from "../../lib/preferences.js";
+import { type ChecklistOrder, updatePreferences, useExpert, usePreference, useResolvedTheme } from "../../lib/preferences.js";
 import { ConfirmDialog } from "../../ui/confirm.js";
 import { Description } from "../../ui/description.js";
 import { Expert } from "../../ui/expert.js";
@@ -25,7 +26,7 @@ import { ProcedureGraph } from "../procedures/procedure-graph.js";
 import { PlanCockpit } from "./plan-console.js";
 import { PlanEngage } from "./plan-engage.js";
 import { orderedChecks } from "./model.js";
-import { ModeBadge, ProgressBar } from "./parts.js";
+import { ModeBadge, PlanStateBadges, ProgressBar } from "./parts.js";
 
 type Tab = "checklist" | "graph" | "source" | "history";
 const TABS: readonly Tab[] = ["checklist", "graph", "source", "history"];
@@ -92,7 +93,7 @@ function PlanItem({ slug, planMode, base, onClose, listSearch }: { slug: string;
       crumbs={crumbs}
       labelledBy="plan-title"
       kicker={t("plans.overlay.kicker")}
-      badges={data ? <><ModeBadge mode={data.mode} /><StatusBadge state={data.sessionState === "UNAVAILABLE" ? "UNAVAILABLE" : data.workState} />{currentEnvironment && data.environment !== currentEnvironment ? <span title={t("plans.overlay.otherEnvironmentHint", { environment: data.environment, current: currentEnvironment })}><Badge tone="warning" className="inline-flex items-center gap-1"><Server size={11} /> {t("plans.overlay.otherEnvironment", { environment: data.environment })}</Badge></span> : null}</> : null}
+      badges={data ? <><ModeBadge mode={data.mode} /><PlanStateBadges workState={data.workState} sessionState={data.sessionState} />{currentEnvironment && data.environment !== currentEnvironment ? <span title={t("plans.overlay.otherEnvironmentHint", { environment: data.environment, current: currentEnvironment })}><Badge tone="warning" className="inline-flex items-center gap-1"><Server size={11} /> {t("plans.overlay.otherEnvironment", { environment: data.environment })}</Badge></span> : null}</> : null}
       id={expert && data ? `${data.procedure}@${data.procedureVersion} · ${data.environment}` : ""}
       title={slug}
       loading={plan.isLoading ? <LoadingState /> : notFound ? (
@@ -182,6 +183,8 @@ function PlanSummaryStrip({ plan, compiled, onRehearse, onSelectCheck }: { plan:
   const expert = useExpert();
   const actionable = plan.checks.filter((check) => check.actionable);
   const failed = plan.checks.filter((check) => check.state === "OPEN" && check.latestVerdict === "NOT_VALIDATED");
+  // The Procedure description takes room the checklist needs: folded by default, one click away.
+  const [showDescription, setShowDescription] = useState(false);
   return (
     <div className="flex shrink-0 flex-col gap-2 border-b border-border bg-surface px-4 py-3" data-doc="plan.summary">
       <section>
@@ -189,9 +192,17 @@ function PlanSummaryStrip({ plan, compiled, onRehearse, onSelectCheck }: { plan:
           <ProgressBar satisfied={plan.satisfiedChecks} total={plan.checks.length} />
           <span className="text-body text-muted">{expert ? t("plans.summary.revisionEngaged", { revision: plan.revision, when: relativeTime(plan.createdAt) }) : t("plans.summary.engaged", { when: relativeTime(plan.createdAt) })}</span>
         </div>
-        <p className="mt-2 text-ui leading-relaxed">{compiled?.title ?? plan.procedure}</p>
-        {compiled?.description ? <Description text={compiled.description} className="mt-1 text-body text-muted" /> : null}
-        {plan.latestQualification ? (
+        <p className="mt-2 text-ui font-medium leading-relaxed">{compiled?.title ?? plan.procedure}</p>
+        {compiled?.description ? (
+          <div className="mt-1.5">
+            <button type="button" aria-expanded={showDescription} onClick={() => setShowDescription((open) => !open)} className="-ml-1 inline-flex h-7 items-center gap-1 rounded-(--radius-1) px-1 text-body-lg font-medium text-muted hover:bg-surface-2 hover:text-text">
+              <ChevronRight size={14} className={cx("shrink-0 transition-transform", showDescription && "rotate-90")} />
+              {t("plans.summary.description")}
+            </button>
+            {showDescription ? <Description text={compiled.description} className="mt-1 max-w-4xl rounded-(--radius-2) border border-border bg-surface-2 px-3 py-2 text-body-lg leading-relaxed text-text" /> : null}
+          </div>
+        ) : null}
+        {plan.latestQualification && plan.workState !== "COMPLETE" ? (
           <p className="mt-2 text-body-lg">
             <span className="kicker mr-2">{t("plans.summary.latestVerdict")}</span>
             <StatusBadge state={plan.latestQualification.verdict} />{" "}
@@ -201,13 +212,13 @@ function PlanSummaryStrip({ plan, compiled, onRehearse, onSelectCheck }: { plan:
           </p>
         ) : null}
       </section>
-      <section>
+      {plan.workState !== "COMPLETE" ? <section>
         <div className="mb-1 flex items-center justify-between"><span className="kicker">{t("plans.summary.next")}</span>{onRehearse && (actionable.length || plan.missingDeclarations.length) ? <Button size="sm" variant="primary" icon={<FlaskConical size={12} />} onClick={onRehearse}>{t("plans.summary.rehearse")}</Button> : null}</div>
         {plan.missingDeclarations.length ? <p className="mb-2 text-body-lg"><Badge tone="warning">{t("plans.summary.declare")}</Badge> <span className="text-muted">{t("plans.summary.agentMustDeclare")}</span> {plan.missingDeclarations.map((role, index) => <span key={role}>{index ? ", " : ""}<span className="mono">{role}</span></span>)}{onRehearse ? <> — <button type="button" className="text-accent hover:underline" onClick={onRehearse}>{t("plans.summary.declareNow")}</button></> : null}</p> : null}
-        {actionable.length === 0 && plan.missingDeclarations.length === 0 ? <p className="text-body-lg text-muted">{plan.workState === "COMPLETE" ? t("plans.summary.allSatisfied") : t("plans.summary.noneActionable")}</p> : null}
+        {actionable.length === 0 && plan.missingDeclarations.length === 0 ? <p className="text-body-lg text-muted">{t("plans.summary.noneActionable")}</p> : null}
         {actionable.length ? <p className="text-body-lg"><span className="text-muted">{t("plans.summary.actionableNow")}</span> {actionable.map((check, index) => <span key={check.checkUri}>{index ? ", " : ""}<button type="button" className="mono text-accent hover:underline" onClick={() => onSelectCheck(check.checkUri)}>{check.name}</button><span className="text-faint"> {t("plans.summary.onTarget", { value: JSON.stringify(check.target.value) })}</span></span>)}</p> : null}
         {failed.length ? <p className="mt-1 text-body text-muted">{t("plans.summary.leftOpen", { checks: plural(failed.length, "check") })} {failed.map((check, index) => <span key={check.checkUri}>{index ? ", " : ""}<button type="button" className="mono text-accent hover:underline" onClick={() => onSelectCheck(check.checkUri)}>{check.name}</button></span>)}</p> : null}
-      </section>
+      </section> : null}
     </div>
   );
 }
@@ -216,10 +227,23 @@ function PlanChecks({ plan, selected, onSelect }: { plan: PlanView; selected: st
   const { t } = useTranslation();
   const selectedUri = selected?.startsWith("check:") ? selected.slice("check:".length) : undefined;
   const check = plan.checks.find((entry) => entry.checkUri === selectedUri);
+  // The Procedure structure is kept; the display order can be reversed to read the latest Scenarios first.
+  const order = usePreference("planChecklistOrder");
+  const groups = order === "reverse" ? [...groupExpanded(plan.checks)].reverse() : groupExpanded(plan.checks);
   return (
     <div className={check ? "grid h-full min-h-0 grid-cols-[minmax(0,1fr)_300px]" : "flex h-full min-h-0 flex-col"}>
-      <ul className="flex min-h-0 flex-col overflow-y-auto" data-doc="plan.checklist">
-        {groupExpanded(plan.checks).map((group) => (
+      <div className="flex min-h-0 flex-col">
+      <div className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-1">
+        <span className="kicker">{t("plans.checklist.title")}</span>
+        <span className="text-caption text-faint">{t("plans.checklist.satisfiedRatio", { satisfied: plan.satisfiedChecks, total: plan.checks.length })}</span>
+        <span className="ml-auto text-caption text-muted">{t("plans.checklist.order.label")}</span>
+        <SegmentedControl<ChecklistOrder> ariaLabel={t("plans.checklist.order.label")} size="sm" value={order} onChange={(next) => updatePreferences({ planChecklistOrder: next })} options={[
+          { value: "forward", label: t("plans.checklist.order.forward") },
+          { value: "reverse", label: t("plans.checklist.order.reverse") },
+        ]} />
+      </div>
+      <ul className="flex min-h-0 flex-1 flex-col overflow-y-auto" data-doc="plan.checklist">
+        {groups.map((group) => (
           <li key={group.key} className="border-b border-border">
             {group.checks.length > 1 ? (
               <div className="flex items-baseline gap-2 bg-surface-2 px-3 py-1.5 text-label">
@@ -236,6 +260,7 @@ function PlanChecks({ plan, selected, onSelect }: { plan: PlanView; selected: st
           </li>
         ))}
       </ul>
+      </div>
       {check ? (
         <aside className="flex min-h-0 flex-col border-l border-border bg-surface" data-doc="plan.checkDetail">
           <div className="flex items-center gap-2 border-b border-border px-3 py-1.5"><span className="kicker">{t("plans.checklist.check")}</span><IconButton size="sm" label={t("plans.checklist.closeDetails")} className="ml-auto" onClick={() => onSelect(undefined)}><X size={14} /></IconButton></div>

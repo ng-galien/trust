@@ -9,6 +9,8 @@ import type { Language } from "../i18n/index.js";
 export type ThemePreference = "light" | "dark" | "system";
 /** Interface density: the operator mode shows the essentials and the actions, the expert mode everything. */
 export type Density = "operator" | "expert";
+/** Display order of the Plan checklist: the Procedure order, or reversed (last Scenarios first). */
+export type ChecklistOrder = "forward" | "reverse";
 type SidebarMode = "extended" | "compact";
 
 export interface Preferences {
@@ -28,6 +30,7 @@ export interface Preferences {
   cockpitWidth: number;
   /** Documentation: whether the contents tree is shown. */
   docsNavOpen: boolean;
+  planChecklistOrder: ChecklistOrder;
 }
 
 const storageKey = "trust.ui.preferences";
@@ -44,6 +47,7 @@ const defaults: Preferences = {
   cockpitOpen: true,
   cockpitWidth: 400,
   docsNavOpen: true,
+  planChecklistOrder: "forward",
 };
 
 /** Reads a value written before the store existed (a bare Preferences object) as a versioned record. */

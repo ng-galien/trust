@@ -5,9 +5,16 @@ export interface EnvironmentPath {
   readonly appendInput?: string;
 }
 
+/** One argv token: a literal, one string Input, or a literal prefix glued to one string Input
+    (`literal + Input "x"`: the token is `<prefix><value>`, no separator). */
 export type ShellArgument =
   | { readonly kind: "literal"; readonly value: string }
-  | { readonly kind: "input"; readonly input: string };
+  | { readonly kind: "input"; readonly input: string; readonly prefix?: string };
+
+/** The argv token of one argument: the literal, or the prefix glued to the resolved Input value. */
+export function renderShellArgument(argument: ShellArgument, resolve: (input: string) => string): string {
+  return argument.kind === "literal" ? argument.value : `${argument.prefix ?? ""}${resolve(argument.input)}`;
+}
 
 export interface AcceptedShellExit {
   readonly code: number;

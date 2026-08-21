@@ -22,8 +22,8 @@ Feature: Read one Jira issue
       """
       {
         "issue": input.issue,
-        "summary": steps.issue.body.summary,
-        "issueType": steps.issue.body.issueType,
-        "workflowStatus": steps.issue.body.workflowStatus
+        "summary": steps.issue.body.fields.summary,
+        "issueType": $lowercase(steps.issue.body.fields.issuetype.name),
+        "workflowStatus": steps.issue.body.fields.status.name = "To Do" ? "todo" : steps.issue.body.fields.status.name = "In Progress" ? "in-progress" : "done"
       }
       """

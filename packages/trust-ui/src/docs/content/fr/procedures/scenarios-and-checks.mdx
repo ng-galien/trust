@@ -37,7 +37,7 @@ Un **Scénario** regroupe des Checks et les ordonne : il est satisfait quand cha
 ```text
 Then|And Check "<name>" runs Operation "<domain.action>"
     on [each|all] "<role>" as Input "<input>"
-    [using [all] "<role>" as Input "<input>"]…
+    [using [all] "<role>" as Input "<input>" | using plan as Input "<input>"]…
     [and materializes "<role>" from field "<field>"]…
     and must establish "<success reason>"
   | field | relation | expectation | failure reason |
@@ -50,6 +50,7 @@ Then|And Check "<name>" runs Operation "<domain.action>"
 | `runs Operation "<domain.action>"` | une Opération du catalogue, par son nom ; la version embarquée est la version courante à la publication |
 | `on [each\|all] "<role>" as Input "<input>"` | la **cible** : un rôle lié à un Input de l'Opération. `on "r"` — un Check ; `on each "r"` — un Check par valeur d'un rôle `many` ; `on all "r"` — un Check recevant la collection entière |
 | `using [all] "<role>" as Input "<input>"` | lie un autre Input (pas de `and` avant `using`) ; `all` passe une collection. Chaque Input de l'Opération est lié **exactement une fois**, entre `on` et `using` |
+| `using plan as Input "<input>"` | lie l'**identifiant du Plan** (le slug donné à l'engagement) à un Input `string` ou `reference` de cardinalité `one`. `plan` est un nom de rôle réservé (aucun Background ne peut le déclarer) : la liaison compile en un rôle synthétisé `"plan"` de source `plan-identifier`, alimenté par le slug du Plan à l'engagement ; la valeur est fixe pendant toute la vie du Plan et ne rouvre jamais le Check. Cela permet à une Opération d'étiqueter ce qu'elle fait avec le Plan (une propriété Maven, un attribut de trace, un paramètre de query) |
 | `and materializes "<role>" from field "<field>"` | une fois le Check validé, la valeur du champ produit remplit le rôle. Le rôle doit être déclaré, ni fixe ni déclaré par l'agent ; son type doit correspondre à celui du champ ; un rôle a **un** Check fournisseur ; un Check peut matérialiser plusieurs rôles |
 | `and must establish "<success reason>"` | obligatoire, **dernière** clause (les mots qui suivent sont refusés) ; la raison renvoyée avec un verdict validé |
 | table | les attentes, voir [Attentes](/docs/procedures/expectations) — une ligne par prédicat ; la table est obligatoire |

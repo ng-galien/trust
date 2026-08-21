@@ -14,7 +14,7 @@ The catalog deliberately exercises different sizes and domains:
 - mono-project Jira, Git and Maven change;
 - integration test with an OpenTelemetry trace marker;
 - Playwright user-interface test;
-- multi-project Red-Green, Maven, Docker, Kind and Kubernetes deployment;
+- multi-project Red-Green: one ticket branch cut from clean `main` per project, one Karate red run, one Maven verification and one build-load-rollout per project on Kind, one green run, one trace read, one merge into `main` per project (nine Scenarios, ten Checks);
 - simulated hospital patient admission;
 - simulated aircraft departure;
 - simulated food-batch release.

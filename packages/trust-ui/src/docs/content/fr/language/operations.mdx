@@ -16,11 +16,12 @@ Feature: <title>
 
   Scenario: Run
     When/And Shell "<n>" runs "<exe>" with cwd from Environment "<dir>" [and Input "<in>"]
-      | argument | source |                                                     source: literal | Input "<in>"
+      | argument | source |                                                     source: literal | Input "<in>" | literal + Input "<in>"
     And Shell "<n>" accepts exits
       | exit code | stdout contains | stderr contains |
     When/And File "<n>" reads "<path>" as Text|JSON from Environment "<dir>" [and Input "<in>"]
-    When/And HTTP "<n>" gets Environment "<url>" [appending Input "<in>"] as Text|JSON
+    When/And HTTP "<n>" gets Environment "<url>" [appending Input "<in>" [and Input "<in>"]…]
+                                                 [with query "<name>" from Input "<in>" | with query "<name>" as "<literal>"]… as Text|JSON
     When/And HTTP "<n>" posts Input as JSON to Environment "<url>" and reads JSON
     Then Produce with JSONata
       """ { "<field>": <expression>, … } """

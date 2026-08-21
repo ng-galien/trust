@@ -74,6 +74,21 @@ export function validateOperationProduced(operation: CompiledOperation, value: u
   validate("produced", operation.produced, value);
 }
 
+/** The Environment values an Operation declares (its environment schema is closed) — an Environment
+    may hold more, for other Operations — and the declared names the given values do not provide. */
+export function projectOperationEnvironment(
+  operation: CompiledOperation,
+  values: Readonly<Record<string, unknown>>,
+): { environment: Record<string, unknown>; missing: string[] } {
+  const environment: Record<string, unknown> = {};
+  const missing: string[] = [];
+  for (const name of Object.keys(operation.environment.properties)) {
+    if (name in values) environment[name] = values[name];
+    else missing.push(name);
+  }
+  return { environment, missing };
+}
+
 export function validateCompiledOperation(value: unknown): asserts value is CompiledOperation {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new CompiledOperationValidationError("CompiledOperation must be an object");

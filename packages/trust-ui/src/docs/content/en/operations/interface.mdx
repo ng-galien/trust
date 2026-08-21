@@ -63,7 +63,7 @@ The same four types serve Input and Produced fields; Environment has its own two
 
 - Optional (an Operation may need no Input), at most once. The header is exactly `| input | type | cardinality |`.
 - Where the values come from: in a Plan, the Check sentence binds each Input to a Plan context role (`on "project" as Input "project"`, `using "baseline" as Input "baseRevision"`). Every Input must be bound exactly once. In the interface, **Simulate** and **Run** ask you for them.
-- What an Input may feed: a Shell argument (`Input "issue"` in the argument table), the directory narrowing (`and Input "project"`), an HTTP path segment (`appending Input "issue"`), the whole body of an HTTP POST, and the `input.<name>` root of the projection.
+- What an Input may feed: a Shell argument (`Input "issue"` in the argument table), the directory narrowing (`and Input "project"`), an HTTP path segment or query parameter (`appending Input "issue"`, `with query "run" from Input "run"`), the whole body of an HTTP POST, and the `input.<name>` root of the projection.
 - Wherever a step needs **one string**, the Input must be cardinality `one` and of type `string`, `instant` or `reference` — a `number` or a `many` Input is refused there.
 
 ## Produced fields

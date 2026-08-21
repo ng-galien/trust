@@ -3,7 +3,7 @@ import { existsSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { compileOperation, type CompiledOperation, OperationCompilationError, validateOperationInput } from "@trust/operation";
+import { compileOperation, type CompiledOperation, OperationCompilationError, projectOperationEnvironment, validateOperationInput } from "@trust/operation";
 
 import type { RuntimeJsonObject } from "../model.js";
 import type { Clock } from "../time.js";
@@ -81,25 +81,21 @@ export class TrialService {
 
   /** For every catalog operation, which configured environments can run it. */
   catalogEnvironments(): Array<{ operation: string; version: string; environments: Array<{ name: string; compatible: boolean; missing: string[] }> }> {
-    return this.#operations.list().map((operation) => {
-      const needed = Object.keys((operation.environment as { properties?: Record<string, unknown> }).properties ?? {});
-      return {
-        operation: operation.operation,
-        version: operation.version,
-        environments: this.#environments.list().map(({ name, values }) => {
-          const missing = needed.filter((key) => !(key in values));
-          return { name, compatible: missing.length === 0, missing };
-        }),
-      };
-    });
+    return this.#operations.list().map((operation) => ({
+      operation: operation.operation,
+      version: operation.version,
+      environments: this.#environments.list().map(({ name, values }) => {
+        const { missing } = projectOperationEnvironment(operation, values);
+        return { name, compatible: missing.length === 0, missing };
+      }),
+    }));
   }
 
   /** Environments qualified against one operation: compatible when every declared value is present. */
   environmentsFor(input: { operation?: string; version?: string; source?: string }): Array<{ name: string; values: RuntimeJsonObject; compatible: boolean; missing: string[] }> {
     const operation = this.#resolveOperation({ ...input, environment: "", input: {}, startedBy: "" });
-    const needed = Object.keys((operation.environment as { properties?: Record<string, unknown> }).properties ?? {});
     return this.#environments.list().map(({ name, values }) => {
-      const missing = needed.filter((key) => !(key in values));
+      const { missing } = projectOperationEnvironment(operation, values);
       return { name, values, compatible: missing.length === 0, missing };
     });
   }
@@ -108,9 +104,9 @@ export class TrialService {
     const operation = this.#resolveOperation(input);
     const environment = this.#environments.resolve(input.environment);
     if (!environment) throw new TrialError("unknown-environment", `Environment "${input.environment}" is not configured`);
-    const missing = Object.keys((operation.environment as { properties?: Record<string, unknown> }).properties ?? {}).filter((key) => !(key in environment));
-    if (missing.length) {
-      throw new TrialError("incompatible-environment", `Environment "${input.environment}" does not declare ${missing.join(", ")} required by ${operation.operation}`);
+    const declared = projectOperationEnvironment(operation, environment);
+    if (declared.missing.length) {
+      throw new TrialError("incompatible-environment", `Environment "${input.environment}" does not declare ${declared.missing.join(", ")} required by ${operation.operation}`);
     }
     try {
       validateOperationInput(operation, input.input);
@@ -132,7 +128,7 @@ export class TrialService {
     });
     this.#registry.append(trial.id, { type: "trial.started", at: startedAt, operation: operation.operation, version: operation.version, environment: input.environment });
     // The compiled schema is closed: hand the runner only the values this operation declares.
-    this.#spawn(trial, operation, declaredEnvironment(operation, environment));
+    this.#spawn(trial, operation, declared.environment);
     return summaryOf(this.#registry, trial.id);
   }
 
@@ -259,11 +255,6 @@ function terminateProcessTree(child: ReturnType<typeof spawn>, signal: NodeJS.Si
     }
   }
   child.kill(signal);
-}
-
-function declaredEnvironment(operation: CompiledOperation, environment: RuntimeJsonObject): RuntimeJsonObject {
-  const declared = Object.keys((operation.environment as { properties?: Record<string, unknown> }).properties ?? {});
-  return Object.fromEntries(declared.filter((key) => key in environment).map((key) => [key, environment[key]]));
 }
 
 function parseOutcome(stdout: string): RuntimeJsonObject | undefined {

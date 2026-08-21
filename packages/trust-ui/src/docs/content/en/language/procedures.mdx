@@ -18,7 +18,7 @@ Feature: <title>
     [Given|And scenario "<slug>" is validated]…
     Then|And Check "<name>" runs Operation "<domain.action>"
         on [each|all] "<role>" as Input "<input>"
-        [using [all] "<role>" as Input "<input>"]…
+        [using [all] "<role>" as Input "<input>" | using plan as Input "<input>"]…
         [and materializes "<role>" from field "<field>"]…
         and must establish "<success reason>"
       | field | relation | expectation | failure reason |
@@ -29,6 +29,7 @@ Feature: <title>
 | --- | --- |
 | **Relations** | `equals` · `at least` · `has at least` · `is in` · `before` · `after` |
 | **Expectations** | `value "<text>"` · `number <n>` · `valid rfc3339` · `context "<role>"` · `field "<field>" from Check "<check>"` |
+| **Built-in bindings** | `using plan as Input "<input>"` — the Plan identifier, for one `string` or `reference` Input; compiles to a synthesised role `"plan"` with source `plan-identifier` |
 
 | Topic | Page |
 | --- | --- |

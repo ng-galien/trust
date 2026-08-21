@@ -137,6 +137,106 @@ describe("Procedure compiler", () => {
     });
   });
 
+  test("binds the Plan identifier to one string Input with using plan through the synthesised plan role", () => {
+    const procedure = `# language: en
+@trust-dsl:1 @procedure:plan-identifier @version:1.0.0
+Feature: Pass the Plan identifier to an Operation
+
+  Background: Plan context
+    Given one reference "project"
+    And one reference "baseline revision"
+
+  @scenario:comparison
+  Scenario: Compare with the baseline, tagged with the Plan
+    Then Check "comparison" runs Operation "git.head-compare" on "project" as Input "project" using plan as Input "baseRevision" and must establish "the revision is ahead"
+      | field        | relation | expectation | failure reason           |
+      | commitsAhead | at least | number 1    | "the revision is behind" |
+    And the Scenario is satisfied when every Check is validated
+`;
+
+    const compiled = compileProcedure({ source: procedure, sourceName: "plan-identifier.feature", operations: operations() });
+
+    expect(compiled.checks[0]?.inputBindings).toEqual([
+      { input: "project", role: "project", selection: "one" },
+      { input: "baseRevision", role: "plan", selection: "one" },
+    ]);
+    expect(compiled.roles.map((role) => role.name)).toEqual(["project", "baseline revision", "plan"]);
+    expect(compiled.roles.find((role) => role.name === "plan")).toEqual({
+      name: "plan",
+      type: "string",
+      cardinality: "one",
+      parents: [],
+      source: { kind: "plan-identifier" },
+    });
+  });
+
+  test("refuses a declared role named plan", () => {
+    expectCompilationError(
+      source("05-patient-admission.feature").replace('Given one reference "patient"', 'Given one reference "plan"'),
+      "invalid-procedure",
+    );
+  });
+
+  test("rejects using plan on a collection or non-string Input", () => {
+    const admission = source("05-patient-admission.feature");
+    expectCompilationError(
+      admission.replace('using all "required document" as Input "documents"', 'using plan as Input "documents"'),
+      "incompatible-cardinality",
+    );
+    const counting = compileOperation({
+      sourceName: "shell.count-read.feature",
+      source: `# language: en
+@trust-dsl:1 @operation:shell.count-read @version:1.0.0
+Feature: Echo one project and one count
+
+  Background: Operation interface
+    Given Environment
+      | name          | type      |
+      | workspaceRoot | directory |
+    And Input
+      | input   | type      | cardinality |
+      | project | reference | one         |
+      | count   | number    | one         |
+    And Produced fields
+      | field   | type      | cardinality | domain |
+      | project | reference | one         | any    |
+
+  Scenario: Run
+    When Shell "echo" runs "true" with cwd from Environment "workspaceRoot" and Input "project"
+      | argument |
+    Then Produce with JSONata
+      """
+      { "project": input.project }
+      """
+`,
+    });
+    let thrown: unknown;
+    try {
+      compileProcedure({
+        sourceName: "invalid.feature",
+        operations: [counting],
+        source: `# language: en
+@trust-dsl:1 @procedure:plan-as-number @version:1.0.0
+Feature: Bind the Plan identifier to a number Input
+
+  Background: Plan context
+    Given one reference "project"
+
+  @scenario:count
+  Scenario: Count
+    Then Check "count" runs Operation "shell.count-read" on "project" as Input "project" using plan as Input "count" and must establish "the project is echoed"
+      | field   | relation | expectation       | failure reason             |
+      | project | equals   | context "project" | "another project answered" |
+    And the Scenario is satisfied when every Check is validated
+`,
+      });
+    } catch (error) {
+      thrown = error;
+    }
+    expect(thrown).toBeInstanceOf(CatalogProcedureCompilationError);
+    expect((thrown as CatalogProcedureCompilationError).code).toBe("incompatible-type");
+  });
+
   const invalidCases: readonly {
     readonly name: string;
     readonly change: (value: string) => string;

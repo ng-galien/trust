@@ -19,10 +19,17 @@ const operations = resolve(root, "assets/operations");
 // An Environment's workspaceRoot is the directory that holds the projects; the Check's "project" Input picks one.
 const workspaceRoot = resolve(root, "..");
 const paymentRoot = resolve(process.env.TRUST_PROJECTS_ROOT ?? resolve(root, "../trust-projects"));
+// The payment projects live next to this repository when checked out; otherwise the parent directory stands in.
+const projectsRoot = existsSync(paymentRoot) ? paymentRoot : undefined;
+// `trust-test` is the Kind test environment (k8s/): the payment projects, the jira-mock and Tempo behind the ingress.
 const environmentValues = {
   local: { workspaceRoot },
-  "trust-test": { workspaceRoot },
-  ...(existsSync(paymentRoot) ? { payment: { workspaceRoot: paymentRoot } } : {}),
+  "trust-test": {
+    workspaceRoot: projectsRoot ?? workspaceRoot,
+    jiraIssueUrl: "http://jira.127.0.0.1.nip.io/rest/api/3/issue/",
+    traceUrl: "http://tempo.127.0.0.1.nip.io/api/traces/",
+  },
+  ...(projectsRoot ? { payment: { workspaceRoot: projectsRoot } } : {}),
 };
 const port = parsePort(process.env.TRUST_SERVER_PORT ?? "4318");
 const endpoint = `http://127.0.0.1:${port}`;

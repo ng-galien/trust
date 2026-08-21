@@ -189,10 +189,10 @@ test("a live Plan keeps handing out its environment and declarations are replace
     const engagement = await rpc(runtime.endpoint, "plan.engage", {
       contract: "trust.plan-engagement-request@1",
       procedure: "end-to-end-red-green",
-      procedureVersion: "2.0.0",
+      procedureVersion: "3.1.0",
       plan: "delivery",
       environment: "local",
-      rootInputs: { "jira issue": "TK-100", trace: "trace-100" },
+      rootInputs: { "jira issue": "TK-100" },
     }) as { mode: string; checkUris: readonly string[] };
     assert.equal(engagement.mode, "live");
 
@@ -205,13 +205,14 @@ test("a live Plan keeps handing out its environment and declarations are replace
     assert.deepEqual(admission.environment, { workspaceRoot: repositoryRoot });
 
     const operatorFacts = await rpcFailure(runtime.endpoint, "check.attempt.facts", factBatch(admission, {
-      headRevision: "acc000",
+      baseRevision: "acc000",
       workingTree: "clean",
+      branch: "TK-100",
     }));
     assert.equal(operatorFacts.data?.reason, "fact-batch-rejected");
 
     // A satisfied Check survives a declaration replacement that does not concern it.
-    await postOtlpFacts(runtime.endpoint, factBatch(admission, { headRevision: "acc000", workingTree: "clean" }));
+    await postOtlpFacts(runtime.endpoint, factBatch(admission, { baseRevision: "acc000", workingTree: "clean", branch: "TK-100" }));
     assert.equal((await finalize(runtime.endpoint, admission.attemptHandle)).verdict, "VALIDATED");
     view = await readPlan(runtime.endpoint, "delivery");
     assert.equal(view.satisfiedChecks, 1);
@@ -223,7 +224,7 @@ test("a live Plan keeps handing out its environment and declarations are replace
       expectedRevision: view.revision,
       declarations: {
         "affected project": ["payment-api", "payment-worker"],
-        "test argument": ["refund-flow"],
+        "test argument": "refund-flow",
       },
     }) as { revision: number; openedCheckUris: readonly string[] };
     assert.equal(replaced.revision, view.revision + 1);
@@ -372,6 +373,44 @@ test("a declaration change reopens downstream Checks when an upstream Check keep
       view.checks.map((check) => [check.name, check.state, check.actionable]).sort(),
       [["baseline", "OPEN", true], ["consumer", "OPEN", false]],
     );
+  } finally {
+    await runtime.close();
+  }
+});
+
+test("a Check bound with using plan receives the Plan identifier in its admitted action input", async () => {
+  const runtime = await startPublicRuntime("trust-plan-identifier-", {
+    operationsDirectory,
+    environments: { local: { workspaceRoot: repositoryRoot } },
+  });
+  try {
+    await publish(
+      runtime.endpoint,
+      path.join(repositoryRoot, "packages/trust-runtime/acceptance/fixtures/plan-identifier-binding.feature"),
+    );
+    await rpc(runtime.endpoint, "plan.engage", {
+      contract: "trust.plan-engagement-request@1",
+      procedure: "plan-identifier-binding",
+      procedureVersion: "1.0.0",
+      plan: "release-2026-08",
+      environment: "local",
+      rootInputs: { project: "payment-api" },
+      mode: "dry-run",
+    });
+
+    const view = await readPlan(runtime.endpoint, "release-2026-08");
+    assert.equal(view.actionableChecks.length, 1);
+    assert.deepEqual(view.checks[0]?.inputs, { project: "payment-api", baseRevision: "release-2026-08" });
+    // `using plan` binds the synthesised role "plan": the Plan identifier is ordinary Check context.
+    const detail = await rpc(runtime.endpoint, "check.read", {
+      contract: "trust.check-read-request@1",
+      checkUri: view.actionableChecks[0]!,
+    }) as { context: Record<string, unknown> };
+    assert.deepEqual(detail.context, { project: "payment-api", plan: "release-2026-08" });
+
+    const admission = await admit(runtime.endpoint, view.actionableChecks[0]!, "plan-identifier-comparison");
+    assert.equal(admission.status, "ADMITTED");
+    assert.deepEqual(admission.actionInput, { project: "payment-api", baseRevision: "release-2026-08" });
   } finally {
     await runtime.close();
   }

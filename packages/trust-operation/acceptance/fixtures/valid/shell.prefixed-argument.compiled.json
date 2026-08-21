@@ -1,0 +1,76 @@
+{
+  "contract": "trust.compiled-operation@1",
+  "operation": "shell.prefixed-argument",
+  "version": "1.0.0",
+  "title": "Pass one Input glued to a literal prefix",
+  "input": {
+    "type": "object",
+    "properties": {
+      "issue": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "required": [
+      "issue"
+    ],
+    "additionalProperties": false
+  },
+  "environment": {
+    "type": "object",
+    "properties": {
+      "workspaceRoot": {
+        "type": "string",
+        "format": "trust-directory"
+      }
+    },
+    "required": [
+      "workspaceRoot"
+    ],
+    "additionalProperties": false
+  },
+  "steps": [
+    {
+      "name": "echo",
+      "type": "shell",
+      "shell": {
+        "executable": "printf",
+        "arguments": [
+          {
+            "kind": "literal",
+            "value": "%s"
+          },
+          {
+            "kind": "input",
+            "input": "issue",
+            "prefix": "-Dtrust.ticket="
+          }
+        ],
+        "cwd": {
+          "environment": "workspaceRoot"
+        },
+        "acceptedExits": [
+          {
+            "code": 0
+          }
+        ]
+      }
+    }
+  ],
+  "produce": {
+    "language": "jsonata",
+    "expression": "{ \"argument\": steps.echo.stdout }"
+  },
+  "produced": {
+    "type": "object",
+    "properties": {
+      "argument": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "argument"
+    ],
+    "additionalProperties": false
+  }
+}

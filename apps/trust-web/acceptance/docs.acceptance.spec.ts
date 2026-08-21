@@ -94,6 +94,7 @@ test("every English page has a French translation with the same structure", asyn
 });
 
 test("the documentation area: tree, page, search, glossary and expert blocks", async ({ page }) => {
+  test.setTimeout(90_000); // several navigations and a reload; the docs chunk is large
   await page.goto("/docs");
   await expect(page.locator("article h1")).toHaveText("Introduction");
   await page.getByRole("navigation", { name: "Documentation contents" }).getByRole("link", { name: "Operations" }).click();

@@ -63,7 +63,7 @@ La **cardinalité** est `one` (un scalaire) ou `many` (un tableau du type). Il n
 
 - Optionnel (une Opération peut n'avoir besoin d'aucun Input), au plus une fois. L'en-tête est exactement `| input | type | cardinality |`.
 - D'où viennent les valeurs : dans un Plan, la phrase du Check lie chaque Input à un rôle de contexte du Plan (`on "project" as Input "project"`, `using "baseline" as Input "baseRevision"`). Chaque Input doit être lié exactement une fois. Dans l'interface, **Simuler** et **Exécuter** vous les demandent.
-- Ce qu'un Input peut alimenter : un argument Shell (`Input "issue"` dans la table d'arguments), la restriction de répertoire (`and Input "project"`), un segment de chemin HTTP (`appending Input "issue"`), le corps entier d'un HTTP POST, et la racine `input.<name>` de la projection.
+- Ce qu'un Input peut alimenter : un argument Shell (`Input "issue"` dans la table d'arguments), la restriction de répertoire (`and Input "project"`), un segment de chemin ou un paramètre de query HTTP (`appending Input "issue"`, `with query "run" from Input "run"`), le corps entier d'un HTTP POST, et la racine `input.<name>` de la projection.
 - Partout où une étape a besoin d'**une chaîne**, l'Input doit être de cardinalité `one` et de type `string`, `instant` ou `reference` — un Input `number` ou `many` y est refusé.
 
 ## Produced fields

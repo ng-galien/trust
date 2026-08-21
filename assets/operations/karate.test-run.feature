@@ -2,6 +2,11 @@
 @trust-dsl:1 @operation:karate.test-run @version:1.0.0
 Feature: Run one Karate test selection
 
+  Runs `mvn -B test -Dtrust.phase=green <testArgument>` at the project HEAD and reports whether the
+  selected Karate tests pass. `testedRevision` is the observed HEAD, so a Procedure can compare it
+  with the committed test revision. The `trust.phase` property lets Karate features derive
+  phase-specific run identities so that the green run never reads side effects of the red run.
+
   Background: Operation interface
     Given Environment
       | name          | type      |
@@ -18,11 +23,17 @@ Feature: Run one Karate test selection
       | testStatus     | string    | one         | enum "successful", "failed" |
 
   Scenario: Run
-    When Shell "test" runs "mvn" with cwd from Environment "workspaceRoot" and Input "project"
-      | argument     | source               |
-      | -B           | literal              |
-      | test         | literal              |
-      | testArgument | Input "testArgument" |
+    When Shell "head" runs "git" with cwd from Environment "workspaceRoot" and Input "project"
+      | argument  | source  |
+      | rev-parse | literal |
+      | --verify  | literal |
+      | HEAD      | literal |
+    And Shell "test" runs "mvn" with cwd from Environment "workspaceRoot" and Input "project"
+      | argument             | source               |
+      | -B                   | literal              |
+      | test                 | literal              |
+      | -Dtrust.phase=green  | literal              |
+      | testArgument         | Input "testArgument" |
     And Shell "test" accepts exits
       | exit code | stdout contains | stderr contains |
       | 0         |                 |                 |
@@ -31,7 +42,7 @@ Feature: Run one Karate test selection
       """
       {
         "testedProject": input.project,
-        "testedRevision": input.revision,
+        "testedRevision": $trim(steps.head.stdout),
         "testStatus": steps.test.exitCode = 0 ? "successful" : "failed"
       }
       """

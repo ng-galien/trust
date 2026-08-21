@@ -127,7 +127,7 @@ export const operations: Translation<typeof en> = {
       exitsOr: " ou ",
       httpPost: "envoie l'entrée en JSON à <env>{{url}}</env> et lit la réponse JSON",
       httpRead: "lit du {{format}} depuis <env>{{url}}</env>",
-      httpFor: "pour <field>{{input}}</field>",
+      httpAt: "à <field>{{path}}</field>",
       formatText: "texte",
       formatJson: "JSON",
       fileRead: "lit <path>{{path}}</path> ({{format}}) sous <env>{{root}}</env>",

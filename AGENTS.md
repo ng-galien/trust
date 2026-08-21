@@ -97,7 +97,7 @@ compiles them on the runtime and checks every referenced screenshot exists. Scre
 marked `data-doc="…"` in the interface give the callout boxes stored next to each PNG. The header's
 help button links each screen to its documentation page (`helpPages` in `shell/header.tsx`). The
 documentation also builds as one self-contained HTML file (`npm run build:docs` / `npm run zip:docs` in
-`apps/trust-web`, entry `docs.html` → `@trust/ui/docs`, hash routing, opens from `file://`).
+`apps/trust-web`, entry `docs-site.html` → `@trust/ui/docs`, hash routing, opens from `file://`).
 
 ## Verification
 

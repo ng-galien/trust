@@ -64,7 +64,9 @@ export function ProcedureOverview({ compiled, error }: { compiled: CompiledProce
             {compiled.checks.map((check) => (
               <div key={check.name} className="rounded-(--radius-2) border border-border bg-surface-2 p-3 text-body">
                 <span className="mono font-semibold">{check.name}</span>
-                {check.inputBindings?.length ? <p className="mt-1 text-muted">{t("procedures.overview.input")} {check.inputBindings.map((binding) => <span key={binding.input}><span className="mono text-text">{binding.input}</span> {t("procedures.overview.fromRole")} <span className="mono text-text">{binding.role}</span>{binding.selection !== "one" ? ` (${binding.selection})` : ""} </span>)}</p> : null}
+                {check.inputBindings?.length ? <p className="mt-1 text-muted">{t("procedures.overview.input")} {check.inputBindings.map((binding) => (
+                  <span key={binding.input}><span className="mono text-text">{binding.input}</span> {t("procedures.overview.fromRole")} <span className="mono text-text">{binding.role}</span>{binding.selection !== "one" ? ` (${binding.selection})` : ""} </span>
+                ))}</p> : null}
                 {check.predicates.length ? (
                   <table className="mt-1 w-full border-collapse">
                     <thead><tr className="text-left text-meta uppercase tracking-[0.06em] text-faint"><th className="py-0.5 pr-3 font-semibold">{t("procedures.overview.columns.field")}</th><th className="py-0.5 pr-3 font-semibold">{t("procedures.overview.columns.relation")}</th><th className="py-0.5 pr-3 font-semibold">{t("procedures.overview.columns.expectation")}</th><th className="py-0.5 font-semibold">{t("procedures.overview.columns.failureReason")}</th></tr></thead>
