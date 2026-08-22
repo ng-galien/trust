@@ -39,6 +39,11 @@ export interface PlanTable {
   procedure_version: string;
   environment: string;
   mode: string;
+  intent_chaining: number;
+  intent_chain_state: string;
+  current_intent: string | null;
+  current_intent_check_uri: string | null;
+  current_intent_attempt_key: string | null;
   root_inputs_json: string;
   current_revision: number;
   created_at: string;
@@ -86,6 +91,8 @@ export interface AttemptTable {
   action_input_json: string;
   environment: string;
   reobserve: number;
+  intent: string | null;
+  next_intent: string | null;
   state: Attempt["state"];
   admitted_at: string;
   expires_at: string;

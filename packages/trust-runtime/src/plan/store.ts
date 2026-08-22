@@ -1,7 +1,7 @@
 import type { Selectable } from "kysely";
 
 import type { Database, PlanRevisionTable, PlanTable } from "../database/database.js";
-import type { Plan, PlanCheck, PlanMode, PlanRevision } from "../model.js";
+import type { IntentChainState, Plan, PlanCheck, PlanMode, PlanRevision } from "../model.js";
 
 type PlanRow = Selectable<PlanTable>;
 type RevisionRow = Selectable<PlanRevisionTable>;
@@ -40,6 +40,7 @@ export class PlanStore {
         || existing.procedureVersion !== compiled.procedureVersion
         || existing.environment !== compiled.environment
         || existing.mode !== compiled.mode
+        || existing.intentChaining !== compiled.intentChaining
         || canonicalJson(existing.rootInputs) !== canonicalJson(compiled.rootInputs))
     ) {
       throw new Error("a Plan cannot change its identity, environment, mode or root inputs");
@@ -59,6 +60,11 @@ export class PlanStore {
         procedure_version: compiled.procedureVersion,
         environment: compiled.environment,
         mode: compiled.mode,
+        intent_chaining: compiled.intentChaining ? 1 : 0,
+        intent_chain_state: compiled.intentChaining ? "NOT_STARTED" : "DISABLED",
+        current_intent: null,
+        current_intent_check_uri: null,
+        current_intent_attempt_key: null,
         root_inputs_json: JSON.stringify(compiled.rootInputs),
         current_revision: compiled.revision,
         created_at: compiledAt,
@@ -118,6 +124,136 @@ export class PlanStore {
       .where("plan_slug", "=", planSlug)
       .executeTakeFirst();
     return row ? toPlan(row) : undefined;
+  }
+
+  async initializeIntent(planSlug: string, intent: string): Promise<Plan> {
+    await this.dependencies.database
+      .updateTable("plans")
+      .set({
+        intent_chain_state: "ACTIVE",
+        current_intent: intent,
+        current_intent_check_uri: null,
+        current_intent_attempt_key: null,
+      })
+      .where("plan_slug", "=", planSlug)
+      .where("intent_chaining", "=", 1)
+      .where("intent_chain_state", "=", "NOT_STARTED")
+      .execute();
+    const plan = await this.findPlan(planSlug);
+    if (!plan) throw new Error(`Unknown Plan: ${planSlug}`);
+    return plan;
+  }
+
+  async advanceIntent(
+    planSlug: string,
+    currentIntent: string,
+    nextIntent: string | undefined,
+    complete: boolean,
+    attemptKey: string,
+  ): Promise<void> {
+    const result = await this.dependencies.database
+      .updateTable("plans")
+      .set({
+        intent_chain_state: complete ? "COMPLETE" : "ACTIVE",
+        current_intent: complete ? null : nextIntent ?? null,
+        current_intent_check_uri: null,
+        current_intent_attempt_key: null,
+      })
+      .where("plan_slug", "=", planSlug)
+      .where("intent_chaining", "=", 1)
+      .where("intent_chain_state", "=", "ACTIVE")
+      .where("current_intent", "=", currentIntent)
+      .where("current_intent_attempt_key", "=", attemptKey)
+      .executeTakeFirst();
+    if (result.numUpdatedRows !== 1n) throw new Error("the current Plan intent changed while it was being advanced");
+  }
+
+  async bindIntentAttempt(
+    planSlug: string,
+    currentIntent: string,
+    checkUri: string,
+    attemptKey: string,
+    planRevision: number,
+  ): Promise<boolean> {
+    const result = await this.dependencies.database
+      .updateTable("plans")
+      .set({ current_intent_check_uri: checkUri, current_intent_attempt_key: attemptKey })
+      .where("plan_slug", "=", planSlug)
+      .where("intent_chain_state", "=", "ACTIVE")
+      .where("current_intent", "=", currentIntent)
+      .where("current_revision", "=", planRevision)
+      .where("current_intent_check_uri", "is", null)
+      .where("current_intent_attempt_key", "is", null)
+      .executeTakeFirst();
+    return result.numUpdatedRows === 1n;
+  }
+
+  async releaseIntentAttempt(planSlug: string, currentIntent: string, attemptKey: string): Promise<void> {
+    const result = await this.dependencies.database
+      .updateTable("plans")
+      .set({ current_intent_check_uri: null, current_intent_attempt_key: null })
+      .where("plan_slug", "=", planSlug)
+      .where("intent_chain_state", "=", "ACTIVE")
+      .where("current_intent", "=", currentIntent)
+      .where("current_intent_attempt_key", "=", attemptKey)
+      .executeTakeFirst();
+    if (result.numUpdatedRows !== 1n) throw new Error("the current Plan intent is not reserved by this Attempt");
+  }
+
+  async restartIntent(planSlug: string): Promise<void> {
+    await this.dependencies.database
+      .updateTable("plans")
+      .set({
+        intent_chain_state: "NOT_STARTED",
+        current_intent: null,
+        current_intent_check_uri: null,
+        current_intent_attempt_key: null,
+      })
+      .where("plan_slug", "=", planSlug)
+      .where("intent_chaining", "=", 1)
+      .where("intent_chain_state", "=", "COMPLETE")
+      .execute();
+  }
+
+  async restartIntentForAttempt(
+    planSlug: string,
+    intent: string,
+    checkUri: string,
+    attemptKey: string,
+    planRevision: number,
+  ): Promise<boolean> {
+    const result = await this.dependencies.database
+      .updateTable("plans")
+      .set({
+        intent_chain_state: "ACTIVE",
+        current_intent: intent,
+        current_intent_check_uri: checkUri,
+        current_intent_attempt_key: attemptKey,
+      })
+      .where("plan_slug", "=", planSlug)
+      .where("intent_chaining", "=", 1)
+      .where("intent_chain_state", "=", "COMPLETE")
+      .where("current_revision", "=", planRevision)
+      .executeTakeFirst();
+    return result.numUpdatedRows === 1n;
+  }
+
+  async completeIntentWithoutAttempt(planSlug: string): Promise<void> {
+    const result = await this.dependencies.database
+      .updateTable("plans")
+      .set({
+        intent_chain_state: "COMPLETE",
+        current_intent: null,
+        current_intent_check_uri: null,
+        current_intent_attempt_key: null,
+      })
+      .where("plan_slug", "=", planSlug)
+      .where("intent_chaining", "=", 1)
+      .where("intent_chain_state", "in", ["NOT_STARTED", "ACTIVE"])
+      .where("current_intent_check_uri", "is", null)
+      .where("current_intent_attempt_key", "is", null)
+      .executeTakeFirst();
+    if (result.numUpdatedRows !== 1n) throw new Error("the current Plan intent cannot complete while an Attempt is pending");
   }
 
   async listPlans(query: PlanListQuery): Promise<Plan[]> {
@@ -229,6 +365,11 @@ function toPlan(row: PlanRow): Plan {
     procedureVersion: row.procedure_version,
     environment: row.environment,
     mode: row.mode as PlanMode,
+    intentChaining: row.intent_chaining === 1,
+    intentChainState: row.intent_chain_state as IntentChainState,
+    ...(row.current_intent === null ? {} : { currentIntent: row.current_intent }),
+    ...(row.current_intent_check_uri === null ? {} : { currentIntentCheckUri: row.current_intent_check_uri }),
+    ...(row.current_intent_attempt_key === null ? {} : { currentIntentAttemptKey: row.current_intent_attempt_key }),
     rootInputs: JSON.parse(row.root_inputs_json) as Record<string, unknown>,
     currentRevision: row.current_revision,
     createdAt: row.created_at,
@@ -241,6 +382,7 @@ function toRevision(plan: Plan, row: RevisionRow, checkJson: readonly string[]):
     procedureVersion: plan.procedureVersion,
     environment: plan.environment,
     mode: plan.mode,
+    intentChaining: plan.intentChaining,
     rootInputs: plan.rootInputs,
     planSlug: plan.slug,
     revision: row.revision,

@@ -1,5 +1,5 @@
 # language: en
-@trust-dsl:1 @procedure:stable-upstream-uri @version:1.0.0
+@trust-dsl:1 @procedure:stable-upstream-uri @version:1.0.0 @intent-chaining
 Feature: Reopen a Check when an upstream Check keeps its URI but changes its context
 
   Background: Plan context

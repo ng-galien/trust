@@ -9,13 +9,21 @@ new Plan revision. Read the Plan again because dependent Checks may have opened 
 
 The external Operation ran and TRUST accepted the complete Fact batch, but a compiled qualification guard
 did not satisfy the Check. Use `reasonCode`, `reason`, and `actionOutcome` to address the observed
-condition. Do not reinterpret the outcome as Plan progress.
+condition. Do not reinterpret the outcome as Plan progress. An intent chain does not advance.
+The resolved Attempt releases its reservation, so the next Plan read presents the Checks that may
+be attempted with that unchanged current intent.
 
 ## `REFUSED`
 
 The Runner did not execute the external Operation. Read the Check or Plan and follow the returned
 reason. Common causes are an already changed Plan revision, blocked prerequisites, an unavailable
-Session, or a Check URI that is no longer current.
+Session, or a Check URI that is no longer current. For an intent-chained Plan, `intent-required`,
+`intent-invalid`, `intent-mismatch`, `intent-in-use`, `next-intent-required`, and
+`next-intent-unexpected` mean the invocation did not match the chain shown by the latest Plan read,
+used an invalid value (1 to 1024 characters, trimmed, single-line, without control characters), or
+selected a different Check after the current intent was bound. Read the
+Plan again, preserve its exact current intent, and use the actionable Check and its continuing or
+final invocation template as instructed. A refusal never advances the intent chain.
 
 ## Runner error
 

@@ -80,7 +80,7 @@ Feature: Fix one Jira defect in one Maven project
 ```
 
 <Legend items={[
-  <>**Identity tags.** Exactly one <code>@procedure:</code> (a lowercase slug), one semantic <code>@version:</code>, and <code>@trust-dsl:1</code>. No other tag on the Feature.</>,
+  <>**Procedure tags.** Exactly one <code>@procedure:</code> (a lowercase slug), one semantic <code>@version:</code>, and <code>@trust-dsl:1</code>. The optional <code>@intent-chaining</code> tag makes every engaged Plan carry a rotating agent intent.</>,
   <>**Title and description.** The title is copied verbatim; the free text under it is the description shown on the Procedure page and on its Plans.</>,
   <>**Plan context.** Exactly one <code>Background: Plan context</code>; each line declares one typed role. See [Plan context](/docs/procedures/context).</>,
   <>**Plan input.** A role with no other source is given at engagement: <code>one reference "jira issue"</code>.</>,
@@ -98,7 +98,7 @@ Feature: Fix one Jira defect in one Maven project
 
 ```text
 # language: en                                          optional (English only)
-@trust-dsl:1 @procedure:<slug> @version:<x.y.z>          exactly these three tags
+@trust-dsl:1 @procedure:<slug> @version:<x.y.z> [@intent-chaining]
 Feature: <title>
   [free-text description]
 

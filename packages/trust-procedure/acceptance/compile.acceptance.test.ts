@@ -69,6 +69,19 @@ describe("Procedure compiler", () => {
     });
   });
 
+  test("compiles intent chaining as an optional semantic Procedure rule", () => {
+    const procedureSource = source("00-git-status.feature");
+    const plain = compileProcedure({ source: procedureSource, operations: operations() });
+    const chained = compileProcedure({
+      source: procedureSource.replace("@version:2.0.0", "@version:2.0.0 @intent-chaining"),
+      operations: operations(),
+    });
+
+    expect(plain.intentChaining).toBe(false);
+    expect(chained.intentChaining).toBe(true);
+    expect(chained.definitionDigest).not.toBe(plain.definitionDigest);
+  });
+
   test("keeps source presentation outside semantic identity", () => {
     const catalog = operations();
     const procedureSource = source("00-git-status.feature");

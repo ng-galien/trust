@@ -1,5 +1,6 @@
 import { createServer, type Server } from "node:http";
 import { WebSocketServer, type RawData, type WebSocket } from "ws";
+import type { Logger } from "pino";
 
 import {
   startTrustWebSocketLanguageServer,
@@ -20,6 +21,7 @@ export interface RuntimeServerOptions {
   readonly diagnosticsEndpoint?: string;
   readonly runnerTrialScript?: string;
   readonly trialTimeoutMs?: number;
+  readonly logger?: Logger;
 }
 
 export interface RunningRuntime {
@@ -64,8 +66,10 @@ export const startRuntime = async ({
   diagnosticsEndpoint,
   runnerTrialScript,
   trialTimeoutMs,
+  logger,
 }: RuntimeServerOptions): Promise<RunningRuntime> => {
   const server = createServer();
+  const recentHttpFailures = new Map<string, number>();
   await listen(server, host, port);
 
   const address = server.address();
@@ -92,11 +96,57 @@ export const startRuntime = async ({
   }
   const httpApp = container.resolve("httpApp");
   server.on("request", (request, response) => {
+    const startedAt = Date.now();
+    const requestPath = httpRequestPath(request.url);
+    const requestLogger = logger?.child({
+      component: "http",
+      method: request.method,
+      path: requestPath,
+    });
+    response.once("finish", () => {
+      const bindings = {
+        event: "http.request.completed",
+        status: response.statusCode,
+        durationMs: Date.now() - startedAt,
+      };
+      if (requestPath === "/health") {
+        requestLogger?.debug(bindings, "HTTP request completed");
+      } else if (response.statusCode >= 400) {
+        const key = `${request.method ?? ""} ${requestPath} ${response.statusCode}`;
+        if (firstHttpFailureWithin(recentHttpFailures, key, Date.now())) {
+          requestLogger?.warn(bindings, "HTTP request failed");
+        } else {
+          requestLogger?.debug(bindings, "Repeated HTTP request failure");
+        }
+      } else {
+        requestLogger?.info(bindings, "HTTP request completed");
+      }
+    });
+    response.once("close", () => {
+      if (!response.writableFinished) {
+        requestLogger?.warn({
+          event: "http.request.interrupted",
+          durationMs: Date.now() - startedAt,
+        }, "HTTP connection closed before the response completed");
+      }
+    });
     if (instance) response.setHeader("x-trust-runtime-instance", instance);
-    httpApp(request, response);
+    try {
+      httpApp(request, response);
+    } catch (error) {
+      requestLogger?.error({ err: error, event: "http.request.failed" }, "HTTP request failed");
+      throw error;
+    }
   });
   const languageServer = new WebSocketServer({ server, path: "/lsp" });
   languageServer.on("connection", (webSocket) => {
+    logger?.info({ event: "lsp.connection.opened", component: "lsp" }, "LSP connection opened");
+    webSocket.on("error", (error) => {
+      logger?.error({ err: error, event: "lsp.connection.failed", component: "lsp" }, "LSP connection failed");
+    });
+    webSocket.on("close", (code) => {
+      logger?.info({ event: "lsp.connection.closed", component: "lsp", code }, "LSP connection closed");
+    });
     startTrustWebSocketLanguageServer(languageServerSocket(webSocket), {
       operations: () => container.resolve("operationCatalog").list(),
     });
@@ -113,3 +163,27 @@ export const startRuntime = async ({
     },
   };
 };
+
+const HTTP_FAILURE_LOG_INTERVAL_MS = 60_000;
+const MAX_RECENT_HTTP_FAILURES = 100;
+
+function firstHttpFailureWithin(failures: Map<string, number>, key: string, now: number): boolean {
+  const previous = failures.get(key);
+  if (previous !== undefined && now - previous < HTTP_FAILURE_LOG_INTERVAL_MS) return false;
+  if (!failures.has(key) && failures.size >= MAX_RECENT_HTTP_FAILURES) {
+    const oldest = failures.keys().next().value as string | undefined;
+    if (oldest !== undefined) failures.delete(oldest);
+  }
+  failures.delete(key);
+  failures.set(key, now);
+  return true;
+}
+
+function httpRequestPath(value: string | undefined): string {
+  if (value === undefined) return "";
+  try {
+    return new URL(value, "http://trust.invalid").pathname;
+  } catch {
+    return value.split("?", 1)[0] ?? "";
+  }
+}

@@ -33,6 +33,9 @@ await build({
   bundle: true,
   platform: "node",
   format: "esm",
+  banner: {
+    js: 'import { createRequire } from "node:module"; const require = createRequire(import.meta.url);',
+  },
   minify: true,
   target: "node24",
   outdir: path.join(output, "scripts"),

@@ -19,7 +19,7 @@ import { useCloseTo } from "../shared/origin.js";
 import { useOverlayViewState } from "../shared/overlay-state.js";
 import { ResourceOverlay } from "../shared/resource-overlay.js";
 import { useSourceDraft } from "../shared/source-draft.js";
-import { orderedScenarios, procedureTemplate } from "./model.js";
+import { hasIntentChaining, orderedScenarios, procedureTemplate, setIntentChaining } from "./model.js";
 import { ProcedureGraph } from "./procedure-graph.js";
 import { ProcedureOverview } from "./procedure-overview.js";
 import { ProcedureSimulation } from "./procedure-simulation.js";
@@ -60,6 +60,8 @@ export function ProcedureOverlay({ mode = "item" }: { mode?: "item" | "new" }) {
   const publish = usePublishProcedure();
   const onPublish = () => publish.mutate(source, { onSuccess: (value) => draft.settle(`/procedures/${encodeURIComponent(value.procedure.procedure)}`, tab === "overview" ? undefined : tab) });
   const publishError = mutationError(publish.error);
+  const intentChaining = hasIntentChaining(source);
+  const toggleIntentChaining = () => setDraft(setIntentChaining(source, !intentChaining));
 
   const executing = useMemo(() => (plans.data ?? []).filter((plan) => plan.procedure === (compiled?.procedure ?? id)), [plans.data, compiled?.procedure, id]);
   const active = executing.filter((plan) => plan.workState === "IN_PROGRESS");
@@ -168,7 +170,27 @@ export function ProcedureOverlay({ mode = "item" }: { mode?: "item" | "new" }) {
     >
       {tab === "overview" ? <ProcedureOverview compiled={compiled} error={compileError?.detail} /> : null}
       {tab === "source" ? (
-        <GherkinEditor kind="procedure" value={source} onChange={setDraft} theme={theme} languageServerUrl={runtime.languageServerUrl()} markers={markers} fontSize={editorFontSize} />
+        <div className="flex h-full min-h-0 flex-col">
+          <div className="flex items-center justify-between gap-4 border-b border-border bg-surface-2 px-4 py-2">
+            <div>
+              <div className="text-body font-medium">{t("procedures.overlay.intentChaining")}</div>
+              <div className="text-caption text-muted">{t("procedures.overlay.intentChainingBody")}</div>
+            </div>
+            <Button
+              size="sm"
+              variant={intentChaining ? "primary" : "secondary"}
+              role="switch"
+              aria-label={t("procedures.overlay.intentChaining")}
+              aria-checked={intentChaining}
+              onClick={toggleIntentChaining}
+            >
+              {t(intentChaining ? "procedures.overlay.intentChainingOn" : "procedures.overlay.intentChainingOff")}
+            </Button>
+          </div>
+          <div className="min-h-0 flex-1">
+            <GherkinEditor kind="procedure" value={source} onChange={setDraft} theme={theme} languageServerUrl={runtime.languageServerUrl()} markers={markers} fontSize={editorFontSize} />
+          </div>
+        </div>
       ) : null}
       {tab === "dag" ? (
         compiled ? (

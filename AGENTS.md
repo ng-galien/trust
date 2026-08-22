@@ -19,7 +19,7 @@ packages/trust-procedure/ Procedure types and Gherkin compiler
 packages/trust-runner/    one generic Check runner
 assets/procedures/        authoritative grammar and product Action Contracts
 assets/operations/        Operation catalog and design direction
-k8s/                      retained integration test environment
+environments/trust-test/  retained Kind environment: projects, cluster, manifests, connectors and scripts
 ```
 
 ## Non-negotiable design rules

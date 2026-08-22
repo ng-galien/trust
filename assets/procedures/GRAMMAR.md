@@ -6,12 +6,13 @@ This document defines the closed Procedure language compiled by `@trust/procedur
 
 ```gherkin
 # language: en
-@trust-dsl:1 @procedure:git-status @version:2.0.0
+@trust-dsl:1 @procedure:git-status @version:2.0.0 @intent-chaining
 Feature: Establish whether a Git repository has local changes
 ```
 
-The Feature has exactly these three tags. Procedure and Scenario identifiers are lowercase slugs;
-the version is semantic.
+The Feature has exactly the first three tags and may add `@intent-chaining`. Procedure and Scenario
+identifiers are lowercase slugs; the version is semantic. Intent chaining is a Procedure rule inherited
+by every Plan engaged from that published version. It does not change Check identity or order.
 
 ## Plan context
 

@@ -17,7 +17,7 @@
     "packages/trust-ui"
   ],
   "scripts": {
-    "dev": "node scripts/server.ts start --web",
+    "dev": "node environments/trust-test/scripts/server.ts start --web",
     "dev:runtime": "NODE_OPTIONS=--conditions=development CHOKIDAR_USEPOLLING=1 CHOKIDAR_INTERVAL=300 tsx watch --clear-screen=false --include \"${TRUST_DEV_WATCH_INCLUDE:-./packages/*/src/**/*.ts}\" --exclude \"./packages/trust-ui/src/**/*.ts\" --exclude \"./packages/trust-runner/src/**/*.ts\" packages/trust-runtime/src/index.ts",
     "dev:types": "tsc -b --watch --preserveWatchOutput",
     "dev:server": "concurrently --kill-others-on-fail --names types,runtime \"npm run dev:types\" \"npm run dev:runtime\"",

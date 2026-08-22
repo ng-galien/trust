@@ -37,6 +37,7 @@ import { procedureLanguage } from "./language.js";
 const PROCEDURE_TAG = procedureLanguage.tags.procedure;
 const VERSION_TAG = procedureLanguage.tags.version;
 const TRUST_DSL_TAG = procedureLanguage.tags.dsl;
+const INTENT_CHAINING_TAG = procedureLanguage.tags.intentChaining;
 const SCENARIO_TAG = procedureLanguage.tags.scenario;
 const SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const SEMVER = /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)$/;
@@ -143,10 +144,15 @@ function compileProcedureInternal(
   const procedure = uniqueTag(feature.tags, PROCEDURE_TAG, "procedure", sourceName, feature);
   const version = uniqueTag(feature.tags, VERSION_TAG, "version", sourceName, feature);
   const dsl = uniqueTag(feature.tags, TRUST_DSL_TAG, "TRUST DSL", sourceName, feature);
+  const intentChainingTags = feature.tags.filter((tag) => tag.name === INTENT_CHAINING_TAG);
+  if (intentChainingTags.length > 1) {
+    fail("invalid-procedure", "Intent chaining tag must appear at most once", sourceName, intentChainingTags[1]);
+  }
+  const intentChaining = intentChainingTags.length === 1;
   if (!SLUG.test(procedure)) fail("invalid-identifier", `Procedure "${procedure}" must be a lowercase slug`, sourceName, feature);
   if (!SEMVER.test(version)) fail("invalid-identifier", `Version "${version}" must be semantic`, sourceName, feature);
   if (dsl !== procedureLanguage.dslVersion) fail("invalid-procedure", `TRUST DSL "${dsl}" is unsupported`, sourceName, feature);
-  assertOnlyTags(feature.tags, [PROCEDURE_TAG, VERSION_TAG, TRUST_DSL_TAG], sourceName, feature);
+  assertOnlyTags(feature.tags, [PROCEDURE_TAG, VERSION_TAG, TRUST_DSL_TAG, INTENT_CHAINING_TAG], sourceName, feature);
 
   const operationByName = new Map<string, CompiledOperation>();
   for (const operation of input.operations) {
@@ -358,7 +364,7 @@ function compileProcedureInternal(
     dependencies: scenario.dependencies,
     checks: scenario.checks.map((check) => check.name),
   }));
-  const body = { procedure, version, title: feature.name, operations, roles, scenarios, checks: compiledChecks };
+  const body = { procedure, version, title: feature.name, intentChaining, operations, roles, scenarios, checks: compiledChecks };
   const semanticBody = {
     ...body,
     operations: operations.map(({ definition, ...operation }) => ({
@@ -728,7 +734,9 @@ function uniqueTag(tags: readonly Tag[], prefix: string, label: string, sourceNa
 }
 
 function assertOnlyTags(tags: readonly Tag[], prefixes: readonly string[], sourceName: string, located: Located): void {
-  const unknown = tags.find((tag) => !prefixes.some((prefix) => tag.name.startsWith(prefix)));
+  const unknown = tags.find((tag) => !prefixes.some((prefix) => (
+    prefix.endsWith(":") ? tag.name.startsWith(prefix) : tag.name === prefix
+  )));
   if (unknown) fail("invalid-procedure", `Unknown tag "${unknown.name}"`, sourceName, unknown);
 }
 

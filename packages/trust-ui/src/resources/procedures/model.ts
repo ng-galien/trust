@@ -181,3 +181,40 @@ export function orderedScenarios(procedure: CompiledProcedure): CompiledProcedur
 }
 
 export const procedureTemplate = procedureLanguage.template;
+
+export function hasIntentChaining(source: string): boolean {
+  const lines = source.split(/\r?\n/);
+  const featureLine = lines.findIndex((line) => /^[ \t]*Feature:/.test(line));
+  return featureLine >= 0 && lines.slice(0, featureLine).some((line) => (
+    tagTokens(line).includes(procedureLanguage.tags.intentChaining)
+  ));
+}
+
+export function setIntentChaining(source: string, enabled: boolean): string {
+  const tag = procedureLanguage.tags.intentChaining;
+  const newline = source.includes("\r\n") ? "\r\n" : "\n";
+  const lines = source.split(/\r?\n/);
+  const featureLine = lines.findIndex((line) => /^[ \t]*Feature:/.test(line));
+  if (featureLine < 0) return source;
+  const present = lines.slice(0, featureLine).some((line) => tagTokens(line).includes(tag));
+  for (let index = 0; index < featureLine; index += 1) {
+    const line = lines[index]!;
+    const tokens = tagTokens(line);
+    if (!tokens.includes(tag)) continue;
+    const indentation = /^[ \t]*/.exec(line)?.[0] ?? "";
+    lines[index] = `${indentation}${tokens.filter((token) => token !== tag).join(" ")}`;
+  }
+  if (enabled && !present) {
+    const dslLine = lines.slice(0, featureLine).findLastIndex((line) => (
+      tagTokens(line).some((token) => token.startsWith(procedureLanguage.tags.dsl))
+    ));
+    if (dslLine >= 0) lines[dslLine] = `${lines[dslLine]!.trimEnd()} ${tag}`;
+    else lines.splice(featureLine, 0, tag);
+  }
+  return lines.join(newline);
+}
+
+function tagTokens(line: string): string[] {
+  const trimmed = line.trim();
+  return trimmed.startsWith("@") ? trimmed.split(/[ \t]+/).filter(Boolean) : [];
+}

@@ -158,6 +158,7 @@ export function buildPlanRevision(input: BuildPlanRevisionInput): PlanRevision {
     procedureVersion: input.procedure.version,
     environment: input.environment,
     mode: input.mode,
+    intentChaining: input.procedure.intentChaining,
     rootInputs,
     agentDeclarations: declarations,
     planSlug: input.plan,

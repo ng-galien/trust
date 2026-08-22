@@ -1,10 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-INFRA_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-WORKSPACE_ROOT="$(cd "${INFRA_ROOT}/.." && pwd)"
-PROJECTS_PARENT="$(cd "${WORKSPACE_ROOT}/.." && pwd)"
-TRUST_PROJECTS_DIR="${TRUST_PROJECTS_DIR:-${PROJECTS_PARENT}/trust-projects}"
+ENVIRONMENT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+TRUST_PROJECTS_DIR="${TRUST_PROJECTS_DIR:-${ENVIRONMENT_ROOT}/projects}"
 CLUSTER_NAME="${CLUSTER_NAME:-trust-test}"
 PROJECTS=(payment-api payment-worker event-store)
 

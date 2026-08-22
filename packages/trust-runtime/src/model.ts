@@ -6,6 +6,7 @@ export type RuntimeJsonObject = Readonly<Record<string, unknown>>;
 /** A dry-run Plan follows every rule of a live Plan, but its Checks are qualified from Facts
     supplied by the operator instead of the runner: no environment is ever resolved for it. */
 export type PlanMode = "live" | "dry-run";
+export type IntentChainState = "DISABLED" | "NOT_STARTED" | "ACTIVE" | "COMPLETE";
 
 export interface Plan {
   slug: string;
@@ -13,6 +14,11 @@ export interface Plan {
   procedureVersion: string;
   environment: string;
   mode: PlanMode;
+  intentChaining: boolean;
+  intentChainState: IntentChainState;
+  currentIntent?: string;
+  currentIntentCheckUri?: string;
+  currentIntentAttemptKey?: string;
   rootInputs: RuntimeJsonObject;
   currentRevision: number;
   createdAt: string;
@@ -58,6 +64,7 @@ export interface PlanRevision {
   procedureVersion: string;
   environment: string;
   mode: PlanMode;
+  intentChaining: boolean;
   rootInputs: RuntimeJsonObject;
   agentDeclarations: RuntimeJsonObject;
   planSlug: string;
@@ -95,6 +102,8 @@ export interface Attempt {
   actionInput: RuntimeJsonObject;
   environment: string;
   reobserve: boolean;
+  intent?: string;
+  nextIntent?: string;
   state: AttemptState;
   admittedAt: string;
   expiresAt: string;

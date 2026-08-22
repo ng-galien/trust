@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { readFileSync } from "node:fs";
-import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import {
   createServer,
   type IncomingMessage,
@@ -13,7 +13,7 @@ import { join } from "node:path";
 import { promisify } from "node:util";
 
 import { compileOperation } from "@trust/operation";
-import { OtlpFactExporter, runOperation } from "@trust/runner";
+import { createCheckRunner, createRunnerLogging, OtlpFactExporter, runOperation, type CheckClient, type FactExporter } from "@trust/runner";
 import { afterEach, describe, expect, test } from "vitest";
 
 const execute = promisify(execFile);
@@ -39,6 +39,55 @@ afterEach(async () => {
 });
 
 describe("Operation runner", () => {
+  test("keeps the opaque Check URI separate from rotating intent query parameters", async () => {
+    const admissions: unknown[][] = [];
+    const runner = createCheckRunner({
+      checkClient: {
+        admit: async (...arguments_: unknown[]) => {
+          admissions.push(arguments_);
+          return {
+            status: "REFUSED" as const,
+            attemptKey: "intent-attempt",
+            reasonCode: "test-refusal",
+            reason: "Admission was observed",
+          };
+        },
+      } as unknown as CheckClient,
+      facts: { export: async () => undefined } as FactExporter,
+      attemptKey: () => "intent-attempt",
+    });
+
+    const result = await runner.run(
+      "trust://local/example@1.0.0/plan/scenario/check/domain-action"
+      + "?intent=Inspect%20the%20current%20state&nextIntent=Prepare%20the%20next%20state",
+    );
+
+    expect(result).toMatchObject({
+      status: "REFUSED",
+      checkUri: "trust://local/example@1.0.0/plan/scenario/check/domain-action",
+    });
+    expect(admissions).toEqual([[
+      "intent-attempt",
+      "trust://local/example@1.0.0/plan/scenario/check/domain-action",
+      "Inspect the current state",
+      "Prepare the next state",
+    ]]);
+    await runner.run(
+      "trust://local/example@1.0.0/plan/scenario/check/domain-action"
+      + "?intent=Document%20the%20%7Bintent%7D%20field&nextIntent=Continue%20the%20documentation",
+    );
+    expect(admissions[1]).toEqual([
+      "intent-attempt",
+      "trust://local/example@1.0.0/plan/scenario/check/domain-action",
+      "Document the {intent} field",
+      "Continue the documentation",
+    ]);
+    await expect(runner.run(
+      "trust://local/example@1.0.0/plan/scenario/check/domain-action"
+      + "?intent={intent}&nextIntent={nextIntent}",
+    )).rejects.toThrow("Replace the intent URI template placeholders");
+  });
+
   test("executes the Git Operation in the project named by its Input below the Environment root", async () => {
     const projectsRoot = await temporaryDirectory("trust-runner-git-");
     const workspaceRoot = join(projectsRoot, "trust-example");
@@ -108,6 +157,44 @@ describe("Operation runner", () => {
     });
   });
 
+  test("merges a committed ticket branch into main and deletes it locally", async () => {
+    const projectsRoot = await temporaryDirectory("trust-runner-git-merge-");
+    const workspaceRoot = join(projectsRoot, "trust-example");
+    await mkdir(workspaceRoot);
+    await execute("git", ["init", "-q", "--initial-branch=main"], { cwd: workspaceRoot });
+    await writeFile(join(workspaceRoot, "tracked.txt"), "baseline\n", "utf8");
+    await execute("git", ["add", "tracked.txt"], { cwd: workspaceRoot });
+    await execute("git", [
+      "-c", "user.name=TRUST Acceptance",
+      "-c", "user.email=trust@example.invalid",
+      "commit", "-qm", "baseline",
+    ], { cwd: workspaceRoot });
+    await execute("git", ["switch", "-qc", "TK-00012"], { cwd: workspaceRoot });
+    await writeFile(join(workspaceRoot, "tracked.txt"), "change\n", "utf8");
+    await execute("git", ["add", "tracked.txt"], { cwd: workspaceRoot });
+    await execute("git", [
+      "-c", "user.name=TRUST Acceptance",
+      "-c", "user.email=trust@example.invalid",
+      "commit", "-qm", "change",
+    ], { cwd: workspaceRoot });
+
+    const result = await runOperation(
+      operation("git.change-merge.feature"),
+      { project: "trust-example", branch: "TK-00012", ticket: "TK-00012" },
+      { workspaceRoot: projectsRoot },
+    );
+
+    expect(result.produced).toMatchObject({
+      mergeStatus: "merged",
+      branchStatus: "deleted",
+      workingTree: "clean",
+    });
+    expect((await execute("git", ["branch", "--show-current"], { cwd: workspaceRoot })).stdout.trim())
+      .toBe("main");
+    await expect(execute("git", ["show-ref", "--verify", "refs/heads/TK-00012"], { cwd: workspaceRoot }))
+      .rejects.toMatchObject({ code: 128 });
+  });
+
   test("reads and decodes a JSON File inside its declared directory", async () => {
     const workspaceRoot = await temporaryDirectory("trust-runner-file-");
     await writeFile(join(workspaceRoot, "package.json"), JSON.stringify({ name: "trust-example" }), "utf8");
@@ -169,6 +256,38 @@ describe("Operation runner", () => {
       { workspaceRoot },
     ))
       .rejects.toMatchObject({ name: "ShellError" });
+  });
+
+  test("persists a failed Shell step in the runner diagnostic log", async () => {
+    const workspaceRoot = await temporaryDirectory("trust-runner-shell-log-");
+    const logPath = join(workspaceRoot, "runner.log");
+    const source = readFileSync(
+      new URL("./fixtures/shell.expected-exit.feature", import.meta.url),
+      "utf8",
+    ).replace("| 1         | Tests run:", "| 0         | Tests run:");
+    const failedOperation = compileOperation({
+      source,
+      sourceName: "shell.failed-log.feature",
+    });
+    const logging = createRunnerLogging({ TRUST_RUNNER_LOG_PATH: logPath });
+    try {
+      await expect(runOperation(failedOperation, {}, { workspaceRoot }, logging.diagnostics))
+        .rejects.toThrow(/unexpected exit/);
+    } finally {
+      logging.close();
+    }
+
+    const records = (await readFile(logPath, "utf8")).trim().split("\n").map((line) => JSON.parse(line)) as Array<{
+      readonly level?: number;
+      readonly event?: string;
+      readonly error?: string;
+    }>;
+    expect(records).toEqual(expect.arrayContaining([
+      expect.objectContaining({ level: 50, event: "runner.step.end" }),
+      expect.objectContaining({ level: 50, event: "runner.operation.end" }),
+    ]));
+    expect(records.find(({ event }) => event === "runner.step.end")?.error)
+      .toMatch(/unexpected exit/);
   });
 
   test("observes an explicitly accepted non-zero Shell exit", async () => {
@@ -586,7 +705,7 @@ async function respond(request: IncomingMessage, response: ServerResponse): Prom
     }
     if (request.url === "/issue/TRUST-1") {
       response.writeHead(200, { "content-type": "application/json" });
-      // The real Jira payload shape (also served by k8s/connectors/jira-mock).
+      // The real Jira payload shape (also served by environments/trust-test/connectors/jira-mock).
       response.end(JSON.stringify({
         key: "TRUST-1",
         fields: { summary: "Runner integration", issuetype: { name: "Defect" }, status: { name: "To Do" } },

@@ -93,7 +93,7 @@ export async function executePlanRuntimeRpc(
       const input = parsePlanRead(params);
       return {
         contract: "trust.plan-view@1",
-        ...await dependencies.planReader.readPlanBySlug(input.plan),
+        ...await dependencies.planReader.readPlanBySlug(input.plan, true),
       };
     }
     case SESSION_READ_METHOD: {
@@ -308,12 +308,14 @@ function parseCheckRead(value: unknown): CheckReadParams {
 }
 
 function parseCheckAdmission(value: unknown): CheckAttemptAdmissionParams {
-  const record = exactRecord(value, ["contract", "attemptKey", "checkUri"], ["reobserve"]);
+  const record = exactRecord(value, ["contract", "attemptKey", "checkUri"], ["reobserve", "intent", "nextIntent"]);
   if (
     record.contract !== "trust.check-admission-request@1"
     || !boundedString(record.attemptKey, 256)
     || !boundedString(record.checkUri, 2_048)
     || (record.reobserve !== undefined && typeof record.reobserve !== "boolean")
+    || (record.intent !== undefined && !boundedString(record.intent, 1_024))
+    || (record.nextIntent !== undefined && !boundedString(record.nextIntent, 1_024))
   ) {
     throw new InvalidPlanRuntimeRpcParams();
   }
@@ -322,6 +324,8 @@ function parseCheckAdmission(value: unknown): CheckAttemptAdmissionParams {
     attemptKey: record.attemptKey,
     checkUri: record.checkUri,
     ...(record.reobserve === undefined ? {} : { reobserve: record.reobserve }),
+    ...(record.intent === undefined ? {} : { intent: record.intent as string }),
+    ...(record.nextIntent === undefined ? {} : { nextIntent: record.nextIntent as string }),
   };
 }
 

@@ -251,10 +251,17 @@ function CheckWorkbench({ plan, check, compiled, onChanged, runtime, reobserve =
   const [seeded, setSeeded] = useState(false);
   useEffect(() => { if (previous && !seeded) { setValues(previous); setSeeded(true); } }, [previous, seeded]);
   const [valid, setValid] = useState(false);
+  const [nextIntent, setNextIntent] = useState("");
+  useEffect(() => { setNextIntent(""); }, [plan.currentIntent, check.checkUri]);
+  const intentReady = !plan.intentChaining || check.completesPlan || nextIntent.trim().length > 0;
 
   const submit = useMutation({
     mutationFn: async () => {
-      const admission = await runtime.admitCheck(check.checkUri, `simulate-${check.name}-${Date.now().toString(36)}`, { reobserve });
+      const admission = await runtime.admitCheck(check.checkUri, `simulate-${check.name}-${Date.now().toString(36)}`, {
+        reobserve,
+        ...(plan.intentChaining && plan.currentIntent !== null ? { intent: plan.currentIntent } : {}),
+        ...(plan.intentChaining && !check.completesPlan ? { nextIntent: nextIntent.trim() } : {}),
+      });
       if (admission.status !== "ADMITTED") return { refused: `${admission.reasonCode}: ${admission.reason}` };
       await runtime.postFacts({ attemptKey: admission.attemptKey, attemptHandle: admission.attemptHandle, checkUri: admission.checkUri, operation: admission.operation.operation }, values);
       return runtime.finalizeAttempt(admission.attemptHandle);
@@ -282,9 +289,23 @@ function CheckWorkbench({ plan, check, compiled, onChanged, runtime, reobserve =
         <div className="mb-2 flex flex-wrap items-center gap-2">
           <span className="kicker">{t("plans.workbench.producedValues")}</span>
         </div>
+        {plan.intentChaining ? (
+          <div className="mb-3 rounded-(--radius-2) border border-border bg-surface-2 p-2">
+            <p className="text-label text-muted">{t("plans.workbench.currentIntent")}</p>
+            <p className="mt-0.5 text-body text-text">{plan.currentIntent}</p>
+            {check.completesPlan ? (
+              <p className="mt-2 text-label text-muted">{t("plans.workbench.finalIntent")}</p>
+            ) : (
+              <label className="mt-2 block text-label text-muted">
+                {t("plans.workbench.nextIntent")}
+                <TextInput className="mt-1 h-7 w-full text-body" value={nextIntent} onChange={(event) => setNextIntent(event.target.value)} placeholder={t("plans.workbench.nextIntentPlaceholder")} />
+              </label>
+            )}
+          </div>
+        ) : null}
         {schema ? <SchemaForm idPrefix={`facts-${check.name}`} schema={schema} value={values} onChange={setValues} onValidity={setValid} showSummary={false} /> : <p className="text-body text-faint">{t("plans.workbench.needsProcedure")}</p>}
         <div className="mt-3">
-          <Button data-doc="cockpit.submit" variant="primary" icon={<FlaskConical size={13} />} disabled={!valid || submit.isPending || plan.sessionState === "UNAVAILABLE"} onClick={() => submit.mutate()}>{submit.isPending ? t("plans.workbench.submitting") : t("plans.workbench.submit")}</Button>
+          <Button data-doc="cockpit.submit" variant="primary" icon={<FlaskConical size={13} />} disabled={!valid || !intentReady || submit.isPending || plan.sessionState === "UNAVAILABLE"} onClick={() => submit.mutate()}>{submit.isPending ? t("plans.workbench.submitting") : t("plans.workbench.submit")}</Button>
         </div>
         {error ? <ErrorBox message={error} details={errorDetails} className="mt-2" /> : null}
       </section>

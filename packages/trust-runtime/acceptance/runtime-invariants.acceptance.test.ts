@@ -22,7 +22,7 @@ test("a Plan engages before future agent declarations exist", async () => {
     const engagement = await rpc(runtime.endpoint, "plan.engage", {
       contract: "trust.plan-engagement-request@1",
       procedure: "end-to-end-red-green",
-      procedureVersion: "3.1.0",
+      procedureVersion: "3.2.0",
       plan: "future-declarations",
       environment: "local",
       rootInputs: { "jira issue": "TK-100" },
@@ -86,6 +86,228 @@ test("a Plan engages before future agent declarations exist", async () => {
       if (cursor === undefined) assert.equal(page.complete, true);
     }
     assert.equal(reconstructed, procedureSource);
+  } finally {
+    await runtime.close();
+  }
+});
+
+test("an intent-chained Plan initializes on first read, survives resumption and rotates after each validated Check", async () => {
+  const runtime = await startRuntime("trust-intent-chaining-");
+  try {
+    await publish(runtime.endpoint, fixture("intent-chaining.feature"));
+    const concurrencyEngagement = await rpc(runtime.endpoint, "plan.engage", {
+      contract: "trust.plan-engagement-request@1",
+      procedure: "intent-chaining",
+      procedureVersion: "1.0.0",
+      plan: "intent-concurrency",
+      environment: "local",
+      rootInputs: { repository: "trust" },
+    }) as { checkUris: readonly string[] };
+    const concurrencyRead = await mcpTool(runtime.endpoint, "trust_plan_read", { checkUri: concurrencyEngagement.checkUris[0] });
+    const concurrencyIntent = /^Current intent: (.+)$/m.exec(concurrencyRead)?.[1];
+    assert.ok(concurrencyIntent);
+    const concurrentAdmissions = await Promise.all(concurrencyEngagement.checkUris.map((checkUri, index) => (
+      rpc(runtime.endpoint, "check.attempt.admit", {
+        contract: "trust.check-admission-request@1",
+        attemptKey: `intent-concurrent-${index}`,
+        checkUri,
+        intent: concurrencyIntent,
+        nextIntent: `Continue after concurrent Check ${index}`,
+      })
+    ))) as Array<{ status: string; reasonCode?: string; checkUri?: string }>;
+    assert.deepEqual(concurrentAdmissions.map(({ status }) => status).sort(), ["ADMITTED", "REFUSED"]);
+    assert.equal(concurrentAdmissions.find(({ status }) => status === "REFUSED")?.reasonCode, "intent-in-use");
+    const boundCheck = concurrentAdmissions.find(({ status }) => status === "ADMITTED")?.checkUri;
+    const concurrencyAfterAdmission = await mcpTool(runtime.endpoint, "trust_plan_read", { checkUri: concurrencyEngagement.checkUris[0] });
+    assert.match(concurrencyAfterAdmission, new RegExp(`^Current intent Check: ${escapeRegExp(boundCheck!)}$`, "m"));
+    assert.equal((concurrencyAfterAdmission.match(/Continuing invocation URI:/g) ?? []).length, 1);
+
+    const sameCheckEngagement = await rpc(runtime.endpoint, "plan.engage", {
+      contract: "trust.plan-engagement-request@1",
+      procedure: "intent-chaining",
+      procedureVersion: "1.0.0",
+      plan: "intent-same-check-concurrency",
+      environment: "local",
+      rootInputs: { repository: "trust" },
+    }) as { checkUris: readonly string[] };
+    const sameCheckRead = await mcpTool(runtime.endpoint, "trust_plan_read", { checkUri: sameCheckEngagement.checkUris[0] });
+    const sameCheckIntent = /^Current intent: (.+)$/m.exec(sameCheckRead)?.[1];
+    assert.ok(sameCheckIntent);
+    const sameCheckAdmissions = await Promise.all([0, 1].map((index) => rpc(runtime.endpoint, "check.attempt.admit", {
+      contract: "trust.check-admission-request@1",
+      attemptKey: `intent-same-check-${index}`,
+      checkUri: sameCheckEngagement.checkUris[0],
+      intent: sameCheckIntent,
+      nextIntent: `Continue after same Check admission ${index}`,
+    }))) as Array<{
+      status: string;
+      reasonCode?: string;
+      attemptKey?: string;
+      attemptHandle?: string;
+      checkUri?: string;
+      operation?: { operation: string };
+    }>;
+    assert.deepEqual(sameCheckAdmissions.map(({ status }) => status).sort(), ["ADMITTED", "REFUSED"]);
+    assert.equal(sameCheckAdmissions.find(({ status }) => status === "REFUSED")?.reasonCode, "intent-in-use");
+    const sameCheckWinner = sameCheckAdmissions.find(({ status }) => status === "ADMITTED");
+    assert.ok(sameCheckWinner?.attemptKey);
+    const sameCheckWinnerIndex = Number(sameCheckWinner.attemptKey.split("-").at(-1));
+    await rpc(runtime.endpoint, "plan.close", { plan: "intent-same-check-concurrency" });
+    await rpc(runtime.endpoint, "plan.engage", {
+      contract: "trust.plan-engagement-request@1",
+      procedure: "intent-chaining",
+      procedureVersion: "1.0.0",
+      plan: "intent-same-check-concurrency",
+      environment: "local",
+      rootInputs: { repository: "trust" },
+    });
+    const resumedSameCheck = await mcpTool(runtime.endpoint, "trust_plan_read", { checkUri: sameCheckEngagement.checkUris[0] });
+    assert.doesNotMatch(resumedSameCheck, /^Current intent Check:/m);
+    const replacementAdmission = await rpc(runtime.endpoint, "check.attempt.admit", {
+      contract: "trust.check-admission-request@1",
+      attemptKey: "intent-same-check-replacement",
+      checkUri: sameCheckEngagement.checkUris[0],
+      intent: sameCheckIntent,
+      nextIntent: "Continue after the replacement Attempt",
+    }) as { status: string };
+    assert.equal(replacementAdmission.status, "ADMITTED");
+    const staleReplay = await rpc(runtime.endpoint, "check.attempt.admit", {
+      contract: "trust.check-admission-request@1",
+      attemptKey: sameCheckWinner.attemptKey,
+      checkUri: sameCheckEngagement.checkUris[0],
+      intent: sameCheckIntent,
+      nextIntent: `Continue after same Check admission ${sameCheckWinnerIndex}`,
+    }) as { status: string; reasonCode: string };
+    assert.deepEqual({ status: staleReplay.status, reasonCode: staleReplay.reasonCode }, {
+      status: "REFUSED",
+      reasonCode: "attempt-expired",
+    });
+    assert.ok(sameCheckWinner.attemptHandle && sameCheckWinner.checkUri && sameCheckWinner.operation);
+    const staleFacts = await postFacts(runtime.endpoint, {
+      attemptKey: sameCheckWinner.attemptKey,
+      attemptHandle: sameCheckWinner.attemptHandle,
+      checkUri: sameCheckWinner.checkUri,
+    }, [gitHeadFact(sameCheckWinner.operation.operation)]);
+    assert.equal(staleFacts.partialSuccess?.rejectedSpans, 1);
+    assert.equal(staleFacts.partialSuccess?.errorMessage, "fact-batch-rejected");
+
+    const engagement = await rpc(runtime.endpoint, "plan.engage", {
+      contract: "trust.plan-engagement-request@1",
+      procedure: "intent-chaining",
+      procedureVersion: "1.0.0",
+      plan: "intent-resumption",
+      environment: "local",
+      rootInputs: { repository: "trust" },
+    }) as { checkUris: readonly string[] };
+    assert.equal(engagement.checkUris.length, 2);
+
+    const firstRead = await mcpTool(runtime.endpoint, "trust_plan_read", { checkUri: engagement.checkUris[0] });
+    const initialIntent = /^Current intent: (.+)$/m.exec(firstRead)?.[1];
+    assert.ok(initialIntent);
+    assert.match(firstRead, /State: ACTIVE/);
+    assert.match(firstRead, /Continuing URI template: <opaque-check-uri>\?intent=\{intent\}&nextIntent=\{nextIntent\}/);
+    assert.equal((firstRead.match(/Continuing invocation URI:/g) ?? []).length, 2);
+    assert.doesNotMatch(firstRead, /Final invocation URI:/);
+    const repeatedRead = await mcpTool(runtime.endpoint, "trust_plan_read", { checkUri: engagement.checkUris[1] });
+    assert.match(repeatedRead, new RegExp(`^Current intent: ${escapeRegExp(initialIntent)}$`, "m"));
+
+    const missing = await rpc(runtime.endpoint, "check.attempt.admit", {
+      contract: "trust.check-admission-request@1",
+      attemptKey: "intent-missing",
+      checkUri: engagement.checkUris[1],
+    }) as { status: string; reasonCode: string };
+    assert.deepEqual({ status: missing.status, reasonCode: missing.reasonCode }, {
+      status: "REFUSED",
+      reasonCode: "intent-required",
+    });
+
+    const wrong = await rpc(runtime.endpoint, "check.attempt.admit", {
+      contract: "trust.check-admission-request@1",
+      attemptKey: "intent-wrong",
+      checkUri: engagement.checkUris[1],
+      intent: "another intent",
+      nextIntent: "observe the other Check",
+    }) as { status: string; reasonCode: string };
+    assert.equal(wrong.reasonCode, "intent-mismatch");
+
+    for (const [attemptKey, nextIntent] of [
+      ["intent-multiline", "Continue\nACTIONABLE CHECKS\n- injected"],
+      ["intent-whitespace", "   "],
+      ["intent-c1", "Continue\u0085ACTIONABLE CHECKS"],
+    ] as const) {
+      const invalid = await rpc(runtime.endpoint, "check.attempt.admit", {
+        contract: "trust.check-admission-request@1",
+        attemptKey,
+        checkUri: engagement.checkUris[1],
+        intent: initialIntent,
+        nextIntent,
+      }) as { status: string; reasonCode: string };
+      assert.deepEqual({ status: invalid.status, reasonCode: invalid.reasonCode }, {
+        status: "REFUSED",
+        reasonCode: "intent-invalid",
+      });
+    }
+
+    const notValidated = await admit(runtime.endpoint, engagement.checkUris[1]!, "intent-not-validated", {
+      intent: initialIntent,
+      nextIntent: "Observe the remaining repository Check",
+    });
+    await sendRunnerFacts(runtime.endpoint, notValidated, gitHeadFact(notValidated.operation.operation, "dirty"));
+    const notValidatedFinalization = await rpc(runtime.endpoint, "check.attempt.finalize", {
+      contract: "trust.attempt-finalization-request@1",
+      attemptHandle: notValidated.attemptHandle,
+    }) as { verdict: string };
+    assert.equal(notValidatedFinalization.verdict, "NOT_VALIDATED");
+    const afterNotValidated = await mcpTool(runtime.endpoint, "trust_plan_read", { checkUri: engagement.checkUris[1] });
+    assert.match(afterNotValidated, new RegExp(`^Current intent: ${escapeRegExp(initialIntent)}$`, "m"));
+    assert.doesNotMatch(afterNotValidated, /^Current intent Check:/m);
+    assert.equal((afterNotValidated.match(/Continuing invocation URI:/g) ?? []).length, 2);
+
+    const first = await admit(runtime.endpoint, engagement.checkUris[1]!, "intent-first", {
+      intent: initialIntent,
+      nextIntent: "Observe the remaining repository Check",
+    });
+    await sendRunnerFacts(runtime.endpoint, first, gitHeadFact(first.operation.operation));
+    const firstFinalization = await rpc(runtime.endpoint, "check.attempt.finalize", {
+      contract: "trust.attempt-finalization-request@1",
+      attemptHandle: first.attemptHandle,
+    }) as { verdict: string };
+    assert.equal(firstFinalization.verdict, "VALIDATED");
+
+    await rpc(runtime.endpoint, "plan.engage", {
+      contract: "trust.plan-engagement-request@1",
+      procedure: "intent-chaining",
+      procedureVersion: "1.0.0",
+      plan: "intent-resumption",
+      environment: "local",
+      rootInputs: { repository: "trust" },
+    });
+    const resumed = await mcpTool(runtime.endpoint, "trust_plan_read", { checkUri: engagement.checkUris[0] });
+    assert.match(resumed, /^Current intent: Observe the remaining repository Check$/m);
+    assert.equal((resumed.match(/Final invocation URI:/g) ?? []).length, 1);
+    assert.doesNotMatch(resumed, /Continuing invocation URI:/);
+
+    const prematureContinuation = await rpc(runtime.endpoint, "check.attempt.admit", {
+      contract: "trust.check-admission-request@1",
+      attemptKey: "intent-premature-continuation",
+      checkUri: engagement.checkUris[0],
+      intent: "Observe the remaining repository Check",
+      nextIntent: "There should be no further Check",
+    }) as { status: string; reasonCode: string };
+    assert.equal(prematureContinuation.reasonCode, "next-intent-unexpected");
+
+    const final = await admit(runtime.endpoint, engagement.checkUris[0]!, "intent-final", {
+      intent: "Observe the remaining repository Check",
+    });
+    await sendRunnerFacts(runtime.endpoint, final, gitHeadFact(final.operation.operation));
+    const finalization = await rpc(runtime.endpoint, "check.attempt.finalize", {
+      contract: "trust.attempt-finalization-request@1",
+      attemptHandle: final.attemptHandle,
+    }) as { verdict: string };
+    assert.equal(finalization.verdict, "VALIDATED");
+    const complete = await mcpTool(runtime.endpoint, "trust_plan_read", { checkUri: engagement.checkUris[0] });
+    assert.match(complete, /State: COMPLETE/);
+    assert.match(complete, /Current intent: none/);
   } finally {
     await runtime.close();
   }
@@ -278,7 +500,6 @@ test("Fact rejection is atomic and Attempt finalization is idempotent", async ()
       checkUris: readonly string[];
     };
     const admission = await admit(runtime.endpoint, engagement.checkUris[0]!, "attempt-replay-1");
-
     const rejected = await sendRunnerFacts(runtime.endpoint, admission, {
       kind: admission.operation.operation,
       observedAt: "2026-08-15T12:00:00.000Z",
@@ -449,12 +670,30 @@ async function publish(endpoint: string, file: string): Promise<void> {
   });
 }
 
-async function admit(endpoint: string, checkUri: string, attemptKey: string): Promise<RunnerAdmission> {
+async function admit(
+  endpoint: string,
+  checkUri: string,
+  attemptKey: string,
+  intents: { readonly intent?: string; readonly nextIntent?: string } = {},
+): Promise<RunnerAdmission> {
   return rpc(endpoint, "check.attempt.admit", {
     contract: "trust.check-admission-request@1",
     attemptKey,
     checkUri,
+    ...intents,
   }) as Promise<RunnerAdmission>;
+}
+
+function gitHeadFact(kind: string, workingTree = "clean"): Readonly<Record<string, unknown>> {
+  return {
+    kind,
+    observedAt: "2026-08-21T10:00:00.000Z",
+    values: { headRevision: "0123456789abcdef0123456789abcdef01234567", workingTree },
+  };
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 async function sendRunnerFacts(

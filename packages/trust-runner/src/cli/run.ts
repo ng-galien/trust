@@ -1,5 +1,6 @@
 import { CheckClient } from "../check/client.js";
 import { createCheckRunner, type CheckResult } from "../check/run.js";
+import { createRunnerLogging } from "../diagnostics/pino.js";
 import { OtlpFactExporter } from "../telemetry/otlp.js";
 
 export interface RunnerCliOptions {
@@ -15,7 +16,10 @@ export async function runCli(options: RunnerCliOptions = {}): Promise<number> {
   const stdout = options.stdout ?? ((text) => process.stdout.write(text));
   const stderr = options.stderr ?? ((text) => process.stderr.write(text));
   const json = remove(argv, "--json");
+  const logging = createRunnerLogging(environment);
   if (argv.length !== 1 || argv[0]?.startsWith("trust://") !== true) {
+    logging.logger.warn({ event: "runner.invocation.invalid" }, "Runner invocation is invalid");
+    logging.close();
     stderr("usage: trust-runner <trust://check-uri> [--json]\n");
     return 2;
   }
@@ -25,14 +29,18 @@ export async function runCli(options: RunnerCliOptions = {}): Promise<number> {
     const runner = createCheckRunner({
       checkClient: new CheckClient(endpoint),
       facts: new OtlpFactExporter(otlpEndpoint),
+      diagnostics: logging.diagnostics,
     });
     const result = await runner.run(argv[0]);
     stdout(json ? `${JSON.stringify(result, null, 2)}\n` : report(result));
     if (result.status === "REFUSED") return 3;
     return result.verdict === "VALIDATED" ? 0 : 4;
   } catch (error) {
+    logging.logger.error({ err: error, event: "runner.invocation.failed" }, "Runner invocation failed");
     stderr(`${error instanceof Error ? error.message : String(error)}\n`);
     return 1;
+  } finally {
+    logging.close();
   }
 }
 

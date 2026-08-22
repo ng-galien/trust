@@ -24,6 +24,7 @@ import type { Procedures } from "../procedure/procedures.js";
 import type { EnvironmentService } from "../environment/service.js";
 import { buildPlanRevision, validateAgentDeclarations } from "./build.js";
 import type { PlanEvents } from "./events.js";
+import { completesPlanOnValidation, dependentCheckUris, isIntentValue, MAX_INTENT_LENGTH } from "./intent.js";
 
 export const DEFAULT_SESSION_DURATION_MS = 24 * 60 * 60 * 1_000;
 
@@ -43,6 +44,8 @@ export class PlanRuntimeError extends Error {
     this.name = "PlanRuntimeError";
   }
 }
+
+class IntentInUseError extends Error {}
 
 export interface PlanEngagementInput {
   readonly contract: "trust.plan-engagement-request@1";
@@ -90,6 +93,8 @@ export interface CheckAttemptAdmissionInput {
   readonly attemptKey: string;
   readonly checkUri: string;
   readonly reobserve?: boolean;
+  readonly intent?: string;
+  readonly nextIntent?: string;
 }
 
 export type CheckAttemptAdmissionResult =
@@ -337,9 +342,46 @@ export class PlanRuntime {
       .filter((item) => nextChecks.get(item.checkUri)?.compiledCheckDigest === item.compiledCheckDigest)
       .map((item) => ({ ...item, planRevision: next.revision }));
     const retained = retainQualifiedDependencies(retainedCandidates, next.checks);
+    const missingDeclarations = published.procedure.roles.some((role) => (
+      role.source.kind === "agent-declaration" && !Object.hasOwn(declarations, role.name)
+    ));
+    const nextChecklistComplete = !missingDeclarations && retained.length === next.checks.length;
+    const now = this.#now();
     await this.#database.transaction().execute(async (transaction) => {
-      await this.#plans.using(transaction).saveRevision(next, this.#now().toISOString());
+      const plans = this.#plans.using(transaction);
+      const chainedPlan = await plans.findPlan(plan.slug);
+      if (chainedPlan?.intentChaining && chainedPlan.currentIntentAttemptKey !== undefined) {
+        const attempts = this.#attempts.using(transaction);
+        const sessions = this.#sessions.using(transaction);
+        const owner = await attempts.findByKey(chainedPlan.currentIntentAttemptKey);
+        const ownerSession = owner ? await sessions.findById(owner.sessionId) : undefined;
+        const ownerIsPending = owner?.state === "pending"
+          && ownerSession?.state === "open"
+          && Date.parse(owner.expiresAt) > now.getTime();
+        if (ownerIsPending) {
+          throw new PlanRuntimeError(
+            "plan-conflict",
+            `Plan ${plan.slug} has a pending Attempt for its current intent`,
+          );
+        }
+        if (chainedPlan.currentIntent === undefined) {
+          throw new PlanRuntimeError("plan-conflict", `Plan ${plan.slug} has an invalid intent reservation`);
+        }
+        await plans.releaseIntentAttempt(
+          plan.slug,
+          chainedPlan.currentIntent,
+          chainedPlan.currentIntentAttemptKey,
+        );
+      }
+      await plans.saveRevision(next, now.toISOString());
       await this.#snapshots.using(transaction).saveActiveForRevision(plan.slug, next.revision, retained);
+      if (chainedPlan?.intentChaining && nextChecklistComplete
+        && chainedPlan.intentChainState !== "COMPLETE") {
+        await plans.completeIntentWithoutAttempt(plan.slug);
+      } else if (chainedPlan?.intentChaining && chainedPlan.intentChainState === "COMPLETE"
+        && !nextChecklistComplete) {
+        await plans.restartIntent(plan.slug);
+      }
     });
     await this.#ensureSession(plan.slug);
     const result = declarationResult(current, next);
@@ -363,11 +405,42 @@ export class PlanRuntime {
     if (input.contract !== "trust.check-admission-request@1") {
       return refuse("trust.check-admission@1", input.attemptKey, "invalid-admission-contract", "Unsupported admission contract");
     }
-    let resolved = await this.#resolveAdmission(input.attemptKey, input.checkUri, input.reobserve === true);
+    if (input.intent !== undefined && !isIntentValue(input.intent)) {
+      return refuse("trust.check-admission@1", input.attemptKey, "intent-invalid", `intent must contain 1 to ${MAX_INTENT_LENGTH} characters, be trimmed and single-line, and contain no control character`);
+    }
+    if (input.nextIntent !== undefined && !isIntentValue(input.nextIntent)) {
+      return refuse("trust.check-admission@1", input.attemptKey, "intent-invalid", `nextIntent must contain 1 to ${MAX_INTENT_LENGTH} characters, be trimmed and single-line, and contain no control character`);
+    }
+    let resolved = await this.#resolveAdmission(
+      input.attemptKey,
+      input.checkUri,
+      input.reobserve === true,
+      input.intent,
+      input.nextIntent,
+    );
     if ("refusal" in resolved) return { contract: "trust.check-admission@1", ...resolved.refusal };
-    const creation = await this.#createAttempt(resolved);
+    let creation: AttemptCreation;
+    try {
+      creation = await this.#createAttempt(resolved);
+    } catch (error) {
+      if (error instanceof IntentInUseError) {
+        return refuse(
+          "trust.check-admission@1",
+          input.attemptKey,
+          "intent-in-use",
+          "The current intent is already reserved by another Attempt; read the Plan again",
+        );
+      }
+      throw error;
+    }
     if (!creation.created && resolved.existing === undefined) {
-      resolved = await this.#resolveAdmission(input.attemptKey, input.checkUri, input.reobserve === true);
+      resolved = await this.#resolveAdmission(
+        input.attemptKey,
+        input.checkUri,
+        input.reobserve === true,
+        input.intent,
+        input.nextIntent,
+      );
       if ("refusal" in resolved) return { contract: "trust.check-admission@1", ...resolved.refusal };
     }
     const attempt = creation.attempt;
@@ -419,6 +492,18 @@ export class PlanRuntime {
     }
     if (Date.parse(attempt.expiresAt) <= this.#now().getTime()) {
       throw new PlanRuntimeError("fact-batch-rejected", "Fact batch belongs to an expired Attempt");
+    }
+    const [plan, session] = await Promise.all([
+      this.#plans.using(database).findPlan(attempt.planSlug),
+      this.#sessions.using(database).findById(attempt.sessionId),
+    ]);
+    if (!session || session.state !== "open") {
+      throw new PlanRuntimeError("fact-batch-rejected", "Fact batch belongs to an Attempt whose Session is no longer open");
+    }
+    if (attempt.intent !== undefined && (!plan?.intentChaining
+      || plan.currentIntent !== attempt.intent
+      || plan.currentIntentAttemptKey !== attempt.attemptKey)) {
+      throw new PlanRuntimeError("fact-batch-rejected", "Fact batch belongs to an Attempt that no longer owns the current intent");
     }
     if (input.facts.length === 0 || Number.isNaN(Date.parse(input.recordedAt))) {
       throw new PlanRuntimeError("fact-batch-rejected", "Fact batch must contain Facts and a valid recordedAt instant");
@@ -499,7 +584,7 @@ export class PlanRuntime {
       } catch (error) {
         throw new PlanRuntimeError("facts-missing", message(error), { cause: error });
       }
-      const affected = dependentChecks(current.checks, check.uri);
+      const affected = dependentCheckUris(current.checks, check.uri);
       affected.add(check.uri);
       const nextRevisionNumber = plan.currentRevision + 1;
       const nextCheckValues = current.checkValues.filter((item) => !affected.has(item.providerCheckUri));
@@ -597,6 +682,35 @@ export class PlanRuntime {
       }
       await plans.saveRevision(next, calculatedAt);
       await snapshots.saveActiveForRevision(plan.slug, nextRevisionNumber, activeAfter);
+      if (qualification.verdict === "VALIDATED" && plan.intentChaining) {
+        if (!currentAttempt.intent || plan.currentIntent !== currentAttempt.intent
+          || plan.currentIntentAttemptKey !== currentAttempt.attemptKey) {
+          throw new PlanRuntimeError("plan-conflict", "The admitted intent is no longer current for this Plan");
+        }
+        const missingDeclarations = published.procedure.roles.some((role) => (
+          role.source.kind === "agent-declaration" && !Object.hasOwn(current.agentDeclarations, role.name)
+        ));
+        const checklistComplete = !missingDeclarations && activeAfter.length === next.checks.length;
+        if (checklistComplete && currentAttempt.nextIntent !== undefined) {
+          throw new PlanRuntimeError("plan-conflict", "nextIntent must be omitted when completing the Plan");
+        }
+        if (!checklistComplete && currentAttempt.nextIntent === undefined) {
+          throw new PlanRuntimeError("plan-conflict", "nextIntent is required while the Plan remains in progress");
+        }
+        await plans.advanceIntent(
+          plan.slug,
+          currentAttempt.intent,
+          currentAttempt.nextIntent,
+          checklistComplete,
+          currentAttempt.attemptKey,
+        );
+      } else if (qualification.verdict === "NOT_VALIDATED" && plan.intentChaining) {
+        if (!currentAttempt.intent || plan.currentIntent !== currentAttempt.intent
+          || plan.currentIntentAttemptKey !== currentAttempt.attemptKey) {
+          throw new PlanRuntimeError("plan-conflict", "The admitted intent is no longer current for this Plan");
+        }
+        await plans.releaseIntentAttempt(plan.slug, currentAttempt.intent, currentAttempt.attemptKey);
+      }
       const result = finalization(snapshot);
       await attempts.finalize(attempt.handle, calculatedAt, {
         verdict: result.verdict,
@@ -620,7 +734,13 @@ export class PlanRuntime {
     return finalized;
   }
 
-  async #resolveAdmission(attemptKey: string, checkUri: string, reobserve: boolean): Promise<AdmissionResolution | AdmissionFailure> {
+  async #resolveAdmission(
+    attemptKey: string,
+    checkUri: string,
+    reobserve: boolean,
+    intent: string | undefined,
+    nextIntent: string | undefined,
+  ): Promise<AdmissionResolution | AdmissionFailure> {
     const existing = await this.#attempts.findByKey(attemptKey);
     if (existing) {
       if (existing.checkUri !== checkUri) {
@@ -638,13 +758,27 @@ export class PlanRuntime {
         this.#sessions.findById(existing.sessionId),
       ]);
       if (!check || !plan || !session) return { refusal: refusal(attemptKey, "check-not-found", "The Check is unavailable") };
+      if (session.state !== "open") {
+        return { refusal: refusal(attemptKey, "attempt-expired", "Attempt Session is no longer open") };
+      }
+      if (plan.intentChaining && (plan.currentIntentAttemptKey !== existing.attemptKey
+        || plan.currentIntent !== existing.intent)) {
+        return { refusal: refusal(attemptKey, "attempt-expired", "Attempt no longer owns the Plan's current intent") };
+      }
       if (existing.reobserve !== reobserve) {
         return { refusal: refusal(attemptKey, "attempt-key-conflict", "Attempt key is already bound to another admission intent") };
+      }
+      const requestedIntent = reobserve && intent === undefined && plan.intentChaining
+        && existing.intent === `Re-observe Check "${check.check.name}" for Plan "${plan.slug}"`
+        ? existing.intent
+        : intent;
+      if (existing.intent !== requestedIntent || existing.nextIntent !== nextIntent) {
+        return { refusal: refusal(attemptKey, "attempt-key-conflict", "Attempt key is already bound to another intent chain") };
       }
       return { attemptKey, check, plan, session, reobserve: existing.reobserve, existing };
     }
     const check = await this.#plans.findCurrentCheck(checkUri);
-    const plan = check ? await this.#plans.findPlan(check.planSlug) : undefined;
+    let plan = check ? await this.#plans.findPlan(check.planSlug) : undefined;
     if (!check || !plan) return { refusal: refusal(attemptKey, "check-not-found", "The semantic Check URI is unknown") };
     const [activeQualifications, checks] = await Promise.all([
       this.#snapshots.listActive(plan.slug, plan.currentRevision),
@@ -667,7 +801,65 @@ export class PlanRuntime {
     if (!session) {
       return { refusal: refusal(attemptKey, "session-unavailable", "The Plan has no active Session") };
     }
-    return { attemptKey, check, plan, session, reobserve };
+    let admittedIntent = intent;
+    let restartIntent: string | undefined;
+    if (reobserve && plan.mode === "dry-run" && plan.intentChaining && plan.intentChainState === "COMPLETE") {
+      const reobservationIntent = `Re-observe Check "${check.check.name}" for Plan "${plan.slug}"`;
+      plan = { ...plan, intentChainState: "ACTIVE", currentIntent: reobservationIntent };
+      admittedIntent = reobservationIntent;
+      restartIntent = reobservationIntent;
+    }
+    const intentFailure = await this.#validateIntentAdmission(plan, check, checks, active, admittedIntent, nextIntent);
+    if (intentFailure) return { refusal: refusal(attemptKey, intentFailure.reasonCode, intentFailure.reason) };
+    return {
+      attemptKey,
+      check,
+      plan,
+      session,
+      reobserve,
+      ...(admittedIntent === undefined ? {} : { intent: admittedIntent }),
+      ...(nextIntent === undefined ? {} : { nextIntent }),
+      ...(restartIntent === undefined ? {} : { restartIntent }),
+    };
+  }
+
+  async #validateIntentAdmission(
+    plan: import("../model.js").Plan,
+    check: import("../model.js").PlanCheck,
+    checks: readonly import("../model.js").PlanCheck[],
+    active: ReadonlySet<string>,
+    intent: string | undefined,
+    nextIntent: string | undefined,
+  ): Promise<{ readonly reasonCode: string; readonly reason: string } | undefined> {
+    if (!plan.intentChaining) {
+      return intent === undefined && nextIntent === undefined
+        ? undefined
+        : { reasonCode: "intent-not-enabled", reason: "This Plan does not use intent chaining; invoke the opaque Check URI without intent parameters" };
+    }
+    if (plan.intentChainState !== "ACTIVE" || plan.currentIntent === undefined) {
+      return { reasonCode: "intent-not-started", reason: "Intent chaining has not started; read the Plan before running a Check" };
+    }
+    if (intent === undefined) {
+      return { reasonCode: "intent-required", reason: "Intent chaining is required; use the exact current intent returned by plan.read" };
+    }
+    if (intent !== plan.currentIntent) {
+      return { reasonCode: "intent-mismatch", reason: "Intent does not match the Plan's current intent; read the Plan again and use the exact intent value" };
+    }
+    if (nextIntent === intent) {
+      return { reasonCode: "next-intent-unchanged", reason: "nextIntent must change the Plan's current intent" };
+    }
+    const revision = await this.#plans.readRevision(plan.slug, plan.currentRevision);
+    const published = await this.#procedures.find(plan.procedure, plan.procedureVersion);
+    const finalCandidate = revision !== undefined && published !== undefined
+      ? completesPlanOnValidation({ procedure: published.procedure, revision, checks, activeCheckUris: active, check })
+      : false;
+    if (finalCandidate && nextIntent !== undefined) {
+      return { reasonCode: "next-intent-unexpected", reason: "nextIntent must be omitted when completing the Plan" };
+    }
+    if (!finalCandidate && nextIntent === undefined) {
+      return { reasonCode: "next-intent-required", reason: "nextIntent is required while the Plan remains in progress" };
+    }
+    return undefined;
   }
 
   async #createAttempt(
@@ -688,11 +880,39 @@ export class PlanRuntime {
       actionInput: resolved.check.actionInput,
       environment: resolved.plan.environment,
       reobserve: resolved.reobserve,
+      ...(resolved.intent === undefined ? {} : { intent: resolved.intent }),
+      ...(resolved.nextIntent === undefined ? {} : { nextIntent: resolved.nextIntent }),
       state: "pending",
       admittedAt: now.toISOString(),
       expiresAt: resolved.session.expiresAt,
     };
-    return this.#attempts.createOrFind(attempt);
+    return this.#database.transaction().execute(async (transaction) => {
+      const attempts = this.#attempts.using(transaction);
+      const concurrent = await attempts.findByKey(attempt.attemptKey);
+      if (concurrent) return { attempt: concurrent, created: false };
+      if (resolved.plan.intentChaining && resolved.intent !== undefined) {
+        const plans = this.#plans.using(transaction);
+        const reserved = resolved.restartIntent === undefined
+          ? await plans.bindIntentAttempt(
+              resolved.plan.slug,
+              resolved.intent,
+              resolved.check.uri,
+              resolved.attemptKey,
+              resolved.plan.currentRevision,
+            )
+          : await plans.restartIntentForAttempt(
+              resolved.plan.slug,
+              resolved.restartIntent,
+              resolved.check.uri,
+              resolved.attemptKey,
+              resolved.plan.currentRevision,
+            );
+        if (!reserved) throw new IntentInUseError();
+      }
+      const creation = await attempts.createOrFind(attempt);
+      if (!creation.created) throw new Error("the Attempt key changed while its intent was being reserved");
+      return creation;
+    });
   }
 
   async #ensureSession(plan: string): Promise<void> {
@@ -702,6 +922,18 @@ export class PlanRuntime {
     if (current) {
       await this.#sessions.changeState(current.id, "expired", now.toISOString());
       this.#sessionEvent(current.id, plan, "expired", now.toISOString());
+    }
+    const chainedPlan = await this.#plans.findPlan(plan);
+    if (chainedPlan?.currentIntent !== undefined && chainedPlan.currentIntentAttemptKey !== undefined) {
+      const owner = await this.#attempts.findByKey(chainedPlan.currentIntentAttemptKey);
+      const ownerSession = owner ? await this.#sessions.findById(owner.sessionId) : undefined;
+      if (!owner || !ownerSession || ownerSession.state !== "open" || Date.parse(owner.expiresAt) <= now.getTime()) {
+        await this.#plans.releaseIntentAttempt(
+          chainedPlan.slug,
+          chainedPlan.currentIntent,
+          chainedPlan.currentIntentAttemptKey,
+        );
+      }
     }
     const id = randomUUID();
     await this.#sessions.create({
@@ -745,6 +977,9 @@ interface AdmissionResolution {
   readonly plan: import("../model.js").Plan;
   readonly session: import("../model.js").Session;
   readonly reobserve: boolean;
+  readonly intent?: string;
+  readonly nextIntent?: string;
+  readonly restartIntent?: string;
   readonly existing?: Attempt;
 }
 
@@ -816,21 +1051,6 @@ function fact(attempt: Attempt, payload: RuntimeJsonObject, index: number, recor
     recordedAt,
     values,
   };
-}
-
-function dependentChecks(checks: readonly import("../model.js").PlanCheck[], providerUri: string): Set<string> {
-  const affected = new Set<string>();
-  let changed = true;
-  while (changed) {
-    changed = false;
-    for (const check of checks) {
-      if (affected.has(check.uri) || check.uri === providerUri) continue;
-      const depends = check.checkDependencies.some((item) => item.providerCheckUri === providerUri || affected.has(item.providerCheckUri))
-        || check.scenarioDependencies.some((scenario) => checks.some((candidate) => candidate.scenario === scenario && (candidate.uri === providerUri || affected.has(candidate.uri))));
-      if (depends) { affected.add(check.uri); changed = true; }
-    }
-  }
-  return affected;
 }
 
 function retainQualifiedDependencies(

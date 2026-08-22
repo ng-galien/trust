@@ -36,7 +36,7 @@ export function createMcpHandler(runner: CheckRunner) {
         tools: [{
           name: TRUST_CHECK_RUN_TOOL,
           title: "Run TRUST Check",
-          description: "Execute the definition returned by TRUST for one semantic Check URI.",
+          description: "Execute one opaque semantic Check URI, including intent query parameters when its Procedure requires intent chaining.",
           inputSchema: {
             type: "object",
             properties: { checkUri: { type: "string" } },

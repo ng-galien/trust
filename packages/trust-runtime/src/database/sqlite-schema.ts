@@ -56,9 +56,20 @@ export const SQLITE_SCHEMA = `
     procedure_version TEXT NOT NULL,
     environment TEXT NOT NULL,
     mode TEXT NOT NULL CHECK (mode IN ('live', 'dry-run')),
+    intent_chaining INTEGER NOT NULL CHECK (intent_chaining IN (0, 1)),
+    intent_chain_state TEXT NOT NULL CHECK (intent_chain_state IN ('DISABLED', 'NOT_STARTED', 'ACTIVE', 'COMPLETE')),
+    current_intent TEXT,
+    current_intent_check_uri TEXT,
+    current_intent_attempt_key TEXT,
     root_inputs_json TEXT NOT NULL,
     current_revision INTEGER NOT NULL CHECK (current_revision >= 1),
-    created_at TEXT NOT NULL
+    created_at TEXT NOT NULL,
+    CHECK (
+      (intent_chaining = 0 AND intent_chain_state = 'DISABLED' AND current_intent IS NULL AND current_intent_check_uri IS NULL AND current_intent_attempt_key IS NULL)
+      OR (intent_chaining = 1 AND intent_chain_state = 'NOT_STARTED' AND current_intent IS NULL AND current_intent_check_uri IS NULL AND current_intent_attempt_key IS NULL)
+      OR (intent_chaining = 1 AND intent_chain_state = 'ACTIVE' AND current_intent IS NOT NULL AND ((current_intent_check_uri IS NULL AND current_intent_attempt_key IS NULL) OR (current_intent_check_uri IS NOT NULL AND current_intent_attempt_key IS NOT NULL)))
+      OR (intent_chaining = 1 AND intent_chain_state = 'COMPLETE' AND current_intent IS NULL AND current_intent_check_uri IS NULL AND current_intent_attempt_key IS NULL)
+    )
   ) STRICT;
 
   CREATE TABLE IF NOT EXISTS plan_revisions (
@@ -141,6 +152,8 @@ export const SQLITE_SCHEMA = `
 
     environment TEXT NOT NULL,
     reobserve INTEGER NOT NULL CHECK (reobserve IN (0, 1)),
+    intent TEXT,
+    next_intent TEXT,
     state TEXT NOT NULL CHECK (state IN ('pending', 'finalized')),
     admitted_at TEXT NOT NULL,
     expires_at TEXT NOT NULL,
@@ -239,7 +252,7 @@ export class IncompatibleSqliteSchemaError extends Error {
   constructor(actualDigest: string | undefined) {
     super(
       "SQLite database schema is incompatible with this TRUST runtime. "
-      + "Run 'node scripts/server.ts reset' to replace and reseed the local database.",
+      + "Run 'node environments/trust-test/scripts/server.ts reset' to replace and reseed the local database.",
     );
     this.name = "IncompatibleSqliteSchemaError";
     this.actualDigest = actualDigest;

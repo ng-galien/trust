@@ -2,6 +2,70 @@ import { expect, test, type Locator, type Page } from "@playwright/test";
 
 const modifier = process.platform === "darwin" ? "Meta" : "Control";
 
+test("the Procedure editor toggles intent chaining in the canonical source", async ({ page }) => {
+  await page.goto("/procedures/git-status?tab=source");
+  const editor = page.locator(".monaco-editor");
+  await expect(editor).toBeVisible();
+
+  const toggle = page.getByRole("switch", { name: "Intent chaining" });
+  await expect(toggle).toHaveAttribute("aria-checked", "false");
+  await toggle.click();
+  await expect(toggle).toHaveAttribute("aria-checked", "true");
+  await expect(editor).toContainText("@intent-chaining");
+
+  await toggle.click();
+  await expect(toggle).toHaveAttribute("aria-checked", "false");
+  await expect(editor).not.toContainText("@intent-chaining");
+
+  await editor.locator(".view-lines").click();
+  await page.keyboard.press(`${modifier}+a`);
+  await page.keyboard.insertText(`# language: en
+@intent-chaining
+@trust-dsl:1 @procedure:toggle-invalid @version:1.0.0
+Feature: Toggle an invalid draft
+
+  Background: Plan context
+    Given one reference "repository"
+
+  @scenario:invalid
+  Scenario: Invalid draft
+    Then Check "invalid" runs Operation "missing.operation" on "repository" as Input "project" and must establish "the draft is invalid"
+      """js
+      true
+      """
+`);
+  await expect(toggle).toHaveAttribute("aria-checked", "true");
+  await expect(page.getByText(/references unknown Operation "missing.operation"/)).toBeVisible();
+  await toggle.click();
+  await expect(toggle).toHaveAttribute("aria-checked", "false");
+  await expect(editor).not.toContainText("@intent-chaining");
+
+  await editor.locator(".view-lines").click();
+  await page.keyboard.press(`${modifier}+a`);
+  await page.keyboard.insertText(`# language: en
+# documentation about @intent-chaining
+@trust-dsl:1 @procedure:toggle-comment @version:1.0.0
+Feature: Keep an intent marker in a comment
+
+  Background: Plan context
+    Given one reference "repository"
+
+  @scenario:comment
+  Scenario: Ignore the comment marker
+    Then Check "comment" runs Operation "missing.operation" on "repository" as Input "project" and must establish "the comment is ignored"
+      """js
+      true
+      """
+`);
+  await expect(toggle).toHaveAttribute("aria-checked", "false");
+  await expect(editor).toContainText("# documentation about @intent-chaining");
+  await toggle.click();
+  await expect(toggle).toHaveAttribute("aria-checked", "true");
+  await toggle.click();
+  await expect(toggle).toHaveAttribute("aria-checked", "false");
+  await expect(editor).toContainText("# documentation about @intent-chaining");
+});
+
 test("the Procedure editor is backed by the LSP and understands its JS qualification", async ({ page }) => {
   await page.goto("/procedures/git-status?tab=source");
   const editor = page.locator(".monaco-editor");

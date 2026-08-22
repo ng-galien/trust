@@ -21,7 +21,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.acceptance.json"
   },
   "dependencies": {
-    "@trust/operation": "file:../trust-operation"
+    "@trust/operation": "file:../trust-operation",
+    "pino": "^10.3.1"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",

@@ -17,6 +17,7 @@ playwright-report/
 *.sqlite-wal
 *.sqlite.trust-process-lock
 .trust/
+/environments/trust-test/projects/
 .DS_Store
 dist-docs/
 trust-docs.zip

@@ -19,7 +19,7 @@ Un dry-run est un Plan dont les Facts viennent de l'opérateur. Même Procédure
 <Steps>
   <Step title="Déclarer le contexte (quand la Procédure a des déclarations de l'agent)">Un champ par rôle déclaré, délimité par valeur du parent quand le rôle est `for each` un parent ; **Appliquer les déclarations** remplace tout l'ensemble et crée une nouvelle révision. Tant que les déclarations manquantes ne sont pas appliquées, les Checks qui en ont besoin ne sont pas actionnables.</Step>
   <Step title="Exécuter les Checks">Trois listes : **Faits**, **À faire maintenant** (actionnables — choisissez-en un), **En attente d'un prérequis**. La sélection est partagée avec la checklist et le graphe (`?sel=`).</Step>
-  <Step title="Répéter le Check sélectionné">L'établi affiche, en mode expert, l'Opération, la cible, les entrées, la raison de succès et la qualification `js` du Check ; remplissez le formulaire des champs produits, puis **Soumettre comme l'agent**.</Step>
+  <Step title="Répéter le Check sélectionné">L'établi affiche, en mode expert, l'Opération, la cible, les entrées, la raison de succès et la qualification `js` du Check ; remplissez le formulaire des champs produits, puis **Soumettre comme l'agent**. Si la Procédure active le chaînage d'intention, le cockpit montre aussi l'intention courante exacte et ne demande la suivante que lorsque le Plan va continuer.</Step>
   <Step title="Lire le résultat">Le verdict et sa raison ; ce qui est devenu satisfait, ce qui a été rouvert en aval, ce qui est inchangé. Une admission refusée dit pourquoi (un Check qui n'est plus courant, un prérequis ouvert, pas de Session).</Step>
 </Steps>
 
@@ -29,7 +29,7 @@ Exactement ce que fait le Runner sur un Plan en direct, avec les valeurs de l'op
 
 ## Observer à nouveau un Check satisfait
 
-Seul un dry-run peut ré-observer un Check satisfait : choisissez-le dans **Faits** — le titre de l'établi devient *Observer à nouveau le Check sélectionné*. De nouveaux Facts remplacent son verdict et rouvrent chaque Check qui en dépend ; le verdict précédent reste dans l'historique. Sur un Plan en direct, un Check satisfait n'est pas admis à nouveau.
+Seul un dry-run peut ré-observer un Check satisfait : choisissez-le dans **Faits** — le titre de l'établi devient *Observer à nouveau le Check sélectionné*. De nouveaux Facts remplacent son verdict et rouvrent chaque Check qui en dépend ; le verdict précédent reste dans l'historique. Si le chaînage d'intention était terminé, l'admission démarre un nouveau chaînage dont l'intention courante appartenant au système est déjà liée à ce Check. Sur un Plan en direct, un Check satisfait n'est pas admis à nouveau.
 
 ## Réinitialiser et supprimer
 
@@ -41,5 +41,5 @@ Seul un dry-run peut ré-observer un Check satisfait : choisissez-le dans **Fait
 </Callout>
 
 <Details title="Les appels du cockpit" expert>
-`check.attempt.admit { attemptKey: "rehearse-<check>-<time>", checkUri, reobserve? }` → accord (`environment: {}` sur un dry-run) ou refus (`check-not-actionable`, `session-unavailable`, `check-not-found`, `attempt-key-conflict`) ; `check.attempt.facts { attemptKey, attemptHandle, checkUri, recordedAt, facts: [{ kind: <operation>, observedAt, values }] }` → accepté ou `fact-batch-rejected` ; `check.attempt.finalize { attemptHandle }` → `{ verdict, reasonCode: "check-qualified" | "qualification-not-satisfied", reason, checklistDelta: { newlySatisfied, newlyOpened, unchanged } }`. `plan.remove` efface un dry-run ; un Plan en direct est refusé (`plan-conflict`).
+`check.attempt.admit { attemptKey: "rehearse-<check>-<time>", checkUri, reobserve?, intent?, nextIntent? }` → accord (`environment: {}` sur un dry-run) ou refus (`check-not-actionable`, `session-unavailable`, `check-not-found`, `attempt-key-conflict`, ou une raison de chaînage d'intention) ; `check.attempt.facts { attemptKey, attemptHandle, checkUri, recordedAt, facts: [{ kind: <operation>, observedAt, values }] }` → accepté ou `fact-batch-rejected` ; `check.attempt.finalize { attemptHandle }` → `{ verdict, reasonCode: "check-qualified" | "qualification-not-satisfied", reason, checklistDelta: { newlySatisfied, newlyOpened, unchanged } }`. `plan.remove` efface un dry-run ; un Plan en direct est refusé (`plan-conflict`).
 </Details>

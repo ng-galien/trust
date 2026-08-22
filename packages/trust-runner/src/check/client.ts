@@ -42,11 +42,18 @@ export class CheckClient {
     this.#timeoutMs = timeoutMs;
   }
 
-  async admit(attemptKey: string, checkUri: string): Promise<CheckAdmission> {
+  async admit(
+    attemptKey: string,
+    checkUri: string,
+    intent: string | undefined,
+    nextIntent: string | undefined,
+  ): Promise<CheckAdmission> {
     return this.#call("check.attempt.admit", {
       contract: "trust.check-admission-request@1",
       attemptKey,
       checkUri,
+      ...(intent === undefined ? {} : { intent }),
+      ...(nextIntent === undefined ? {} : { nextIntent }),
     }) as unknown as Promise<CheckAdmission>;
   }
 

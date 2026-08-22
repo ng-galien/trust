@@ -2,7 +2,13 @@ import { isExpressionIdentifierPart, isExpressionIdentifierStart } from "@trust/
 import { operationLanguage } from "@trust/operation/language";
 
 export const procedureLanguage = {
-  tags: { procedure: "@procedure:", version: "@version:", dsl: "@trust-dsl:", scenario: "@scenario:" },
+  tags: {
+    procedure: "@procedure:",
+    version: "@version:",
+    dsl: "@trust-dsl:",
+    intentChaining: "@intent-chaining",
+    scenario: "@scenario:",
+  },
   dslVersion: "1",
   valueTypes: operationLanguage.valueTypes,
   cardinalities: operationLanguage.cardinalities,

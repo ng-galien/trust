@@ -26,7 +26,7 @@ test("the server manager refuses a stale SQLite schema before starting tmux", as
     await assert.rejects(
       execute(
         process.execPath,
-        [path.join(repositoryRoot, "scripts/server.ts"), "start"],
+        [path.join(repositoryRoot, "environments/trust-test/scripts/server.ts"), "start"],
         {
           cwd: repositoryRoot,
           env: {
@@ -43,7 +43,7 @@ test("the server manager refuses a stale SQLite schema before starting tmux", as
           ? `${error.message}\n${String((error as Error & { stderr?: unknown }).stderr ?? "")}`
           : String(error);
         assert.match(output, /SQLite database schema is incompatible/);
-        assert.match(output, /node scripts\/server\.ts reset/);
+        assert.match(output, /node environments\/trust-test\/scripts\/server\.ts reset/);
         return true;
       },
     );
@@ -73,7 +73,7 @@ test("the server manager refuses a healthy runtime owned outside its tmux sessio
     await assert.rejects(
       execute(
         process.execPath,
-        [path.join(repositoryRoot, "scripts/server.ts"), "start"],
+        [path.join(repositoryRoot, "environments/trust-test/scripts/server.ts"), "start"],
         {
           cwd: repositoryRoot,
           env: {
@@ -111,7 +111,7 @@ test("the Node server manager resets, reuses and live-reloads an isolated tmux s
   try {
     const reset = await execute(
       process.execPath,
-      [path.join(repositoryRoot, "scripts/server.ts"), "reset"],
+      [path.join(repositoryRoot, "environments/trust-test/scripts/server.ts"), "reset"],
       { cwd: repositoryRoot, env: environment, timeout: 120_000 },
     );
     assert.match(reset.stdout, /TRUST server: started with an empty database/);
@@ -122,7 +122,7 @@ test("the Node server manager resets, reuses and live-reloads an isolated tmux s
 
     const start = await execute(
       process.execPath,
-      [path.join(repositoryRoot, "scripts/server.ts"), "start"],
+      [path.join(repositoryRoot, "environments/trust-test/scripts/server.ts"), "start"],
       { cwd: repositoryRoot, env: environment, timeout: 30_000 },
     );
     assert.match(start.stdout, /TRUST server: already available/);

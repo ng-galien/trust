@@ -1,5 +1,5 @@
 # language: en
-@trust-dsl:1 @procedure:end-to-end-red-green @version:3.1.0
+@trust-dsl:1 @procedure:end-to-end-red-green @version:3.2.0
 Feature: Validate a multi-project change through a traced Red-Green deployment cycle
 
   Full delivery loop for a defect that touches one or several projects, driven by one Jira issue.
@@ -24,8 +24,9 @@ Feature: Validate a multi-project change through a traced Red-Green deployment c
   - green: the same Karate selection, same acceptance test revision, in the green phase against
     the deployment; it must pass.
   - trace: the trace the green run emitted is read back and must carry spans.
-  - merge: the ticket branch of the acceptance project, then of every affected project, is merged
-    into `main` with a merge commit; each merge must succeed and leave a clean tree.
+  - merge: the committed ticket branch of the acceptance project, then of every affected project,
+    is merged into `main` with a merge commit and deleted locally; each merge and deletion must
+    succeed and leave a clean tree.
 
   Every Check runs on the `trust-test` environment: workspace of the projects, jira-mock, Tempo.
   The Plan identifier is passed to Maven as `trust.run` so the Karate traffic of one Plan never
@@ -226,6 +227,10 @@ Feature: Validate a multi-project change through a traced Red-Green deployment c
         fail("the acceptance ticket branch did not merge into main")
       ) &&
       (
+        fact.branchStatus === "deleted" ||
+        fail("the acceptance ticket branch still exists locally")
+      ) &&
+      (
         fact.workingTree === "clean" ||
         fail("the acceptance repository has local changes")
       )
@@ -239,6 +244,10 @@ Feature: Validate a multi-project change through a traced Red-Green deployment c
       (
         fact.mergeStatus === "merged" ||
         fail("a fix ticket branch did not merge into main")
+      ) &&
+      (
+        fact.branchStatus === "deleted" ||
+        fail("a fix ticket branch still exists locally")
       ) &&
       (
         fact.workingTree === "clean" ||

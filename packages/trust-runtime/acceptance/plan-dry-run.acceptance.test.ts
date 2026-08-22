@@ -294,7 +294,7 @@ test("a live Plan keeps handing out its environment and declarations are replace
     const engagement = await rpc(runtime.endpoint, "plan.engage", {
       contract: "trust.plan-engagement-request@1",
       procedure: "end-to-end-red-green",
-      procedureVersion: "3.1.0",
+      procedureVersion: "3.2.0",
       plan: "delivery",
       environment: "local",
       rootInputs: { "jira issue": "TK-100" },
@@ -445,7 +445,12 @@ test("a declaration change reopens downstream Checks when an upstream Check keep
     });
 
     view = await readPlan(runtime.endpoint, "stable-upstream");
-    const baseline = await admit(runtime.endpoint, view.actionableChecks[0]!, "stable-baseline-a");
+    assert.equal(view.intentChainState, "ACTIVE");
+    assert.ok(view.currentIntent);
+    const baseline = await admit(runtime.endpoint, view.actionableChecks[0]!, "stable-baseline-a", false, {
+      intent: view.currentIntent,
+      nextIntent: "Confirm the resulting revision",
+    });
     const baselineUri = baseline.checkUri;
     await rpc(runtime.endpoint, "check.attempt.facts", factBatch(baseline, {
       comparedBaseRevision: "revision-a",
@@ -456,7 +461,10 @@ test("a declaration change reopens downstream Checks when an upstream Check keep
     assert.equal((await finalize(runtime.endpoint, baseline.attemptHandle)).verdict, "VALIDATED");
 
     view = await readPlan(runtime.endpoint, "stable-upstream");
-    const consumer = await admit(runtime.endpoint, view.actionableChecks[0]!, "stable-consumer");
+    assert.equal(view.currentIntent, "Confirm the resulting revision");
+    const consumer = await admit(runtime.endpoint, view.actionableChecks[0]!, "stable-consumer", false, {
+      intent: view.currentIntent,
+    });
     await rpc(runtime.endpoint, "check.attempt.facts", factBatch(consumer, {
       headRevision: "revision-result",
       workingTree: "clean",
@@ -465,6 +473,48 @@ test("a declaration change reopens downstream Checks when an upstream Check keep
 
     view = await readPlan(runtime.endpoint, "stable-upstream");
     assert.equal(view.checks.find((check) => check.name === "consumer")?.state, "SATISFIED");
+    assert.equal(view.intentChainState, "COMPLETE");
+    assert.equal(view.currentIntent, null);
+
+    const refusedReobservation = await admit(
+      runtime.endpoint,
+      consumer.checkUri,
+      "stable-consumer-refused-reobservation",
+      true,
+      { nextIntent: "This leaf Check cannot continue the completed Plan" },
+    );
+    assert.equal(refusedReobservation.status, "REFUSED");
+    assert.equal(refusedReobservation.reasonCode, "next-intent-unexpected");
+    view = await readPlan(runtime.endpoint, "stable-upstream");
+    assert.equal(view.intentChainState, "COMPLETE");
+    assert.equal(view.currentIntent, null);
+
+    const reobserved = await admit(runtime.endpoint, baselineUri, "stable-baseline-reobserved", true, {
+      nextIntent: "Confirm the re-observed revision",
+    });
+    await rpc(runtime.endpoint, "check.attempt.facts", factBatch(reobserved, {
+      comparedBaseRevision: "revision-a",
+      headRevision: "revision-result",
+      commitsAhead: 1,
+      workingTree: "clean",
+    }));
+    assert.equal((await finalize(runtime.endpoint, reobserved.attemptHandle)).verdict, "VALIDATED");
+    view = await readPlan(runtime.endpoint, "stable-upstream");
+    assert.equal(view.intentChainState, "ACTIVE");
+    assert.equal(view.currentIntent, "Confirm the re-observed revision");
+    assert.equal(view.checks.find((check) => check.name === "consumer")?.state, "OPEN");
+
+    const revalidated = await admit(runtime.endpoint, consumer.checkUri, "stable-consumer-revalidated", false, {
+      intent: view.currentIntent!,
+    });
+    await rpc(runtime.endpoint, "check.attempt.facts", factBatch(revalidated, {
+      headRevision: "revision-result",
+      workingTree: "clean",
+    }));
+    assert.equal((await finalize(runtime.endpoint, revalidated.attemptHandle)).verdict, "VALIDATED");
+    view = await readPlan(runtime.endpoint, "stable-upstream");
+    assert.equal(view.intentChainState, "COMPLETE");
+
     await rpc(runtime.endpoint, "plan.declarations.replace", {
       contract: "trust.plan-declaration-replacement-request@1",
       plan: "stable-upstream",
@@ -473,11 +523,123 @@ test("a declaration change reopens downstream Checks when an upstream Check keep
     });
 
     view = await readPlan(runtime.endpoint, "stable-upstream");
+    assert.equal(view.intentChainState, "ACTIVE");
+    assert.ok(view.currentIntent);
     assert.equal(view.checks.find((check) => check.name === "baseline")?.checkUri, baselineUri);
     assert.deepEqual(
       view.checks.map((check) => [check.name, check.state, check.actionable]).sort(),
       [["baseline", "OPEN", true], ["consumer", "OPEN", false]],
     );
+  } finally {
+    await runtime.close();
+  }
+});
+
+test("declaration replacement cannot overtake an intent Attempt and completes a chain when it removes the remaining Check", async () => {
+  const runtime = await startPublicRuntime("trust-intent-declaration-", {
+    operationsDirectory,
+    environments: { local: { workspaceRoot: repositoryRoot } },
+  });
+  try {
+    await publish(
+      runtime.endpoint,
+      path.join(repositoryRoot, "packages/trust-runtime/acceptance/fixtures/intent-declaration.feature"),
+    );
+    await rpc(runtime.endpoint, "plan.engage", {
+      contract: "trust.plan-engagement-request@1",
+      procedure: "intent-declaration",
+      procedureVersion: "1.0.0",
+      plan: "intent-declaration",
+      environment: "local",
+      rootInputs: {},
+      mode: "dry-run",
+    });
+    let view = await readPlan(runtime.endpoint, "intent-declaration");
+    assert.equal(view.intentChainState, "ACTIVE");
+    await rpc(runtime.endpoint, "plan.declarations.replace", {
+      contract: "trust.plan-declaration-replacement-request@1",
+      plan: "intent-declaration",
+      expectedRevision: view.revision,
+      declarations: { project: ["project-a", "project-b"] },
+    });
+    view = await readPlan(runtime.endpoint, "intent-declaration");
+    assert.equal(view.actionableChecks.length, 2);
+    const currentIntent = view.currentIntent!;
+    const selected = view.checks.find((check) => check.checkUri === view.actionableChecks[0]);
+    assert.ok(selected);
+    const retainedProject = String(selected.inputs.project);
+    const pending = await admit(runtime.endpoint, selected.checkUri, "intent-declaration-pending", false, {
+      intent: currentIntent,
+      nextIntent: "Finish the remaining declared project",
+    });
+    const blockedReplacement = await rpcFailure(runtime.endpoint, "plan.declarations.replace", {
+      contract: "trust.plan-declaration-replacement-request@1",
+      plan: "intent-declaration",
+      expectedRevision: view.revision,
+      declarations: { project: [retainedProject] },
+    });
+    assert.equal(blockedReplacement.data?.reason, "plan-conflict");
+    const whilePending = await readPlan(runtime.endpoint, "intent-declaration");
+    assert.equal(whilePending.revision, view.revision);
+    assert.equal(whilePending.currentIntent, currentIntent);
+
+    await rpc(runtime.endpoint, "check.attempt.facts", factBatch(pending, {
+      headRevision: "revision-a",
+      workingTree: "clean",
+    }));
+    assert.equal((await finalize(runtime.endpoint, pending.attemptHandle)).verdict, "VALIDATED");
+    view = await readPlan(runtime.endpoint, "intent-declaration");
+    assert.equal(view.intentChainState, "ACTIVE");
+    await rpc(runtime.endpoint, "plan.declarations.replace", {
+      contract: "trust.plan-declaration-replacement-request@1",
+      plan: "intent-declaration",
+      expectedRevision: view.revision,
+      declarations: { project: [retainedProject] },
+    });
+    view = await readPlan(runtime.endpoint, "intent-declaration");
+    assert.equal(view.checks.length, 1);
+    assert.equal(view.checks[0]?.state, "SATISFIED");
+    assert.equal(view.intentChainState, "COMPLETE");
+    assert.equal(view.currentIntent, null);
+
+    await rpc(runtime.endpoint, "plan.engage", {
+      contract: "trust.plan-engagement-request@1",
+      procedure: "intent-declaration",
+      procedureVersion: "1.0.0",
+      plan: "intent-declaration-closed",
+      environment: "local",
+      rootInputs: {},
+      mode: "dry-run",
+    });
+    let closedView = await readPlan(runtime.endpoint, "intent-declaration-closed");
+    await rpc(runtime.endpoint, "plan.declarations.replace", {
+      contract: "trust.plan-declaration-replacement-request@1",
+      plan: "intent-declaration-closed",
+      expectedRevision: closedView.revision,
+      declarations: { project: ["project-a", "project-b"] },
+    });
+    closedView = await readPlan(runtime.endpoint, "intent-declaration-closed");
+    const closedAttempt = await admit(runtime.endpoint, closedView.actionableChecks[0]!, "intent-declaration-closed-pending", false, {
+      intent: closedView.currentIntent!,
+      nextIntent: "Finish the remaining project after reopening",
+    });
+    await rpc(runtime.endpoint, "plan.close", { plan: "intent-declaration-closed" });
+    const replacementAfterClose = await rpc(runtime.endpoint, "plan.declarations.replace", {
+      contract: "trust.plan-declaration-replacement-request@1",
+      plan: "intent-declaration-closed",
+      expectedRevision: closedView.revision,
+      declarations: { project: ["project-a"] },
+    }) as { revision: number };
+    assert.equal(replacementAfterClose.revision, closedView.revision + 1);
+    const staleFactsAfterClose = await rpcFailure(
+      runtime.endpoint,
+      "check.attempt.facts",
+      factBatch(closedAttempt, { headRevision: "stale-revision", workingTree: "clean" }),
+    );
+    assert.equal(staleFactsAfterClose.data?.reason, "fact-batch-rejected");
+    closedView = await readPlan(runtime.endpoint, "intent-declaration-closed");
+    assert.equal(closedView.checks.length, 1);
+    assert.equal(closedView.actionableChecks.length, 1);
   } finally {
     await runtime.close();
   }
@@ -523,6 +685,7 @@ test("a Check bound with using plan receives the Plan identifier in its admitted
 
 interface Admission {
   status: string;
+  reasonCode?: string;
   attemptKey: string;
   attemptHandle: string;
   checkUri: string;
@@ -538,6 +701,8 @@ interface PlanViewShape {
   actionableChecks: readonly string[];
   declarations: Record<string, unknown>;
   rootInputs: Record<string, unknown>;
+  intentChainState: string;
+  currentIntent: string | null;
   latestQualification: { newlyOpened: readonly string[] } | null;
   checks: readonly {
     checkUri: string;
@@ -569,12 +734,19 @@ async function readPlan(endpoint: string, plan: string): Promise<PlanViewShape> 
   return rpc(endpoint, "plan.read", { plan }) as Promise<PlanViewShape>;
 }
 
-async function admit(endpoint: string, checkUri: string, attemptKey: string, reobserve = false): Promise<Admission> {
+async function admit(
+  endpoint: string,
+  checkUri: string,
+  attemptKey: string,
+  reobserve = false,
+  intents: { readonly intent?: string; readonly nextIntent?: string } = {},
+): Promise<Admission> {
   return rpc(endpoint, "check.attempt.admit", {
     contract: "trust.check-admission-request@1",
     attemptKey,
     checkUri,
     ...(reobserve ? { reobserve: true } : {}),
+    ...intents,
   }) as Promise<Admission>;
 }
 

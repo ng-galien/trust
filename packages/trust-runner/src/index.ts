@@ -15,6 +15,7 @@ export { OtlpFactExporter } from "./telemetry/otlp.js";
 export type { Fact, FactExporter, FactTrace } from "./telemetry/otlp.js";
 export type { DiagnosticEvent, DiagnosticsSink, StepReporter } from "./diagnostics/events.js";
 export { OtlpDiagnosticsSink } from "./diagnostics/otlp.js";
+export { createRunnerLogging } from "./diagnostics/pino.js";
 export { parseTrialJob, runTrial } from "./trial/run.js";
 export type { TrialJob, TrialOutcome } from "./trial/run.js";
 export { runTrialCli } from "./cli/trial.js";

@@ -293,6 +293,22 @@ function renderPlan(view: PlanView): string {
     `State: ${view.workState}`,
     `Session: ${view.sessionState}`,
     `Progress: ${view.satisfiedChecks}/${view.checks.length} current Checks satisfied`,
+    ...(view.intentChaining
+      ? [
+          "",
+          "INTENT CHAINING",
+          `State: ${view.intentChainState}`,
+          `Current intent: ${view.currentIntent ?? "none"}`,
+          ...(view.currentIntentCheckUri === null ? [] : [`Current intent Check: ${view.currentIntentCheckUri}`]),
+          ...(view.intentChainState === "ACTIVE"
+            ? [
+                "Continuing URI template: <opaque-check-uri>?intent={intent}&nextIntent={nextIntent}",
+                "Final URI template: <opaque-check-uri>?intent={intent}",
+                "Use the one template shown for the selected Check. Replace {intent} with the exact Current intent. Every intent value must contain 1 to 1024 characters, be trimmed and single-line, contain no control character, and be URL-encoded.",
+              ]
+            : []),
+        ]
+      : []),
     "",
     "NEXT",
     ...planNext(view, actionable.length),
@@ -302,7 +318,7 @@ function renderPlan(view: PlanView): string {
     lines.push(
       "",
       "ACTIONABLE CHECKS",
-      ...actionable.flatMap(renderActionableCheck),
+      ...actionable.flatMap((check) => renderActionableCheck(check, view)),
     );
   }
   if (missingRoles.length > 0) {
@@ -384,7 +400,7 @@ function renderCheck(view: CheckView): string {
     view.state === "SATISFIED"
       ? "This Check is already satisfied. Use trust_plan_read to continue the Plan."
       : view.actionable
-        ? "Run this Check with the TRUST Skill. Pass only the exact Check URI above."
+        ? "Use trust_plan_read to obtain this Check's invocation URI, then run it with the TRUST Skill."
         : "Do not run this Check yet. Resolve the blockers below, then read the Plan again.",
   ];
   if (view.blockedBy.length > 0) {
@@ -416,10 +432,15 @@ function planNext(view: PlanView, actionableChecks: number): readonly string[] {
   if (view.sessionState !== "OPEN") {
     return ["The Session is unavailable. Do not run a Check until it is open."];
   }
+  if (view.intentChainState === "NOT_STARTED") {
+    return ["Read this Plan with trust_plan_read before running a Check. That read starts its intent chain."];
+  }
   const actions: string[] = [];
   if (actionableChecks > 0) {
     actions.push(
-      `Run ${actionableChecks} actionable Check${actionableChecks === 1 ? "" : "s"} with the TRUST Skill. Pass only a Check URI shown below.`,
+      view.intentChainState === "ACTIVE"
+        ? `Run ${actionableChecks} actionable Check${actionableChecks === 1 ? "" : "s"} with the TRUST Skill. Use one invocation URI template shown below.`
+        : `Run ${actionableChecks} actionable Check${actionableChecks === 1 ? "" : "s"} with the TRUST Skill. Pass only a Check URI shown below.`,
     );
   }
   if (view.missingDeclarations.length > 0) {
@@ -428,16 +449,28 @@ function planNext(view: PlanView, actionableChecks: number): readonly string[] {
     );
   }
   if (actions.length === 1 && actionableChecks === 1) {
-    return ["Run this Check with the TRUST Skill. Pass only the exact Check URI shown under ACTIONABLE CHECKS."];
+    return [
+      view.intentChainState === "ACTIVE"
+        ? "Run this Check with the TRUST Skill. Use its invocation URI template under ACTIONABLE CHECKS."
+        : "Run this Check with the TRUST Skill. Pass only the exact Check URI shown under ACTIONABLE CHECKS.",
+    ];
   }
   if (actions.length > 0) return ["You can act now:", ...actions.map((action) => `- ${action}`)];
   return ["No Check is actionable now. Read BLOCKED CHECKS, resolve its prerequisites, then read the Plan again."];
 }
 
-function renderActionableCheck(check: PlanView["checks"][number]): readonly string[] {
+function renderActionableCheck(
+  check: PlanView["checks"][number],
+  view: PlanView,
+): readonly string[] {
   return [
     `- ${check.name} (${check.scenario})`,
     `  Check URI: ${check.checkUri}`,
+    ...(view.intentChainState === "ACTIVE"
+      ? [check.completesPlan
+          ? `  Final invocation URI: ${check.checkUri}?intent={intent}`
+          : `  Continuing invocation URI: ${check.checkUri}?intent={intent}&nextIntent={nextIntent}`]
+      : []),
     `  Operation: ${check.operation}`,
     `  ${formatTarget(check)}`,
     "  Inputs:",

@@ -137,8 +137,18 @@ export class TrustRuntimeClient {
   replaceDeclarations = (plan: string, expectedRevision: number, declarations: JsonObject) =>
     this.call<DeclarationReplacement>("plan.declarations.replace", { contract: "trust.plan-declaration-replacement-request@1", plan, expectedRevision, declarations });
   /** `reobserve` (dry-runs only): admit a satisfied Check again to replay it and watch the cascade. */
-  admitCheck = (checkUri: string, attemptKey: string, options: { reobserve?: boolean } = {}) =>
-    this.call<CheckAdmission>("check.attempt.admit", { contract: "trust.check-admission-request@1", attemptKey, checkUri, ...(options.reobserve ? { reobserve: true } : {}) });
+  admitCheck = (
+    checkUri: string,
+    attemptKey: string,
+    options: { reobserve?: boolean; intent?: string; nextIntent?: string } = {},
+  ) => this.call<CheckAdmission>("check.attempt.admit", {
+    contract: "trust.check-admission-request@1",
+    attemptKey,
+    checkUri,
+    ...(options.reobserve ? { reobserve: true } : {}),
+    ...(options.intent === undefined ? {} : { intent: options.intent }),
+    ...(options.nextIntent === undefined ? {} : { nextIntent: options.nextIntent }),
+  });
   /** Same Fact batch the runner reports over OTLP: one Fact per observation of the admitted Operation. */
   postFacts = (admission: { attemptKey: string; attemptHandle: string; checkUri: string; operation: string }, values: JsonObject) => {
     const now = new Date().toISOString();

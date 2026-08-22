@@ -132,6 +132,8 @@ export interface CompiledProcedure {
   readonly procedure: string;
   readonly version: string;
   readonly title: string;
+  /** When enabled, every Plan engaged from this Procedure carries one rotating agent intent. */
+  readonly intentChaining: boolean;
   /** Free-text description written under `Feature:`; absent when the source has none. Not part of the digest. */
   readonly description?: string;
   readonly source: string;

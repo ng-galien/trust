@@ -3,27 +3,32 @@
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
-import { readdir, readFile, rm } from "node:fs/promises";
+import { readdir, readFile, rm, truncate } from "node:fs/promises";
 import { createServer as createNetServer } from "node:net";
 import { parse, resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 
-import { publicRpc } from "../infra/server/lib/public-rpc.mjs";
-import { assertSqliteSchemaFile } from "../packages/trust-runtime/src/database/sqlite-schema.ts";
+import { publicRpc } from "./lib/public-rpc.mjs";
+import { assertSqliteSchemaFile } from "../../../packages/trust-runtime/src/database/sqlite-schema.ts";
 
-const root = fileURLToPath(new URL("../", import.meta.url));
+const environmentRoot = fileURLToPath(new URL("../", import.meta.url));
+const root = fileURLToPath(new URL("../../../", import.meta.url));
 const stateDirectory = parseStateDirectory(
   process.env.TRUST_SERVER_STATE_DIRECTORY ?? ".trust/server",
 );
 const database = resolve(stateDirectory, "runtime.sqlite");
+const runtimeLog = resolve(stateDirectory, "runtime.log");
+const runnerLog = resolve(stateDirectory, "runner.log");
 const operations = resolve(root, "assets/operations");
 // An Environment's workspaceRoot is the directory that holds the projects; the Check's "project" Input picks one.
 const workspaceRoot = resolve(root, "..");
-const paymentRoot = resolve(process.env.TRUST_PROJECTS_ROOT ?? resolve(root, "../trust-projects"));
-// The payment projects live next to this repository when checked out; otherwise the parent directory stands in.
+const paymentRoot = resolve(
+  process.env.TRUST_PROJECTS_ROOT ?? resolve(environmentRoot, "projects"),
+);
+// The ignored payment repositories belong to this environment; otherwise the parent directory stands in.
 const projectsRoot = existsSync(paymentRoot) ? paymentRoot : undefined;
-// `trust-test` is the Kind test environment (k8s/): the payment projects, the jira-mock and Tempo behind the ingress.
+// `trust-test` combines the payment projects, Kind cluster, jira-mock and Tempo behind the ingress.
 const environmentValues = {
   local: { workspaceRoot },
   "trust-test": {
@@ -60,9 +65,15 @@ switch (command) {
   case "preflight":
     await preflight(parsePreflight(process.argv.slice(3)));
     break;
+  case "logs":
+    if (process.argv[3] !== "clear" || process.argv.length !== 4) {
+      throw new TypeError("usage: server.ts logs clear");
+    }
+    await clearLogs();
+    break;
   default:
     throw new TypeError(
-      "usage: server.ts start [--web] | reset [--web] | seed | preflight --ticket <key> --procedure <slug> --version <version>",
+      "usage: server.ts start [--web] | reset [--web] | seed | logs clear | preflight --ticket <key> --procedure <slug> --version <version>",
     );
 }
 
@@ -104,7 +115,11 @@ async function start(reset: boolean, startWeb: boolean) {
       "-e", `TRUST_PORT=${port}`,
       "-e", `TRUST_WEB_PORT=${webPort}`,
       "-e", `TRUST_RUNTIME_INSTANCE=${instance}`,
+      "-e", `TRUST_RUNTIME_LOG_PATH=${runtimeLog}`,
       "-e", `TRUST_SEMANTIC_AUTHORITY=trust-test:${port}`,
+      ...(process.env.TRUST_LOG_LEVEL
+        ? ["-e", `TRUST_LOG_LEVEL=${process.env.TRUST_LOG_LEVEL}`]
+        : []),
       ...(process.env.TRUST_DEV_WATCH_INCLUDE
         ? ["-e", `TRUST_DEV_WATCH_INCLUDE=${process.env.TRUST_DEV_WATCH_INCLUDE}`]
         : []),
@@ -116,6 +131,8 @@ async function start(reset: boolean, startWeb: boolean) {
     if (startWeb) await waitForWeb(instance);
     await assertServer(startWeb, instance);
     process.stdout.write(`TRUST server: started${reset ? " with an empty database" : ""}\n`);
+    process.stdout.write(`TRUST runtime log: ${runtimeLog}\n`);
+    process.stdout.write(`TRUST runner log: ${runnerLog}\n`);
   } catch (error) {
     if (sessionCreated) await stop().catch(() => undefined);
     throw error;
@@ -144,6 +161,19 @@ async function seed() {
     procedures.push(`${publication.procedure.procedure}@${publication.procedure.version}`);
   }
   process.stdout.write(`TRUST seed: ${procedures.join(", ")}\n`);
+}
+
+async function clearLogs() {
+  await Promise.all([clearLog(runtimeLog), clearLog(runnerLog)]);
+  process.stdout.write(`TRUST logs: cleared ${runtimeLog} and ${runnerLog}\n`);
+}
+
+async function clearLog(logPath: string) {
+  try {
+    await truncate(logPath, 0);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+  }
 }
 
 async function preflight(options: { ticket: string; procedure: string; version: string }) {
@@ -229,6 +259,7 @@ async function assertServer(expectWeb = false, expectedInstance?: string) {
     ["TRUST_DATABASE_PATH", database],
     ["TRUST_OPERATIONS_DIRECTORY", operations],
     ["TRUST_PORT", String(port)],
+    ["TRUST_RUNTIME_LOG_PATH", runtimeLog],
     ["TRUST_SEMANTIC_AUTHORITY", `trust-test:${port}`],
     ...(expectedInstance ? [["TRUST_RUNTIME_INSTANCE", expectedInstance]] as const : []),
     ...(expectWeb ? [["TRUST_WEB_PORT", String(webPort)]] as const : []),

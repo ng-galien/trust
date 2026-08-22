@@ -9,6 +9,7 @@ import type { PlanStore } from "./store.js";
 import type { SessionStore } from "../session/store.js";
 import type { Procedures } from "../procedure/procedures.js";
 import type { Clock } from "../time.js";
+import { completesPlanOnValidation } from "./intent.js";
 
 const DEFAULT_PROCEDURE_PAGE_SIZE = 49_152;
 const MAX_PROCEDURE_PAGE_SIZE = 65_536;
@@ -69,6 +70,10 @@ export interface PlanView {
   readonly procedureVersion: string;
   readonly environment: string;
   readonly mode: PlanMode;
+  readonly intentChaining: boolean;
+  readonly intentChainState: import("../model.js").IntentChainState;
+  readonly currentIntent: string | null;
+  readonly currentIntentCheckUri: string | null;
   readonly rootInputs: Readonly<Record<string, unknown>>;
   readonly createdAt: string;
   readonly state: "ENGAGED";
@@ -171,6 +176,7 @@ export interface PlanCheckView {
   readonly operation: string;
   readonly state: "OPEN" | "SATISFIED";
   readonly actionable: boolean;
+  readonly completesPlan: boolean;
   readonly blockedBy: readonly string[];
   readonly latestVerdict: "VALIDATED" | "NOT_VALIDATED" | null;
   readonly latestReasonCode: string | null;
@@ -318,7 +324,7 @@ export class PlanReader {
 
   async readPlan(checkUri: string): Promise<PlanView> {
     const { plan } = await this.#resolve(checkUri);
-    return this.readPlanBySlug(plan.slug);
+    return this.readPlanBySlug(plan.slug, true);
   }
 
   async listPlans(input: PlanListInput = {}): Promise<{ readonly plans: readonly PlanSummaryView[]; readonly nextCursor?: string }> {
@@ -400,10 +406,16 @@ export class PlanReader {
     };
   }
 
-  async readPlanBySlug(planSlug: string): Promise<PlanView> {
-    const plan = await this.#plans.findPlan(planSlug);
+  async readPlanBySlug(planSlug: string, initializeIntent = false): Promise<PlanView> {
+    let plan = await this.#plans.findPlan(planSlug);
     if (!plan) {
       throw new ReadError("plan-not-found", `Plan ${planSlug} is unavailable`);
+    }
+    if (initializeIntent && plan.intentChaining && plan.intentChainState === "NOT_STARTED") {
+      plan = await this.#plans.initializeIntent(
+        plan.slug,
+        `Follow Procedure "${plan.procedure}@${plan.procedureVersion}" for Plan "${plan.slug}"`,
+      );
     }
     const revision = await this.#plans.readRevision(plan.slug, plan.currentRevision);
     if (!revision) {
@@ -454,6 +466,14 @@ export class PlanReader {
         active,
         latestByCheck[index],
         sessionAvailable,
+        plan.intentChaining && completesPlanOnValidation({
+          procedure,
+          revision,
+          checks,
+          activeCheckUris: active,
+          check,
+        }),
+        plan.currentIntentCheckUri,
       ))
       .sort((left, right) => left.checkUri.localeCompare(right.checkUri));
     const actionableChecks = checkViews
@@ -469,6 +489,10 @@ export class PlanReader {
       procedureVersion: plan.procedureVersion,
       environment: plan.environment,
       mode: plan.mode,
+      intentChaining: plan.intentChaining,
+      intentChainState: plan.intentChainState,
+      currentIntent: plan.currentIntent ?? null,
+      currentIntentCheckUri: plan.currentIntentCheckUri ?? null,
       rootInputs: plan.rootInputs,
       createdAt: plan.createdAt,
       state: "ENGAGED",
@@ -537,7 +561,7 @@ export class PlanReader {
     const active = new Set(activeQualifications.map((qualification) => qualification.checkUri));
     const state = active.has(checkUri) ? "SATISFIED" : "OPEN";
     const sessionAvailable = availableSession !== undefined;
-    const view = checkView(check, checks, active, latest, sessionAvailable);
+    const view = checkView(check, checks, active, latest, sessionAvailable, false, plan.currentIntentCheckUri);
     const attempts = await Promise.all(storedAttempts.map(async (attempt) => ({
       handle: attempt.handle,
       attemptKey: attempt.attemptKey,
@@ -759,8 +783,14 @@ function checkView(
   active: ReadonlySet<string>,
   latest: CheckSnapshot | undefined,
   sessionAvailable: boolean,
+  completesPlan = false,
+  currentIntentCheckUri: string | undefined = undefined,
 ): PlanCheckView {
-  const blockedBy = checkBlockers(check, checks, active, sessionAvailable);
+  const intentAvailable = currentIntentCheckUri === undefined || currentIntentCheckUri === check.uri;
+  const baseBlockers = checkBlockers(check, checks, active, sessionAvailable);
+  const blockedBy = intentAvailable || active.has(check.uri)
+    ? baseBlockers
+    : Object.freeze([...baseBlockers, `current intent is bound to ${currentIntentCheckUri}`].sort());
   return {
     checkUri: check.uri,
     name: check.check.name,
@@ -773,7 +803,8 @@ function checkView(
     inputs: check.actionInput,
     operation: check.check.operation,
     state: active.has(check.uri) ? "SATISFIED" : "OPEN",
-    actionable: sessionAvailable && checkIsActionable(check, checks, (uri) => active.has(uri)),
+    actionable: intentAvailable && sessionAvailable && checkIsActionable(check, checks, (uri) => active.has(uri)),
+    completesPlan,
     blockedBy,
     latestVerdict: latest?.verdict ?? null,
     latestReasonCode: latest?.reasonCode ?? null,

@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+ENVIRONMENT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CLUSTER_NAME="${CLUSTER_NAME:-trust-test}"
 
-docker build -t trust/jira-mock:local "${ROOT_DIR}/k8s/connectors/jira-mock"
-docker build -t trust/jenkins-test:local "${ROOT_DIR}/k8s/connectors/jenkins"
+docker build -t trust/jira-mock:local "${ENVIRONMENT_ROOT}/connectors/jira-mock"
+docker build -t trust/jenkins-test:local "${ENVIRONMENT_ROOT}/connectors/jenkins"
 
 kind load docker-image --name "${CLUSTER_NAME}" trust/jira-mock:local
 kind load docker-image --name "${CLUSTER_NAME}" trust/jenkins-test:local

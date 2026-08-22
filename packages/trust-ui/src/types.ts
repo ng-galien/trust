@@ -57,6 +57,7 @@ export interface CompiledProcedure {
   procedure: string;
   version: string;
   title: string;
+  intentChaining: boolean;
   description?: string;
   source: string;
   definitionDigest: string;
@@ -99,6 +100,7 @@ export interface PlanCheck {
   operation: string;
   state: "OPEN" | "SATISFIED";
   actionable: boolean;
+  completesPlan: boolean;
   blockedBy: string[];
   latestVerdict: "VALIDATED" | "NOT_VALIDATED" | null;
   latestReasonCode: string | null;
@@ -113,6 +115,10 @@ export interface DeclarationRole {
 }
 
 export interface PlanView extends PlanSummary {
+  intentChaining: boolean;
+  intentChainState: "DISABLED" | "NOT_STARTED" | "ACTIVE" | "COMPLETE";
+  currentIntent: string | null;
+  currentIntentCheckUri: string | null;
   rootInputs: JsonObject;
   declarations: JsonObject;
   declarationRoles: DeclarationRole[];
