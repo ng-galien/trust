@@ -82,6 +82,7 @@ function parseCheckFactTrace(value: unknown): FactBatchInput {
   return {
     attemptKey: requiredAttribute(spanAttributes, "trust.attempt_key"),
     attemptHandle: requiredAttribute(spanAttributes, "trust.attempt_handle"),
+    executionId: requiredAttribute(spanAttributes, "trust.execution_id"),
     checkUri: requiredAttribute(spanAttributes, "trust.check_uri"),
     facts: parseFactEvents(span.events, "trust.runner.fact"),
     recordedAt: unixNanoInstant(span.startTimeUnixNano),

@@ -4,6 +4,11 @@ import type { Shell } from "./shell.js";
 
 export type OperationValueType = "string" | "number" | "instant" | "reference";
 
+/** TRUST-owned context for one admitted Operation execution. */
+export interface OperationExecutionContext {
+  readonly id: string;
+}
+
 export type OperationValueDomain =
   | { readonly kind: "any" }
   | { readonly kind: "enum"; readonly values: readonly string[] };

@@ -274,11 +274,12 @@ function parsePlanDeclarationReplacement(value: unknown): PlanDeclarationReplace
 
 /** Same Fact batch the runner reports over OTLP, offered at the RPC boundary for operator-driven (dry-run) Plans. */
 function parseFactBatch(value: unknown): FactBatchInput {
-  const record = exactRecord(value, ["contract", "attemptKey", "attemptHandle", "checkUri", "recordedAt", "facts"]);
+  const record = exactRecord(value, ["contract", "attemptKey", "attemptHandle", "executionId", "checkUri", "recordedAt", "facts"]);
   if (
     record.contract !== "trust.fact-batch-request@1"
     || !boundedString(record.attemptKey, 256)
     || !boundedString(record.attemptHandle, 256)
+    || !boundedString(record.executionId, 256)
     || !boundedString(record.checkUri, 2_048)
     || !boundedString(record.recordedAt, 64)
     || !Array.isArray(record.facts)
@@ -290,6 +291,7 @@ function parseFactBatch(value: unknown): FactBatchInput {
   return {
     attemptKey: record.attemptKey,
     attemptHandle: record.attemptHandle,
+    executionId: record.executionId,
     checkUri: record.checkUri,
     recordedAt: record.recordedAt,
     facts: record.facts as readonly RuntimeJsonObject[],

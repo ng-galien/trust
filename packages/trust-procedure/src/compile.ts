@@ -52,6 +52,7 @@ interface RoleSource {
   readonly name: string;
   readonly type: ProcedureValueType;
   readonly cardinality: "one" | "many";
+  readonly optional: boolean;
   readonly parents: readonly { readonly role: string; readonly each: boolean }[];
   readonly declared: boolean;
   readonly fixed?: string;
@@ -69,6 +70,7 @@ const PLAN_ROLE_SOURCE: RoleSource = {
   name: PLAN_ROLE,
   type: "string",
   cardinality: "one",
+  optional: false,
   parents: [],
   declared: false,
   planIdentifier: true,
@@ -314,12 +316,13 @@ function compileProcedureInternal(
         : role.fixed !== undefined
           ? { kind: "fixed", value: role.fixed }
           : role.declared
-            ? { kind: "agent-declaration" }
+            ? { kind: "agent-declaration", ...(role.optional ? { optional: true as const } : {}) }
             : provider
               ? { kind: "operation-field", check: provider.check, field: provider.field }
               : { kind: "plan-input" },
     };
   });
+  validateOptionalRoleDependencies(roles, roleByName, sourceName);
   for (const scenario of scenarioSources) {
     for (const check of scenario.checks) {
       for (const binding of [check.target, ...check.using]) {
@@ -419,10 +422,12 @@ function parseRoles(steps: readonly Step[], sourceName: string): RoleSource[] {
     const name = cursor.requireQuoted();
     if (name === PLAN_ROLE) fail("invalid-procedure", `Role "${PLAN_ROLE}" is reserved for the Plan identifier`, sourceName, step);
     let declared = false;
+    let optional = false;
     let fixed: string | undefined;
     const parents: { role: string; each: boolean }[] = [];
     while (!cursor.done) {
       if (cursor.takeText("declared")) {
+        optional = cursor.takeText("optionally") || optional;
         cursor.requireText("by");
         cursor.requireText("agent");
         declared = true;
@@ -444,7 +449,7 @@ function parseRoles(steps: readonly Step[], sourceName: string): RoleSource[] {
     if (fixed !== undefined && type !== "string" && type !== "reference") {
       fail("incompatible-type", `Fixed role "${name}" must be a string or reference`, sourceName, step);
     }
-    return { name, type, cardinality, parents, declared, ...(fixed !== undefined ? { fixed } : {}), location: step.location };
+    return { name, type, cardinality, optional, parents, declared, ...(fixed !== undefined ? { fixed } : {}), location: step.location };
   });
 }
 
@@ -577,6 +582,35 @@ function validateRoleParents(roles: readonly RoleSource[], byName: ReadonlyMap<s
     visited.add(name);
   };
   for (const role of roles) visit(role.name);
+}
+
+function validateOptionalRoleDependencies(
+  roles: readonly CompiledProcedureRole[],
+  sources: ReadonlyMap<string, RoleSource>,
+  sourceName: string,
+): void {
+  const byName = new Map(roles.map((role) => [role.name, role]));
+  const hasOptionalDeclarationAncestor = (
+    role: CompiledProcedureRole,
+    visited: ReadonlySet<string> = new Set(),
+  ): boolean => role.parents.some(({ role: parentName }) => {
+    if (visited.has(parentName)) return false;
+    const parent = byName.get(parentName);
+    if (!parent) return false;
+    if (parent.source.kind === "agent-declaration" && parent.source.optional === true) return true;
+    return hasOptionalDeclarationAncestor(parent, new Set(visited).add(parentName));
+  });
+  for (const role of roles) {
+    if (!hasOptionalDeclarationAncestor(role)) continue;
+    if (role.source.kind === "operation-field") continue;
+    if (role.source.kind === "agent-declaration" && role.source.optional === true) continue;
+    fail(
+      "invalid-procedure",
+      `Role "${role.name}" depends on an optional agent declaration and must also be declared optionally by agent or materialized by a Check`,
+      sourceName,
+      sources.get(role.name),
+    );
+  }
 }
 
 function validateScenarios(scenarios: readonly ScenarioSource[], sourceName: string): void {

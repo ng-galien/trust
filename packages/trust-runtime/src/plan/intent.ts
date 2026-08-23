@@ -22,7 +22,8 @@ export function completesPlanOnValidation(input: {
 }): boolean {
   const { procedure, revision, checks, activeCheckUris, check } = input;
   const missingDeclarations = procedure.roles.some((role) => (
-    role.source.kind === "agent-declaration" && !Object.hasOwn(revision.agentDeclarations, role.name)
+    role.source.kind === "agent-declaration" && role.source.optional !== true
+      && !Object.hasOwn(revision.agentDeclarations, role.name)
   ));
   if (missingDeclarations) return false;
   const affected = dependentCheckUris(checks, check.uri);

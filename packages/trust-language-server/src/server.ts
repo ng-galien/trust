@@ -194,12 +194,17 @@ function completionItems(document: TextDocument, position: Position, kind: Langu
   const embedded = embeddedLanguageAt(source, position.line + 1);
   if (embedded === "js") return jsCompletions(document, position, operations);
   if (embedded === "jsonata") return jsonataCompletions(document, position);
-  return kind === "procedure" ? procedureCompletions(source, position.line + 1, operations) : operationCompletions(source);
+  return kind === "procedure"
+    ? procedureCompletions(source, position.line + 1, position.character, operations)
+    : operationCompletions(source);
 }
 
-function procedureCompletions(source: string, line: number, operations: readonly CompiledOperation[]): CompletionItem[] {
+function procedureCompletions(source: string, line: number, character: number, operations: readonly CompiledOperation[]): CompletionItem[] {
   const tokens = stepTokensAt(source, line);
   const words = tokens.filter((token) => token.kind === "text").map((token) => token.value);
+  const physicalLine = source.split(/\r?\n/)[line - 1] ?? "";
+  const prefix = physicalLine.slice(0, character);
+  const suffix = physicalLine.slice(character);
   const model = compileProcedureModel(source, operations);
   const selectedOperation = operationForCheck(tokens, operations);
   if (words.includes("Operation")) return operations.map((operation) => item(operation.operation, CompletionItemKind.Module, operation.title));
@@ -212,6 +217,12 @@ function procedureCompletions(source: string, line: number, operations: readonly
   if (words[0] === procedureLanguage.phrases.dependency) return (model?.scenarios ?? []).map((scenario) => item(scenario.slug, CompletionItemKind.Event, "Prerequisite Scenario"));
   if (words.includes("field") && selectedOperation) {
     return Object.keys(selectedOperation.produced.properties).map((name) => item(name, CompletionItemKind.Field, "Produced Fact field"));
+  }
+  if (/\bdeclared\s+$/.test(prefix) && words.includes("declared") && !words.includes("optionally")) {
+    return [{
+      ...item("optionally", CompletionItemKind.Keyword, "Optional agent declaration"),
+      insertText: /^\s*by\s+agent\b/.test(suffix) ? "optionally " : "optionally by agent",
+    }];
   }
   return [
     snippet("Procedure feature", procedureLanguage.template),

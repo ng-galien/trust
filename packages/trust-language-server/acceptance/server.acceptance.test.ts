@@ -13,6 +13,7 @@ import {
 import { compileOperation } from "@trust/operation";
 import { operationLanguage } from "@trust/operation/language";
 import { compileProcedure } from "@trust/procedure";
+import { CompletionItemKind } from "vscode-languageserver/node";
 
 test("the Microsoft LSP server exposes the Operation language through standard JSON-RPC", async (context) => {
   const session = await startLanguageServer(context);
@@ -383,6 +384,78 @@ async function assertProcedureEditing(connection: MessageConnection): Promise<vo
   });
   assert.deepEqual(await opened, { uri, version: 1, diagnostics: [] });
 
+  const optionalUri = "file:///workspace/procedures/optional-agent-declaration.feature";
+  const optionalSource = source.replace(
+    'Given one reference "repository"',
+    'Given one reference "repository" declared optionally by agent',
+  );
+  const optionalDiagnostics = waitForDiagnostics(connection, optionalUri, 1);
+  connection.sendNotification("textDocument/didOpen", {
+    textDocument: { uri: optionalUri, languageId: "trust-procedure", version: 1, text: optionalSource },
+  });
+  assert.deepEqual(await optionalDiagnostics, { uri: optionalUri, version: 1, diagnostics: [] });
+
+  const completionUri = "file:///workspace/procedures/incomplete-optional-agent-declaration.feature";
+  const completionSource = source.replace(
+    'Given one reference "repository"',
+    'Given one reference "repository" declared ',
+  );
+  const completionDiagnostics = waitForDiagnostics(connection, completionUri, 1, (message) => message.diagnostics.length > 0);
+  connection.sendNotification("textDocument/didOpen", {
+    textDocument: { uri: completionUri, languageId: "trust-procedure", version: 1, text: completionSource },
+  });
+  await completionDiagnostics;
+  const optionalCompletions = await connection.sendRequest<CompletionItem[]>("textDocument/completion", {
+    textDocument: { uri: completionUri },
+    position: positionAt(completionSource, completionSource.indexOf("declared ") + "declared ".length),
+  });
+  const optionalCompletion = optionalCompletions.find(({ label, kind }) => label === "optionally" && kind === CompletionItemKind.Keyword);
+  assert.ok(optionalCompletion);
+  const completionOffset = completionSource.indexOf("declared ") + "declared ".length;
+  const completedSource = completionSource.slice(0, completionOffset)
+    + (optionalCompletion.insertText ?? optionalCompletion.label)
+    + completionSource.slice(completionOffset);
+  compileProcedure({
+    source: completedSource,
+    operations: [compileOperation({ source: operationFixture("valid/git.head-read.feature") })],
+  });
+
+  const requiredUri = "file:///workspace/procedures/required-agent-declaration.feature";
+  const requiredSource = source.replace(
+    'Given one reference "repository"',
+    'Given one reference "repository" declared by agent',
+  );
+  const requiredDiagnostics = waitForDiagnostics(connection, requiredUri, 1);
+  connection.sendNotification("textDocument/didOpen", {
+    textDocument: { uri: requiredUri, languageId: "trust-procedure", version: 1, text: requiredSource },
+  });
+  assert.deepEqual(await requiredDiagnostics, { uri: requiredUri, version: 1, diagnostics: [] });
+  const beforeByAgent = requiredSource.indexOf("declared by agent") + "declared ".length;
+  const existingClauseCompletions = await connection.sendRequest<CompletionItem[]>("textDocument/completion", {
+    textDocument: { uri: requiredUri },
+    position: positionAt(requiredSource, beforeByAgent),
+  });
+  const existingClauseCompletion = existingClauseCompletions.find(({ label }) => label === "optionally");
+  assert.ok(existingClauseCompletion);
+  const optionalizedSource = requiredSource.slice(0, beforeByAgent)
+    + (existingClauseCompletion.insertText ?? existingClauseCompletion.label)
+    + requiredSource.slice(beforeByAgent);
+  compileProcedure({
+    source: optionalizedSource,
+    operations: [compileOperation({ source: operationFixture("valid/git.head-read.feature") })],
+  });
+  const afterAgent = requiredSource.indexOf("by agent") + "by agent".length;
+  const misplacedCompletions = await connection.sendRequest<CompletionItem[]>("textDocument/completion", {
+    textDocument: { uri: requiredUri },
+    position: positionAt(requiredSource, afterAgent),
+  });
+  assert.ok(!misplacedCompletions.some(({ label }) => label === "optionally"));
+
+  const optionalSemantic = await connection.sendRequest<SemanticTokens>("textDocument/semanticTokens/full", {
+    textDocument: { uri: optionalUri },
+  });
+  assertSemanticTokenAt(optionalSemantic, positionAt(optionalSource, optionalSource.indexOf("optionally")), "optionally".length);
+
   const operationPosition = positionAt(source, source.indexOf('Operation "') + 'Operation "'.length);
   const operations = await connection.sendRequest<CompletionItem[]>("textDocument/completion", {
     textDocument: { uri }, position: operationPosition,
@@ -550,6 +623,21 @@ function positionAt(source: string, offset: number): Position {
   return { line: lines.length - 1, character: lines.at(-1)?.length ?? 0 };
 }
 
+function assertSemanticTokenAt(tokens: SemanticTokens, expected: Position, length: number): void {
+  let line = 0;
+  let character = 0;
+  for (let index = 0; index < tokens.data.length; index += 5) {
+    const lineDelta = tokens.data[index] ?? 0;
+    line += lineDelta;
+    character = lineDelta === 0 ? character + (tokens.data[index + 1] ?? 0) : (tokens.data[index + 1] ?? 0);
+    if (line === expected.line && character === expected.character && tokens.data[index + 2] === length) {
+      assert.equal(tokens.data[index + 3], 1, "optionally must be a keyword semantic token");
+      return;
+    }
+  }
+  assert.fail(`No semantic token at ${expected.line}:${expected.character}`);
+}
+
 function assertValidRange(range: Range | undefined, file: string): void {
   assert.ok(range, file);
   assert.ok(range.start.line >= 0, file);
@@ -623,7 +711,7 @@ interface DocumentSymbol {
   readonly children?: readonly DocumentSymbol[];
 }
 
-interface CompletionItem { readonly label: string; readonly insertText?: string; readonly textEdit?: { readonly range: Range; readonly newText: string } }
+interface CompletionItem { readonly label: string; readonly kind?: number; readonly insertText?: string; readonly textEdit?: { readonly range: Range; readonly newText: string } }
 interface FoldingRange { readonly startLine: number; readonly endLine: number }
 interface SemanticTokens { readonly data: readonly number[] }
 

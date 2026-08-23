@@ -103,6 +103,7 @@ export type CheckAttemptAdmissionResult =
       readonly status: "ADMITTED";
       readonly attemptKey: string;
       readonly attemptHandle: string;
+      readonly executionId: string;
       readonly checkUri: string;
       readonly operation: import("@trust/operation").CompiledOperation;
       readonly actionInput: RuntimeJsonObject;
@@ -122,6 +123,7 @@ interface Refusal {
 export interface FactBatchInput {
   readonly attemptKey: string;
   readonly attemptHandle: string;
+  readonly executionId: string;
   readonly checkUri: string;
   readonly facts: readonly RuntimeJsonObject[];
   readonly recordedAt: string;
@@ -323,27 +325,39 @@ export class PlanRuntime {
     if (canonicalJson(declarations) === canonicalJson(current.agentDeclarations)) {
       return declarationResult(current, current);
     }
-    const next = buildPlanRevision({
-      authority: this.#authority,
-      procedure: published.procedure,
-      plan: plan.slug,
-      environment: plan.environment,
-      mode: plan.mode,
-      rootInputs: plan.rootInputs,
-      declarations,
-      revision: plan.currentRevision + 1,
-      roleValues: current.roleValues,
-      checkValues: current.checkValues,
-    });
-    // Checks untouched by the new declarations keep their active qualification (same URI, same semantic digest).
     const activeBefore = await this.#snapshots.listActive(plan.slug, plan.currentRevision);
-    const nextChecks = new Map(next.checks.map((candidate) => [candidate.uri, candidate]));
-    const retainedCandidates = activeBefore
-      .filter((item) => nextChecks.get(item.checkUri)?.compiledCheckDigest === item.compiledCheckDigest)
-      .map((item) => ({ ...item, planRevision: next.revision }));
-    const retained = retainQualifiedDependencies(retainedCandidates, next.checks);
+    let roleValues = current.roleValues;
+    let checkValues = current.checkValues;
+    let next: PlanRevision;
+    let retained: readonly ActiveCheckQualification[];
+    while (true) {
+      next = buildPlanRevision({
+        authority: this.#authority,
+        procedure: published.procedure,
+        plan: plan.slug,
+        environment: plan.environment,
+        mode: plan.mode,
+        rootInputs: plan.rootInputs,
+        declarations,
+        revision: plan.currentRevision + 1,
+        roleValues,
+        checkValues,
+        pruneUnavailableRoleValues: true,
+      });
+      // Checks untouched by the new declarations keep their active qualification (same URI, same semantic digest).
+      const nextChecks = new Map(next.checks.map((candidate) => [candidate.uri, candidate]));
+      const retainedCandidates = activeBefore
+        .filter((item) => nextChecks.get(item.checkUri)?.compiledCheckDigest === item.compiledCheckDigest)
+        .map((item) => ({ ...item, planRevision: next.revision }));
+      retained = retainQualifiedDependencies(retainedCandidates, next.checks);
+      const retainedProviders = new Set(retained.map((item) => item.checkUri));
+      roleValues = next.roleValues.filter((item) => retainedProviders.has(item.providerCheckUri));
+      checkValues = next.checkValues.filter((item) => retainedProviders.has(item.providerCheckUri));
+      if (roleValues.length === next.roleValues.length && checkValues.length === next.checkValues.length) break;
+    }
     const missingDeclarations = published.procedure.roles.some((role) => (
-      role.source.kind === "agent-declaration" && !Object.hasOwn(declarations, role.name)
+      role.source.kind === "agent-declaration" && role.source.optional !== true
+        && !Object.hasOwn(declarations, role.name)
     ));
     const nextChecklistComplete = !missingDeclarations && retained.length === next.checks.length;
     const now = this.#now();
@@ -449,6 +463,7 @@ export class PlanRuntime {
       status: "ADMITTED",
       attemptKey: attempt.attemptKey,
       attemptHandle: attempt.handle,
+      executionId: attempt.executionId,
       checkUri: attempt.checkUri,
       operation: resolved.check.operation,
       actionInput: attempt.actionInput,
@@ -487,7 +502,9 @@ export class PlanRuntime {
   }
 
   async #ingest(attempt: Attempt, input: FactBatchInput, database: Database): Promise<FactBatchResult> {
-    if (attempt.attemptKey !== input.attemptKey || attempt.checkUri !== input.checkUri) {
+    if (attempt.attemptKey !== input.attemptKey
+      || attempt.executionId !== input.executionId
+      || attempt.checkUri !== input.checkUri) {
       throw new PlanRuntimeError("fact-batch-rejected", "Fact batch does not match its admitted Attempt");
     }
     if (Date.parse(attempt.expiresAt) <= this.#now().getTime()) {
@@ -688,7 +705,8 @@ export class PlanRuntime {
           throw new PlanRuntimeError("plan-conflict", "The admitted intent is no longer current for this Plan");
         }
         const missingDeclarations = published.procedure.roles.some((role) => (
-          role.source.kind === "agent-declaration" && !Object.hasOwn(current.agentDeclarations, role.name)
+          role.source.kind === "agent-declaration" && role.source.optional !== true
+            && !Object.hasOwn(current.agentDeclarations, role.name)
         ));
         const checklistComplete = !missingDeclarations && activeAfter.length === next.checks.length;
         if (checklistComplete && currentAttempt.nextIntent !== undefined) {
@@ -870,6 +888,7 @@ export class PlanRuntime {
     const attempt: Attempt = {
       handle: randomUUID(),
       attemptKey: resolved.attemptKey,
+      executionId: randomUUID(),
       planSlug: resolved.plan.slug,
       planRevision: resolved.plan.currentRevision,
       checkUri: resolved.check.uri,
@@ -1042,6 +1061,7 @@ function fact(attempt: Attempt, payload: RuntimeJsonObject, index: number, recor
       values,
     }),
     attemptHandle: attempt.handle,
+    executionId: attempt.executionId,
     checkUri: attempt.checkUri,
     compiledCheckDigest: attempt.compiledCheckDigest,
     index,

@@ -5,12 +5,14 @@ Feature: Verify a deployed change with a committed Karate change (green run)
   Observes the committed acceptance change and runs it in the green phase, in one Operation. In the
   acceptance project below the workspace: reads HEAD, counts the commits ahead of `baseRevision`,
   reads the working tree, then runs
-  `mvn -B test -Dtrust.phase=green -Dtrust.ticket=<ticket> -Dtrust.run=<run> <testArgument>`.
+  `mvn -B test -Dtrust.phase=green -Dtrust.ticket=<ticket> -Dtrust.run=<run>
+  -Dtrust.execution.id=<executionId> <testArgument>`.
   Exit 0 is the observation `successful`; exit 1 with a Surefire summary (`Tests run:`) is
   `failed`; any other exit interrupts the Operation. `testedRevision` is the observed HEAD, so a
   Procedure can require that the green run used the revision the red run materialized. The
   `trust.phase` property lets the Karate features derive phase-specific run identities so the
-  green run never reads side effects of the red run.
+  green run never reads side effects of the red run. TRUST supplies its execution id directly to
+  the Operation context so the same traffic carries stable telemetry correlation for this run.
 
   Background: Operation interface
     Given Environment
@@ -55,6 +57,7 @@ Feature: Verify a deployed change with a committed Karate change (green run)
       | -Dtrust.phase=green | literal                  |
       | -Dtrust.ticket=     | literal + Input "ticket" |
       | -Dtrust.run=        | literal + Input "run"    |
+      | -Dtrust.execution.id= | literal + Execution "id" |
       | testArgument        | Input "testArgument"     |
     And Shell "test" accepts exits
       | exit code | stdout contains | stderr contains |

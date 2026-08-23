@@ -4,6 +4,7 @@ import type { Fact } from "../model.js";
 interface FactRow {
   fact_id: string;
   attempt_handle: string;
+  execution_id: string;
   check_uri: string;
   compiled_digest: string;
   fact_index: number;
@@ -84,9 +85,11 @@ async function factAtIndex(
   const row = await transaction
     .selectFrom("attempt_fact_receipts as receipt")
     .innerJoin("facts as fact", "fact.fact_id", "receipt.fact_id")
+    .innerJoin("attempts as attempt", "attempt.attempt_handle", "receipt.attempt_handle")
     .select([
       "fact.fact_id",
       "receipt.attempt_handle",
+      "attempt.execution_id",
       "fact.check_uri",
       "fact.compiled_digest",
       "receipt.fact_index",
@@ -106,9 +109,11 @@ async function factRows(database: Database, attemptHandle: string): Promise<Fact
   return database
     .selectFrom("attempt_fact_receipts as receipt")
     .innerJoin("facts as fact", "fact.fact_id", "receipt.fact_id")
+    .innerJoin("attempts as attempt", "attempt.attempt_handle", "receipt.attempt_handle")
     .select([
       "fact.fact_id",
       "receipt.attempt_handle",
+      "attempt.execution_id",
       "fact.check_uri",
       "fact.compiled_digest",
       "receipt.fact_index",
@@ -127,6 +132,7 @@ function toFact(row: FactRow): Fact {
   return {
     id: row.fact_id,
     attemptHandle: row.attempt_handle,
+    executionId: row.execution_id,
     checkUri: row.check_uri,
     compiledCheckDigest: row.compiled_digest,
     index: row.fact_index,

@@ -9,6 +9,7 @@ import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
+import { WebSocket } from "ws";
 
 const execute = promisify(execFile);
 const repositoryRoot = path.resolve(
@@ -95,23 +96,29 @@ test("the server manager refuses a healthy runtime owned outside its tmux sessio
   }
 });
 
-test("the Node server manager resets, reuses and live-reloads an isolated tmux server", async () => {
+test("the Node server manager resets and reuses separate backend and live-reload frontend sessions", async () => {
   const stateDirectory = await mkdtemp(path.join(tmpdir(), "trust-server-manager-"));
-  const session = `trust-acceptance-${process.pid}-${Date.now().toString(36)}`;
+  const sessionSuffix = `${process.pid}-${Date.now().toString(36)}`;
+  const backendSession = `trust-backend-${sessionSuffix}`;
+  const frontendSession = `trust-frontend-${sessionSuffix}`;
   const port = await availablePort();
-  const watchedFile = path.join(stateDirectory, "reload.ts");
-  await writeFile(watchedFile, "0\n", "utf8");
+  let webPort = await availablePort();
+  while (webPort === port) webPort = await availablePort();
+  const liveReloadName = `.trust-live-reload-${sessionSuffix}.ts`;
+  const liveReloadFile = path.join(repositoryRoot, "apps/trust-web/src", liveReloadName);
+  const liveReloadPath = `/src/${liveReloadName}`;
   const environment = {
     ...process.env,
     TRUST_SERVER_STATE_DIRECTORY: stateDirectory,
-    TRUST_SERVER_TMUX_SESSION: session,
+    TRUST_SERVER_TMUX_SESSION: backendSession,
+    TRUST_WEB_TMUX_SESSION: frontendSession,
     TRUST_SERVER_PORT: String(port),
-    TRUST_DEV_WATCH_INCLUDE: watchedFile,
+    TRUST_WEB_PORT: String(webPort),
   };
   try {
     const reset = await execute(
       process.execPath,
-      [path.join(repositoryRoot, "environments/trust-test/scripts/server.ts"), "reset"],
+      [path.join(repositoryRoot, "environments/trust-test/scripts/server.ts"), "reset", "--web"],
       { cwd: repositoryRoot, env: environment, timeout: 120_000 },
     );
     assert.match(reset.stdout, /TRUST server: started with an empty database/);
@@ -119,22 +126,30 @@ test("the Node server manager resets, reuses and live-reloads an isolated tmux s
 
     const health = await fetch(`http://127.0.0.1:${port}/health`);
     assert.equal(health.status, 200);
+    assert.equal((await fetch(`http://127.0.0.1:${webPort}/health`)).status, 200);
+    assert.match(await paneStartCommand(backendSession, "backend"), /npm start/);
+    assert.doesNotMatch(await pane(backendSession, "backend"), /tsx watch/);
+    assert.match(await paneStartCommand(frontendSession, "frontend"), /npm run dev:web/);
+    await observeFrontendLiveReload(webPort, liveReloadFile, liveReloadPath);
 
     const start = await execute(
       process.execPath,
-      [path.join(repositoryRoot, "environments/trust-test/scripts/server.ts"), "start"],
+      [path.join(repositoryRoot, "environments/trust-test/scripts/server.ts"), "start", "--web"],
       { cwd: repositoryRoot, env: environment, timeout: 30_000 },
     );
     assert.match(start.stdout, /TRUST server: already available/);
 
-    const before = await waitForWatch(session);
-    const restarts = occurrences(before, "TRUST runtime listening on 127.0.0.1:");
-    await new Promise((resolve) => setTimeout(resolve, 1_000));
-    await writeFile(watchedFile, "1\n", "utf8");
-    const after = await waitForRestart(session, restarts);
-    assert.match(after, /TRUST runtime listening on 127\.0\.0\.1:/);
-    await writeFile(watchedFile, "2\n", "utf8");
-    await waitForRestart(session, restarts + 1);
+    const frontendPane = await paneId(frontendSession, "frontend");
+    const resetBackend = await execute(
+      process.execPath,
+      [path.join(repositoryRoot, "environments/trust-test/scripts/server.ts"), "reset"],
+      { cwd: repositoryRoot, env: environment, timeout: 120_000 },
+    );
+    assert.match(resetBackend.stdout, /TRUST server: started with an empty database/);
+    assert.equal(await paneId(frontendSession, "frontend"), frontendPane);
+    assert.equal((await fetch(`http://127.0.0.1:${webPort}/health`)).status, 200);
+
+    const starts = occurrences(await pane(backendSession, "backend"), "TRUST runtime listening on 127.0.0.1:");
 
     await execute(
       "npm",
@@ -145,14 +160,15 @@ test("the Node server manager resets, reuses and live-reloads an isolated tmux s
     assert.equal((await fetch(`http://127.0.0.1:${port}/health`)).status, 200);
     await new Promise((resolve) => setTimeout(resolve, 1_000));
     assert.equal(
-      occurrences(await pane(session), "TRUST runtime listening on 127.0.0.1:"),
-      restarts + 2,
+      occurrences(await pane(backendSession, "backend"), "TRUST runtime listening on 127.0.0.1:"),
+      starts,
       "building dist must not restart the source runtime",
     );
 
   } finally {
-    await rm(watchedFile, { force: true });
-    await execute("tmux", ["kill-session", "-t", session]).catch(() => undefined);
+    await rm(liveReloadFile, { force: true });
+    await execute("tmux", ["kill-session", "-t", backendSession]).catch(() => undefined);
+    await execute("tmux", ["kill-session", "-t", frontendSession]).catch(() => undefined);
     await rm(stateDirectory, { recursive: true, force: true });
   }
 });
@@ -173,35 +189,86 @@ async function availablePort(): Promise<number> {
   return port;
 }
 
-async function pane(session: string): Promise<string> {
+async function pane(session: string, window: string): Promise<string> {
   return (await execute("tmux", [
     "capture-pane",
     "-pt",
-    `${session}:server`,
+    `${session}:${window}`,
     "-S",
     "-2000",
   ])).stdout;
 }
 
-async function waitForRestart(session: string, previousRestarts: number): Promise<string> {
-  const deadline = Date.now() + 15_000;
-  let output = "";
-  while (Date.now() < deadline) {
-    output = await pane(session);
-    if (occurrences(output, "TRUST runtime listening on 127.0.0.1:") > previousRestarts) return output;
-    await new Promise((resolve) => setTimeout(resolve, 100));
-  }
-  throw new Error(`TRUST runtime did not live-reload within 15 seconds\n${output}`);
+async function paneStartCommand(session: string, window: string): Promise<string> {
+  return (await execute("tmux", [
+    "display-message",
+    "-p",
+    "-t",
+    `${session}:${window}`,
+    "#{pane_start_command}",
+  ])).stdout;
 }
 
-async function waitForWatch(session: string): Promise<string> {
-  const deadline = Date.now() + 30_000;
-  while (Date.now() < deadline) {
-    const output = await pane(session);
-    if (/Found 0 errors\. Watching for file changes/.test(output)) return output;
-    await new Promise((resolve) => setTimeout(resolve, 100));
+async function paneId(session: string, window: string): Promise<string> {
+  return (await execute("tmux", [
+    "display-message",
+    "-p",
+    "-t",
+    `${session}:${window}`,
+    "#{pane_id}",
+  ])).stdout.trim();
+}
+
+async function observeFrontendLiveReload(webPort: number, file: string, publicPath: string): Promise<void> {
+  const before = "export const trustLiveReload = 'before';\n";
+  const after = "export const trustLiveReload = 'after';\n";
+  await writeFile(file, before, "utf8");
+  const initial = await fetch(`http://127.0.0.1:${webPort}${publicPath}`);
+  assert.equal(initial.status, 200);
+  assert.match(await initial.text(), /before/);
+
+  const socket = new WebSocket(`ws://127.0.0.1:${webPort}/`, "vite-hmr");
+  try {
+    await waitForWebSocketOpen(socket);
+    const update = waitForViteUpdate(socket, publicPath);
+    await writeFile(file, after, "utf8");
+    await update;
+    const refreshed = await fetch(`http://127.0.0.1:${webPort}${publicPath}?t=${Date.now()}`);
+    assert.equal(refreshed.status, 200);
+    assert.match(await refreshed.text(), /after/);
+  } finally {
+    socket.close();
   }
-  throw new Error("TRUST TypeScript watcher did not become ready within 30 seconds");
+}
+
+function waitForWebSocketOpen(socket: WebSocket): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => reject(new Error("Vite HMR socket did not open within 15 seconds")), 15_000);
+    socket.once("open", () => {
+      clearTimeout(timeout);
+      resolve();
+    });
+    socket.once("error", (error) => {
+      clearTimeout(timeout);
+      reject(error);
+    });
+  });
+}
+
+function waitForViteUpdate(socket: WebSocket, publicPath: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => reject(new Error(`Vite did not live-reload ${publicPath} within 15 seconds`)), 15_000);
+    socket.on("message", (data) => {
+      const message = data.toString();
+      if (!message.includes(publicPath)) return;
+      clearTimeout(timeout);
+      resolve();
+    });
+    socket.once("error", (error) => {
+      clearTimeout(timeout);
+      reject(error);
+    });
+  });
 }
 
 async function waitForHealth(port: number): Promise<void> {

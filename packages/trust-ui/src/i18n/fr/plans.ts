@@ -158,6 +158,7 @@ export const plans: Translation<typeof en> = {
     noCheckYet: "aucun Check pour l'instant — son contexte n'est pas déclaré",
     value: "= {{value}}",
     notDeclared: "pas encore déclaré",
+    optionalNotDeclared: "facultatif — non déclaré",
     waitsForParent: "attend son parent",
   },
   resize: {
@@ -210,6 +211,7 @@ export const plans: Translation<typeof en> = {
     rehearseSelected: "Simuler le Check sélectionné",
   },
   declarations: {
+    optional: "facultatif",
     applying: "Application…",
     apply: "Appliquer les déclarations",
     replacesSnapshot: "remplace tout l'instantané à la rév. {{revision, number}}, comme",

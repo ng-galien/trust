@@ -149,7 +149,7 @@ function DeclarationField({ role, value, plan, missing, onChange }: { role: Decl
   const label = (
     <div className="flex items-baseline gap-2">
       <span className="mono text-body-lg font-medium">{role.role}</span>
-      <span className="text-caption text-faint">{role.cardinality} {role.type}{role.parents.length ? ` · ${t("plans.declarations.forParents", { parents: role.parents.map((parent) => (parent.each ? t("plans.declarations.eachParent", { role: parent.role }) : parent.role)).join(", ") })}` : ""}</span>
+      <span className="text-caption text-faint">{role.cardinality} {role.type}{role.optional ? ` · ${t("plans.declarations.optional")}` : ""}{role.parents.length ? ` · ${t("plans.declarations.forParents", { parents: role.parents.map((parent) => (parent.each ? t("plans.declarations.eachParent", { role: parent.role }) : parent.role)).join(", ") })}` : ""}</span>
       {missing ? <Badge tone="warning">{t("plans.declarations.missing")}</Badge> : null}
     </div>
   );

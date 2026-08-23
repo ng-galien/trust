@@ -85,6 +85,7 @@ export interface PlanView {
     readonly role: string;
     readonly type: string;
     readonly cardinality: string;
+    readonly optional: boolean;
     readonly parents: readonly { readonly role: string; readonly each: boolean }[];
   }[];
   readonly missingDeclarations: readonly string[];
@@ -437,6 +438,7 @@ export class PlanReader {
         role: role.name,
         type: role.type,
         cardinality: role.cardinality,
+        optional: role.source.kind === "agent-declaration" && role.source.optional === true,
         parents: role.parents,
       }));
     const [checks, availableSession, activeQualifications] = await Promise.all([
@@ -453,7 +455,7 @@ export class PlanReader {
       .filter((snapshot): snapshot is CheckSnapshot => snapshot !== undefined);
     const latestQualification = [...latestSnapshots].sort(compareSnapshots).at(-1);
     const missingDeclarations = declarationRoles
-      .filter(({ role }) => !Object.hasOwn(revision.agentDeclarations, role))
+      .filter(({ role, optional }) => !optional && !Object.hasOwn(revision.agentDeclarations, role))
       .map(({ role }) => role);
     const openChecks = checks
       .filter((check) => !active.has(check.uri))
@@ -694,18 +696,15 @@ export class PlanReader {
     const expected = createHmac("sha256", this.#cursorSecret)
       .update(payload, "utf8")
       .digest();
-    let actual: Buffer;
-    try {
-      actual = Buffer.from(signature, "base64url");
-    } catch {
+    const actual = decodeCanonicalBase64Url(signature);
+    if (!actual || actual.length !== expected.length || !timingSafeEqual(actual, expected)) {
       return this.#invalidCursor();
     }
-    if (actual.length !== expected.length || !timingSafeEqual(actual, expected)) {
-      return this.#invalidCursor();
-    }
+    const decodedPayload = decodeCanonicalBase64Url(payload);
+    if (!decodedPayload) return this.#invalidCursor();
     let decoded: unknown;
     try {
-      decoded = JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as unknown;
+      decoded = JSON.parse(decodedPayload.toString("utf8")) as unknown;
     } catch {
       return this.#invalidCursor();
     }
@@ -740,10 +739,13 @@ export class PlanReader {
     const [payload, signature, extra] = cursor.split(".");
     if (!payload || !signature || extra !== undefined) return this.#invalidListCursor();
     const expected = createHmac("sha256", this.#cursorSecret).update(payload, "utf8").digest();
-    const actual = Buffer.from(signature, "base64url");
-    if (actual.length !== expected.length || !timingSafeEqual(actual, expected)) return this.#invalidListCursor();
+    const actual = decodeCanonicalBase64Url(signature);
+    const decodedPayload = decodeCanonicalBase64Url(payload);
+    if (!actual || !decodedPayload || actual.length !== expected.length || !timingSafeEqual(actual, expected)) {
+      return this.#invalidListCursor();
+    }
     try {
-      const decoded = JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as unknown;
+      const decoded = JSON.parse(decodedPayload.toString("utf8")) as unknown;
       if (!isRecord(decoded) || decoded.v !== CURSOR_VERSION || decoded.kind !== kind || decoded.scope !== scope
         || !isRecord(decoded.key) || Object.values(decoded.key).some((value) => typeof value !== "string")
         || !validListKey(kind, decoded.key)) {
@@ -758,6 +760,12 @@ export class PlanReader {
   #invalidListCursor(): never {
     throw new ReadError("invalid-list-page", "List cursor is invalid or belongs to another filter");
   }
+}
+
+function decodeCanonicalBase64Url(value: string): Buffer | undefined {
+  if (!/^[A-Za-z0-9_-]+$/.test(value)) return undefined;
+  const decoded = Buffer.from(value, "base64url");
+  return decoded.toString("base64url") === value ? decoded : undefined;
 }
 
 function listLimit(value: number | undefined): number {

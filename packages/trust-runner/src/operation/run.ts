@@ -9,6 +9,7 @@ import {
   validateOperationProduced,
   type CompiledOperation,
   type Http,
+  type OperationExecutionContext,
 } from "@trust/operation";
 
 import { type DiagnosticsSink, now, nullSink, type StepReporter, summarizeValue } from "../diagnostics/events.js";
@@ -27,6 +28,7 @@ export async function runOperation(
   inputValue: unknown,
   environmentValue: unknown,
   diagnostics: DiagnosticsSink = nullSink,
+  executionValue: unknown = {},
 ): Promise<OperationResult> {
   const startedAt = Date.now();
   diagnostics.emit({ type: "operation.start", at: now(), operation: operation.operation, version: operation.version, stepCount: operation.steps.length });
@@ -36,15 +38,16 @@ export async function runOperation(
     validateOperationEnvironment(operation, environmentValue);
     const input = jsonObject(inputValue, "Operation Input");
     const environment = jsonObject(environmentValue, "Operation Environment");
+    const execution = operationExecution(executionValue);
     const steps: Record<string, JsonValue> = {};
 
     for (const [index, step] of operation.steps.entries()) {
       const reporter: StepReporter = { log: (stream, text) => diagnostics.emit({ type: "step.log", at: now(), step: step.name, stream, text }) };
       const stepStartedAt = Date.now();
-      diagnostics.emit({ type: "step.start", at: now(), step: step.name, index, kind: step.type, ...describeStep(step, input, environment) });
+      diagnostics.emit({ type: "step.start", at: now(), step: step.name, index, kind: step.type, ...describeStep(step, input, environment, execution) });
       try {
         const result = step.type === "shell"
-          ? await runShell(step.shell, input, environment, reporter)
+          ? await runShell(step.shell, input, environment, execution, reporter)
           : step.type === "file-read"
             ? await runFileRead(step.file, input, environment, reporter)
             : await runHttp(step.http, input, environment, reporter);
@@ -59,7 +62,7 @@ export async function runOperation(
 
     const producedValue = await evaluateOperationProjection(
       operation.produce.expression,
-      operationProjectionContext(input, environment, steps),
+      operationProjectionContext(input, environment, steps, execution),
     );
     validateOperationProduced(operation, producedValue);
     const produced = jsonObject(producedValue, "Operation Produced values");
@@ -71,10 +74,10 @@ export async function runOperation(
   }
 }
 
-function describeStep(step: CompiledOperation["steps"][number], input: JsonObject, environment: JsonObject): { summary: string; detail: JsonObject } {
+function describeStep(step: CompiledOperation["steps"][number], input: JsonObject, environment: JsonObject, execution: OperationExecutionContext): { summary: string; detail: JsonObject } {
   const resolve = (name: string): string => String(input[name] ?? `<${name}>`);
   if (step.type === "shell") {
-    const args = step.shell.arguments.map((argument) => renderShellArgument(argument, resolve));
+    const args = step.shell.arguments.map((argument) => renderShellArgument(argument, resolve, () => execution.id));
     return {
       summary: [step.shell.executable, ...args].join(" "),
       detail: { executable: step.shell.executable, arguments: args, cwd: describePath(step.shell.cwd, input, environment), acceptedExits: step.shell.acceptedExits.map((exit) => exit.code) },
@@ -131,6 +134,15 @@ function jsonObject(value: unknown, label: string): JsonObject {
   const converted = json(value, label);
   if (!isJsonObject(converted)) throw new TypeError(`${label} must be an object.`);
   return converted;
+}
+
+function operationExecution(value: unknown): OperationExecutionContext {
+  const execution = jsonObject(value, "Operation Execution context");
+  if (Object.keys(execution).length === 0) return { id: "" };
+  if (Object.keys(execution).length !== 1 || typeof execution.id !== "string" || execution.id.length === 0) {
+    throw new TypeError("Operation Execution context must contain exactly one non-empty id.");
+  }
+  return { id: execution.id };
 }
 
 function json(value: unknown, label: string): JsonValue {

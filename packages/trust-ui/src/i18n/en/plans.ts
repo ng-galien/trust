@@ -155,6 +155,7 @@ export const plans = {
     noCheckYet: "no Check yet — its context is not declared",
     value: "= {{value}}",
     notDeclared: "not declared yet",
+    optionalNotDeclared: "optional — not declared",
     waitsForParent: "waits for its parent",
   },
   resize: {
@@ -207,6 +208,7 @@ export const plans = {
     rehearseSelected: "Simulate the selected Check",
   },
   declarations: {
+    optional: "optional",
     applying: "Applying…",
     apply: "Apply declarations",
     replacesSnapshot: "replaces the whole snapshot at rev {{revision, number}}, like",

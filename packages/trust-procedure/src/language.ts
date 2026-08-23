@@ -49,7 +49,7 @@ export const procedureLanguage = {
   },
   syntax: {
     types: ["Check", "Plan", "Operation"] as const,
-    verbs: ["runs", "on", "using", "materializes", "establish", "validated", "declared", "fixed"] as const,
+    verbs: ["runs", "on", "using", "materializes", "establish", "validated", "declared", "optionally", "fixed"] as const,
   },
   template: `# language: en
 @trust-dsl:1 @procedure:domain-action @version:1.0.0

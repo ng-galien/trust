@@ -157,6 +157,51 @@ describe("Operation runner", () => {
     });
   });
 
+  test("passes one stable TRUST execution identifier to the Operation and its Facts", async () => {
+    const workspaceRoot = await temporaryDirectory("trust-runner-execution-id-");
+    const executionId = "01924f0e-6f6e-4d8e-8fe8-3d2a246f177c";
+    const exported: unknown[] = [];
+    const runner = createCheckRunner({
+      checkClient: {
+        admit: async () => ({
+          status: "ADMITTED" as const,
+          attemptKey: "execution-attempt",
+          attemptHandle: "opaque-attempt-handle",
+          executionId,
+          checkUri: "trust://local/example@1.0.0/plan/scenario/check/execution",
+          actionInput: {},
+          operation: fixtureOperation("shell.execution-id.feature"),
+          environment: { workspaceRoot },
+          expiresAt: "2026-08-15T13:00:00.000Z",
+        }),
+        finalize: async () => ({
+          verdict: "VALIDATED" as const,
+          reasonCode: "validated",
+          reason: "The Check is validated.",
+          checklistDelta: { newlySatisfied: [], newlyOpened: [], unchanged: [] },
+        }),
+      } as unknown as CheckClient,
+      facts: { export: async (trace: unknown) => { exported.push(trace); } } as FactExporter,
+      attemptKey: () => "execution-attempt",
+      clock: () => new Date("2026-08-15T12:00:00.000Z"),
+    });
+
+    const result = await runner.run("trust://local/example@1.0.0/plan/scenario/check/execution");
+
+    expect(result).toMatchObject({
+      status: "COMPLETED",
+      actionOutcome: { execution: { stdout: executionId } },
+    });
+    expect(exported).toEqual([
+      expect.objectContaining({
+        attemptKey: "execution-attempt",
+        attemptHandle: "opaque-attempt-handle",
+        executionId,
+        facts: [expect.objectContaining({ values: { executionId } })],
+      }),
+    ]);
+  });
+
   test("merges a committed ticket branch into main and deletes it locally", async () => {
     const projectsRoot = await temporaryDirectory("trust-runner-git-merge-");
     const workspaceRoot = join(projectsRoot, "trust-example");
@@ -390,6 +435,25 @@ describe("Operation runner", () => {
     expect(receivedHttpRequests).toContainEqual(expect.objectContaining({ url: "/issue/TRUST-1" }));
   });
 
+  test("counts only spans carrying the declared project and execution id", async () => {
+    const baseUrl = await startHttpServer();
+
+    const result = await runOperation(
+      operation("telemetry.project-trace-read.feature"),
+      { traceId: "trace-1", project: "payment-api", executionId: "execution-green" },
+      { traceUrl: `${baseUrl}/traces/` },
+    );
+
+    expect(result.produced).toEqual({
+      traceId: "trace-1",
+      project: "payment-api",
+      executionId: "execution-green",
+      spanCount: 3,
+      matchingSpanCount: 1,
+    });
+    expect(receivedHttpRequests).toContainEqual(expect.objectContaining({ url: "/traces/trace-1" }));
+  });
+
   test("posts the complete typed Input as JSON", async () => {
     const baseUrl = await startHttpServer();
     const input = {
@@ -514,6 +578,7 @@ describe("Operation runner", () => {
     await exporter.export({
       attemptKey: "attempt-1",
       attemptHandle: "attempt-1",
+      executionId: "01924f0e-6f6e-4d8e-8fe8-3d2a246f177c",
       checkUri: "trust://local/example@1.0.0/plan/scenario/check/target",
       facts: [{
         kind: "git.head",
@@ -549,6 +614,10 @@ describe("Operation runner", () => {
     expect(span?.attributes).toEqual(expect.arrayContaining([
       { key: "trust.attempt_key", value: { stringValue: "attempt-1" } },
       { key: "trust.attempt_handle", value: { stringValue: "attempt-1" } },
+      {
+        key: "trust.execution_id",
+        value: { stringValue: "01924f0e-6f6e-4d8e-8fe8-3d2a246f177c" },
+      },
       {
         key: "trust.check_uri",
         value: { stringValue: "trust://local/example@1.0.0/plan/scenario/check/target" },
@@ -712,6 +781,27 @@ async function respond(request: IncomingMessage, response: ServerResponse): Prom
       }));
       return;
     }
+    if (request.url === "/traces/trace-1") {
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(JSON.stringify({
+        batches: [
+          {
+            resource: { attributes: [{ key: "service.name", value: { stringValue: "payment-api" } }] },
+            scopeSpans: [{ spans: [
+              { attributes: [{ key: "trust.execution.id", value: { stringValue: "execution-green" } }] },
+              { attributes: [{ key: "trust.execution.id", value: { stringValue: "another-execution" } }] },
+            ] }],
+          },
+          {
+            resource: { attributes: [{ key: "service.name", value: { stringValue: "payment-worker" } }] },
+            scopeSpans: [{ spans: [
+              { attributes: [{ key: "trust.execution.id", value: { stringValue: "execution-green" } }] },
+            ] }],
+          },
+        ],
+      }));
+      return;
+    }
     if (request.url === "/issues/PAY-1/comments?limit=5&run=r1") {
       response.writeHead(200, { "content-type": "application/json" });
       response.end(JSON.stringify({ total: 2, comments: ["first", "second"] }));
@@ -759,6 +849,7 @@ function factTrace() {
   return {
     attemptKey: "attempt-1",
     attemptHandle: "attempt-1",
+    executionId: "01924f0e-6f6e-4d8e-8fe8-3d2a246f177c",
     checkUri: "trust://local/example@1.0.0/plan/scenario/check/target",
     facts: [{
       kind: "git.head",

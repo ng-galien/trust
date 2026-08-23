@@ -81,6 +81,7 @@ export interface SessionTable {
 export interface AttemptTable {
   attempt_handle: string;
   attempt_key: string;
+  execution_id: string;
   plan_slug: string;
   plan_revision: number;
   check_uri: string;

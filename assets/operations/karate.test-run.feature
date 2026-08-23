@@ -2,10 +2,12 @@
 @trust-dsl:1 @operation:karate.test-run @version:1.0.0
 Feature: Run one Karate test selection
 
-  Runs `mvn -B test -Dtrust.phase=green <testArgument>` at the project HEAD and reports whether the
-  selected Karate tests pass. `testedRevision` is the observed HEAD, so a Procedure can compare it
-  with the committed test revision. The `trust.phase` property lets Karate features derive
-  phase-specific run identities so that the green run never reads side effects of the red run.
+  Runs `mvn -B test -Dtrust.phase=green -Dtrust.execution.id=<executionId> <testArgument>` at the
+  project HEAD and reports whether the selected Karate tests pass. `testedRevision` is the observed
+  HEAD, so a Procedure can compare it with the committed test revision. The `trust.phase` property
+  lets Karate features derive phase-specific run identities so that the green run never reads side
+  effects of the red run. TRUST supplies its execution id directly to the Operation context so the
+  test traffic can carry it as telemetry correlation.
 
   Background: Operation interface
     Given Environment
@@ -33,6 +35,7 @@ Feature: Run one Karate test selection
       | -B                   | literal              |
       | test                 | literal              |
       | -Dtrust.phase=green  | literal              |
+      | -Dtrust.execution.id= | literal + Execution "id" |
       | testArgument         | Input "testArgument" |
     And Shell "test" accepts exits
       | exit code | stdout contains | stderr contains |

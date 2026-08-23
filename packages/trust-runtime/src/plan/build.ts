@@ -34,6 +34,7 @@ export interface BuildPlanRevisionInput {
   readonly revision: number;
   readonly roleValues?: readonly ProducedRoleValue[];
   readonly checkValues?: readonly CheckValues[];
+  readonly pruneUnavailableRoleValues?: boolean;
 }
 
 export function buildPlanRevision(input: BuildPlanRevisionInput): PlanRevision {
@@ -46,7 +47,13 @@ export function buildPlanRevision(input: BuildPlanRevisionInput): PlanRevision {
   );
   const roleValues = input.roleValues ?? Object.freeze([]);
   const checkValues = input.checkValues ?? Object.freeze([]);
-  const context = appendProducedValues(input.procedure.roles, declaredContext, roleValues);
+  const produced = appendProducedValues(
+    input.procedure.roles,
+    declaredContext,
+    roleValues,
+    input.pruneUnavailableRoleValues === true,
+  );
+  const context = produced.context;
   const scenarioDependencies = new Map(
     input.procedure.scenarios.map((scenario) => [scenario.slug, scenario.dependencies]),
   );
@@ -100,6 +107,22 @@ export function buildPlanRevision(input: BuildPlanRevisionInput): PlanRevision {
             || role.source.check !== compiledCheck.name;
         }),
       );
+      const readsMissingOptionalDeclaration = compiledCheck.qualification.guards.some((guard) =>
+        guard.references.some((reference) => {
+          if (reference.kind !== "context" || Object.hasOwn(checkContext, reference.role)) return false;
+          const role = input.procedure.roles.find((candidate) => candidate.name === reference.role);
+          return role !== undefined && roleDependsOnOptionalDeclaration(role, input.procedure.roles);
+        })
+      );
+      const materializesWithoutParent = compiledCheck.materializes.some((production) => {
+        const role = input.procedure.roles.find((candidate) => candidate.name === production.role);
+        return role?.parents.some((parent) => {
+          if (Object.hasOwn(checkContext, parent.role)) return false;
+          const parentRole = input.procedure.roles.find((candidate) => candidate.name === parent.role);
+          return parentRole !== undefined && roleDependsOnOptionalDeclaration(parentRole, input.procedure.roles);
+        }) ?? false;
+      });
+      if (readsMissingOptionalDeclaration || materializesWithoutParent) continue;
       checks.push({
         uri,
         planSlug: input.plan,
@@ -116,17 +139,18 @@ export function buildPlanRevision(input: BuildPlanRevisionInput): PlanRevision {
     }
   }
 
+  const availableChecks = retainChecksWithAvailableProviders(checks, input.procedure.roles, context);
   const byName = new Map<string, DraftPlanCheck[]>();
-  for (const check of checks) {
+  for (const check of availableChecks) {
     const values = byName.get(check.check.name) ?? [];
     values.push(check);
     byName.set(check.check.name, values);
   }
-  const withDependencies: PlanCheck[] = checks.map((check) => {
+  const withDependencies: PlanCheck[] = availableChecks.map((check) => {
     const checkDependencies = requiredCheckNames(check, input.procedure.roles)
       .flatMap((name) => relatedProviders(check, byName.get(name) ?? [], context)
         .map((provider) => ({ checkName: name, providerCheckUri: provider.uri })));
-    const scenarioDependencyUris = check.scenarioDependencies.flatMap((scenario) => checks
+    const scenarioDependencyUris = check.scenarioDependencies.flatMap((scenario) => availableChecks
       .filter((candidate) => candidate.scenario === scenario)
       .map((candidate) => candidate.uri));
     // A Check identity contains only the context it consumes, plus the exact upstream Checks that
@@ -166,7 +190,7 @@ export function buildPlanRevision(input: BuildPlanRevisionInput): PlanRevision {
     definitionDigest: input.procedure.definitionDigest,
     source: input.procedure.source,
     checks: Object.freeze(withDependencies),
-    roleValues: Object.freeze([...roleValues]),
+    roleValues: produced.roleValues,
     checkValues: Object.freeze([...checkValues]),
   });
 }
@@ -299,10 +323,22 @@ function normalizeDeclaredValue(
   if (!parent) throw new TypeError(`Agent declaration "${role.name}" has no parent`);
   const parentValues = context.filter((candidate) => candidate.role === parent.role);
   const entries = raw.map((entry, index) => coordinatedValue(role, parent.role, entry, index));
-  if (entries.length !== parentValues.length || parentValues.some((parentValue) =>
-    entries.filter((entry) => same(entry.parents[0]?.value, parentValue.value)).length !== 1
-  )) {
-    throw new TypeError(`Agent declaration "${role.name}" must contain one value per "${parent.role}"`);
+  const entryCounts = parentValues.map((parentValue) =>
+    entries.filter((entry) => same(entry.parents[0]?.value, parentValue.value)).length
+  );
+  const allParentsExist = entries.every((entry) =>
+    parentValues.some((parentValue) => same(entry.parents[0]?.value, parentValue.value))
+  );
+  const validCounts = role.cardinality === "one"
+    ? entryCounts.every((count) => count === 1)
+    : entryCounts.every((count) => count >= 1);
+  const uniqueCoordinates = new Set(entries.map((entry) => canonicalJson({
+    value: entry.value,
+    parent: entry.parents[0]?.value,
+  })));
+  if (!allParentsExist || !validCounts || uniqueCoordinates.size !== entries.length) {
+    const expected = role.cardinality === "one" ? "one value" : "one or more unique values";
+    throw new TypeError(`Agent declaration "${role.name}" must contain ${expected} per "${parent.role}"`);
   }
   return Object.freeze(entries.sort(compareCanonical));
 }
@@ -343,8 +379,13 @@ function appendProducedValues(
   roles: readonly CompiledProcedureRole[],
   base: readonly ContextValue[],
   produced: readonly ProducedRoleValue[],
-): readonly ContextValue[] {
+  pruneUnavailable: boolean,
+): {
+  readonly context: readonly ContextValue[];
+  readonly roleValues: readonly ProducedRoleValue[];
+} {
   const context = [...base];
+  const retained: ProducedRoleValue[] = [];
   for (const item of produced) {
     const role = roles.find((candidate) => candidate.name === item.role);
     if (!role || role.source.kind !== "operation-field") {
@@ -354,14 +395,20 @@ function appendProducedValues(
     const expected = role.parents.map((parent) => parent.role).sort();
     const actual = Object.keys(item.parents).sort();
     if (!same(expected, actual)) throw new TypeError(`Produced role "${item.role}" has invalid parents`);
-    for (const [parentRole, parentValue] of Object.entries(item.parents)) {
-      if (!context.some((candidate) => candidate.role === parentRole && same(candidate.value, parentValue))) {
-        throw new TypeError(`Produced role "${item.role}" refers to unavailable parent "${parentRole}"`);
-      }
+    const unavailableParent = Object.entries(item.parents).find(([parentRole, parentValue]) =>
+      !context.some((candidate) => candidate.role === parentRole && same(candidate.value, parentValue))
+    );
+    if (unavailableParent) {
+      if (pruneUnavailable) continue;
+      throw new TypeError(`Produced role "${item.role}" refers to unavailable parent "${unavailableParent[0]}"`);
     }
     context.push(Object.freeze({ role: item.role, value: cloneJson(item.value), parents: cloneObject(item.parents) }));
+    retained.push(item);
   }
-  return Object.freeze(context.sort(compareCanonical));
+  return Object.freeze({
+    context: Object.freeze(context.sort(compareCanonical)),
+    roleValues: Object.freeze([...retained]),
+  });
 }
 
 function targetGroups(
@@ -570,6 +617,41 @@ function requiredCheckNames(
     if (role?.source.kind === "operation-field") names.add(role.source.check);
   }
   return [...names];
+}
+
+function retainChecksWithAvailableProviders(
+  checks: readonly DraftPlanCheck[],
+  roles: readonly CompiledProcedureRole[],
+  context: readonly ContextValue[],
+): readonly DraftPlanCheck[] {
+  let retained = [...checks];
+  while (true) {
+    const byName = new Map<string, DraftPlanCheck[]>();
+    for (const check of retained) {
+      const values = byName.get(check.check.name) ?? [];
+      values.push(check);
+      byName.set(check.check.name, values);
+    }
+    const next = retained.filter((check) => requiredCheckNames(check, roles).every((name) => (
+      relatedProviders(check, byName.get(name) ?? [], context).length > 0
+    )));
+    if (next.length === retained.length) return Object.freeze(next);
+    retained = next;
+  }
+}
+
+function roleDependsOnOptionalDeclaration(
+  role: CompiledProcedureRole,
+  roles: readonly CompiledProcedureRole[],
+  visited: ReadonlySet<string> = new Set(),
+): boolean {
+  if (role.source.kind === "agent-declaration" && role.source.optional === true) return true;
+  if (visited.has(role.name)) return false;
+  const next = new Set(visited).add(role.name);
+  return role.parents.some(({ role: parentName }) => {
+    const parent = roles.find((candidate) => candidate.name === parentName);
+    return parent !== undefined && roleDependsOnOptionalDeclaration(parent, roles, next);
+  });
 }
 
 function contextValue(scope: PlanCheck["scope"]): ContextValue {

@@ -11,7 +11,17 @@ export async function evaluateOperationProjection(expression: string, input: unk
   return JSON.parse(serialized) as JsonValue;
 }
 
-export function operationProjectionContext(input: unknown, environment: unknown, steps: unknown): Record<string, unknown> {
-  const [stepsRoot, inputRoot, environmentRoot] = operationLanguage.jsonata.roots;
-  return { [inputRoot]: input, [environmentRoot]: environment, [stepsRoot]: steps };
+export function operationProjectionContext(
+  input: unknown,
+  environment: unknown,
+  steps: unknown,
+  execution: unknown = {},
+): Record<string, unknown> {
+  const [stepsRoot, inputRoot, environmentRoot, executionRoot] = operationLanguage.jsonata.roots;
+  return {
+    [inputRoot]: input,
+    [environmentRoot]: environment,
+    [stepsRoot]: steps,
+    [executionRoot]: execution,
+  };
 }

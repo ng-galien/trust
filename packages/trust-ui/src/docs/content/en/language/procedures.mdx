@@ -11,7 +11,7 @@ Feature: <title>
 
   Background: Plan context
     Given|And one|many string|number|instant|reference "<role>"
-        [declared by agent for "<parent>" | for "<parent>" | for each "<parent>" | fixed as "<value>"]
+        [declared [optionally] by agent] [fixed as "<value>"] [for "<parent>"]… [for each "<parent>"]…
 
   @scenario:<slug>
   Scenario: <title>

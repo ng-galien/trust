@@ -11,7 +11,7 @@ The `Background: Plan context` declares every value a Plan carries: **roles**, t
 ```gherkin fragment title="One role per line"
   Background: Plan context
     Given one reference "jira issue"
-    And many reference "affected project" declared by agent for "jira issue"
+    And many reference "affected project" declared optionally by agent for "jira issue"
     And many reference "fix revision" for each "affected project"
     And one reference "acceptance project" fixed as "payment-acceptance"
 ```
@@ -19,7 +19,7 @@ The `Background: Plan context` declares every value a Plan carries: **roles**, t
 ## The sentence
 
 ```text
-Given|And one|many string|number|instant|reference "<role>" [declared by agent] [fixed as "<value>"] [for "<parent>"]… [for each "<parent>"]…
+Given|And one|many string|number|instant|reference "<role>" [declared [optionally] by agent] [fixed as "<value>"] [for "<parent>"]… [for each "<parent>"]…
 ```
 
 | Part | Rule |
@@ -29,6 +29,7 @@ Given|And one|many string|number|instant|reference "<role>" [declared by agent] 
 | `string` `number` `instant` `reference` | the same four types as Operation Inputs and produced fields |
 | `"<role>"` | free quoted name, non-empty, unique in the Procedure — a readable label (`"jira issue"`, `"fix revision"`), not an identifier |
 | `declared by agent` | the agent supplies the value after engagement |
+| `declared optionally by agent` | the agent may omit the value; when supplied, the same type and cardinality rules apply |
 | `fixed as "<value>"` | the value is written here; only for `one string` or `one reference`; cannot be combined with `declared by agent` |
 | `for "<parent>"` / `for each "<parent>"` | parent scope, see below; repeatable, combinable with the two clauses above |
 
@@ -50,6 +51,7 @@ Engagement accepts **exactly** the Plan inputs — no fixed, declared or materia
 `for "<parent>"` and `for each "<parent>"` attach a role to another role: a revision belongs to a project, a record time belongs to a document.
 
 - The parent must be a declared role; parent relations form an acyclic graph.
+- A role below an optional agent declaration must itself be declared optionally by the agent, or be materialized by a Check. This prevents a required value from depending on a parent the agent may omit.
 - `for "<parent>"`: one shared parent value. `for each "<parent>"`: one value per value of the parent — the relation keeps **which value belongs to which parent**. When a Check runs `on each "affected project"`, a `using "fix revision"` selects the revision of *that* project, not the whole collection — the selection follows the scope, never an array position.
 - Two roles are in the **same scope** when one is `for each` the other, or when they share the same parents. Same scope is what allows a `many` role to feed a `one` Input under `on each`, a produced scalar to compare with `context["<many role>"]`, and a scalar field to materialize a `many` role.
 
@@ -68,5 +70,5 @@ Engagement accepts **exactly** the Plan inputs — no fixed, declared or materia
 Types and cardinalities must match the Operation's Input at each binding: a `many reference` role cannot feed a `one` Input without `each`; a `string` role cannot feed a `reference` Input.
 
 <Details title="Compiled roles" expert>
-Each role compiles to `{ name, type, cardinality, source, parent? }` where `source.kind` is `plan-input`, `agent-declaration`, `fixed` (with `value`), `operation-field` (with the Check and field) or `plan-identifier` (the synthesised role `plan`, see [Scenarios and Checks](/docs/procedures/scenarios-and-checks)). The Procedure page lists Plan inputs in its inspector; a Plan's engagement form is generated from them.
+Each role compiles to `{ name, type, cardinality, source, parent? }` where `source.kind` is `plan-input`, `agent-declaration`, `fixed` (with `value`), `operation-field` (with the Check and field) or `plan-identifier` (the synthesised role `plan`, see [Scenarios and Checks](/docs/procedures/scenarios-and-checks)). Only an optional agent declaration adds `optional: true` to its `agent-declaration` source. The Procedure page lists Plan inputs in its inspector; a Plan's engagement form is generated from them.
 </Details>

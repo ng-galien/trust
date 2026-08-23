@@ -5,15 +5,25 @@ export interface EnvironmentPath {
   readonly appendInput?: string;
 }
 
-/** One argv token: a literal, one string Input, or a literal prefix glued to one string Input
-    (`literal + Input "x"`: the token is `<prefix><value>`, no separator). */
+/** One argv token: a literal, one string Input, or the TRUST execution identifier. */
 export type ShellArgument =
   | { readonly kind: "literal"; readonly value: string }
-  | { readonly kind: "input"; readonly input: string; readonly prefix?: string };
+  | { readonly kind: "input"; readonly input: string; readonly prefix?: string }
+  | { readonly kind: "execution"; readonly field: "id"; readonly prefix?: string };
 
-/** The argv token of one argument: the literal, or the prefix glued to the resolved Input value. */
-export function renderShellArgument(argument: ShellArgument, resolve: (input: string) => string): string {
-  return argument.kind === "literal" ? argument.value : `${argument.prefix ?? ""}${resolve(argument.input)}`;
+/** Render one argv token without exposing runner internals to the Operation. */
+export function renderShellArgument(
+  argument: ShellArgument,
+  resolveInput: (input: string) => string,
+  resolveExecution: (field: "id") => string = () => {
+    throw new TypeError("Operation Execution context is unavailable.");
+  },
+): string {
+  if (argument.kind === "literal") return argument.value;
+  const value = argument.kind === "input"
+    ? resolveInput(argument.input)
+    : resolveExecution(argument.field);
+  return `${argument.prefix ?? ""}${value}`;
 }
 
 export interface AcceptedShellExit {

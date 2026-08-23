@@ -141,6 +141,7 @@ export const SQLITE_SCHEMA = `
   CREATE TABLE IF NOT EXISTS attempts (
     attempt_handle TEXT PRIMARY KEY,
     attempt_key TEXT NOT NULL UNIQUE,
+    execution_id TEXT NOT NULL UNIQUE,
     plan_slug TEXT NOT NULL,
     plan_revision INTEGER NOT NULL CHECK (plan_revision >= 1),
     check_uri TEXT NOT NULL,

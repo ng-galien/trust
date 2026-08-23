@@ -61,7 +61,7 @@ const CARDINALITIES = new Set<"one" | "many">(operationLanguage.cardinalities);
 const JSONATA_NODE_TYPES = new Set<string>(operationLanguage.jsonata.nodeTypes);
 const JSONATA_FUNCTIONS = new Set<string>(operationLanguage.jsonata.functions);
 const JSONATA_BINARY_OPERATORS = new Set<string>(operationLanguage.jsonata.binaryOperators);
-const [STEPS_ROOT, INPUT_ROOT, ENVIRONMENT_ROOT] = operationLanguage.jsonata.roots;
+const [STEPS_ROOT, INPUT_ROOT, ENVIRONMENT_ROOT, EXECUTION_ROOT] = operationLanguage.jsonata.roots;
 
 export class OperationCompilationError extends Error {
   constructor(
@@ -552,15 +552,28 @@ function parseRun(
         if (source === "literal") return { kind: "literal" as const, value };
         const parsedSource = parseArgumentSource(source);
         if (!parsedSource) {
-          fail(context, "invalid-operation", `Shell "${name}" argument source "${source}" must be literal, Input "<name>" or literal + Input "<name>"`, row);
+          fail(context, "invalid-operation", `Shell "${name}" argument source "${source}" must be literal, Input "<name>", literal + Input "<name>", Execution "id" or literal + Execution "id"`, row);
         }
-        const inputName = parsedSource.input;
-        assertStringInput(`Shell "${name}"`, "argument", inputName, input, context, row);
-        if (!parsedSource.prefixed) return { kind: "input" as const, input: inputName };
+        if (parsedSource.kind === "input") {
+          assertStringInput(`Shell "${name}"`, "argument", parsedSource.input, input, context, row);
+        }
         if (value === "") {
-          fail(context, "invalid-operation", `Shell "${name}" argument literal + Input "${inputName}" requires a non-empty argument cell`, row);
+          if (parsedSource.prefixed) {
+            fail(context, "invalid-operation", `Shell "${name}" prefixed argument requires a non-empty argument cell`, row);
+          }
         }
-        return { kind: "input" as const, input: inputName, prefix: value };
+        if (parsedSource.kind === "input") {
+          return {
+            kind: "input" as const,
+            input: parsedSource.input,
+            ...(parsedSource.prefixed ? { prefix: value } : {}),
+          };
+        }
+        return {
+          kind: "execution" as const,
+          field: parsedSource.field,
+          ...(parsedSource.prefixed ? { prefix: value } : {}),
+        };
       });
       names.add(name);
       compiled.push({
@@ -808,20 +821,23 @@ type ParsedHttpGetSentence =
       readonly reason: string;
     };
 
-interface ParsedArgumentSource {
-  readonly input: string;
-  readonly prefixed: boolean;
-}
+type ParsedArgumentSource =
+  | { readonly kind: "input"; readonly input: string; readonly prefixed: boolean }
+  | { readonly kind: "execution"; readonly field: "id"; readonly prefixed: boolean };
 
-/** `Input "<name>"` or `literal + Input "<name>"`. */
+/** `Input "<name>"`, `Execution "id"`, or their literal-prefixed forms. */
 function parseArgumentSource(source: string): ParsedArgumentSource | undefined {
   const tokens = tryTokenize(source);
   if (!tokens) return undefined;
   const cursor = new SentenceCursor(tokens);
   const prefixed = cursor.takeWords("literal", "+");
-  if (!cursor.takeText("Input")) return undefined;
-  const input = takeField(cursor);
-  return input && cursor.done ? { input, prefixed } : undefined;
+  if (cursor.takeText("Input")) {
+    const input = takeField(cursor);
+    return input && cursor.done ? { kind: "input", input, prefixed } : undefined;
+  }
+  if (!cursor.takeText("Execution")) return undefined;
+  const field = takeField(cursor);
+  return field === "id" && cursor.done ? { kind: "execution", field, prefixed } : undefined;
 }
 
 function tryTokenize(source: string): readonly SentenceToken[] | undefined {
@@ -1152,13 +1168,19 @@ function validateProduce(
       }
       return;
     }
+    if (root === EXECUTION_ROOT) {
+      if (field !== "id" || names.length !== 2) {
+        fail(context, "invalid-operation", `Produce references unknown Execution field "${field ?? ""}"`);
+      }
+      return;
+    }
     fail(context, "invalid-operation", `Produce references unknown root "${root ?? ""}"`);
   });
 }
 
-function assertClosedJsonata(value: unknown, context: CompileContext): void {
+function assertClosedJsonata(value: unknown, context: CompileContext, rootVariable = false): void {
   if (Array.isArray(value)) {
-    for (const item of value) assertClosedJsonata(item, context);
+    for (const item of value) assertClosedJsonata(item, context, rootVariable);
     return;
   }
   const node = record(value);
@@ -1169,7 +1191,10 @@ function assertClosedJsonata(value: unknown, context: CompileContext): void {
   }
   if (type === "variable") {
     const name = typeof node.value === "string" ? node.value : "";
-    if (!JSONATA_FUNCTIONS.has(name)) {
+    if (name === "$" && !rootVariable) {
+      fail(context, "invalid-operation", "Produce uses the JSONata root only inside a rooted path");
+    }
+    if (name !== "$" && !JSONATA_FUNCTIONS.has(name)) {
       fail(context, "invalid-operation", `Produce uses unsupported JSONata function "$${name}"`);
     }
   }
@@ -1182,8 +1207,15 @@ function assertClosedJsonata(value: unknown, context: CompileContext): void {
   if (type === "unary" && node.value !== "{") {
     fail(context, "invalid-operation", `Produce uses unsupported JSONata unary operator`);
   }
-  if (Array.isArray(node.stages) && node.stages.length > 0) {
-    fail(context, "invalid-operation", "Produce does not allow dynamic JSONata path stages");
+  if (Array.isArray(node.stages) && node.stages.some((stage) => record(stage)?.type !== "filter")) {
+    fail(context, "invalid-operation", "Produce allows only fixed JSONata filter path stages");
+  }
+  if (type === "path" && Array.isArray(node.steps)) {
+    node.steps.forEach((step, index) => assertClosedJsonata(step, context, index === 0));
+    for (const [key, child] of Object.entries(node)) {
+      if (key !== "steps") assertClosedJsonata(child, context);
+    }
+    return;
   }
   for (const child of Object.values(node)) assertClosedJsonata(child, context);
 }
@@ -1202,18 +1234,35 @@ function assertRelativeFilePath(path: string, context: CompileContext, located: 
   }
 }
 
-function visitJsonata(value: unknown, visitPath: (path: readonly unknown[]) => void): void {
+function visitJsonata(
+  value: unknown,
+  visitPath: (path: readonly unknown[]) => void,
+  relative = false,
+): void {
   if (Array.isArray(value)) {
-    for (const item of value) visitJsonata(item, visitPath);
+    for (const item of value) visitJsonata(item, visitPath, relative);
     return;
   }
   const node = record(value);
   if (!node) return;
   if (node.type === "path" && Array.isArray(node.steps)) {
-    visitPath(node.steps);
+    const first = record(node.steps[0]);
+    if (first?.type === "variable" && first.value === "$") {
+      visitPath(node.steps.slice(1));
+    } else if (!relative) {
+      visitPath(node.steps);
+    }
+    for (const step of node.steps) {
+      const stages = record(step)?.stages;
+      if (!Array.isArray(stages)) continue;
+      for (const stage of stages) {
+        const expression = record(stage)?.expr;
+        if (expression !== undefined) visitJsonata(expression, visitPath, true);
+      }
+    }
     return;
   }
-  for (const child of Object.values(node)) visitJsonata(child, visitPath);
+  for (const child of Object.values(node)) visitJsonata(child, visitPath, relative);
 }
 
 function record(value: unknown): Record<string, unknown> | undefined {

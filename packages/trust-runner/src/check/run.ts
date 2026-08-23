@@ -69,12 +69,14 @@ export function createCheckRunner(options: CheckRunnerOptions) {
           admission.actionInput,
           admission.environment,
           diagnostics,
+          { id: admission.executionId },
         );
         phase = "fact export";
         const observedAt = clock().toISOString();
         await options.facts.export({
           attemptKey: attempt,
           attemptHandle: admission.attemptHandle,
+          executionId: admission.executionId,
           checkUri: invocation.checkUri,
           facts: [{
             kind: admission.operation.operation,

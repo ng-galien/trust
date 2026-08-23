@@ -193,6 +193,7 @@ test("Plan pages, Check history and live events are served at public boundaries"
 interface Admission {
   attemptKey: string;
   attemptHandle: string;
+  executionId: string;
   checkUri: string;
   operation: { operation: string };
 }
@@ -234,6 +235,7 @@ async function facts(endpoint: string, admission: Admission, values: Record<stri
     contract: "trust.fact-batch-request@1",
     attemptKey: admission.attemptKey,
     attemptHandle: admission.attemptHandle,
+    executionId: admission.executionId,
     checkUri: admission.checkUri,
     recordedAt: now,
     facts: [{ kind: admission.operation.operation, observedAt: now, values }],

@@ -688,6 +688,7 @@ interface Admission {
   reasonCode?: string;
   attemptKey: string;
   attemptHandle: string;
+  executionId: string;
   checkUri: string;
   operation: { operation: string };
   actionInput: Record<string, unknown>;
@@ -720,6 +721,7 @@ function factBatch(admission: Admission, values: Record<string, unknown>) {
     contract: "trust.fact-batch-request@1",
     attemptKey: admission.attemptKey,
     attemptHandle: admission.attemptHandle,
+    executionId: admission.executionId,
     checkUri: admission.checkUri,
     recordedAt: now,
     facts: [{ kind: admission.operation.operation, observedAt: now, values }],
@@ -768,6 +770,7 @@ async function postOtlpFacts(endpoint: string, batch: ReturnType<typeof factBatc
           attributes: [
             attribute("trust.attempt_key", batch.attemptKey),
             attribute("trust.attempt_handle", batch.attemptHandle),
+            attribute("trust.execution_id", batch.executionId),
             attribute("trust.check_uri", batch.checkUri),
           ],
           events: batch.facts.map((fact, index) => ({

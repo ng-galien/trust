@@ -91,6 +91,115 @@ test("a Plan engages before future agent declarations exist", async () => {
   }
 });
 
+test("optional agent declarations may be absent and create Checks only when supplied", async () => {
+  const runtime = await startRuntime("trust-optional-declarations-");
+  try {
+    await publish(runtime.endpoint, fixture("optional-agent-declarations.feature"));
+    const engagement = await rpc(runtime.endpoint, "plan.engage", {
+      contract: "trust.plan-engagement-request@1",
+      procedure: "optional-agent-declarations",
+      procedureVersion: "1.0.0",
+      plan: "optional-agent-declarations",
+      environment: "local",
+      rootInputs: { workspace: "packages/trust-runtime" },
+    }) as { revision: number; checkUris: readonly string[] };
+
+    assert.equal(engagement.revision, 1);
+    assert.equal(engagement.checkUris.length, 1);
+    const initialView = await rpc(runtime.endpoint, "plan.read", {
+      plan: "optional-agent-declarations",
+    }) as {
+      missingDeclarations: readonly string[];
+      declarationRoles: readonly { role: string; optional: boolean }[];
+      checks: readonly { name: string }[];
+    };
+    assert.deepEqual(initialView.missingDeclarations, ["required note"]);
+    assert.deepEqual(initialView.checks.map(({ name }) => name), ["workspace head"]);
+    assert.equal(initialView.declarationRoles.find(({ role }) => role === "optional project")?.optional, true);
+    assert.equal(initialView.declarationRoles.find(({ role }) => role === "optional target")?.optional, true);
+    const initial = await mcpTool(runtime.endpoint, "trust_plan_read", { checkUri: engagement.checkUris[0] });
+    assert.match(initial, /Declare 1 missing declaration role with trust_plan_declarations_replace/);
+    assert.match(initial, /OPTIONAL DECLARATIONS/);
+    assert.match(initial, /- optional project: one reference; optional/);
+    assert.match(initial, /- optional target: many reference; optional/);
+
+    assert.match(await mcpToolFailure(runtime.endpoint, "trust_plan_declarations_replace", {
+      plan: "optional-agent-declarations",
+      expectedRevision: 1,
+      declarations: {
+        "required note": "covered",
+        "optional target": [],
+      },
+    }), /Role "optional target" must contain values/);
+
+    const replacement = await mcpTool(runtime.endpoint, "trust_plan_declarations_replace", {
+      plan: "optional-agent-declarations",
+      expectedRevision: 1,
+      declarations: {
+        "required note": "covered",
+        "optional project": "packages/trust-procedure",
+        "optional target": ["packages/trust-ui", "packages/trust-language-server"],
+      },
+    });
+    assert.match(replacement, /Revision: 2/);
+    assert.match(replacement, /Current Checks: 8/);
+    const expanded = await rpc(runtime.endpoint, "plan.read", {
+      plan: "optional-agent-declarations",
+    }) as { checks: readonly { checkUri: string; name: string; blockedBy: readonly string[] }[] };
+    const observed = expanded.checks.find(({ name }) => name === "optional observed head");
+    assert.ok(observed);
+    assert.equal(observed.blockedBy.length, 1);
+    assert.ok(expanded.checks.some(({ name }) => name === "optional transitive head"));
+
+    const materialization = expanded.checks.find(({ name }) => name === "optional materialization");
+    assert.ok(materialization);
+    const materializationAdmission = await admit(
+      runtime.endpoint,
+      materialization.checkUri,
+      "optional-declarations-materialization",
+    );
+    await sendRunnerFacts(
+      runtime.endpoint,
+      materializationAdmission,
+      gitHeadFact(materializationAdmission.operation.operation),
+    );
+    await rpc(runtime.endpoint, "check.attempt.finalize", {
+      contract: "trust.attempt-finalization-request@1",
+      attemptHandle: materializationAdmission.attemptHandle,
+    });
+    const materialized = await rpc(runtime.endpoint, "plan.read", {
+      plan: "optional-agent-declarations",
+    }) as { revision: number };
+    assert.equal(materialized.revision, 3);
+
+    const removal = await mcpTool(runtime.endpoint, "trust_plan_declarations_replace", {
+      plan: "optional-agent-declarations",
+      expectedRevision: 3,
+      declarations: { "required note": "covered" },
+    });
+    assert.match(removal, /Revision: 4/);
+    assert.match(removal, /Current Checks: 1/);
+    assert.match(removal, /Removed Checks: 7/);
+
+    const resumed = await rpc(runtime.endpoint, "plan.read", {
+      plan: "optional-agent-declarations",
+    }) as { checks: readonly { checkUri: string }[] };
+    const admission = await admit(runtime.endpoint, resumed.checks[0]!.checkUri, "optional-declarations-complete");
+    await sendRunnerFacts(runtime.endpoint, admission, gitHeadFact(admission.operation.operation));
+    await rpc(runtime.endpoint, "check.attempt.finalize", {
+      contract: "trust.attempt-finalization-request@1",
+      attemptHandle: admission.attemptHandle,
+    });
+    const complete = await rpc(runtime.endpoint, "plan.read", {
+      plan: "optional-agent-declarations",
+    }) as { workState: string; checklistComplete: boolean };
+    assert.equal(complete.workState, "COMPLETE");
+    assert.equal(complete.checklistComplete, true);
+  } finally {
+    await runtime.close();
+  }
+});
+
 test("an intent-chained Plan initializes on first read, survives resumption and rotates after each validated Check", async () => {
   const runtime = await startRuntime("trust-intent-chaining-");
   try {
@@ -144,6 +253,7 @@ test("an intent-chained Plan initializes on first read, survives resumption and 
       reasonCode?: string;
       attemptKey?: string;
       attemptHandle?: string;
+      executionId?: string;
       checkUri?: string;
       operation?: { operation: string };
     }>;
@@ -182,10 +292,11 @@ test("an intent-chained Plan initializes on first read, survives resumption and 
       status: "REFUSED",
       reasonCode: "attempt-expired",
     });
-    assert.ok(sameCheckWinner.attemptHandle && sameCheckWinner.checkUri && sameCheckWinner.operation);
+    assert.ok(sameCheckWinner.attemptHandle && sameCheckWinner.executionId && sameCheckWinner.checkUri && sameCheckWinner.operation);
     const staleFacts = await postFacts(runtime.endpoint, {
       attemptKey: sameCheckWinner.attemptKey,
       attemptHandle: sameCheckWinner.attemptHandle,
+      executionId: sameCheckWinner.executionId,
       checkUri: sameCheckWinner.checkUri,
     }, [gitHeadFact(sameCheckWinner.operation.operation)]);
     assert.equal(staleFacts.partialSuccess?.rejectedSpans, 1);
@@ -393,6 +504,62 @@ test("MCP gives the accepted array shape for one declaration per parent", async 
   }
 });
 
+test("MCP accepts several correlated declaration values for one parent", async () => {
+  const runtime = await startRuntime("trust-many-for-each-");
+  try {
+    await publish(runtime.endpoint, fixture("many-for-each-declaration.feature"));
+    const engagement = await rpc(runtime.endpoint, "plan.engage", {
+      contract: "trust.plan-engagement-request@1",
+      procedure: "many-for-each-declaration",
+      procedureVersion: "1.0.0",
+      plan: "many-for-each-declaration",
+      environment: "local",
+      rootInputs: { "library project": ["payment-common"] },
+    }) as { checkUris: readonly string[] };
+
+    const plan = await mcpTool(runtime.endpoint, "trust_plan_read", {
+      checkUri: engagement.checkUris[0],
+    });
+    assert.match(plan, /- runtime dependency project: many reference; parent for each: library project/);
+    assert.match(plan, /one or more entries for each library project/);
+
+    assert.match(await mcpToolFailure(runtime.endpoint, "trust_plan_declarations_replace", {
+      plan: "many-for-each-declaration",
+      expectedRevision: 1,
+      declarations: {
+        "runtime dependency project": [{
+          value: "payment-api",
+          parents: [{ role: "library project", value: "another-library" }],
+        }],
+      },
+    }), /must contain one or more unique values per "library project"/);
+
+    const replacement = await mcpTool(runtime.endpoint, "trust_plan_declarations_replace", {
+      plan: "many-for-each-declaration",
+      expectedRevision: 1,
+      declarations: {
+        "runtime dependency project": ["payment-api", "payment-worker", "event-store"].map((value) => ({
+          value,
+          parents: [{ role: "library project", value: "payment-common" }],
+        })),
+      },
+    });
+    assert.match(replacement, /Revision: 2/);
+    const current = await rpc(runtime.endpoint, "plan.engage", {
+      contract: "trust.plan-engagement-request@1",
+      procedure: "many-for-each-declaration",
+      procedureVersion: "1.0.0",
+      plan: "many-for-each-declaration",
+      environment: "local",
+      rootInputs: { "library project": ["payment-common"] },
+    }) as { checkUris: readonly string[] };
+    assert.equal(current.checkUris.filter((uri) => uri.includes("git-head-read")).length, 4);
+    assert.equal(new Set(current.checkUris).size, 4);
+  } finally {
+    await runtime.close();
+  }
+});
+
 test("correlated Operation values produce the right Check Input for each declared project", async () => {
   const runtime = await startRuntime("trust-correlated-plan-");
   try {
@@ -500,6 +667,19 @@ test("Fact rejection is atomic and Attempt finalization is idempotent", async ()
       checkUris: readonly string[];
     };
     const admission = await admit(runtime.endpoint, engagement.checkUris[0]!, "attempt-replay-1");
+    assert.match(admission.executionId, /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+    const repeatedAdmission = await admit(runtime.endpoint, engagement.checkUris[0]!, "attempt-replay-1");
+    assert.equal(repeatedAdmission.executionId, admission.executionId);
+
+    const wrongExecution = await sendRunnerFacts(runtime.endpoint, {
+      ...admission,
+      executionId: "00000000-0000-4000-8000-000000000000",
+    }, {
+      kind: admission.operation.operation,
+      observedAt: "2026-08-15T11:59:59.000Z",
+      values: { headRevision: "revision-a", workingTree: "clean" },
+    });
+    assert.equal(wrongExecution.partialSuccess?.rejectedSpans, 1);
     const rejected = await sendRunnerFacts(runtime.endpoint, admission, {
       kind: admission.operation.operation,
       observedAt: "2026-08-15T12:00:00.000Z",
@@ -518,6 +698,11 @@ test("Fact rejection is atomic and Attempt finalization is idempotent", async ()
       values: { headRevision: "revision-a", workingTree: "clean" },
     });
     assert.equal(accepted.partialSuccess, undefined);
+    const check = await rpc(runtime.endpoint, "check.read", {
+      contract: "trust.check-read-request@1",
+      checkUri: admission.checkUri,
+    }) as { attempts: readonly { facts: readonly { executionId: string }[] }[] };
+    assert.equal(check.attempts[0]?.facts[0]?.executionId, admission.executionId);
     const first = await rpc(runtime.endpoint, "check.attempt.finalize", {
       contract: "trust.attempt-finalization-request@1",
       attemptHandle: admission.attemptHandle,
@@ -647,6 +832,7 @@ test("concurrent Fact ingestion and finalization keep Facts and Snapshot consist
 interface RunnerAdmission {
   readonly attemptKey: string;
   readonly attemptHandle: string;
+  readonly executionId: string;
   readonly checkUri: string;
   readonly actionInput: Readonly<Record<string, unknown>>;
   readonly operation: { readonly operation: string };
@@ -707,7 +893,7 @@ async function sendRunnerFacts(
 
 async function postFacts(
   endpoint: string,
-  attempt: { readonly attemptKey: string; readonly attemptHandle: string; readonly checkUri: string },
+  attempt: { readonly attemptKey: string; readonly attemptHandle: string; readonly executionId: string; readonly checkUri: string },
   facts: readonly Readonly<Record<string, unknown>>[],
 ): Promise<{ partialSuccess?: { rejectedSpans?: number; errorMessage?: string } }> {
   const response = await fetch(`${endpoint}/v1/traces`, {
@@ -722,6 +908,7 @@ async function postFacts(
             attributes: [
               { key: "trust.attempt_key", value: { stringValue: attempt.attemptKey } },
               { key: "trust.attempt_handle", value: { stringValue: attempt.attemptHandle } },
+              { key: "trust.execution_id", value: { stringValue: attempt.executionId } },
               { key: "trust.check_uri", value: { stringValue: attempt.checkUri } },
             ],
             events: facts.map((fact, index) => ({

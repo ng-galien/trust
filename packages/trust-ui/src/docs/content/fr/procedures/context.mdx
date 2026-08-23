@@ -11,7 +11,7 @@ Le `Background: Plan context` déclare chaque valeur qu'un Plan porte : des **r�
 ```gherkin fragment title="Un rôle par ligne"
   Background: Plan context
     Given one reference "jira issue"
-    And many reference "affected project" declared by agent for "jira issue"
+    And many reference "affected project" declared optionally by agent for "jira issue"
     And many reference "fix revision" for each "affected project"
     And one reference "acceptance project" fixed as "payment-acceptance"
 ```
@@ -19,7 +19,7 @@ Le `Background: Plan context` déclare chaque valeur qu'un Plan porte : des **r�
 ## La phrase
 
 ```text
-Given|And one|many string|number|instant|reference "<role>" [declared by agent] [fixed as "<value>"] [for "<parent>"]… [for each "<parent>"]…
+Given|And one|many string|number|instant|reference "<role>" [declared [optionally] by agent] [fixed as "<value>"] [for "<parent>"]… [for each "<parent>"]…
 ```
 
 | Partie | Règle |
@@ -29,6 +29,7 @@ Given|And one|many string|number|instant|reference "<role>" [declared by agent] 
 | `string` `number` `instant` `reference` | les quatre mêmes types que les Inputs d'Opération et les champs produits |
 | `"<role>"` | nom libre entre guillemets, non vide, unique dans la Procédure — un libellé lisible (`"jira issue"`, `"fix revision"`), pas un identifiant |
 | `declared by agent` | l'agent fournit la valeur après l'engagement |
+| `declared optionally by agent` | l'agent peut omettre la valeur ; lorsqu'elle est fournie, les mêmes règles de type et de cardinalité s'appliquent |
 | `fixed as "<value>"` | la valeur est écrite ici ; seulement pour `one string` ou `one reference` ; ne se combine pas avec `declared by agent` |
 | `for "<parent>"` / `for each "<parent>"` | scope parent, voir plus bas ; répétable, combinable avec les deux clauses ci-dessus |
 
@@ -50,6 +51,7 @@ L'engagement accepte **exactement** les entrées de Plan — aucun rôle fixe, d
 `for "<parent>"` et `for each "<parent>"` rattachent un rôle à un autre rôle : une révision appartient à un projet, une heure d'enregistrement appartient à un document.
 
 - Le parent doit être un rôle déclaré ; les relations de parenté forment un graphe acyclique.
+- Un rôle sous une déclaration facultative de l'agent doit lui-même être déclaré facultativement par l'agent, ou être matérialisé par un Check. Cela empêche une valeur obligatoire de dépendre d'un parent que l'agent peut omettre.
 - `for "<parent>"` : une valeur parente partagée. `for each "<parent>"` : une valeur par valeur du parent — la relation retient **quelle valeur appartient à quel parent**. Quand un Check s'exécute `on each "affected project"`, un `using "fix revision"` sélectionne la révision de *ce* projet, pas la collection entière — la sélection suit le scope, jamais une position dans un tableau.
 - Deux rôles sont dans le **même scope** quand l'un est `for each` l'autre, ou quand ils partagent les mêmes parents. C'est le même scope qui permet à un rôle `many` d'alimenter un Input `one` sous `on each`, à un scalaire produit d'être comparé avec `context["<many role>"]`, et à un champ scalaire de matérialiser un rôle `many`.
 
@@ -68,5 +70,5 @@ L'engagement accepte **exactement** les entrées de Plan — aucun rôle fixe, d
 Types et cardinalités doivent correspondre à l'Input de l'Opération à chaque liaison : un rôle `many reference` ne peut pas alimenter un Input `one` sans `each` ; un rôle `string` ne peut pas alimenter un Input `reference`.
 
 <Details title="Rôles compilés" expert>
-Chaque rôle compile en `{ name, type, cardinality, source, parent? }` où `source.kind` vaut `plan-input`, `agent-declaration`, `fixed` (avec `value`), `operation-field` (avec le Check et le champ) ou `plan-identifier` (le rôle synthétisé `plan`, voir [Scénarios et Checks](/docs/procedures/scenarios-and-checks)). La page de la Procédure liste les entrées de Plan dans son inspecteur ; le formulaire d'engagement d'un Plan est généré à partir d'elles.
+Chaque rôle compile en `{ name, type, cardinality, source, parent? }` où `source.kind` vaut `plan-input`, `agent-declaration`, `fixed` (avec `value`), `operation-field` (avec le Check et le champ) ou `plan-identifier` (le rôle synthétisé `plan`, voir [Scénarios et Checks](/docs/procedures/scenarios-and-checks)). Seule une déclaration facultative de l'agent ajoute `optional: true` à sa source `agent-declaration`. La page de la Procédure liste les entrées de Plan dans son inspecteur ; le formulaire d'engagement d'un Plan est généré à partir d'elles.
 </Details>

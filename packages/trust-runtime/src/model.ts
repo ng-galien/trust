@@ -92,6 +92,7 @@ export type AttemptState = "pending" | "finalized";
 export interface Attempt {
   handle: string;
   attemptKey: string;
+  executionId: string;
   planSlug: string;
   planRevision: number;
   checkUri: string;
@@ -123,6 +124,7 @@ export interface Attempt {
 export interface Fact {
   id: string;
   attemptHandle: string;
+  executionId: string;
   checkUri: string;
   compiledCheckDigest: string;
   index: number;

@@ -12,7 +12,7 @@ export const operationLanguage = {
     produce: "Produce with JSONata",
   },
   jsonata: {
-    roots: ["steps", "input", "environment"] as const,
+    roots: ["steps", "input", "environment", "execution"] as const,
     functions: [
       "abs", "append", "average", "boolean", "ceil", "contains", "count", "distinct", "each",
       "exists", "filter", "floor", "formatBase", "formatNumber", "fromMillis", "join", "keys",
@@ -21,7 +21,7 @@ export const operationLanguage = {
       "spread", "sqrt", "string", "substring", "substringAfter", "substringBefore", "sum", "toMillis",
       "trim", "type", "uppercase", "zip",
     ] as const,
-    nodeTypes: ["binary", "block", "condition", "function", "name", "number", "path", "string", "unary", "value", "variable"] as const,
+    nodeTypes: ["binary", "block", "condition", "filter", "function", "name", "number", "path", "string", "unary", "value", "variable"] as const,
     binaryOperators: ["!=", "%", "&", "*", "+", "-", "/", "<", "<=", "=", ">", ">=", "and", "or"] as const,
   },
   stepResults: {
@@ -30,7 +30,7 @@ export const operationLanguage = {
     http: ["status", "headers", "body"],
   } as const,
   syntax: {
-    types: ["Environment", "Input", "Produced", "Shell", "File", "HTTP", "Operation"] as const,
+    types: ["Environment", "Input", "Produced", "Shell", "File", "HTTP", "Operation", "Execution"] as const,
     verbs: ["runs", "accepts", "gets", "appending", "posts", "reads", "Produce"] as const,
   },
   template: `# language: en

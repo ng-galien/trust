@@ -5,12 +5,15 @@ Feature: Reproduce a defect with a committed Karate change (red run)
   Observes the committed acceptance change and runs it in the red phase, in one Operation. In the
   acceptance project below the workspace: reads HEAD, counts the commits ahead of `baseRevision`,
   reads the working tree, then runs
-  `mvn -B test -Dtrust.phase=red -Dtrust.ticket=<ticket> -Dtrust.run=<run> <testArgument>`.
+  `mvn -B test -Dtrust.phase=red -Dtrust.ticket=<ticket> -Dtrust.run=<run>
+  -Dtrust.execution.id=<executionId> <testArgument>`.
   Exit 1 with a Surefire summary (`Tests run:`) is the observation `defect-reproduced`; exit 0 is
   `not-reproduced`; any other exit (Maven cannot start, compilation error) interrupts the
   Operation. `testedRevision` is the observed HEAD, so a Procedure can materialize the acceptance
   test revision from the same run that reproduced the defect. `trust.ticket` and `trust.run`
-  let the Karate features tag their traffic with the ticket and the Plan.
+  let the Karate features tag their traffic with the ticket and the Plan. TRUST supplies its
+  execution id directly to the Operation context so the same traffic carries stable telemetry
+  correlation for this run.
 
   Background: Operation interface
     Given Environment
@@ -55,6 +58,7 @@ Feature: Reproduce a defect with a committed Karate change (red run)
       | -Dtrust.phase=red | literal                  |
       | -Dtrust.ticket=   | literal + Input "ticket" |
       | -Dtrust.run=      | literal + Input "run"    |
+      | -Dtrust.execution.id= | literal + Execution "id" |
       | testArgument      | Input "testArgument"     |
     And Shell "test" accepts exits
       | exit code | stdout contains | stderr contains |

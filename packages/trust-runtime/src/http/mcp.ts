@@ -285,6 +285,7 @@ function renderPlan(view: PlanView): string {
   const missingRoles = view.declarationRoles.filter(({ role }) => (
     view.missingDeclarations.includes(role)
   ));
+  const optionalRoles = view.declarationRoles.filter(({ optional }) => optional);
   const lines: string[] = [
     "PLAN",
     `Plan: ${view.plan}`,
@@ -327,6 +328,14 @@ function renderPlan(view: PlanView): string {
       "MISSING DECLARATIONS",
       `Replace the complete declaration snapshot for Plan ${view.plan} at revision ${view.revision}.`,
       ...missingRoles.flatMap(renderDeclarationRole),
+    );
+  }
+  if (optionalRoles.length > 0) {
+    lines.push(
+      "",
+      "OPTIONAL DECLARATIONS",
+      "These agent declarations may be omitted. When supplied, they keep their declared type, cardinality and parent rules.",
+      ...optionalRoles.flatMap(renderDeclarationRole),
     );
   }
   const declarationEntries = Object.entries(view.declarations);
@@ -518,9 +527,10 @@ function renderDeclarationRole(
   const shape = correlatedParent === undefined
     ? role.cardinality === "many" ? `[${item}, ...]` : item
     : `[{"value": ${item}, "parents": [{"role": "${correlatedParent.role}", "value": <matching ${correlatedParent.role}>}]}]`;
+  const coordinatedRule = role.cardinality === "many" ? "one or more entries" : "exactly one entry";
   return [
-    `- ${role.role}: ${role.cardinality} ${role.type}${parents.length === 0 ? "" : `; ${parents.join("; ")}`}`,
-    `  Value shape: ${shape}${correlatedParent === undefined ? "" : ` (exactly one entry for each ${correlatedParent.role})`}`,
+    `- ${role.role}: ${role.cardinality} ${role.type}${role.optional ? "; optional" : ""}${parents.length === 0 ? "" : `; ${parents.join("; ")}`}`,
+    `  Value shape: ${shape}${correlatedParent === undefined ? "" : ` (${coordinatedRule} for each ${correlatedParent.role})`}`,
   ];
 }
 

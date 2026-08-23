@@ -55,7 +55,7 @@ export interface CompiledProcedureRole {
   readonly parents: readonly { readonly role: string; readonly each: boolean }[];
   readonly source:
     | { readonly kind: "plan-input" }
-    | { readonly kind: "agent-declaration" }
+    | { readonly kind: "agent-declaration"; readonly optional?: true }
     | { readonly kind: "fixed"; readonly value: string }
     | { readonly kind: "operation-field"; readonly check: string; readonly field: string }
     /** The reserved role `plan`, synthesised when a Check uses `using plan as Input`: one string,

@@ -136,6 +136,65 @@ describe("Operation compiler", () => {
     expect(compiled.steps[0]).not.toHaveProperty("http.query");
   });
 
+  test.each([
+    "karate.test-run.feature",
+    "karate.defect-reproduce.feature",
+    "karate.change-reproduce.feature",
+    "karate.change-verify.feature",
+  ])("passes the TRUST execution id to Maven in %s", (feature) => {
+    const source = readFileSync(new URL(`../../../assets/operations/${feature}`, import.meta.url), "utf8");
+
+    const compiled = compileOperation({ source, sourceName: feature });
+    const testStep = compiled.steps.find((step) => step.name === "test");
+
+    expect(testStep).toMatchObject({
+      type: "shell",
+      shell: {
+        executable: "mvn",
+        arguments: expect.arrayContaining([{
+          kind: "execution",
+          field: "id",
+          prefix: "-Dtrust.execution.id=",
+        }]),
+      },
+    });
+  });
+
+  test.each([
+    ["maven.change-install.feature", "install"],
+    ["maven.dependency-verify.feature", "dependency"],
+  ])("compiles the Maven library dependency Operation %s", (feature, stepName) => {
+    const source = readFileSync(new URL(`../../../assets/operations/${feature}`, import.meta.url), "utf8");
+
+    const compiled = compileOperation({ source, sourceName: feature });
+
+    expect(compiled.steps.find((step) => step.name === stepName)).toMatchObject({
+      type: "shell",
+      shell: { executable: "mvn" },
+    });
+    expect(() => validateCompiledOperation(JSON.parse(JSON.stringify(compiled)))).not.toThrow();
+  });
+
+  test("compiles fixed filters over an HTTP trace body", () => {
+    const source = readFileSync(new URL("../../../assets/operations/telemetry.project-trace-read.feature", import.meta.url), "utf8");
+
+    const compiled = compileOperation({ source, sourceName: "telemetry.project-trace-read.feature" });
+
+    expect(compiled.steps).toEqual([expect.objectContaining({ name: "trace", type: "http" })]);
+    expect(compiled.produce.expression).toContain('key = "trust.execution.id"');
+  });
+
+  test("maps only the exact Jira Done status to done", () => {
+    const source = readFileSync(new URL("../../../assets/operations/jira.issue-read.feature", import.meta.url), "utf8");
+
+    const compiled = compileOperation({ source, sourceName: "jira.issue-read.feature" });
+
+    expect(compiled.produced.properties.workflowStatus).toMatchObject({
+      enum: ["todo", "in-progress", "in-review", "done", "other"],
+    });
+    expect(compiled.produce.expression).toContain('status.name = "Done" ? "done" : "other"');
+  });
+
   test("reports a misordered HTTP GET clause with the expected order", () => {
     const analysis = analyzeOperation({
       source: fixture("invalid/http-query-before-appending.feature"),

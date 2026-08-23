@@ -424,6 +424,7 @@ function hydrate(compiled: CompiledProcedure, plan: PlanView, t: TFunction): Edi
       const value = plan.rootInputs[name] ?? plan.declarations[name];
       if (value !== undefined) decorations.push({ line: step.location.line, tone: "info", text: t("plans.hydrate.value", { value: describeValue(value) }) });
       else if (plan.missingDeclarations.includes(name)) decorations.push({ line: step.location.line, tone: "open", text: t("plans.hydrate.notDeclared") });
+      else if (role.source.kind === "agent-declaration" && role.source.optional === true) decorations.push({ line: step.location.line, tone: "info", text: t("plans.hydrate.optionalNotDeclared") });
       else if (role.source.kind === "agent-declaration") decorations.push({ line: step.location.line, tone: "open", text: t("plans.hydrate.waitsForParent") });
     }
   }

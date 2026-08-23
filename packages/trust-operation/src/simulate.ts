@@ -12,6 +12,7 @@ export interface OperationSimulationInput extends OperationCompilationInput {
   readonly input: unknown;
   readonly environment: unknown;
   readonly steps: unknown;
+  readonly execution?: unknown;
 }
 
 export interface OperationSimulationResult {
@@ -41,7 +42,7 @@ export async function simulateOperation(
   }
   const producedValue = await evaluateOperationProjection(
     operation.produce.expression,
-    operationProjectionContext(operationInput, environment, steps),
+    operationProjectionContext(operationInput, environment, steps, input.execution ?? { id: "simulation" }),
   );
   validateOperationProduced(operation, producedValue);
   return {

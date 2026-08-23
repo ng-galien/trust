@@ -38,6 +38,7 @@ describe("Procedure compiler", () => {
       "05-patient-admission.feature",
       "06-aircraft-departure.feature",
       "07-food-batch-release.feature",
+      "08-end-to-end-red-green-telemetry.feature",
     ]);
 
     const catalog = operations();
@@ -47,6 +48,68 @@ describe("Procedure compiler", () => {
       expect(compiled.operations.length).toBeGreaterThan(0);
       expect(compiled.operations.every((item) => item.definition.operation === item.operation)).toBe(true);
     }
+  });
+
+  test("compiles distinct acceptance, library and runtime project paths", () => {
+    const compiled = compileProcedure({
+      source: source("08-end-to-end-red-green-telemetry.feature"),
+      sourceName: "08-end-to-end-red-green-telemetry.feature",
+      operations: operations(),
+    });
+
+    expect(compiled.roles).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        name: "execution ID",
+        cardinality: "one",
+        source: { kind: "agent-declaration" },
+      }),
+      expect.objectContaining({
+        name: "trace",
+        cardinality: "one",
+        parents: [{ role: "runtime project", each: true }],
+        source: { kind: "agent-declaration" },
+      }),
+    ]));
+    expect(compiled.checks.find((check) => check.name === "green trace")).toMatchObject({
+      operation: "telemetry.project-trace-read",
+      target: { role: "runtime project", selection: "each" },
+      inputBindings: [
+        { input: "project", role: "runtime project", selection: "each" },
+        { input: "traceId", role: "trace", selection: "one" },
+        { input: "executionId", role: "execution ID", selection: "one" },
+      ],
+    });
+    expect(compiled.checks.find((check) => check.name === "library fix installation")).toMatchObject({
+      operation: "maven.change-install",
+      target: { role: "library project", selection: "each" },
+      materializes: [
+        { role: "library fix revision", field: "installedRevision" },
+        { role: "installed library dependency", field: "installedDependency" },
+      ],
+    });
+    expect(compiled.checks.find((check) => check.name === "runtime dependency alignment")).toMatchObject({
+      operation: "maven.dependency-verify",
+      target: { role: "runtime dependency project", selection: "each" },
+      inputBindings: [
+        { input: "project", role: "runtime dependency project", selection: "each" },
+        { input: "dependency", role: "installed library dependency", selection: "one" },
+      ],
+    });
+    expect(compiled.checks.find((check) => check.name === "deployment")).toMatchObject({
+      target: { role: "runtime project", selection: "each" },
+    });
+    expect(compiled.scenarios.find((scenario) => scenario.slug === "runtime-fix-verify")).toMatchObject({
+      dependencies: ["dependency-alignment"],
+    });
+    expect(compiled.checks.find((check) => check.name === "done issue")).toMatchObject({
+      operation: "jira.issue-read",
+      target: { role: "jira issue", selection: "one" },
+    });
+    expect(compiled.scenarios.at(-1)).toMatchObject({
+      slug: "ticket-done",
+      dependencies: ["merge"],
+      checks: ["done issue"],
+    });
   });
 
   test("incorporates only the exact Operations used by one Procedure", () => {
@@ -67,6 +130,38 @@ describe("Procedure compiler", () => {
         }],
       },
     });
+  });
+
+  test("compiles optionality only as part of an agent declaration", () => {
+    const procedure = source("00-git-status.feature").replace(
+      'Given one reference "repository"',
+      'Given one reference "repository" declared optionally by agent',
+    );
+    const compiled = compileProcedure({ source: procedure, operations: operations() });
+
+    expect(compiled.roles.find((role) => role.name === "repository")).toMatchObject({
+      name: "repository",
+      cardinality: "one",
+      source: { kind: "agent-declaration", optional: true },
+    });
+    expect(compiled.roles.filter((role) => role.name !== "repository").every((role) => (
+      role.source.kind !== "agent-declaration" || role.source.optional !== true
+    ))).toBe(true);
+
+    expectCompilationError(
+      source("00-git-status.feature").replace(
+        'Given one reference "repository"',
+        'Given one reference "repository" optionally',
+      ),
+      "invalid-procedure",
+    );
+    expectCompilationError(
+      source("00-git-status.feature").replace(
+        'Given one reference "repository"',
+        'Given one reference "repository" declared optionally by agent\n    And one string "branch" declared by agent for "repository"',
+      ),
+      "invalid-procedure",
+    );
   });
 
   test("compiles intent chaining as an optional semantic Procedure rule", () => {

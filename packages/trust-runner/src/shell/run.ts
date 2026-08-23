@@ -2,7 +2,7 @@ import { spawn } from "node:child_process";
 import { once } from "node:events";
 import type { Readable } from "node:stream";
 
-import { renderShellArgument, type Shell } from "@trust/operation";
+import { renderShellArgument, type OperationExecutionContext, type Shell } from "@trust/operation";
 
 import { nullReporter, type StepReporter } from "../diagnostics/events.js";
 import type { JsonObject } from "../lib/json.js";
@@ -33,6 +33,7 @@ export async function runShell(
   shell: Shell,
   input: JsonObject,
   environment: JsonObject,
+  execution: OperationExecutionContext,
   reporter: StepReporter = nullReporter,
 ): Promise<ShellResult> {
   let directory: string;
@@ -45,11 +46,15 @@ export async function runShell(
   let processHandle: ReturnType<typeof spawn>;
   const ownsProcessGroup = process.platform !== "win32" && process.env.TRUST_RUNNER_PROCESS_GROUP !== "1";
   try {
-    processHandle = spawn(shell.executable, shell.arguments.map((argument) => renderShellArgument(argument, (name) => {
-      const value = input[name];
-      if (typeof value !== "string") throw new ShellError(`Input "${name}" must be one string Shell argument.`);
-      return value;
-    })), {
+    processHandle = spawn(shell.executable, shell.arguments.map((argument) => renderShellArgument(
+      argument,
+      (name) => {
+        const value = input[name];
+        if (typeof value !== "string") throw new ShellError(`Input "${name}" must be one string Shell argument.`);
+        return value;
+      },
+      () => execution.id,
+    )), {
       shell: false,
       cwd: directory,
       env: shellEnvironment(),

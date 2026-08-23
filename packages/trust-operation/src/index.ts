@@ -33,6 +33,7 @@ export type {
   InputField,
   ObjectSchema,
   OperationStep,
+  OperationExecutionContext,
   OperationValueDomain,
   OperationValueType,
   Produce,

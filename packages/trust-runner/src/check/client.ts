@@ -8,6 +8,7 @@ export type CheckAdmission =
       readonly status: "ADMITTED";
       readonly attemptKey: string;
       readonly attemptHandle: string;
+      readonly executionId: string;
       readonly checkUri: string;
       readonly actionInput: JsonObject;
       readonly operation: CompiledOperation;

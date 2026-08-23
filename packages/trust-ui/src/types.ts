@@ -111,6 +111,7 @@ export interface DeclarationRole {
   role: string;
   type: string;
   cardinality: string;
+  optional: boolean;
   parents: Array<{ role: string; each: boolean }>;
 }
 

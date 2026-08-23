@@ -42,3 +42,51 @@ test("the procedure picker does not make the engagement form scroll", async ({ p
   await expect(page.getByRole("listbox", { name: "Procedure" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Procedure", exact: true })).toContainText("Prepare and release one aircraft");
 });
+
+test("the Plan source identifies an omitted optional declaration without inventing a parent wait", async ({ page, request }) => {
+  const source = `# language: en
+@trust-dsl:1 @procedure:optional-ui-declaration @version:1.0.0
+Feature: Show an optional agent declaration
+
+  Background: Plan context
+    Given one reference "workspace"
+    And one reference "optional project" declared optionally by agent
+
+  @scenario:workspace
+  Scenario: Read the workspace
+    Then Check "workspace head" runs Operation "git.head-read"
+        on "workspace" as Input "project"
+        and must establish "the workspace head is readable"
+      """js
+      fact.headRevision !== "" ||
+      fail("the workspace head is unavailable")
+      """
+`;
+  await runtimeRpc(request, "procedure.publish", { source, sourceName: "optional-ui-declaration.feature" });
+  await runtimeRpc(request, "plan.engage", {
+    contract: "trust.plan-engagement-request@1",
+    procedure: "optional-ui-declaration",
+    procedureVersion: "1.0.0",
+    plan: "optional-ui-declaration",
+    environment: "local",
+    rootInputs: { workspace: "trust" },
+  });
+
+  await page.goto("/plans/optional-ui-declaration?tab=source");
+  const optionalLine = page.locator(".monaco-editor .view-line").filter({ hasText: "optional project" });
+  await expect(optionalLine).toContainText("optional — not declared");
+  await expect(optionalLine).not.toContainText("waits for its parent");
+});
+
+async function runtimeRpc(
+  request: Parameters<Parameters<typeof test>[2]>[0]["request"],
+  method: string,
+  params: unknown,
+): Promise<unknown> {
+  const response = await request.post("http://127.0.0.1:4390/rpc", {
+    data: { jsonrpc: "2.0", id: method, method, params },
+  });
+  const payload = await response.json() as { result?: unknown; error?: { message: string } };
+  if (payload.error) throw new Error(`${method}: ${payload.error.message}`);
+  return payload.result;
+}

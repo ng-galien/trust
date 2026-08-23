@@ -12,6 +12,7 @@ export type Fact = JsonObject & {
 export interface FactTrace {
   readonly attemptKey: string;
   readonly attemptHandle: string;
+  readonly executionId: string;
   readonly checkUri: string;
   readonly facts: readonly Fact[];
   readonly recordedAt: string;
@@ -80,6 +81,7 @@ function otlp(trace: FactTrace): JsonObject {
           attributes: [
             attribute("trust.attempt_key", trace.attemptKey),
             attribute("trust.attempt_handle", trace.attemptHandle),
+            attribute("trust.execution_id", trace.executionId),
             attribute("trust.check_uri", trace.checkUri),
           ],
           events: trace.facts.map((fact, index) => ({
