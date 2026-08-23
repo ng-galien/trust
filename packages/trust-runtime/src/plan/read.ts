@@ -107,6 +107,7 @@ export interface PlanView {
   };
   readonly latestQualification: {
     readonly checkUri: string;
+    readonly executionId: string;
     readonly verdict: "VALIDATED" | "NOT_VALIDATED";
     readonly reasonCode: string;
     readonly reason: string;
@@ -198,10 +199,12 @@ export interface SessionView {
 export interface CheckAttemptView {
   readonly handle: string;
   readonly attemptKey: string;
+  readonly executionId: string;
   readonly sessionId: string;
   readonly state: Attempt["state"];
   readonly admittedAt: string;
   readonly expiresAt: string;
+  readonly interruptedAt?: string;
   readonly finalizedAt?: string;
   readonly finalization?: NonNullable<Attempt["finalization"]>;
   readonly facts: readonly Fact[];
@@ -229,6 +232,7 @@ export interface CheckView {
   readonly history: readonly {
     readonly snapshotId: string;
     readonly attemptHandle: string;
+    readonly executionId: string;
     readonly state: "open" | "satisfied";
     readonly verdict: "VALIDATED" | "NOT_VALIDATED";
     readonly reasonCode: string;
@@ -454,6 +458,12 @@ export class PlanReader {
     const latestSnapshots = latestByCheck
       .filter((snapshot): snapshot is CheckSnapshot => snapshot !== undefined);
     const latestQualification = [...latestSnapshots].sort(compareSnapshots).at(-1);
+    const latestQualificationAttempt = latestQualification === undefined
+      ? undefined
+      : await this.#attempts.find(latestQualification.attemptHandle);
+    if (latestQualification !== undefined && latestQualificationAttempt === undefined) {
+      throw new Error(`Accepted Attempt ${latestQualification.attemptHandle} is unavailable`);
+    }
     const missingDeclarations = declarationRoles
       .filter(({ role, optional }) => !optional && !Object.hasOwn(revision.agentDeclarations, role))
       .map(({ role }) => role);
@@ -515,6 +525,7 @@ export class PlanReader {
         ? null
         : {
             checkUri: latestQualification.checkUri,
+            executionId: latestQualificationAttempt!.executionId,
             verdict: latestQualification.verdict,
             reasonCode: latestQualification.reasonCode,
             reason: latestQualification.reason,
@@ -564,13 +575,16 @@ export class PlanReader {
     const state = active.has(checkUri) ? "SATISFIED" : "OPEN";
     const sessionAvailable = availableSession !== undefined;
     const view = checkView(check, checks, active, latest, sessionAvailable, false, plan.currentIntentCheckUri);
+    const storedAttemptsByHandle = new Map(storedAttempts.map((attempt) => [attempt.handle, attempt]));
     const attempts = await Promise.all(storedAttempts.map(async (attempt) => ({
       handle: attempt.handle,
       attemptKey: attempt.attemptKey,
+      executionId: attempt.executionId,
       sessionId: attempt.sessionId,
       state: attempt.state,
       admittedAt: attempt.admittedAt,
       expiresAt: attempt.expiresAt,
+      ...(attempt.interruptedAt === undefined ? {} : { interruptedAt: attempt.interruptedAt }),
       ...(attempt.finalizedAt === undefined ? {} : { finalizedAt: attempt.finalizedAt }),
       ...(attempt.finalization === undefined ? {} : { finalization: attempt.finalization }),
       facts: await this.#facts.list(attempt.handle),
@@ -591,17 +605,24 @@ export class PlanReader {
       latestVerdict: view.latestVerdict,
       latestReasonCode: view.latestReasonCode,
       reason: view.reason,
-      history: history.map((snapshot) => ({
-        snapshotId: snapshot.id,
-        attemptHandle: snapshot.attemptHandle,
-        state: snapshot.state,
-        verdict: snapshot.verdict,
-        reasonCode: snapshot.reasonCode,
-        reason: snapshot.reason,
-        checklistDelta: snapshot.checklistDelta,
-        factIds: snapshot.factIds,
-        calculatedAt: snapshot.calculatedAt,
-      })),
+      history: history.map((snapshot) => {
+        const attempt = storedAttemptsByHandle.get(snapshot.attemptHandle);
+        if (attempt === undefined) {
+          throw new Error(`Accepted Attempt ${snapshot.attemptHandle} is unavailable`);
+        }
+        return {
+          snapshotId: snapshot.id,
+          attemptHandle: snapshot.attemptHandle,
+          executionId: attempt.executionId,
+          state: snapshot.state,
+          verdict: snapshot.verdict,
+          reasonCode: snapshot.reasonCode,
+          reason: snapshot.reason,
+          checklistDelta: snapshot.checklistDelta,
+          factIds: snapshot.factIds,
+          calculatedAt: snapshot.calculatedAt,
+        };
+      }),
       attempts,
     };
   }

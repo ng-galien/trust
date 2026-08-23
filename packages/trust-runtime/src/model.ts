@@ -87,7 +87,7 @@ export interface Session {
   closedAt?: string;
 }
 
-export type AttemptState = "pending" | "finalized";
+export type AttemptState = "pending" | "interrupted" | "finalized";
 
 export interface Attempt {
   handle: string;
@@ -108,6 +108,7 @@ export interface Attempt {
   state: AttemptState;
   admittedAt: string;
   expiresAt: string;
+  interruptedAt?: string;
   finalizedAt?: string;
   finalization?: {
     readonly verdict: "VALIDATED" | "NOT_VALIDATED";

@@ -14,7 +14,7 @@ import { promisify } from "node:util";
 import { gzipSync } from "node:zlib";
 
 import { compileOperation } from "@trust/operation";
-import { createCheckRunner, createRunnerLogging, OtlpFactExporter, runOperation, type CheckClient, type FactExporter } from "@trust/runner";
+import { CheckClient, CheckClientError, createCheckRunner, createRunnerLogging, OtlpFactExporter, runOperation, type FactExporter } from "@trust/runner";
 import { afterEach, describe, expect, test } from "vitest";
 
 const execute = promisify(execFile);
@@ -203,6 +203,148 @@ describe("Operation runner", () => {
         facts: [expect.objectContaining({ values: { executionId } })],
       }),
     ]);
+  });
+
+  test("interrupts an admitted Attempt when the Operation fails before Facts are exported", async () => {
+    const workspaceRoot = await temporaryDirectory("trust-runner-interruption-");
+    const source = readFileSync(
+      new URL("./fixtures/shell.expected-exit.feature", import.meta.url),
+      "utf8",
+    ).replace("| 1         | Tests run:", "| 0         | Tests run:");
+    const interrupted: string[] = [];
+    const runner = createCheckRunner({
+      checkClient: {
+        admit: async () => ({
+          status: "ADMITTED" as const,
+          attemptKey: "failed-operation-attempt",
+          attemptHandle: "failed-operation-handle",
+          executionId: "01924f0e-6f6e-4d8e-8fe8-3d2a246f177c",
+          checkUri: "trust://local/example@1.0.0/plan/scenario/check/failure",
+          actionInput: {},
+          operation: compileOperation({ source, sourceName: "shell.failed-operation.feature" }),
+          environment: { workspaceRoot },
+          expiresAt: "2026-08-15T13:00:00.000Z",
+        }),
+        interrupt: async (attemptHandle: string) => {
+          interrupted.push(attemptHandle);
+          return { status: "INTERRUPTED" as const };
+        },
+        finalize: async () => {
+          throw new Error("Finalization must not be called after an Operation failure.");
+        },
+      } as unknown as CheckClient,
+      facts: {
+        export: async () => {
+          throw new Error("Facts must not be exported after an Operation failure.");
+        },
+      } as FactExporter,
+      attemptKey: () => "failed-operation-attempt",
+      clock: () => new Date("2026-08-15T12:00:00.000Z"),
+    });
+
+    await expect(runner.run("trust://local/example@1.0.0/plan/scenario/check/failure"))
+      .rejects.toThrow(/unexpected exit/);
+    expect(interrupted).toEqual(["failed-operation-handle"]);
+  });
+
+  test("interrupts an admitted Attempt when Fact export fails before acceptance", async () => {
+    const workspaceRoot = await temporaryDirectory("trust-runner-fact-export-interruption-");
+    const interrupted: string[] = [];
+    const runner = createCheckRunner({
+      checkClient: {
+        admit: async () => ({
+          status: "ADMITTED" as const,
+          attemptKey: "failed-export-attempt",
+          attemptHandle: "failed-export-handle",
+          executionId: "01924f0e-6f6e-4d8e-8fe8-3d2a246f177c",
+          checkUri: "trust://local/example@1.0.0/plan/scenario/check/export-failure",
+          actionInput: {},
+          operation: fixtureOperation("shell.execution-id.feature"),
+          environment: { workspaceRoot },
+          expiresAt: "2026-08-15T13:00:00.000Z",
+        }),
+        interrupt: async (attemptHandle: string) => {
+          interrupted.push(attemptHandle);
+          return { status: "INTERRUPTED" as const };
+        },
+        finalize: async () => {
+          throw new Error("Finalization must not be called after Fact export failure.");
+        },
+      } as unknown as CheckClient,
+      facts: {
+        export: async () => {
+          throw new Error("OTLP transport failed before acceptance.");
+        },
+      } as FactExporter,
+      attemptKey: () => "failed-export-attempt",
+      clock: () => new Date("2026-08-15T12:00:00.000Z"),
+    });
+
+    await expect(runner.run("trust://local/example@1.0.0/plan/scenario/check/export-failure"))
+      .rejects.toThrow("OTLP transport failed before acceptance");
+    expect(interrupted).toEqual(["failed-export-handle"]);
+  });
+
+  test("finalizes the admitted Attempt when the Fact export response is lost after acceptance", async () => {
+    const workspaceRoot = await temporaryDirectory("trust-runner-lost-fact-response-");
+    const finalized: string[] = [];
+    const runner = createCheckRunner({
+      checkClient: {
+        admit: async () => ({
+          status: "ADMITTED" as const,
+          attemptKey: "lost-response-attempt",
+          attemptHandle: "lost-response-handle",
+          executionId: "01924f0e-6f6e-4d8e-8fe8-3d2a246f177c",
+          checkUri: "trust://local/example@1.0.0/plan/scenario/check/lost-response",
+          actionInput: {},
+          operation: fixtureOperation("shell.execution-id.feature"),
+          environment: { workspaceRoot },
+          expiresAt: "2026-08-15T13:00:00.000Z",
+        }),
+        interrupt: async () => {
+          throw new CheckClientError(
+            "check.attempt.interrupt",
+            "facts-present",
+            "An Attempt with accepted Facts cannot be interrupted",
+          );
+        },
+        finalize: async (attemptHandle: string) => {
+          finalized.push(attemptHandle);
+          return {
+            verdict: "VALIDATED" as const,
+            reasonCode: "check-qualified",
+            reason: "The accepted Facts satisfy the Check",
+            checklistDelta: {
+              newlySatisfied: ["lost-response"],
+              newlyOpened: [],
+              unchanged: [],
+            },
+          };
+        },
+      } as unknown as CheckClient,
+      facts: {
+        export: async () => {
+          throw new Error("OTLP response was lost after acceptance.");
+        },
+      } as FactExporter,
+      attemptKey: () => "lost-response-attempt",
+      clock: () => new Date("2026-08-15T12:00:00.000Z"),
+    });
+
+    await expect(runner.run("trust://local/example@1.0.0/plan/scenario/check/lost-response"))
+      .resolves.toMatchObject({ status: "COMPLETED", verdict: "VALIDATED" });
+    expect(finalized).toEqual(["lost-response-handle"]);
+  });
+
+  test("preserves the runtime reason on a rejected Check RPC call", async () => {
+    const baseUrl = await startHttpServer();
+    const client = new CheckClient(`${baseUrl}/rpc`);
+
+    await expect(client.interrupt("facts-present-handle")).rejects.toMatchObject({
+      name: "CheckClientError",
+      method: "check.attempt.interrupt",
+      reason: "facts-present",
+    });
   });
 
   test("merges a committed ticket branch into main and deletes it locally", async () => {
@@ -902,6 +1044,31 @@ async function respond(request: IncomingMessage, response: ServerResponse): Prom
     });
     response.writeHead(otlpResponse.status, { "content-type": "application/json" });
     response.end(otlpResponse.body);
+    return;
+  }
+  if (request.method === "POST" && request.url === "/rpc") {
+    const body = await readRequest(request);
+    receivedHttpRequests.push({
+      method: request.method,
+      url: request.url,
+      headers: request.headers,
+      body,
+    });
+    const envelope = JSON.parse(body) as { id: string | number | null };
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end(JSON.stringify({
+      jsonrpc: "2.0",
+      id: envelope.id,
+      error: {
+        code: -32_010,
+        message: "Plan runtime rejected",
+        data: {
+          contract: "trust.plan-runtime-error@1",
+          reason: "facts-present",
+          message: "An Attempt with accepted Facts cannot be interrupted",
+        },
+      },
+    }));
     return;
   }
   if (request.method === "POST" && request.url === "/admissions") {

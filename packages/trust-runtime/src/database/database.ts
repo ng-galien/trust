@@ -97,6 +97,7 @@ export interface AttemptTable {
   state: Attempt["state"];
   admitted_at: string;
   expires_at: string;
+  interrupted_at: string | null;
   finalized_at: string | null;
   finalization_json: string | null;
 }

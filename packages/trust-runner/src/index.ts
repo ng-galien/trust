@@ -1,7 +1,8 @@
-export { CheckClient } from "./check/client.js";
+export { CheckClient, CheckClientError } from "./check/client.js";
 export type {
   CheckAdmission,
   CheckFinalization,
+  CheckInterruption,
 } from "./check/client.js";
 export { createCheckRunner } from "./check/run.js";
 export type { CheckResult, CheckRunnerOptions } from "./check/run.js";

@@ -37,6 +37,7 @@ export class AttemptStore {
       state: attempt.state,
       admitted_at: attempt.admittedAt,
       expires_at: attempt.expiresAt,
+      interrupted_at: attempt.interruptedAt ?? null,
       finalized_at: attempt.finalizedAt ?? null,
       finalization_json: attempt.finalization === undefined ? null : JSON.stringify(attempt.finalization),
     })
@@ -107,6 +108,16 @@ export class AttemptStore {
       .executeTakeFirst();
     if (result.numUpdatedRows !== 1n) throw new Error(`Unknown attempt: ${handle}`);
   }
+
+  async interrupt(handle: string, interruptedAt: string): Promise<void> {
+    const result = await this.dependencies.database
+      .updateTable("attempts")
+      .set({ state: "interrupted", interrupted_at: interruptedAt })
+      .where("attempt_handle", "=", handle)
+      .where("state", "=", "pending")
+      .executeTakeFirst();
+    if (result.numUpdatedRows !== 1n) throw new Error(`Unknown pending attempt: ${handle}`);
+  }
 }
 
 function toAttempt(row: AttemptRow): Attempt {
@@ -129,6 +140,7 @@ function toAttempt(row: AttemptRow): Attempt {
     state: row.state,
     admittedAt: row.admitted_at,
     expiresAt: row.expires_at,
+    ...(row.interrupted_at ? { interruptedAt: row.interrupted_at } : {}),
     ...(row.finalized_at ? { finalizedAt: row.finalized_at } : {}),
     ...(row.finalization_json
       ? { finalization: JSON.parse(row.finalization_json) as NonNullable<Attempt["finalization"]> }

@@ -4,7 +4,7 @@ import type { ShellRunnerConfiguration } from "../shell/run.js";
 import { now, nullSink, type DiagnosticsSink } from "../diagnostics/events.js";
 import { runOperation } from "../operation/run.js";
 import type { FactExporter } from "../telemetry/otlp.js";
-import type { CheckClient } from "./client.js";
+import { CheckClientError, type CheckClient, type CheckFinalization } from "./client.js";
 
 export type CheckResult =
   | {
@@ -45,6 +45,8 @@ export function createCheckRunner(options: CheckRunnerOptions) {
       const invocation = parseCheckInvocationUri(checkUri);
       const attempt = attemptKey();
       let phase = "admission";
+      let admittedAttemptHandle: string | undefined;
+      let actionOutcome: JsonObject | undefined;
       diagnostics.emit({ type: "runner.log", at: now(), level: "info", text: `Check ${invocation.checkUri}: requesting admission.` });
       try {
         const admission = await options.checkClient.admit(
@@ -62,10 +64,11 @@ export function createCheckRunner(options: CheckRunnerOptions) {
             reason: admission.reason,
           };
         }
+        admittedAttemptHandle = admission.attemptHandle;
+        phase = "operation";
         if (Date.parse(admission.expiresAt) <= clock().getTime()) {
           throw new Error("Check admission expired before execution.");
         }
-        phase = "operation";
         const result = await runOperation(
           admission.operation,
           admission.actionInput,
@@ -74,6 +77,7 @@ export function createCheckRunner(options: CheckRunnerOptions) {
           { id: admission.executionId },
           options.shell === undefined ? {} : { shell: options.shell },
         );
+        actionOutcome = result.steps;
         phase = "fact export";
         const observedAt = clock().toISOString();
         await options.facts.export({
@@ -91,21 +95,53 @@ export function createCheckRunner(options: CheckRunnerOptions) {
         phase = "finalization";
         const finalization = await options.checkClient.finalize(admission.attemptHandle);
         diagnostics.emit({ type: "runner.log", at: now(), level: "info", text: `Check ${invocation.checkUri}: completed with ${finalization.verdict}.` });
-        return {
-          status: "COMPLETED",
-          checkUri: invocation.checkUri,
-          actionOutcome: result.steps,
-          verdict: finalization.verdict,
-          reasonCode: finalization.reasonCode,
-          reason: finalization.reason,
-          checklistDelta: finalization.checklistDelta,
-        };
+        return completed(invocation.checkUri, result.steps, finalization);
       } catch (error) {
         const reason = error instanceof Error ? error.message : String(error);
         diagnostics.emit({ type: "runner.log", at: now(), level: "error", text: `Check ${invocation.checkUri}: ${phase} failed: ${reason}` });
+        if ((phase === "operation" || phase === "fact export") && admittedAttemptHandle !== undefined) {
+          try {
+            await options.checkClient.interrupt(admittedAttemptHandle);
+            diagnostics.emit({ type: "runner.log", at: now(), level: "info", text: `Check ${invocation.checkUri}: interrupted Attempt ${admittedAttemptHandle} before Facts were accepted.` });
+          } catch (interruptionError) {
+            if (phase === "fact export"
+              && interruptionError instanceof CheckClientError
+              && interruptionError.reason === "facts-present"
+              && actionOutcome !== undefined) {
+              diagnostics.emit({ type: "runner.log", at: now(), level: "info", text: `Check ${invocation.checkUri}: Facts were accepted despite the lost export response; finalizing Attempt ${admittedAttemptHandle}.` });
+              try {
+                const finalization = await options.checkClient.finalize(admittedAttemptHandle);
+                diagnostics.emit({ type: "runner.log", at: now(), level: "info", text: `Check ${invocation.checkUri}: completed with ${finalization.verdict}.` });
+                return completed(invocation.checkUri, actionOutcome, finalization);
+              } catch (finalizationError) {
+                const finalizationReason = finalizationError instanceof Error
+                  ? finalizationError.message
+                  : String(finalizationError);
+                diagnostics.emit({ type: "runner.log", at: now(), level: "error", text: `Check ${invocation.checkUri}: recovery finalization failed: ${finalizationReason}` });
+                throw finalizationError;
+              }
+            }
+            const interruptionReason = interruptionError instanceof Error
+              ? interruptionError.message
+              : String(interruptionError);
+            diagnostics.emit({ type: "runner.log", at: now(), level: "warn", text: `Check ${invocation.checkUri}: Attempt interruption failed: ${interruptionReason}` });
+          }
+        }
         throw error;
       }
     },
+  };
+}
+
+function completed(checkUri: string, actionOutcome: JsonObject, finalization: CheckFinalization): CheckResult {
+  return {
+    status: "COMPLETED",
+    checkUri,
+    actionOutcome,
+    verdict: finalization.verdict,
+    reasonCode: finalization.reasonCode,
+    reason: finalization.reason,
+    checklistDelta: finalization.checklistDelta,
   };
 }
 

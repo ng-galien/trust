@@ -155,9 +155,10 @@ export const SQLITE_SCHEMA = `
     reobserve INTEGER NOT NULL CHECK (reobserve IN (0, 1)),
     intent TEXT,
     next_intent TEXT,
-    state TEXT NOT NULL CHECK (state IN ('pending', 'finalized')),
+    state TEXT NOT NULL CHECK (state IN ('pending', 'interrupted', 'finalized')),
     admitted_at TEXT NOT NULL,
     expires_at TEXT NOT NULL,
+    interrupted_at TEXT,
     finalized_at TEXT,
     finalization_json TEXT,
     UNIQUE (

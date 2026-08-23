@@ -33,6 +33,21 @@ export interface CheckFinalization {
   };
 }
 
+export interface CheckInterruption {
+  readonly status: "INTERRUPTED";
+}
+
+export class CheckClientError extends Error {
+  constructor(
+    readonly method: string,
+    readonly reason: string | undefined,
+    message: string,
+  ) {
+    super(message);
+    this.name = "CheckClientError";
+  }
+}
+
 export class CheckClient {
   readonly #endpoint: string;
   readonly #timeoutMs: number;
@@ -65,6 +80,13 @@ export class CheckClient {
     }) as unknown as Promise<CheckFinalization>;
   }
 
+  async interrupt(attemptHandle: string): Promise<CheckInterruption> {
+    return this.#call("check.attempt.interrupt", {
+      contract: "trust.attempt-interruption-request@1",
+      attemptHandle,
+    }) as unknown as Promise<CheckInterruption>;
+  }
+
   async #call(method: string, params: JsonObject): Promise<JsonObject> {
     const id = `trust-runner-${++this.#sequence}`;
     const response = await requestHttp({
@@ -81,8 +103,19 @@ export class CheckClient {
     if (!isJsonObject(envelope)) {
       throw new Error(`TRUST RPC ${method} returned an invalid envelope.`);
     }
-    if (envelope.jsonrpc !== "2.0" || envelope.id !== id || envelope.error !== undefined) {
-      throw new Error(`TRUST RPC ${method} failed.`);
+    if (envelope.jsonrpc !== "2.0" || envelope.id !== id) {
+      throw new Error(`TRUST RPC ${method} returned an invalid envelope.`);
+    }
+    if (envelope.error !== undefined) {
+      const failure = isJsonObject(envelope.error) ? envelope.error : undefined;
+      const data = failure !== undefined && isJsonObject(failure.data) ? failure.data : undefined;
+      const reason = typeof data?.reason === "string" ? data.reason : undefined;
+      const detail = typeof data?.message === "string"
+        ? data.message
+        : typeof failure?.message === "string"
+          ? failure.message
+          : `TRUST RPC ${method} failed.`;
+      throw new CheckClientError(method, reason, detail);
     }
     if (typeof envelope.result !== "object" || envelope.result === null || Array.isArray(envelope.result)) {
       throw new Error(`TRUST RPC ${method} returned an invalid result.`);

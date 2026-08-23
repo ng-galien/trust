@@ -36,6 +36,7 @@ export type PlanRuntimeErrorCode =
   | "check-not-found"
   | "fact-batch-rejected"
   | "attempt-not-found"
+  | "facts-present"
   | "facts-missing";
 
 export class PlanRuntimeError extends Error {
@@ -141,6 +142,12 @@ export interface AttemptFinalizationResult {
   readonly reasonCode: string;
   readonly reason: string;
   readonly checklistDelta: CheckSnapshot["checklistDelta"];
+}
+
+export interface AttemptInterruptionResult {
+  readonly contract: "trust.attempt-interruption@1";
+  readonly status: "INTERRUPTED";
+  readonly attemptHandle: string;
 }
 
 export interface PlanRuntimeDependencies {
@@ -485,7 +492,12 @@ export class PlanRuntime {
         if (!existing) {
           throw new PlanRuntimeError("attempt-not-found", `Runner Attempt ${input.attemptHandle} is unknown`);
         }
-        throw new PlanRuntimeError("fact-batch-rejected", "Fact batch belongs to a finalized Attempt");
+        throw new PlanRuntimeError(
+          "fact-batch-rejected",
+          existing.state === "interrupted"
+            ? "Fact batch belongs to an interrupted Attempt"
+            : "Fact batch belongs to a finalized Attempt",
+        );
       }
       return this.#ingest(attempt, input, transaction);
     });
@@ -551,6 +563,40 @@ export class PlanRuntime {
     return this.#finalize(attempt);
   }
 
+  async interruptCheck(attemptHandle: string): Promise<AttemptInterruptionResult> {
+    const result = (): AttemptInterruptionResult => ({
+      contract: "trust.attempt-interruption@1",
+      status: "INTERRUPTED",
+      attemptHandle,
+    });
+    return this.#database.transaction().execute(async (transaction) => {
+      const attempts = this.#attempts.using(transaction);
+      const facts = this.#facts.using(transaction);
+      const plans = this.#plans.using(transaction);
+      const lockedAttempt = await attempts.lockPending(attemptHandle);
+      const attempt = lockedAttempt ?? await attempts.find(attemptHandle);
+      if (!attempt) {
+        throw new PlanRuntimeError("attempt-not-found", `Runner Attempt ${attemptHandle} is unknown`);
+      }
+      if (attempt.state === "interrupted") return result();
+      if (attempt.state === "finalized") {
+        throw new PlanRuntimeError("plan-conflict", "A finalized Attempt cannot be interrupted");
+      }
+      if ((await facts.list(attemptHandle)).length > 0) {
+        throw new PlanRuntimeError("facts-present", "An Attempt with accepted Facts cannot be interrupted");
+      }
+      if (attempt.intent !== undefined) {
+        const plan = await plans.findPlan(attempt.planSlug);
+        if (plan?.currentIntent === attempt.intent
+          && plan.currentIntentAttemptKey === attempt.attemptKey) {
+          await plans.releaseIntentAttempt(plan.slug, attempt.intent, attempt.attemptKey);
+        }
+      }
+      await attempts.interrupt(attemptHandle, this.#now().toISOString());
+      return result();
+    });
+  }
+
   async #finalize(attempt: Attempt): Promise<AttemptFinalizationResult> {
     const initialPlan = await this.#plans.findPlan(attempt.planSlug);
     const published = initialPlan
@@ -576,6 +622,9 @@ export class PlanRuntime {
           attemptHandle: currentAttempt.handle,
           ...currentAttempt.finalization,
         } satisfies AttemptFinalizationResult;
+      }
+      if (currentAttempt.state === "interrupted") {
+        throw new PlanRuntimeError("plan-conflict", `Interrupted Attempt ${currentAttempt.handle} cannot be finalized`);
       }
       const facts = await factsStore.list(attempt.handle);
       if (facts.length === 0) throw new PlanRuntimeError("facts-missing", "The Check is unchanged until TRUST accepts Facts");
@@ -764,7 +813,10 @@ export class PlanRuntime {
       if (existing.checkUri !== checkUri) {
         return { refusal: refusal(attemptKey, "attempt-key-conflict", "Attempt key is already bound to another Check") };
       }
-      if (existing.state !== "pending") {
+      if (existing.state === "interrupted") {
+        return { refusal: refusal(attemptKey, "attempt-interrupted", "Attempt key is already interrupted") };
+      }
+      if (existing.state === "finalized") {
         return { refusal: refusal(attemptKey, "attempt-finalized", "Attempt key is already finalized") };
       }
       if (Date.parse(existing.expiresAt) <= this.#now().getTime()) {

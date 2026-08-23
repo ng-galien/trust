@@ -124,7 +124,7 @@ export interface PlanView extends PlanSummary {
   declarations: JsonObject;
   declarationRoles: DeclarationRole[];
   missingDeclarations: string[];
-  latestQualification: { checkUri: string; verdict: "VALIDATED" | "NOT_VALIDATED"; reasonCode: string; reason: string; newlySatisfied: string[]; newlyOpened: string[]; unchanged: string[] } | null;
+  latestQualification: { checkUri: string; executionId: string; verdict: "VALIDATED" | "NOT_VALIDATED"; reasonCode: string; reason: string; newlySatisfied: string[]; newlyOpened: string[]; unchanged: string[] } | null;
   latestRevisionChange: { fromRevision: number | null; toRevision: number; added: string[]; removed: string[]; newlySatisfied: string[]; newlyOpened: string[]; changed: string[]; unchanged: string[] };
   checklistComplete: boolean;
   openChecks: string[];
@@ -177,6 +177,7 @@ export interface CheckView extends PlanCheck {
   history: Array<{
     snapshotId: string;
     attemptHandle: string;
+    executionId: string;
     state: string;
     verdict: "VALIDATED" | "NOT_VALIDATED";
     reasonCode: string;
@@ -187,10 +188,12 @@ export interface CheckView extends PlanCheck {
   attempts: Array<{
     handle: string;
     attemptKey: string;
+    executionId: string;
     sessionId: string;
-    state: string;
+    state: "pending" | "interrupted" | "finalized";
     admittedAt: string;
     expiresAt: string;
+    interruptedAt?: string;
     finalizedAt?: string;
     facts: Fact[];
   }>;
@@ -218,7 +221,7 @@ export interface DeclarationReplacement {
 }
 
 export type CheckAdmission =
-  | { status: "ADMITTED"; attemptKey: string; attemptHandle: string; checkUri: string; operation: CompiledOperation; actionInput: JsonObject; environment: JsonObject; expiresAt: string }
+  | { status: "ADMITTED"; attemptKey: string; attemptHandle: string; executionId: string; checkUri: string; operation: CompiledOperation; actionInput: JsonObject; environment: JsonObject; expiresAt: string }
   | { status: "REFUSED"; attemptKey: string; reasonCode: string; reason: string };
 
 export interface AttemptFinalization {

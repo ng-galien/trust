@@ -365,6 +365,7 @@ function renderPlan(view: PlanView): string {
       "",
       "LATEST ACCEPTED ATTEMPT",
       `Check URI: ${view.latestQualification.checkUri}`,
+      `Execution ID: ${view.latestQualification.executionId}`,
       `Verdict: ${view.latestQualification.verdict}`,
       `Reason: ${view.latestQualification.reasonCode} — ${view.latestQualification.reason}`,
       ...renderChecklistDelta(view.latestQualification),
@@ -419,6 +420,7 @@ function renderCheck(view: CheckView): string {
     lines.push(
       "",
       "LATEST ACCEPTED ATTEMPT",
+      `Execution ID: ${view.history.at(-1)!.executionId}`,
       `Verdict: ${view.latestVerdict}`,
       `Reason: ${view.latestReasonCode} — ${view.reason}`,
     );
@@ -429,6 +431,7 @@ function renderCheck(view: CheckView): string {
       `ACCEPTED ATTEMPT HISTORY (${view.history.length})`,
       ...view.history.flatMap((attempt, index) => [
         `${index + 1}. ${attempt.verdict} — ${attempt.reasonCode}: ${attempt.reason}`,
+        `   Execution ID: ${attempt.executionId}`,
         ...renderChecklistDelta(attempt.checklistDelta).map((line) => `   ${line}`),
       ]),
     );

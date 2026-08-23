@@ -150,12 +150,13 @@ export class TrustRuntimeClient {
     ...(options.nextIntent === undefined ? {} : { nextIntent: options.nextIntent }),
   });
   /** Same Fact batch the runner reports over OTLP: one Fact per observation of the admitted Operation. */
-  postFacts = (admission: { attemptKey: string; attemptHandle: string; checkUri: string; operation: string }, values: JsonObject) => {
+  postFacts = (admission: { attemptKey: string; attemptHandle: string; executionId: string; checkUri: string; operation: string }, values: JsonObject) => {
     const now = new Date().toISOString();
     return this.call<{ acceptedFactIds: string[]; duplicateFactIds: string[] }>("check.attempt.facts", {
       contract: "trust.fact-batch-request@1",
       attemptKey: admission.attemptKey,
       attemptHandle: admission.attemptHandle,
+      executionId: admission.executionId,
       checkUri: admission.checkUri,
       recordedAt: now,
       facts: [{ kind: admission.operation, observedAt: now, values }],

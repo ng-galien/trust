@@ -21,6 +21,7 @@ export const PLAN_CLOSE_METHOD = "plan.close" as const;
 export const CHECK_ATTEMPT_ADMIT_METHOD = "check.attempt.admit" as const;
 export const CHECK_ATTEMPT_FACTS_METHOD = "check.attempt.facts" as const;
 export const CHECK_ATTEMPT_FINALIZE_METHOD = "check.attempt.finalize" as const;
+export const CHECK_ATTEMPT_INTERRUPT_METHOD = "check.attempt.interrupt" as const;
 export const PLAN_RUNTIME_ERROR_CONTRACT = "trust.plan-runtime-error@1" as const;
 
 interface CheckReadParams {
@@ -30,6 +31,11 @@ interface CheckReadParams {
 
 interface CheckAttemptFinalizationParams {
   readonly contract: "trust.attempt-finalization-request@1";
+  readonly attemptHandle: string;
+}
+
+interface CheckAttemptInterruptionParams {
+  readonly contract: "trust.attempt-interruption-request@1";
   readonly attemptHandle: string;
 }
 
@@ -53,6 +59,7 @@ export const PLAN_RUNTIME_RPC_METHODS = [
   CHECK_ATTEMPT_ADMIT_METHOD,
   CHECK_ATTEMPT_FACTS_METHOD,
   CHECK_ATTEMPT_FINALIZE_METHOD,
+  CHECK_ATTEMPT_INTERRUPT_METHOD,
 ] as const;
 
 export type PlanRuntimeRpcMethod = (typeof PLAN_RUNTIME_RPC_METHODS)[number];
@@ -147,6 +154,10 @@ export async function executePlanRuntimeRpc(
     case CHECK_ATTEMPT_FINALIZE_METHOD: {
       const input = parseCheckFinalization(params);
       return dependencies.planRuntime.finalizeCheck(input.attemptHandle);
+    }
+    case CHECK_ATTEMPT_INTERRUPT_METHOD: {
+      const input = parseCheckInterruption(params);
+      return dependencies.planRuntime.interruptCheck(input.attemptHandle);
     }
   }
 }
@@ -335,6 +346,17 @@ function parseCheckFinalization(value: unknown): CheckAttemptFinalizationParams 
   const record = exactRecord(value, ["contract", "attemptHandle"]);
   if (
     record.contract !== "trust.attempt-finalization-request@1"
+    || !boundedString(record.attemptHandle, 256)
+  ) {
+    throw new InvalidPlanRuntimeRpcParams();
+  }
+  return { contract: record.contract, attemptHandle: record.attemptHandle };
+}
+
+function parseCheckInterruption(value: unknown): CheckAttemptInterruptionParams {
+  const record = exactRecord(value, ["contract", "attemptHandle"]);
+  if (
+    record.contract !== "trust.attempt-interruption-request@1"
     || !boundedString(record.attemptHandle, 256)
   ) {
     throw new InvalidPlanRuntimeRpcParams();

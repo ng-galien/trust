@@ -263,7 +263,7 @@ function CheckWorkbench({ plan, check, compiled, onChanged, runtime, reobserve =
         ...(plan.intentChaining && !check.completesPlan ? { nextIntent: nextIntent.trim() } : {}),
       });
       if (admission.status !== "ADMITTED") return { refused: `${admission.reasonCode}: ${admission.reason}` };
-      await runtime.postFacts({ attemptKey: admission.attemptKey, attemptHandle: admission.attemptHandle, checkUri: admission.checkUri, operation: admission.operation.operation }, values);
+      await runtime.postFacts({ attemptKey: admission.attemptKey, attemptHandle: admission.attemptHandle, executionId: admission.executionId, checkUri: admission.checkUri, operation: admission.operation.operation }, values);
       return runtime.finalizeAttempt(admission.attemptHandle);
     },
     onSuccess: async (outcome) => { onOutcome(outcome); await onChanged(); },

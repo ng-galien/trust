@@ -248,6 +248,48 @@ test("an intent-chained Plan initializes on first read, survives resumption and 
     assert.match(concurrencyAfterAdmission, new RegExp(`^Current intent Check: ${escapeRegExp(boundCheck!)}$`, "m"));
     assert.equal((concurrencyAfterAdmission.match(/Continuing invocation URI:/g) ?? []).length, 1);
 
+    const interruptionEngagement = await rpc(runtime.endpoint, "plan.engage", {
+      contract: "trust.plan-engagement-request@1",
+      procedure: "intent-chaining",
+      procedureVersion: "1.0.0",
+      plan: "intent-interruption",
+      environment: "local",
+      rootInputs: { repository: "trust" },
+    }) as { checkUris: readonly string[] };
+    const interruptionRead = await mcpTool(runtime.endpoint, "trust_plan_read", {
+      checkUri: interruptionEngagement.checkUris[0],
+    });
+    const interruptionIntent = /^Current intent: (.+)$/m.exec(interruptionRead)?.[1];
+    assert.ok(interruptionIntent);
+    const interruptedAdmission = await admit(
+      runtime.endpoint,
+      interruptionEngagement.checkUris[0]!,
+      "intent-interrupted-attempt",
+      { intent: interruptionIntent, nextIntent: "Continue after the interrupted Attempt" },
+    );
+    const interruption = await rpc(runtime.endpoint, "check.attempt.interrupt", {
+      contract: "trust.attempt-interruption-request@1",
+      attemptHandle: interruptedAdmission.attemptHandle,
+    }) as { contract: string; status: string; attemptHandle: string };
+    assert.deepEqual(interruption, {
+      contract: "trust.attempt-interruption@1",
+      status: "INTERRUPTED",
+      attemptHandle: interruptedAdmission.attemptHandle,
+    });
+    const interruptedCheck = await rpc(runtime.endpoint, "check.read", {
+      contract: "trust.check-read-request@1",
+      checkUri: interruptedAdmission.checkUri,
+    }) as { attempts: readonly { state: string }[] };
+    assert.equal(interruptedCheck.attempts[0]?.state, "interrupted");
+    const retryAdmission = await rpc(runtime.endpoint, "check.attempt.admit", {
+      contract: "trust.check-admission-request@1",
+      attemptKey: "intent-retry-after-interruption",
+      checkUri: interruptedAdmission.checkUri,
+      intent: interruptionIntent,
+      nextIntent: "Continue after the retried Attempt",
+    }) as { status: string };
+    assert.equal(retryAdmission.status, "ADMITTED");
+
     const sameCheckEngagement = await rpc(runtime.endpoint, "plan.engage", {
       contract: "trust.plan-engagement-request@1",
       procedure: "intent-chaining",
@@ -718,8 +760,14 @@ test("Fact rejection is atomic and Attempt finalization is idempotent", async ()
     const check = await rpc(runtime.endpoint, "check.read", {
       contract: "trust.check-read-request@1",
       checkUri: admission.checkUri,
-    }) as { attempts: readonly { facts: readonly { executionId: string }[] }[] };
+    }) as { attempts: readonly { executionId: string; facts: readonly { executionId: string }[] }[] };
+    assert.equal(check.attempts[0]?.executionId, admission.executionId);
     assert.equal(check.attempts[0]?.facts[0]?.executionId, admission.executionId);
+    const interruptionWithFacts = await rpcFailure(runtime.endpoint, "check.attempt.interrupt", {
+      contract: "trust.attempt-interruption-request@1",
+      attemptHandle: admission.attemptHandle,
+    });
+    assert.equal(interruptionWithFacts.data?.reason, "facts-present");
     const first = await rpc(runtime.endpoint, "check.attempt.finalize", {
       contract: "trust.attempt-finalization-request@1",
       attemptHandle: admission.attemptHandle,
@@ -729,6 +777,14 @@ test("Fact rejection is atomic and Attempt finalization is idempotent", async ()
       attemptHandle: admission.attemptHandle,
     });
     assert.deepEqual(replay, first);
+    const checkText = await mcpTool(runtime.endpoint, "trust_check_read", {
+      checkUri: admission.checkUri,
+    });
+    assert.match(checkText, new RegExp(`Execution ID: ${admission.executionId}`));
+    const planText = await mcpTool(runtime.endpoint, "trust_plan_read", {
+      checkUri: admission.checkUri,
+    });
+    assert.match(planText, new RegExp(`Execution ID: ${admission.executionId}`));
     const current = await rpc(runtime.endpoint, "plan.engage", engagementInput) as { revision: number };
     assert.equal(current.revision, 2);
 
