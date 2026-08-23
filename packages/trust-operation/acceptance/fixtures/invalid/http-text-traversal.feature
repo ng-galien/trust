@@ -11,7 +11,7 @@ Feature: Invalid Text HTTP traversal
       | service | string | one         | any    |
 
   Scenario: Run
-    When HTTP "response" gets Environment "serviceUrl" as Text
+    When HTTP "response" sends "GET" to Environment "serviceUrl" and reads Text
     Then Produce with JSONata
       """
       { "service": steps.response.body.service }

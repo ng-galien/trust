@@ -105,7 +105,7 @@ test("optional agent declarations may be absent and create Checks only when supp
     }) as { revision: number; checkUris: readonly string[] };
 
     assert.equal(engagement.revision, 1);
-    assert.equal(engagement.checkUris.length, 1);
+    assert.equal(engagement.checkUris.length, 3);
     const initialView = await rpc(runtime.endpoint, "plan.read", {
       plan: "optional-agent-declarations",
     }) as {
@@ -114,7 +114,10 @@ test("optional agent declarations may be absent and create Checks only when supp
       checks: readonly { name: string }[];
     };
     assert.deepEqual(initialView.missingDeclarations, ["required note"]);
-    assert.deepEqual(initialView.checks.map(({ name }) => name), ["workspace head"]);
+    assert.deepEqual(
+      initialView.checks.map(({ name }) => name).sort(),
+      ["after optional check observation", "after optional targets", "workspace head"],
+    );
     assert.equal(initialView.declarationRoles.find(({ role }) => role === "optional project")?.optional, true);
     assert.equal(initialView.declarationRoles.find(({ role }) => role === "optional target")?.optional, true);
     const initial = await mcpTool(runtime.endpoint, "trust_plan_read", { checkUri: engagement.checkUris[0] });
@@ -142,7 +145,7 @@ test("optional agent declarations may be absent and create Checks only when supp
       },
     });
     assert.match(replacement, /Revision: 2/);
-    assert.match(replacement, /Current Checks: 8/);
+    assert.match(replacement, /Current Checks: 10/);
     const expanded = await rpc(runtime.endpoint, "plan.read", {
       plan: "optional-agent-declarations",
     }) as { checks: readonly { checkUri: string; name: string; blockedBy: readonly string[] }[] };
@@ -150,6 +153,14 @@ test("optional agent declarations may be absent and create Checks only when supp
     assert.ok(observed);
     assert.equal(observed.blockedBy.length, 1);
     assert.ok(expanded.checks.some(({ name }) => name === "optional transitive head"));
+    assert.equal(
+      expanded.checks.find(({ name }) => name === "after optional check observation")?.blockedBy.length,
+      1,
+    );
+    assert.equal(
+      expanded.checks.find(({ name }) => name === "after optional targets")?.blockedBy.length,
+      2,
+    );
 
     const materialization = expanded.checks.find(({ name }) => name === "optional materialization");
     assert.ok(materialization);
@@ -178,18 +189,24 @@ test("optional agent declarations may be absent and create Checks only when supp
       declarations: { "required note": "covered" },
     });
     assert.match(removal, /Revision: 4/);
-    assert.match(removal, /Current Checks: 1/);
+    assert.match(removal, /Current Checks: 3/);
     assert.match(removal, /Removed Checks: 7/);
 
     const resumed = await rpc(runtime.endpoint, "plan.read", {
       plan: "optional-agent-declarations",
     }) as { checks: readonly { checkUri: string }[] };
-    const admission = await admit(runtime.endpoint, resumed.checks[0]!.checkUri, "optional-declarations-complete");
-    await sendRunnerFacts(runtime.endpoint, admission, gitHeadFact(admission.operation.operation));
-    await rpc(runtime.endpoint, "check.attempt.finalize", {
-      contract: "trust.attempt-finalization-request@1",
-      attemptHandle: admission.attemptHandle,
-    });
+    for (const [index, check] of resumed.checks.entries()) {
+      const admission = await admit(
+        runtime.endpoint,
+        check.checkUri,
+        `optional-declarations-complete-${index}`,
+      );
+      await sendRunnerFacts(runtime.endpoint, admission, gitHeadFact(admission.operation.operation));
+      await rpc(runtime.endpoint, "check.attempt.finalize", {
+        contract: "trust.attempt-finalization-request@1",
+        attemptHandle: admission.attemptHandle,
+      });
+    }
     const complete = await rpc(runtime.endpoint, "plan.read", {
       plan: "optional-agent-declarations",
     }) as { workState: string; checklistComplete: boolean };

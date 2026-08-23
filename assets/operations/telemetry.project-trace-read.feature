@@ -25,7 +25,7 @@ Feature: Read one OpenTelemetry trace for a project execution
       | matchingSpanCount | number    | one         | any    |
 
   Scenario: Run
-    When HTTP "trace" gets Environment "traceUrl" appending Input "traceId" as JSON
+    When HTTP "trace" sends "GET" to Environment "traceUrl" appending Input "traceId" and reads JSON
     Then Produce with JSONata
       """
       {

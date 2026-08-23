@@ -42,20 +42,33 @@
         "url": {
           "environment": "issuesUrl"
         },
-        "appendInputs": [
-          "issue",
-          "run"
+        "path": [
+          {
+            "kind": "input",
+            "input": "issue"
+          },
+          {
+            "kind": "input",
+            "input": "run"
+          }
         ],
         "query": [
           {
             "name": "limit",
-            "value": "5"
+            "source": {
+              "kind": "literal",
+              "value": "5"
+            }
           },
           {
             "name": "run",
-            "input": "run"
+            "source": {
+              "kind": "input",
+              "input": "run"
+            }
           }
         ],
+        "headers": [],
         "format": "json"
       }
     }

@@ -15,7 +15,7 @@ Feature: Read simulated food batch traceability
       | traceabilityStatus | string    | one         | enum "complete", "incomplete" |
 
   Scenario: Run
-    When HTTP "batch" gets Environment "batchUrl" appending Input "batch" as JSON
+    When HTTP "batch" sends "GET" to Environment "batchUrl" appending Input "batch" and reads JSON
     Then Produce with JSONata
       """
       { "batch": input.batch, "traceabilityStatus": steps.batch.body.traceabilityStatus }

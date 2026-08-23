@@ -7,7 +7,7 @@ order: 1
 <Steps>
   <Step title="Open the catalog and create">Sidebar → **Operations** → **New operation**. The Source tab opens on the template.</Step>
   <Step title="Name it">Set `@operation:<domain>.<action>` and `@version:1.0.0`; keep `@trust-dsl:1`. Give it a title and, under it, one or two lines describing what it observes.</Step>
-  <Step title="Declare the interface">In `Background`: the Environment values (`workspaceRoot` as `directory`, or a `url`), the Input the Check will provide, and the produced fields with their types — an `enum` when the value is a status.</Step>
+  <Step title="Declare the interface">In `Background`: the Environment values (`directory`, `url` or non-empty `string`), the Input the Check will provide, and the produced fields with their types — an `enum` when the value is a status.</Step>
   <Step title="Write the steps">One `When Shell …` (or File, HTTP) per action, each with a name. Arguments one per row. Add `accepts exits` when a non-zero exit is an observation.</Step>
   <Step title="Write the projection">`Then Produce with JSONata` returning exactly the produced fields from `input`, `environment` and `steps.<name>`.</Step>
   <Step title="Watch the status line">It shows the first diagnostic with its line until the source compiles, then the count of steps and fields.</Step>

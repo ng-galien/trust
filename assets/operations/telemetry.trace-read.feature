@@ -18,7 +18,7 @@ Feature: Read one OpenTelemetry trace
       | spanCount   | number    | one         | any    |
 
   Scenario: Run
-    When HTTP "trace" gets Environment "traceUrl" appending Input "traceId" as JSON
+    When HTTP "trace" sends "GET" to Environment "traceUrl" appending Input "traceId" and reads JSON
     Then Produce with JSONata
       """
       { "traceId": input.traceId, "spanCount": $count(steps.trace.body.batches.scopeSpans.spans) }

@@ -16,7 +16,7 @@ Feature: Read simulated flight fuel planning data
       | durationMinutes | number    | one         | any    |
 
   Scenario: Run
-    When HTTP "flight" gets Environment "flightUrl" appending Input "flight" as JSON
+    When HTTP "flight" sends "GET" to Environment "flightUrl" appending Input "flight" and reads JSON
     Then Produce with JSONata
       """
       {

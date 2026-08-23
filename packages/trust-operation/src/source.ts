@@ -5,7 +5,7 @@ export type { SourcePosition, SourceRange } from "@trust/gherkin";
 
 export interface OperationEnvironmentSource {
   readonly name: string;
-  readonly type: "directory" | "url";
+  readonly type: "directory" | "url" | "string";
   readonly range: SourceRange;
   readonly selectionRange: SourceRange;
 }

@@ -38,5 +38,9 @@ The packaged Runner uses these optional environment variables:
 - `TRUST_RPC_ENDPOINT`, defaulting to `http://127.0.0.1:4318/rpc`;
 - `TRUST_OTLP_ENDPOINT`, defaulting to `http://127.0.0.1:4318/v1/traces`.
 
+The CLI and MCP runner startup accept repeatable `--path <absolute-directory>` options. Each
+directory is appended to the inherited `PATH` for Shell steps; Operations do not redeclare this
+standard process configuration.
+
 Operation-specific paths, URLs and other execution values come from the TRUST Environment returned
 at admission. Do not inject them into the Skill.

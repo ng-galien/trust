@@ -99,10 +99,14 @@ describe("Procedure compiler", () => {
       target: { role: "runtime project", selection: "each" },
     });
     expect(compiled.scenarios.find((scenario) => scenario.slug === "runtime-fix-verify")).toMatchObject({
-      dependencies: ["dependency-alignment"],
+      dependencies: ["red", "library-fix-install", "dependency-alignment"],
     });
     expect(compiled.checks.find((check) => check.name === "done issue")).toMatchObject({
-      operation: "jira.issue-read",
+      operation: "jira.issue-transition",
+      target: { role: "jira issue", selection: "one" },
+    });
+    expect(compiled.checks.find((check) => check.name === "start issue")).toMatchObject({
+      operation: "jira.issue-transition",
       target: { role: "jira issue", selection: "one" },
     });
     expect(compiled.scenarios.at(-1)).toMatchObject({

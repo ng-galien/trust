@@ -14,14 +14,20 @@ export type {
   FileRead,
   FileTextResult,
 } from "./file-read.js";
-export { renderHttpUrl } from "./http.js";
+export { HTTP_METHODS, renderHttpUrl, renderHttpValue } from "./http.js";
 export { operationAuthoringSnippets, operationHighlightVocabulary, operationLanguage } from "./language.js";
 export type {
   HttpFormat,
   Http,
+  HttpBody,
+  HttpEmptyResult,
+  HttpHeader,
   HttpJsonResult,
+  HttpMethod,
+  HttpPathSegment,
   HttpQueryParameter,
   HttpTextResult,
+  HttpValueSource,
 } from "./http.js";
 export type { JsonValue } from "./json.js";
 export type {

@@ -24,7 +24,7 @@ The `Background` of an Operation is its contract: what a Procedure binds (Input)
 
 ## Value types
 
-The same four types serve Input and Produced fields; Environment has its own two.
+The same four types serve Input and Produced fields; Environment has three execution value types.
 
 | Type | Meaning | Validated as |
 | --- | --- | --- |
@@ -34,6 +34,7 @@ The same four types serve Input and Produced fields; Environment has its own two
 | `reference` | an identifier of something outside TRUST (a revision, an issue key, a project name) | a non-empty string |
 | `directory` *(Environment only)* | the place where projects live | an absolute filesystem path |
 | `url` *(Environment only)* | the base URL of a service | an `http(s)` URL without embedded credentials |
+| `string` *(Environment only)* | a non-secret request or execution setting | a non-empty string without NUL |
 
 **Cardinality** is `one` (a scalar) or `many` (an array of the type). There is no optional value: every declared Input and Environment value is required, and the Operation must produce every declared field.
 
@@ -44,11 +45,13 @@ The same four types serve Input and Produced fields; Environment has its own two
       | name          | type      |
       | workspaceRoot | directory |
       | serviceUrl    | url       |
+      | apiMode       | string    |
 ```
 
 - Required, once, at least one row. The header is exactly `| name | type |`.
 - A `directory` names **the place where all projects live**, not one project. A Shell or File step narrows it to one project with `and Input "<name>"`: the Input must be one string naming a directory directly below the root — no path separator, no `..`, no symbolic link out of the root. Without that clause the step runs in the directory itself.
-- A `url` is used as-is by an HTTP GET, or with one Input appended as a single encoded path segment.
+- A `url` is the base of any HTTP method; structured clauses may append encoded path segments and query parameters.
+- A `string` supplies non-secret HTTP query, header or Text body values.
 - The values come from the Environment chosen at admission (live) or from the current Environment of the interface (**Run** tab). An Operation is *runnable* on an Environment when the Environment declares every name it needs — that is what the ✓ marks of the catalog and of the Environment screen show.
 
 ## Input
@@ -63,7 +66,7 @@ The same four types serve Input and Produced fields; Environment has its own two
 
 - Optional (an Operation may need no Input), at most once. The header is exactly `| input | type | cardinality |`.
 - Where the values come from: in a Plan, the Check sentence binds each Input to a Plan context role (`on "project" as Input "project"`, `using "baseline" as Input "baseRevision"`). Every Input must be bound exactly once. In the interface, **Simulate** and **Run** ask you for them.
-- What an Input may feed: a Shell argument (`Input "issue"` in the argument table), the directory narrowing (`and Input "project"`), an HTTP path segment or query parameter (`appending Input "issue"`, `with query "run" from Input "run"`), the whole body of an HTTP POST, and the `input.<name>` root of the projection.
+- What an Input may feed: a Shell argument, directory narrowing, an HTTP path/query/header/Text body value, the complete JSON request body, a JSONata request body, and the `input.<name>` root of Produce.
 - Wherever a step needs **one string**, the Input must be cardinality `one` and of type `string`, `instant` or `reference` — a `number` or a `many` Input is refused there.
 
 ## Produced fields
@@ -88,8 +91,8 @@ In the Source editor, the JSONata projection is an embedded language rather than
 
 ## No secrets in the source
 
-There is no credential, header, token or authentication step in the language. The compiler refuses a source that contains a secret-like value (an `sk-…` key, a `gh…_` token, a `Bearer …` header) — code `secret-like-value` — and the Runner refuses URLs with embedded credentials. Secrets belong to Environments (as write-only credential references), never to Operations. See [Environments and credentials](/docs/principles/environments).
+HTTP headers are structured, but Operation source and readable Environment strings are not secret storage. The compiler refuses a secret-like value (an `sk-…` key, a `gh…_` token, a `Bearer …` value) — code `secret-like-value` — and the Runner refuses URLs with embedded credentials. Secrets belong to Environments as write-only credential references. See [Environments and credentials](/docs/principles/environments).
 
 <Details title="Compiled form of the interface" expert>
-The compiler emits three JSON Schemas (`input`, `environment`, `produced`), each `type: "object"`, every declared name `required`, `additionalProperties: false`. Type mapping: `string → { type: "string" }`, `number → { type: "number" }`, `instant → { type: "string", format: "date-time" }`, `reference → { type: "string", minLength: 1 }`, `directory → { type: "string", format: "trust-directory" }`, `url → { type: "string", format: "trust-url" }`; `many` wraps the item schema in an array; an enum domain adds `enum: [...]`. Runtime values are validated with these schemas — which is why the **Simulate** and **Run** forms know which fields are required, which are enumerations and which are lists.
+The compiler emits three closed JSON Schemas. Environment mapping is `directory → trust-directory`, `url → trust-url`, `string → trust-string`; every declared Environment value is required. Input and Produced mappings are unchanged; `many` wraps the item schema in an array and an enum domain adds `enum: [...]`.
 </Details>

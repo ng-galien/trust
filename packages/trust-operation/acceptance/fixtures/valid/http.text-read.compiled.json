@@ -31,6 +31,9 @@
         "url": {
           "environment": "serviceUrl"
         },
+        "path": [],
+        "query": [],
+        "headers": [],
         "format": "text"
       }
     }

@@ -11,6 +11,7 @@ import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
+import { gzipSync } from "node:zlib";
 
 import { compileOperation } from "@trust/operation";
 import { createCheckRunner, createRunnerLogging, OtlpFactExporter, runOperation, type CheckClient, type FactExporter } from "@trust/runner";
@@ -26,6 +27,7 @@ const receivedHttpRequests: Array<{
   readonly body: string;
 }> = [];
 let otlpResponse = { status: 200, body: "{}" };
+let jiraWorkflowStatus = "To Do";
 
 afterEach(async () => {
   await Promise.all([
@@ -36,6 +38,7 @@ afterEach(async () => {
   ]);
   receivedHttpRequests.splice(0);
   otlpResponse = { status: 200, body: "{}" };
+  jiraWorkflowStatus = "To Do";
 });
 
 describe("Operation runner", () => {
@@ -374,6 +377,23 @@ describe("Operation runner", () => {
     expect(result.produced).toEqual({ argument: "-Dtrust.ticket=TK-1" });
   });
 
+  test("finds a Shell executable through the runner additional path configuration", async () => {
+    const workspaceRoot = await temporaryDirectory("trust-runner-path-workspace-");
+    const executableRoot = await temporaryDirectory("trust-runner-path-bin-");
+    await symlink("/bin/echo", join(executableRoot, "trust-path-probe"));
+
+    const result = await runOperation(
+      fixtureOperation("shell.additional-path.feature"),
+      {},
+      { workspaceRoot },
+      undefined,
+      {},
+      { shell: { additionalPath: [executableRoot] } },
+    );
+
+    expect(result.produced).toEqual({ output: "ready" });
+  });
+
   test("appends several encoded path segments and a query string to an HTTP GET", async () => {
     const baseUrl = await startHttpServer();
 
@@ -417,6 +437,84 @@ describe("Operation runner", () => {
     ]);
   });
 
+  test("sends the standardized HTTP QUERY method with path, query, header and JSONata content", async () => {
+    const baseUrl = await startHttpServer();
+
+    const result = await runOperation(
+      fixtureOperation("http.query.feature"),
+      { query: "status = 'open'" },
+      { serviceUrl: baseUrl, apiMode: "acceptance" },
+    );
+
+    expect(result.produced).toEqual({ result: "matched", status: 200 });
+    expect(receivedHttpRequests).toContainEqual(expect.objectContaining({
+      method: "QUERY",
+      url: "/search?limit=5",
+      headers: expect.objectContaining({ "x-api-mode": "acceptance", "content-type": "application/json" }),
+      body: JSON.stringify({ query: "status = 'open'" }),
+    }));
+  });
+
+  test("does not decode representation metadata on a HEAD response without content", async () => {
+    const baseUrl = await startHttpServer();
+
+    const result = await runOperation(
+      fixtureOperation("http.head.feature"),
+      {},
+      { serviceUrl: `${baseUrl}/compressed-head` },
+    );
+
+    expect(result.produced).toEqual({ status: 200 });
+    expect(result.steps.metadata).toMatchObject({ status: 200, body: "" });
+  });
+
+  test("closes an HTTP response that declares an unsupported content encoding", async () => {
+    const baseUrl = await startHttpServer();
+    const server = httpServers.at(-1)!;
+
+    await expect(runOperation(
+      operation("http.status-read.feature"),
+      {},
+      { serviceUrl: `${baseUrl}/unsupported-encoding` },
+    )).rejects.toThrow('unsupported content encoding "zstd"');
+
+    await expect.poll(() => serverConnectionCount(server)).toBe(0);
+  });
+
+  test("sends CONNECT with the destination authority as its request target", async () => {
+    const baseUrl = await startHttpServer();
+
+    const result = await runOperation(
+      fixtureOperation("http.connect.feature"),
+      {},
+      { serviceUrl: baseUrl },
+    );
+
+    expect(result.produced).toEqual({ status: 200 });
+    expect(receivedHttpRequests).toContainEqual(expect.objectContaining({
+      method: "CONNECT",
+      url: new URL(baseUrl).host,
+    }));
+  });
+
+  test("encodes multiline query values and preserves multiline Text bodies", async () => {
+    const baseUrl = await startHttpServer();
+    const payload = "line one\r\nline two\n";
+
+    const result = await runOperation(
+      fixtureOperation("http.text-content.feature"),
+      { query: "line one\r\nline two", payload },
+      { serviceUrl: `${baseUrl}/text-content` },
+    );
+
+    expect(result.produced).toEqual({ result: "accepted" });
+    expect(receivedHttpRequests).toContainEqual(expect.objectContaining({
+      method: "PUT",
+      url: "/text-content?q=line+one%0D%0Aline+two",
+      body: payload,
+    }));
+  });
+
   test("appends one encoded Input as an HTTP path segment", async () => {
     const baseUrl = await startHttpServer();
 
@@ -433,6 +531,59 @@ describe("Operation runner", () => {
       workflowStatus: "todo",
     });
     expect(receivedHttpRequests).toContainEqual(expect.objectContaining({ url: "/issue/TRUST-1" }));
+  });
+
+  test("transitions a Jira issue only from the declared source workflow status", async () => {
+    const baseUrl = await startHttpServer();
+
+    const result = await runOperation(
+      operation("jira.issue-transition.feature"),
+      { issue: "TRUST-2", fromWorkflowStatus: "todo", toWorkflowStatus: "in-progress" },
+      { jiraIssueUrl: `${baseUrl}/issue/` },
+    );
+
+    expect(result.produced).toEqual({
+      issue: "TRUST-2",
+      fromWorkflowStatus: "todo",
+      toWorkflowStatus: "in-progress",
+    });
+    expect(receivedHttpRequests).toContainEqual(expect.objectContaining({
+      method: "POST",
+      url: "/issue/TRUST-2/transitions",
+      body: JSON.stringify({ transition: { id: "11" } }),
+    }));
+  });
+
+  test("reconciles a Jira transition replay when the first attempt already reached the target", async () => {
+    const baseUrl = await startHttpServer();
+    const input = { issue: "TRUST-2", fromWorkflowStatus: "todo", toWorkflowStatus: "in-progress" };
+    const environment = { jiraIssueUrl: `${baseUrl}/issue/` };
+
+    await runOperation(operation("jira.issue-transition.feature"), input, environment);
+    const replay = await runOperation(operation("jira.issue-transition.feature"), input, environment);
+
+    expect(replay.produced).toEqual({
+      issue: "TRUST-2",
+      fromWorkflowStatus: "todo",
+      toWorkflowStatus: "in-progress",
+    });
+    expect(receivedHttpRequests).toContainEqual(expect.objectContaining({
+      method: "POST",
+      body: JSON.stringify({ transition: { id: "__trust_already_applied__" } }),
+    }));
+  });
+
+  test("does not mutate Jira when the declared source workflow status is not current", async () => {
+    const baseUrl = await startHttpServer();
+
+    await expect(runOperation(
+      operation("jira.issue-transition.feature"),
+      { issue: "TRUST-2", fromWorkflowStatus: "in-progress", toWorkflowStatus: "done" },
+      { jiraIssueUrl: `${baseUrl}/issue/` },
+    )).rejects.toThrow("Jira issue has neither the expected source nor target workflow status");
+
+    expect(receivedHttpRequests.some((request) => request.method === "POST")).toBe(false);
+    expect(jiraWorkflowStatus).toBe("To Do");
   });
 
   test("counts only spans carrying the declared project and execution id", async () => {
@@ -696,6 +847,15 @@ async function startHttpServer(): Promise<string> {
       response.destroy(error instanceof Error ? error : new Error(String(error)));
     });
   });
+  server.on("connect", (request, socket) => {
+    receivedHttpRequests.push({
+      method: request.method ?? "",
+      url: request.url ?? "",
+      headers: request.headers,
+      body: "",
+    });
+    socket.end("HTTP/1.1 200 Connection Established\r\ncontent-length: 0\r\n\r\n");
+  });
   await new Promise<void>((resolve, reject) => {
     server.once("error", reject);
     server.listen(0, "127.0.0.1", resolve);
@@ -706,6 +866,33 @@ async function startHttpServer(): Promise<string> {
 }
 
 async function respond(request: IncomingMessage, response: ServerResponse): Promise<void> {
+  if (request.method === "HEAD" && request.url === "/compressed-head") {
+    receivedHttpRequests.push({
+      method: request.method,
+      url: request.url,
+      headers: request.headers,
+      body: "",
+    });
+    response.writeHead(200, { "content-type": "application/json", "content-encoding": "gzip" });
+    response.end();
+    return;
+  }
+  if (request.method === "GET" && request.url === "/unsupported-encoding") {
+    response.writeHead(200, { "content-type": "application/json", "content-encoding": "zstd" });
+    response.write("still open");
+    return;
+  }
+  if (request.method === "PUT" && request.url === "/text-content?q=line+one%0D%0Aline+two") {
+    receivedHttpRequests.push({
+      method: request.method,
+      url: request.url,
+      headers: request.headers,
+      body: await readRequest(request),
+    });
+    response.writeHead(200, { "content-type": "text/plain" });
+    response.end("accepted");
+    return;
+  }
   if (request.method === "POST" && request.url === "/v1/traces") {
     receivedHttpRequests.push({
       method: request.method,
@@ -756,6 +943,38 @@ async function respond(request: IncomingMessage, response: ServerResponse): Prom
     }));
     return;
   }
+  if (request.method === "QUERY" && request.url === "/search?limit=5") {
+    const body = await readRequest(request);
+    receivedHttpRequests.push({
+      method: request.method,
+      url: request.url,
+      headers: request.headers,
+      body,
+    });
+    response.writeHead(200, { "content-type": "application/json", "content-encoding": "gzip" });
+    response.end(gzipSync(JSON.stringify({ result: "matched" })));
+    return;
+  }
+  if (request.method === "POST" && request.url === "/issue/TRUST-2/transitions") {
+    const body = await readRequest(request);
+    receivedHttpRequests.push({
+      method: request.method,
+      url: request.url,
+      headers: request.headers,
+      body,
+    });
+    const transition = (JSON.parse(body) as { transition?: { id?: string } }).transition?.id;
+    if (jiraWorkflowStatus === "To Do" && transition === "11") jiraWorkflowStatus = "In Progress";
+    else if (jiraWorkflowStatus === "In Progress" && transition === "31") jiraWorkflowStatus = "Done";
+    else {
+      response.writeHead(400, { "content-type": "text/plain" });
+      response.end("transition is not available");
+      return;
+    }
+    response.writeHead(204);
+    response.end();
+    return;
+  }
   if (request.method !== "GET") {
     response.writeHead(405, { "content-type": "text/plain" });
     response.end("method not allowed");
@@ -779,6 +998,24 @@ async function respond(request: IncomingMessage, response: ServerResponse): Prom
         key: "TRUST-1",
         fields: { summary: "Runner integration", issuetype: { name: "Defect" }, status: { name: "To Do" } },
       }));
+      return;
+    }
+    if (request.url === "/issue/TRUST-2") {
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(JSON.stringify({
+        key: "TRUST-2",
+        fields: { summary: "Workflow acceptance", issuetype: { name: "Defect" }, status: { name: jiraWorkflowStatus } },
+      }));
+      return;
+    }
+    if (request.url === "/issue/TRUST-2/transitions") {
+      const transitions = jiraWorkflowStatus === "To Do"
+        ? [{ id: "11", name: "Start Progress", to: { name: "In Progress" } }]
+        : jiraWorkflowStatus === "In Progress"
+          ? [{ id: "31", name: "Done", to: { name: "Done" } }]
+          : [];
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(JSON.stringify({ transitions }));
       return;
     }
     if (request.url === "/traces/trace-1") {
@@ -863,5 +1100,11 @@ function factTrace() {
 async function closeHttpServer(server: Server): Promise<void> {
   await new Promise<void>((resolve, reject) => {
     server.close((error) => error ? reject(error) : resolve());
+  });
+}
+
+async function serverConnectionCount(server: Server): Promise<number> {
+  return new Promise<number>((resolve, reject) => {
+    server.getConnections((error, count) => error ? reject(error) : resolve(count));
   });
 }

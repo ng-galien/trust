@@ -50,6 +50,17 @@ Feature: Create Checks only for agent declarations that are present
       fail("the optional target head is unavailable")
       """
 
+  @scenario:after-optional-targets
+  Scenario: Continue when the optional target branch is absent or validated
+    Given scenario "optional-targets" is validated
+    Then Check "after optional targets" runs Operation "git.head-read"
+        on "workspace" as Input "project"
+        and must establish "the optional target branch no longer blocks the Plan"
+      """js
+      fact.headRevision !== "" ||
+      fail("the workspace head is unavailable after the optional target branch")
+      """
+
   @scenario:optional-qualification
   Scenario: Read context only when the optional declaration exists
     Then Check "optional qualification" runs Operation "git.head-read"
@@ -80,4 +91,15 @@ Feature: Create Checks only for agent declarations that are present
       """js
       checks["optional observed head"].headRevision !== "" ||
       fail("the transitive optional Check is unavailable")
+      """
+
+  @scenario:after-optional-check-observation
+  Scenario: Continue when the transitively optional Check branch is absent or validated
+    Given scenario "optional-check-observation" is validated
+    Then Check "after optional check observation" runs Operation "git.head-read"
+        on "workspace" as Input "project"
+        and must establish "the optional Check branch no longer blocks the Plan"
+      """js
+      fact.headRevision !== "" ||
+      fail("the workspace head is unavailable after the optional Check branch")
       """

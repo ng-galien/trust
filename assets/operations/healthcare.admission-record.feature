@@ -19,7 +19,7 @@ Feature: Record one simulated patient admission
       | admittedAt      | instant   | one         | any                         |
 
   Scenario: Run
-    When HTTP "admission" posts Input as JSON to Environment "admissionUrl" and reads JSON
+    When HTTP "admission" sends "POST" to Environment "admissionUrl" with Input as JSON body and reads JSON
     Then Produce with JSONata
       """
       {

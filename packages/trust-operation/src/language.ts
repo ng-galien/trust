@@ -1,10 +1,13 @@
+import { HTTP_METHODS } from "./http.js";
+
 export const operationLanguage = {
   tags: { operation: "@operation:", version: "@version:", dsl: "@trust-dsl:", classification: "@x-" },
   dslVersion: "1",
   valueTypes: ["string", "number", "instant", "reference"] as const,
-  environmentTypes: ["directory", "url"] as const,
+  environmentTypes: ["directory", "url", "string"] as const,
   cardinalities: ["one", "many"] as const,
   formats: ["JSON", "Text"] as const,
+  httpMethods: HTTP_METHODS,
   phrases: {
     environment: "Environment",
     input: "Input",
@@ -14,7 +17,7 @@ export const operationLanguage = {
   jsonata: {
     roots: ["steps", "input", "environment", "execution"] as const,
     functions: [
-      "abs", "append", "average", "boolean", "ceil", "contains", "count", "distinct", "each",
+      "abs", "append", "assert", "average", "boolean", "ceil", "contains", "count", "distinct", "each",
       "exists", "filter", "floor", "formatBase", "formatNumber", "fromMillis", "join", "keys",
       "length", "lookup", "lowercase", "map", "match", "max", "merge", "millis", "min", "not",
       "number", "pad", "power", "reduce", "replace", "reverse", "round", "single", "sort", "split",
@@ -31,7 +34,7 @@ export const operationLanguage = {
   } as const,
   syntax: {
     types: ["Environment", "Input", "Produced", "Shell", "File", "HTTP", "Operation", "Execution"] as const,
-    verbs: ["runs", "accepts", "gets", "appending", "posts", "reads", "Produce"] as const,
+    verbs: ["runs", "accepts", "sends", "appending", "with", "reads", "Produce"] as const,
   },
   template: `# language: en
 @trust-dsl:1 @operation:domain.action @version:1.0.0
@@ -84,8 +87,7 @@ export const operationAuthoringSnippets = [
   },
   { label: "Shell step", insertText: `When Shell "\${1:step}" runs "\${2:command}" with cwd from Environment "\${3:workspaceRoot}"` },
   { label: "File step", insertText: `When File "\${1:step}" reads "\${2:path}" as \${3|${operationLanguage.formats.join(",")}|} from Environment "\${4:workspaceRoot}"` },
-  { label: "HTTP GET step", insertText: `When HTTP "\${1:step}" gets Environment "\${2:serviceUrl}" as \${3|${operationLanguage.formats.join(",")}|}` },
-  { label: "HTTP POST step", insertText: `When HTTP "\${1:step}" posts Input as JSON to Environment "\${2:serviceUrl}" and reads JSON` },
+  { label: "HTTP step", insertText: `When HTTP "\${1:step}" sends "\${2|${operationLanguage.httpMethods.join(",")}|}" to Environment "\${3:serviceUrl}" and reads \${4|JSON,Text,no body|}` },
   {
     label: operationLanguage.phrases.produce,
     insertText: `Then ${operationLanguage.phrases.produce}\n  """\n  { "\${1:field}": \${2:expression} }\n  """`,

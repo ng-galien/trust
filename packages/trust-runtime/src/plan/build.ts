@@ -147,10 +147,14 @@ export function buildPlanRevision(input: BuildPlanRevisionInput): PlanRevision {
     byName.set(check.check.name, values);
   }
   const withDependencies: PlanCheck[] = availableChecks.map((check) => {
+    const effectiveScenarioDependencies = check.scenarioDependencies.filter((scenario) =>
+      availableChecks.some((candidate) => candidate.scenario === scenario)
+      || !scenarioIsOptionalBranch(scenario, input.procedure)
+    );
     const checkDependencies = requiredCheckNames(check, input.procedure.roles)
       .flatMap((name) => relatedProviders(check, byName.get(name) ?? [], context)
         .map((provider) => ({ checkName: name, providerCheckUri: provider.uri })));
-    const scenarioDependencyUris = check.scenarioDependencies.flatMap((scenario) => availableChecks
+    const scenarioDependencyUris = effectiveScenarioDependencies.flatMap((scenario) => availableChecks
       .filter((candidate) => candidate.scenario === scenario)
       .map((candidate) => candidate.uri));
     // A Check identity contains only the context it consumes, plus the exact upstream Checks that
@@ -173,6 +177,7 @@ export function buildPlanRevision(input: BuildPlanRevisionInput): PlanRevision {
         scenarioDependencyUris,
         checkDependencies,
       }),
+      scenarioDependencies: effectiveScenarioDependencies,
       checkDependencies,
     };
   });
@@ -651,6 +656,48 @@ function roleDependsOnOptionalDeclaration(
   return role.parents.some(({ role: parentName }) => {
     const parent = roles.find((candidate) => candidate.name === parentName);
     return parent !== undefined && roleDependsOnOptionalDeclaration(parent, roles, next);
+  });
+}
+
+function scenarioIsOptionalBranch(
+  scenario: string,
+  procedure: CompiledProcedure,
+): boolean {
+  const checks = procedure.checks.filter((candidate) => candidate.scenario === scenario);
+  return checks.length > 0 && checks.every((check) => checkDependsOnOptionalDeclaration(check, procedure));
+}
+
+function checkDependsOnOptionalDeclaration(
+  check: CompiledProcedure["checks"][number],
+  procedure: CompiledProcedure,
+  visited: ReadonlySet<string> = new Set(),
+): boolean {
+  const key = `${check.scenario}/${check.name}`;
+  if (visited.has(key)) return false;
+  const next = new Set(visited).add(key);
+  const { roles } = procedure;
+  const checkProviderIsOptional = (name: string): boolean => {
+    const providers = procedure.checks.filter((candidate) => candidate.name === name);
+    return providers.length > 0
+      && providers.every((provider) => checkDependsOnOptionalDeclaration(provider, procedure, next));
+  };
+  const roleIsOptional = (name: string): boolean => {
+    const role = roles.find((candidate) => candidate.name === name);
+    if (role === undefined) return false;
+    return roleDependsOnOptionalDeclaration(role, roles)
+      || (role.source.kind === "operation-field" && checkProviderIsOptional(role.source.check));
+  };
+  if (roleIsOptional(check.target.role)) return true;
+  if (check.inputBindings.some((binding) => roleIsOptional(binding.role))) return true;
+  if (check.qualification.guards.some((guard) =>
+    guard.references.some((reference) =>
+      (reference.kind === "context" && roleIsOptional(reference.role))
+      || (reference.kind === "check" && checkProviderIsOptional(reference.check))
+    )
+  )) return true;
+  return check.materializes.some((production) => {
+    const role = roles.find((candidate) => candidate.name === production.role);
+    return role?.parents.some((parent) => roleIsOptional(parent.role)) ?? false;
   });
 }
 

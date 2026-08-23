@@ -17,7 +17,7 @@ Feature: Read one Jira issue
       | workflowStatus | string    | one         | enum "todo", "in-progress", "in-review", "done", "other" |
 
   Scenario: Run
-    When HTTP "issue" gets Environment "jiraIssueUrl" appending Input "issue" as JSON
+    When HTTP "issue" sends "GET" to Environment "jiraIssueUrl" appending Input "issue" and reads JSON
     Then Produce with JSONata
       """
       {

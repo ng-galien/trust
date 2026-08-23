@@ -53,7 +53,7 @@ Feature: Build one Docker image from a project revision
 <Legend items={[
   <>**Identity tags.** Exactly one <code>@operation:</code> in the <code>domain.action</code> form (lower-case, hyphens allowed), one semantic <code>@version:</code>, and <code>@trust-dsl:1</code>. Any other tag must be an <code>@x-</code> classification. See [Classification, versions and reuse](/docs/operations/classification-and-versions).</>,
   <>**Title.** Free text, copied verbatim as the Operation title. A description block may follow on the next lines; it is reported, never executed.</>,
-  <>**Environment.** The values the Operation needs from the execution context: a <code>directory</code> or an <code>url</code>. Names are lower camel case. See [Interface](/docs/operations/interface).</>,
+  <>**Environment.** The values the Operation needs from the execution context: a <code>directory</code>, an <code>url</code> or a non-empty <code>string</code>. Names are lower camel case. See [Interface](/docs/operations/interface).</>,
   <>**Input.** The typed values the Check will supply: <code>string</code>, <code>number</code>, <code>instant</code> or <code>reference</code>, cardinality <code>one</code> or <code>many</code>. Every Input is required — there is no optional Input.</>,
   <>**Produced fields.** The exact fields the Operation returns, typed, with a domain: <code>any</code>, or an <code>enum</code> for strings. Nothing else may be produced.</>,
   <>**Steps.** Ordered, each with a unique lower-camel-case name used later in the projection. Shell arguments are structured: a <code>literal</code> or one scalar <code>Input</code> per row — the Runner never parses a command line. See [Steps](/docs/operations/steps).</>,

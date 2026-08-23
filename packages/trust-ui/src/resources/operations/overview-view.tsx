@@ -1,6 +1,7 @@
 import type { TFunction } from "i18next";
 import type { ReactNode } from "react";
 import { Trans, useTranslation } from "react-i18next";
+import type { Http } from "@trust/operation";
 
 import type { CompiledOperation, OperationStep } from "../../types.js";
 import { Description } from "../../ui/description.js";
@@ -8,6 +9,7 @@ import { Expert } from "../../ui/expert.js";
 import { Disclosure, schemaProperties } from "../../ui/schema.js";
 import { EmptyState } from "../../ui/states.js";
 import { StepCard } from "./contract-view.js";
+import { describeAcceptedStatuses, describeHttpBodyKind, describeHttpLocation } from "./http-view-model.js";
 
 /** Plain-language reading of an operation: description, then needs → does → produces; step contracts and projection in expert mode. */
 export function OverviewView({ compiled, error }: { compiled: CompiledOperation | undefined; error?: string | undefined }) {
@@ -93,15 +95,22 @@ function describeStep(step: OperationStep, t: TFunction): ReactNode {
     );
   }
   if (step.type === "http") {
-    const http = step.http as { method: string; url: { environment: string }; appendInputs?: string[]; query?: Array<{ name: string; input: string } | { name: string; value: string }>; format?: string };
-    const path = (http.appendInputs ?? []).map((input) => `/<${input}>`).join("");
-    const query = (http.query ?? []).map((parameter) => `${parameter.name}=${"input" in parameter ? `<${parameter.input}>` : parameter.value}`).join("&");
-    return http.method === "POST" ? (
-      <Trans i18nKey="operations.overview.step.httpPost" values={{ url: http.url.environment }} components={{ env: inlineCode }} />
-    ) : (
+    const http = step.http as Http;
+    const body = describeHttpBodyKind(http);
+    return (
       <>
-        <Trans i18nKey="operations.overview.step.httpRead" values={{ format: http.format === "text" ? t("operations.overview.step.formatText") : t("operations.overview.step.formatJson"), url: http.url.environment }} components={{ env: inlineCode }} />
-        {path || query ? <> <Trans i18nKey="operations.overview.step.httpAt" values={{ path: `${path}${query ? `?${query}` : ""}` }} components={{ field: inlineCode }} /></> : null}
+        <Trans
+          i18nKey="operations.overview.step.httpRequest"
+          values={{
+            method: http.method,
+            format: http.format === "none" ? t("operations.overview.step.formatNone") : http.format === "text" ? t("operations.overview.step.formatText") : t("operations.overview.step.formatJson"),
+            location: describeHttpLocation(http),
+          }}
+          components={{ location: inlineCode }}
+        />
+        {body ? <> {t("operations.overview.step.httpBody", { body })}</> : null}
+        {http.headers.length ? <> {t("operations.overview.step.httpHeaders", { count: http.headers.length })}</> : null}
+        {http.acceptedStatuses ? <> {t("operations.overview.step.httpStatuses", { statuses: describeAcceptedStatuses(http) })}</> : null}
       </>
     );
   }

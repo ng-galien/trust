@@ -297,7 +297,7 @@ async function assertIncrementalDiagnostics(connection: MessageConnection): Prom
       severity: 1,
       range: {
         start: { line: 14, character: 4 },
-        end: { line: 14, character: 62 },
+        end: { line: 14, character: 79 },
       },
       message: 'HTTP "response" uses undeclared Environment "missingUrl"',
       code: "unknown-environment",

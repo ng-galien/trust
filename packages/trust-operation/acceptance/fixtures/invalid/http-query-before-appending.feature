@@ -16,7 +16,7 @@ Feature: Invalid HTTP GET sentence
       | status | number | one         | any    |
 
   Scenario: Run
-    When HTTP "comments" gets Environment "issuesUrl" with query "limit" as "5" appending Input "issue" as JSON
+    When HTTP "comments" sends "GET" to Environment "issuesUrl" with query "limit" as "5" appending Input "issue" and reads JSON
     Then Produce with JSONata
       """
       { "status": steps.comments.status }

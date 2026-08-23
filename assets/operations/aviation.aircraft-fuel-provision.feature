@@ -20,7 +20,7 @@ Feature: Ensure a simulated aircraft has its target fuel quantity
       | fuelAddedLiters  | number    | one         | any    |
 
   Scenario: Run
-    When HTTP "fuel" posts Input as JSON to Environment "aircraftFuelUrl" and reads JSON
+    When HTTP "fuel" sends "POST" to Environment "aircraftFuelUrl" with Input as JSON body and reads JSON
     Then Produce with JSONata
       """
       {

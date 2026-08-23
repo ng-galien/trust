@@ -1,30 +1,41 @@
 ---
 title: "Étapes HTTP"
-summary: "GET une URL depuis l'Environnement (avec en option des Inputs comme segments de chemin et une query string), ou POST l'Input typé entier en JSON."
+summary: "Envoyer une méthode HTTP enregistrée avec chemin, query, headers et contenu structurés, puis lire du JSON, du Text ou aucun corps."
 order: 3
 ---
 
-```gherkin fragment title="Les trois phrases (pas de table, pas de doc string)"
-    When HTTP "<name>" gets Environment "<url>" as Text
-    And  HTTP "<name>" gets Environment "<url>" appending Input "<a>" and Input "<b>" with query "<name>" from Input "<c>" with query "<name>" as "<literal>" as JSON
-    And  HTTP "<name>" posts Input as JSON to Environment "<url>" and reads JSON
+```gherkin fragment title="One sentence for every HTTP method"
+    When HTTP "<name>" sends "GET" to Environment "<url>" and reads Text
+    And  HTTP "<name>" sends "QUERY" to Environment "<url>" appending Input "<a>" and literal "search" with query "<name>" from Input "<c>" with header "accept" as "application/json" with JSONata body and reads JSON
+    And  HTTP "<name>" sends "POST" to Environment "<url>" with Input as JSON body and reads JSON
 ```
 
-## GET
+## Requête
 
 | Partie | Règle |
 | --- | --- |
 | `"<name>"` | lower camel case, unique dans l'Opération |
-| `gets Environment "<url>"` | requis ; la valeur d'Environment doit être de type `url` ; utilisée telle quelle |
-| `appending Input "<a>" [and Input "<b>"]…` | optionnel ; la valeur de chaque Input, encodée pour l'URL, ajoutée comme **un segment de chemin** chacune, dans l'ordre, sous l'URL. Chaque Input doit être une chaîne |
-| `with query "<name>" from Input "<in>"` | optionnel, répétable ; ajoute `name=<valeur de l'Input>` à la query string. L'Input doit être une chaîne |
-| `with query "<name>" as "<literal>"` | optionnel, répétable ; ajoute `name=<literal>` à la query string |
-| `as Text` / `as JSON` | comment le corps est lu : une chaîne opaque, ou une valeur JSON analysée que la projection peut traverser |
+| `sends "<METHOD>"` | une méthode applicative enregistrée, dont `QUERY` de la RFC 10008 ; `PRI` et le token réservé `*` ne sont pas des requêtes applicatives |
+| `to Environment "<url>"` | requis ; la valeur d'Environment doit être de type `url` |
+| `appending Input "<a>"` / `and literal "<segment>"` | segments de chemin encodés optionnels, dans l'ordre |
+| `with query "<name>" …` | optionnel et répétable ; valeur d'un Input, d'un Environment `string` ou d'un littéral |
+| `with header "<name>" …` | optionnel et répétable ; valeur d'un Input, d'un Environment `string` ou d'un littéral |
+| `with Input as JSON body` | l'Input typé complet, encodé en JSON |
+| `with JSONata body` | un DocString JSONata fermé, évalué juste avant la requête ; il peut lire les étapes précédentes et utiliser `$assert` pour arrêter avant une mutation |
+| `with Text body …` | Text provenant d'un Input, d'un Environment `string` ou d'un littéral |
+| `and reads JSON` / `Text` / `no body` | JSON analysé, Text opaque ou corps de résultat volontairement vide |
 
-Les clauses viennent dans cet ordre : `appending …`, puis chaque `with query …`, puis `as Text|JSON` ; un autre ordre est refusé. Les valeurs de query sont encodées par le Runner (`URLSearchParams`), dans l'ordre de la phrase. L'URL d'Environment ne doit pas déjà porter de query string quand l'étape en déclare une (refusé à l'exécution). Il n'y a ni en-tête rédigé, ni interpolation libre d'URL. `https://jira.example/issues` + `appending Input "issue"` avec `issue = "PAY-12"` requête `https://jira.example/issues/PAY-12`.
+Les clauses sont ordonnées : chemin, query, headers, corps optionnel, réponse. Les valeurs de chemin
+et de query sont encodées dans l'ordre de la phrase. Une URL de base ne peut pas déjà porter une
+query si la phrase en déclare une. Les headers refusent CR, LF et NUL ; les corps Text peuvent être
+multilignes. Il n'y a pas d'interpolation libre d'URL.
+
+`CONNECT` utilise l'autorité de l'URL d'Environment comme cible de requête et accepte des headers,
+mais aucun chemin, query ou corps. Son URL ne doit contenir ni chemin ni query. Le Runner enregistre
+le handshake puis ferme le tunnel, car une étape d'Opération est une requête bornée.
 
 ```gherkin fragment
-    When HTTP "issue" gets Environment "jiraIssueUrl" appending Input "issue" as JSON
+    When HTTP "issue" sends "GET" to Environment "jiraIssueUrl" appending Input "issue" and reads JSON
     Then Produce with JSONata
       """
       { "issue": input.issue, "summary": steps.issue.body.summary, "workflowStatus": steps.issue.body.workflowStatus }
@@ -32,20 +43,24 @@ Les clauses viennent dans cet ordre : `appending …`, puis chaque `with query �
 ```
 
 ```gherkin fragment title="GET <issuesUrl>/<issue>/comments?limit=5&run=<run>"
-    When HTTP "comments" gets Environment "issuesUrl"
+    When HTTP "comments" sends "GET" to Environment "issuesUrl"
         appending Input "issue" and Input "resource"
         with query "limit" as "5"
         with query "run" from Input "run"
-        as JSON
+        and reads JSON
 ```
 
-## POST
+## Statuts
 
-| Partie | Règle |
-| --- | --- |
-| `posts Input as JSON` | l'objet Input typé **entier** est le corps de la requête (`content-type: application/json`). L'Opération doit déclarer au moins un Input |
-| `to Environment "<url>"` | requis ; type `url` |
-| `and reads JSON` | le corps de la réponse est analysé comme JSON. Il n'y a pas de variante Text ni d'`appending` pour POST |
+La plage acceptée par défaut est `200`–`299`. Une Opération peut la remplacer par des statuts
+terminaux exacts :
+
+```gherkin fragment
+    And HTTP "response" accepts statuses
+      | status |
+      | 200    |
+      | 404    |
+```
 
 ```gherkin operation id="healthcare.admission-record" title="healthcare.admission-record — POST l'Input, lire la réponse"
 # language: en
@@ -69,7 +84,7 @@ Feature: Record one simulated patient admission
       | admittedAt      | instant   | one         | any                         |
 
   Scenario: Run
-    When HTTP "admission" posts Input as JSON to Environment "admissionUrl" and reads JSON
+    When HTTP "admission" sends "POST" to Environment "admissionUrl" with Input as JSON body and reads JSON
     Then Produce with JSONata
       """
       {
@@ -86,13 +101,15 @@ Feature: Record one simulated patient admission
 | --- | --- |
 | `steps.<name>.status` | number — le code de statut HTTP |
 | `steps.<name>.headers` | objet de chaînes (peut être copié en entier, pas traversé) |
-| `steps.<name>.body` | string pour `Text` ; la valeur analysée pour `JSON` |
+| `steps.<name>.body` | string pour `Text`, valeur analysée pour `JSON`, chaîne vide pour `no body` |
 
-Tout statut est un résultat : un `404` n'interrompt pas l'Opération — la projection lit `steps.x.status` et décide. Ce qui interrompt, c'est une panne de transport (pas de connexion, timeout, JSON invalide quand il est lu `as JSON`).
+Un statut hors de l'ensemble accepté interrompt l'Opération avant Produce. Une panne de transport, un timeout ou un JSON invalide l'interrompt également.
 
 ## Authentification
 
-Il n'y a pas d'authentification dans la phrase. Le Runner envoie la requête avec sa propre configuration sortante ; l'URL elle-même ne doit porter aucun credential (refusé à l'admission). Les Environnements portent des *références* de credential à cet effet — voir [Environnements et credentials](/docs/principles/environments).
+Les headers peuvent utiliser des valeurs d'Environment `string` non secrètes. L'URL elle-même ne
+doit porter aucun credential. Les références de credentials ne sont pas exposées comme valeurs
+d'Opération et ce contrat HTTP n'injecte pas de headers secrets.
 
 <Details title="Diagnostics propres aux étapes HTTP" expert>
 | Message | Cause |
@@ -100,10 +117,11 @@ Il n'y a pas d'authentification dans la phrase. Le Runner envoie la requête ave
 | `HTTP "x" requires Environment "e" to be a url` | l'Environment est un `directory` |
 | `HTTP "x" uses undeclared Environment "e"` | le nom n'est pas dans la table Environment |
 | `HTTP "x" path Input "i" must be one string` | `appending` d'un Input non déclaré, `number` ou `many` |
-| `HTTP "x" query Input "i" must be one string` | `with query … from Input` nommant un Input non déclaré, `number` ou `many` |
-| `HTTP "x" appending must precede with query: …` · `HTTP "x" appending and with query must precede as JSON: …` · `HTTP "x" has trailing words after as JSON` | clauses dans le mauvais ordre |
-| `HTTP "x" POST accepts no path segment or query: …` | `appending` ou `with query` sur une phrase POST |
-| `HTTP "x" cannot post an empty Input` | POST sans aucun Input déclaré |
-| `HTTP does not accept a table or DocString` · `HTTP cannot run after Produce` · `HTTP POST must precede Produce and accepts no table or DocString` | forme et ordre |
-| `Produce cannot traverse Text HTTP body` · `Produce cannot traverse HTTP result "status"` | un chemin descend sous une valeur opaque dans la projection |
+| `HTTP "x" query/header/body Environment "e" must be a string` | la source de valeur n'est pas un Environment `string` |
+| `HTTP "x" method "…" is not registered for application requests` | méthode inconnue, `PRI` ou `*` |
+| `HTTP "x" CONNECT accepts headers but no path, query or body` | une phrase CONNECT déclare une clause incompatible |
+| `HTTP "x" JSONata body requires one DocString` | projection de requête absente |
+| `HTTP status "…" must be terminal: 101 or an integer from 200 to 599` | statut informationnel intermédiaire ou autre valeur invalide |
+| `HTTP "x" accepted statuses must immediately follow that HTTP step` | la table de statuts est mal placée |
+| `Produce cannot traverse non-JSON HTTP body` | un chemin descend sous du Text ou un corps vide |
 </Details>

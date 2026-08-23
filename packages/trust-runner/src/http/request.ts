@@ -1,7 +1,13 @@
-import type { JsonValue } from "@trust/operation";
+import { request as requestHttp1, type IncomingHttpHeaders, type IncomingMessage } from "node:http";
+import { request as requestHttps } from "node:https";
+import type { Socket } from "node:net";
+import type { Readable } from "node:stream";
+import { createBrotliDecompress, createGunzip, createInflate } from "node:zlib";
+
+import type { HttpMethod, JsonValue } from "@trust/operation";
 
 export interface HttpRequest {
-  readonly method: "GET" | "POST";
+  readonly method: HttpMethod;
   readonly url: string | URL;
   readonly headers?: Readonly<Record<string, string>>;
   readonly body?: string;
@@ -17,19 +23,84 @@ export interface HttpResponse {
 }
 
 export async function requestHttp(request: HttpRequest): Promise<HttpResponse> {
-  const response = await fetch(httpUrl(request.url), {
-    method: request.method,
-    ...(request.headers === undefined ? {} : { headers: request.headers }),
-    ...(request.body === undefined ? {} : { body: request.body }),
-    redirect: "error",
-    signal: AbortSignal.timeout(request.timeoutMs ?? 30_000),
+  const url = httpUrl(request.url);
+  const maximum = request.maxResponseBytes ?? 10 * 1024 * 1024;
+  const timeoutMs = request.timeoutMs ?? 30_000;
+  if (!Number.isSafeInteger(maximum) || maximum < 1) {
+    throw new TypeError("HTTP maxResponseBytes must be a positive integer.");
+  }
+  if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1) {
+    throw new TypeError("HTTP timeoutMs must be a positive integer.");
+  }
+  return new Promise<HttpResponse>((resolve, reject) => {
+    let settled = false;
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    const finish = (action: () => void): void => {
+      if (settled) return;
+      settled = true;
+      if (timeout) clearTimeout(timeout);
+      action();
+    };
+    const requestFunction = url.protocol === "https:" ? requestHttps : requestHttp1;
+    if (request.method === "CONNECT" && (url.pathname !== "/" || url.search !== "")) {
+      throw new TypeError("HTTP CONNECT URL must contain only the destination authority.");
+    }
+    const handle = requestFunction(url, {
+      method: request.method,
+      ...(request.method === "CONNECT" ? { path: url.host } : {}),
+      ...(request.headers === undefined ? {} : { headers: request.headers }),
+    });
+    timeout = setTimeout(() => {
+      handle.destroy(new Error("HTTP request timed out."));
+    }, timeoutMs);
+    handle.on("error", (error) => finish(() => reject(new Error(
+      `requestHttp failed for ${request.method} ${url.origin}${url.pathname}.`,
+      { cause: error },
+    ))));
+    handle.on("response", (response) => {
+      void (responseHasMessageContent(request.method, response.statusCode ?? 0)
+        ? responseBody(response, maximum)
+        : emptyResponseBody(response))
+        .then((body) => finish(() => resolve(httpResponse(response, body))))
+        .catch((error: unknown) => finish(() => reject(error)));
+    });
+    // CONNECT upgrades the connection instead of emitting the regular response event. TRUST records
+    // the handshake response and closes the tunnel because an Operation is one bounded request.
+    handle.on("connect", (response: IncomingMessage, socket: Socket, head: Buffer) => {
+      socket.destroy();
+      if (head.byteLength > maximum) {
+        finish(() => reject(new Error(`HTTP response exceeds ${maximum} bytes.`)));
+        return;
+      }
+      finish(() => resolve(httpResponse(response, head.toString("utf8"))));
+    });
+    handle.on("upgrade", (response: IncomingMessage, socket: Socket, head: Buffer) => {
+      socket.destroy();
+      if (head.byteLength > maximum) {
+        finish(() => reject(new Error(`HTTP response exceeds ${maximum} bytes.`)));
+        return;
+      }
+      finish(() => resolve(httpResponse(response, head.toString("utf8"))));
+    });
+    if (request.body !== undefined) handle.write(request.body, "utf8");
+    handle.end();
   });
-  return {
-    status: response.status,
-    statusText: response.statusText,
-    headers: Object.fromEntries(response.headers.entries()),
-    body: await readResponse(response, request.maxResponseBytes ?? 10 * 1024 * 1024),
-  };
+}
+
+async function emptyResponseBody(response: IncomingMessage): Promise<string> {
+  for await (const _chunk of response) {
+    // Drain without decoding: HEAD and no-content statuses may repeat representation metadata such
+    // as Content-Encoding even though no encoded message content follows.
+  }
+  return "";
+}
+
+function responseHasMessageContent(method: HttpMethod, status: number): boolean {
+  return method !== "HEAD"
+    && (status < 100 || status >= 200)
+    && status !== 204
+    && status !== 205
+    && status !== 304;
 }
 
 export function parseHttpJson(body: string): JsonValue {
@@ -60,31 +131,56 @@ export function httpUrl(value: string | URL): URL {
   return url;
 }
 
-async function readResponse(response: Response, maximum: number): Promise<string> {
-  if (!Number.isSafeInteger(maximum) || maximum < 1) {
-    throw new TypeError("HTTP maxResponseBytes must be a positive integer.");
-  }
-  if (response.body === null) return "";
-  const reader = response.body.getReader();
-  const chunks: Uint8Array[] = [];
+async function responseBody(response: IncomingMessage, maximum: number): Promise<string> {
+  const chunks: Buffer[] = [];
   let size = 0;
-  while (true) {
-    const next = await reader.read();
-    if (next.done) break;
-    size += next.value.byteLength;
-    if (size > maximum) {
-      await reader.cancel();
-      throw new Error(`HTTP response exceeds ${maximum} bytes.`);
+  let stream: Readable = response;
+  try {
+    stream = decodedResponse(response);
+    for await (const rawChunk of stream) {
+      const chunk = Buffer.isBuffer(rawChunk) ? rawChunk : Buffer.from(rawChunk as Uint8Array);
+      size += chunk.byteLength;
+      if (size > maximum) throw new Error(`HTTP response exceeds ${maximum} bytes.`);
+      chunks.push(chunk);
     }
-    chunks.push(next.value);
+  } catch (error) {
+    stream.destroy();
+    response.destroy();
+    throw error;
   }
-  const bytes = new Uint8Array(size);
-  let offset = 0;
-  for (const chunk of chunks) {
-    bytes.set(chunk, offset);
-    offset += chunk.byteLength;
+  return Buffer.concat(chunks, size).toString("utf8");
+}
+
+function decodedResponse(response: IncomingMessage): Readable {
+  const raw = response.headers["content-encoding"];
+  const codings = (Array.isArray(raw) ? raw.join(",") : raw ?? "")
+    .split(",")
+    .map((coding) => coding.trim().toLowerCase())
+    .filter((coding) => coding !== "" && coding !== "identity")
+    .reverse();
+  let stream: Readable = response;
+  for (const coding of codings) {
+    if (coding === "gzip" || coding === "x-gzip") stream = stream.pipe(createGunzip());
+    else if (coding === "deflate") stream = stream.pipe(createInflate());
+    else if (coding === "br") stream = stream.pipe(createBrotliDecompress());
+    else throw new TypeError(`HTTP response uses unsupported content encoding "${coding}".`);
   }
-  return new TextDecoder().decode(bytes);
+  return stream;
+}
+
+function httpResponse(response: IncomingMessage, body: string): HttpResponse {
+  return {
+    status: response.statusCode ?? 0,
+    statusText: response.statusMessage ?? "",
+    headers: normalizeHeaders(response.headers),
+    body,
+  };
+}
+
+function normalizeHeaders(headers: IncomingHttpHeaders): Readonly<Record<string, string>> {
+  return Object.fromEntries(Object.entries(headers).flatMap(([name, value]) =>
+    value === undefined ? [] : [[name, Array.isArray(value) ? value.join(", ") : value]]
+  ));
 }
 
 function loopback(hostname: string): boolean {

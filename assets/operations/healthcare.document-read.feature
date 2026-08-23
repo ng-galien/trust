@@ -16,7 +16,7 @@ Feature: Read one simulated admission document
       | recordedAt     | instant   | one         | any                          |
 
   Scenario: Run
-    When HTTP "document" gets Environment "documentUrl" appending Input "document" as JSON
+    When HTTP "document" sends "GET" to Environment "documentUrl" appending Input "document" and reads JSON
     Then Produce with JSONata
       """
       {

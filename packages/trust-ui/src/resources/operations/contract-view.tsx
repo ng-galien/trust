@@ -1,6 +1,7 @@
 import { Braces } from "lucide-react";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
+import type { Http } from "@trust/operation";
 import { operationLanguage } from "@trust/operation/language";
 
 import type { CompiledOperation, OperationStep } from "../../types.js";
@@ -8,6 +9,7 @@ import { Badge } from "../../ui/badge.js";
 import { JsonViewer } from "../../ui/json-viewer.js";
 import { EmptyState } from "../../ui/states.js";
 import { stepTypeLabel } from "./model.js";
+import { describeAcceptedStatuses, describeHttpBody, describeHttpLocation, describeHttpValue } from "./http-view-model.js";
 
 /** Exact compiled contract handed to the runner. */
 export function ContractView({ compiled, error }: { compiled: CompiledOperation | undefined; error?: string | undefined }) {
@@ -32,15 +34,6 @@ interface ShellStep {
   arguments: Array<{ kind: "literal"; value: string } | { kind: "input"; input: string; prefix?: string }>;
   cwd?: { environment: string };
   acceptedExits?: Array<{ code: number; stdoutContains?: string; stderrContains?: string }>;
-}
-interface HttpStep {
-  method: string;
-  url: { environment: string };
-  appendInputs?: string[];
-  query?: Array<{ name: string; input: string } | { name: string; value: string }>;
-  format?: string;
-  body?: string;
-  response?: string;
 }
 interface FileStep { relativePath: string; root: { environment: string }; format: string }
 
@@ -94,24 +87,21 @@ function StepBody({ step }: { step: OperationStep }) {
     );
   }
   if (step.type === "http") {
-    const http = step.http as HttpStep;
+    const http = step.http as Http;
+    const body = describeHttpBody(http);
     return (
       <dl className="grid grid-cols-[max-content_minmax(0,1fr)] gap-x-4 gap-y-1 text-body">
         <Term>{t("operations.contract.request")}</Term>
-        <dd className="mono">
-          {http.method} environment.{http.url.environment}
-          {(http.appendInputs ?? []).map((input) => (
-            <span key={input} className="ml-1 rounded-(--radius-1) bg-accent-soft px-1 text-accent">/{`{input.${input}}`}</span>
-          ))}
-          {http.query?.length ? (
-            <span className="ml-1 rounded-(--radius-1) bg-accent-soft px-1 text-accent">
-              ?{http.query.map((parameter) => `${parameter.name}=${"input" in parameter ? `{input.${parameter.input}}` : parameter.value}`).join("&")}
-            </span>
-          ) : null}
-        </dd>
-        {http.method === "POST" ? <><Term>{t("operations.contract.body")}</Term><dd>{t("operations.contract.bodyValue")}</dd></> : null}
+        <dd className="mono">{http.method} {describeHttpLocation(http)}</dd>
+        {http.headers.length ? <>
+          <Term>{t("operations.contract.headers")}</Term>
+          <dd className="mono">{http.headers.map((header) => `${header.name}=${describeHttpValue(header.source)}`).join(", ")}</dd>
+        </> : null}
+        {body ? <><Term>{t("operations.contract.body")}</Term><dd className="mono whitespace-pre-wrap">{body}</dd></> : null}
+        <Term>{t("operations.contract.acceptedStatuses")}</Term>
+        <dd className="mono">{describeAcceptedStatuses(http)}</dd>
         <Term>{t("operations.contract.reads")}</Term>
-        <dd className="uppercase">{http.format ?? http.response ?? "json"}</dd>
+        <dd className="uppercase">{http.format}</dd>
       </dl>
     );
   }

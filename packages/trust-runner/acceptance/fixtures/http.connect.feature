@@ -1,6 +1,6 @@
 # language: en
-@trust-dsl:1 @operation:http.invalid @version:1.0.0
-Feature: Unknown HTTP Environment
+@trust-dsl:1 @operation:http.connect @version:1.0.0
+Feature: Establish and close one bounded CONNECT handshake
 
   Background: Operation interface
     Given Environment
@@ -11,8 +11,8 @@ Feature: Unknown HTTP Environment
       | status | number | one         | any    |
 
   Scenario: Run
-    When HTTP "response" sends "GET" to Environment "otherUrl" and reads JSON
+    When HTTP "tunnel" sends "CONNECT" to Environment "serviceUrl" and reads no body
     Then Produce with JSONata
       """
-      { "status": steps.response.status }
+      { "status": steps.tunnel.status }
       """

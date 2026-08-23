@@ -15,7 +15,7 @@ Feature: Read simulated coverage for one patient
       | coverageStatus | string    | one         | enum "active", "inactive"     |
 
   Scenario: Run
-    When HTTP "coverage" gets Environment "coverageUrl" appending Input "patient" as JSON
+    When HTTP "coverage" sends "GET" to Environment "coverageUrl" appending Input "patient" and reads JSON
     Then Produce with JSONata
       """
       { "patient": input.patient, "coverageStatus": steps.coverage.body.coverageStatus }

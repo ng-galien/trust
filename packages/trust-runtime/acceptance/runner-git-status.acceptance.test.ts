@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { execFile, spawn } from "node:child_process";
 import { once } from "node:events";
-import { access, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import path from "node:path";
+import path, { delimiter } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
@@ -23,6 +23,8 @@ test("the packaged TRUST Skill executes the git-status Check", async () => {
   await mkdir(project);
   const artifactRoot = await mkdtemp(path.join(tmpdir(), "trust-skill-artifact-"));
   const skill = path.join(artifactRoot, "trust");
+  const runnerBinRoot = await mkdtemp(path.join(tmpdir(), "trust-runner-bin-"));
+  await symlink(await executableOnPath("git"), path.join(runnerBinRoot, "git"));
   await execute(process.execPath, [
     path.join(repositoryRoot, "packages/trust-runner/scripts/package-skill.ts"),
     "--output",
@@ -35,6 +37,18 @@ test("the packaged TRUST Skill executes the git-status Check", async () => {
     access(path.join(skill, "scripts/run.js")),
     access(path.join(skill, "scripts/mcp-stdio.js")),
   ]);
+  await assert.rejects(
+    execute(process.execPath, [
+      path.join(skill, "scripts/run.js"),
+      "trust://local/example@1.0.0/plan/scenario/check/action",
+      "--path",
+      `${runnerBinRoot}${delimiter}.`,
+    ], { cwd: artifactRoot }),
+    (error: unknown) => {
+      assert.match(String((error as Error & { stderr?: unknown }).stderr ?? ""), /--path requires one absolute directory/);
+      return true;
+    },
+  );
   await execute("git", ["init", "-q"], { cwd: project });
   await writeFile(path.join(project, "tracked.txt"), "baseline\n", "utf8");
   await execute("git", ["add", "tracked.txt"], { cwd: project });
@@ -83,11 +97,14 @@ test("the packaged TRUST Skill executes the git-status Check", async () => {
         path.join(skill, "scripts/run.js"),
         checkUris[0]!,
         "--json",
+        "--path",
+        runnerBinRoot,
       ],
       {
         cwd: artifactRoot,
         env: {
           ...process.env,
+          PATH: "",
           TRUST_RPC_ENDPOINT: `${runtime.endpoint}/rpc`,
           TRUST_OTLP_ENDPOINT: `${runtime.endpoint}/v1/traces`,
         },
@@ -125,9 +142,11 @@ test("the packaged TRUST Skill executes the git-status Check", async () => {
       artifactRoot,
       {
         ...process.env,
+        PATH: "",
         TRUST_RPC_ENDPOINT: `${runtime.endpoint}/rpc`,
         TRUST_OTLP_ENDPOINT: `${runtime.endpoint}/v1/traces`,
       },
+      runnerBinRoot,
     );
     assert.equal(mcp.initialize.result?.serverInfo?.name, "trust-runner");
     assert.equal(mcp.tools.result?.tools?.[0]?.name, "trust_check_run");
@@ -141,6 +160,7 @@ test("the packaged TRUST Skill executes the git-status Check", async () => {
     await Promise.all([
       rm(project, { recursive: true, force: true }),
       rm(artifactRoot, { recursive: true, force: true }),
+      rm(runnerBinRoot, { recursive: true, force: true }),
     ]);
   }
 });
@@ -172,12 +192,13 @@ async function runMcpStdio(
   checkUri: string,
   cwd: string,
   env: NodeJS.ProcessEnv,
+  additionalPath: string,
 ): Promise<{
   readonly initialize: McpStdioResponse;
   readonly tools: McpStdioResponse;
   readonly call: McpStdioResponse;
 }> {
-  const child = spawn(process.execPath, [entry], { cwd, env, stdio: "pipe" });
+  const child = spawn(process.execPath, [entry, "--path", additionalPath], { cwd, env, stdio: "pipe" });
   child.stdout.setEncoding("utf8");
   child.stderr.setEncoding("utf8");
   let stdout = "";
@@ -252,4 +273,15 @@ function uniqueUris(text: string): string[] {
 
 async function readText(file: string): Promise<string> {
   return readFile(file, "utf8");
+}
+
+async function executableOnPath(name: string): Promise<string> {
+  for (const directory of (process.env.PATH ?? "").split(delimiter).filter(Boolean)) {
+    const candidate = path.join(directory, name);
+    try {
+      await access(candidate);
+      return candidate;
+    } catch {}
+  }
+  throw new Error(`${name} is not available on PATH`);
 }

@@ -10,8 +10,7 @@ Le `Scenario: Run` liste ce que fait le Runner, dans l'ordre. Il existe trois so
 | --- | --- | --- |
 | **Shell** | `Shell "<name>" runs "<executable>" with cwd from Environment "<dir>" [and Input "<in>"]` + table d'arguments | `exitCode`, `stdout`, `stderr` |
 | **File** | `File "<name>" reads "<path>" as Text\|JSON from Environment "<dir>" [and Input "<in>"]` | `relativePath`, `content` |
-| **HTTP GET** | `HTTP "<name>" gets Environment "<url>" [appending Input "<in>" [and Input "<in>"]…] [with query "<n>" from Input "<in>" \| as "<literal>"]… as Text\|JSON` | `status`, `headers`, `body` |
-| **HTTP POST** | `HTTP "<name>" posts Input as JSON to Environment "<url>" and reads JSON` | `status`, `headers`, `body` |
+| **HTTP** | `HTTP "<name>" sends "<METHOD>" to Environment "<url>" […] and reads JSON\|Text\|no body` | `status`, `headers`, `body` |
 
 ```gherkin fragment title="Trois sortes d'étape, puis la projection"
   Scenario: Run
@@ -20,7 +19,7 @@ Le `Scenario: Run` liste ce que fait le Runner, dans l'ordre. Il existe trois so
       | rev-parse | literal |
       | HEAD      | literal |
     And File "manifest" reads "package.json" as JSON from Environment "workspaceRoot" and Input "project"
-    And HTTP "issue" gets Environment "jiraIssueUrl" appending Input "issue" as JSON
+    And HTTP "issue" sends "GET" to Environment "jiraIssueUrl" appending Input "issue" and reads JSON
     Then Produce with JSONata
       """
       { "revision": $trim(steps.head.stdout), "name": steps.manifest.content.name, "summary": steps.issue.body.summary }

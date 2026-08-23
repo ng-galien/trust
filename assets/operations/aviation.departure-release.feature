@@ -16,7 +16,7 @@ Feature: Record one simulated flight departure release
       | releaseStatus | string    | one         | enum "released", "rejected"  |
 
   Scenario: Run
-    When HTTP "release" posts Input as JSON to Environment "departureReleaseUrl" and reads JSON
+    When HTTP "release" sends "POST" to Environment "departureReleaseUrl" with Input as JSON body and reads JSON
     Then Produce with JSONata
       """
       { "flight": input.flight, "releaseStatus": steps.release.body.releaseStatus }

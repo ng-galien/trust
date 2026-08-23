@@ -16,7 +16,7 @@ Feature: Read simulated consent for one patient admission
       | signedAt      | instant   | one         | any                         |
 
   Scenario: Run
-    When HTTP "consent" gets Environment "consentUrl" appending Input "admission" as JSON
+    When HTTP "consent" sends "GET" to Environment "consentUrl" appending Input "admission" and reads JSON
     Then Produce with JSONata
       """
       {

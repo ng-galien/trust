@@ -10,7 +10,7 @@ Feature: <title>
   [description]
 
   Background: <name>
-    Given Environment              | name | type |                              type: directory | url
+    Given Environment              | name | type |                              type: directory | url | string
     And Input                      | input | type | cardinality |               type: string | number | instant | reference · one | many
     And Produced fields            | field | type | cardinality | domain |      domain: any | enum "a", "b"
 
@@ -20,9 +20,13 @@ Feature: <title>
     And Shell "<n>" accepts exits
       | exit code | stdout contains | stderr contains |
     When/And File "<n>" reads "<path>" as Text|JSON from Environment "<dir>" [and Input "<in>"]
-    When/And HTTP "<n>" gets Environment "<url>" [appending Input "<in>" [and Input "<in>"]…]
-                                                 [with query "<name>" from Input "<in>" | with query "<name>" as "<literal>"]… as Text|JSON
-    When/And HTTP "<n>" posts Input as JSON to Environment "<url>" and reads JSON
+    When/And HTTP "<n>" sends "<METHOD>" to Environment "<url>"
+      [appending Input "<in>" | literal "<segment>" [and …]…]
+      [with query "<name>" from Input|Environment "<name>" | as "<literal>"]…
+      [with header "<name>" from Input|Environment "<name>" | as "<literal>"]…
+      [with Input as JSON body | with JSONata body | with Text body …]
+      and reads JSON|Text|no body
+    And HTTP "<n>" accepts statuses | status |
     Then Produce with JSONata
       """ { "<field>": <expression>, … } """
 ```
@@ -33,6 +37,6 @@ Feature: <title>
 | The three tables and the types | [Interface](/docs/operations/interface) |
 | Shell, accepted exits | [Shell step](/docs/operations/steps/shell) |
 | File | [File step](/docs/operations/steps/file) |
-| HTTP GET, POST | [HTTP steps](/docs/operations/steps/http) |
+| HTTP methods and content | [HTTP steps](/docs/operations/steps/http) |
 | Projection, JSONata subset | [Producing fields](/docs/operations/produce) |
 | Errors | [Diagnostics](/docs/operations/diagnostics) |

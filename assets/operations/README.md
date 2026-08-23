@@ -16,7 +16,7 @@ An Operation contains:
   compiler as `description`, never used by execution;
 - typed `Input` supplied by the Procedure Check;
 - typed `Environment` supplied by execution configuration;
-- ordered Shell, File-read or HTTP-GET steps;
+- ordered Shell, File-read or HTTP steps;
 - one final JSONata expression;
 - the exact typed fields produced by that expression;
 - optional free classification tags `@x-<key>:<value>` (for example `@x-family:software-delivery`
@@ -24,7 +24,7 @@ An Operation contains:
   reported by the compiler as `classification` grouped by key. Operators classify as they see fit.
 
 The current value types are `string`, `number`, `instant` and `reference`. Cardinality is `one` or
-`many`. Environment values are `directory` or `url`.
+`many`. Environment values are `directory`, `url` or non-empty `string`.
 
 A directory Environment names the place where all projects live. A Shell or File step may narrow
 it to one project with `with cwd from Environment "workspaceRoot" and Input "project"` (or `File …
@@ -41,13 +41,14 @@ output. An expected exit remains a step result and can produce fields. Any other
 the Operation before fields are produced. This distinction lets a failing test be an expected
 observation without mistaking a compilation or infrastructure error for that observation.
 
-HTTP GET can use an Environment URL directly, append string Inputs as successive encoded path
-segments (`appending Input "a" and Input "b"`) and add named query parameters, each from one string
-Input or one literal (`with query "limit" as "5" with query "run" from Input "run"`), in that clause
-order, before `as Text|JSON`. The Environment URL must not already carry a query string when the step
-declares one. HTTP POST sends the complete typed Input as one JSON object and reads one JSON response;
-it accepts no path segment or query. There is no authored header, body template or free URL
-interpolation. File read accepts one fixed relative path below a directory Environment.
+One HTTP sentence sends any registered application request method, including the RFC 10008 `QUERY`
+method. `PRI` and the reserved `*` token are protocol control values and cannot be sent. Every method
+uses the same ordered clauses: encoded path segments from Inputs or literals; query parameters and
+headers from Inputs, string Environments or literals; then an optional complete Input JSON body,
+closed JSONata JSON body or Text body. The response is read as JSON, Text or no body. An Operation may
+replace the default accepted `200`-`299` range with an exact status table. The Environment URL must
+not already carry a query string when the step declares one. There is no free URL interpolation.
+File read accepts one fixed relative path below a directory Environment.
 
 Every step result has one stable shape:
 
@@ -58,8 +59,8 @@ File JSON -> relativePath, content
 HTTP      -> status, headers, body
 ```
 
-`Produce with JSONata` sees `input`, `environment` and `steps`. It must return exactly the declared
-fields. The JSONata subset is closed by the compiler.
+`Produce with JSONata` sees `input`, `environment`, `steps` and `execution.id`. It must return exactly
+the declared fields. The JSONata subset is closed by the compiler.
 
 A field copied from `input` attests the admitted context used by the executed action. It does not
 claim that the external system independently re-observed that value. Step-derived fields attest

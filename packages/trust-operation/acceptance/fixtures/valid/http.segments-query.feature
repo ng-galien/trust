@@ -15,7 +15,7 @@ Feature: Read the comments of one issue with a bounded page
       | status | number | one         | any    |
 
   Scenario: Run
-    When HTTP "comments" gets Environment "issuesUrl" appending Input "issue" and Input "run" with query "limit" as "5" with query "run" from Input "run" as JSON
+    When HTTP "comments" sends "GET" to Environment "issuesUrl" appending Input "issue" and Input "run" with query "limit" as "5" with query "run" from Input "run" and reads JSON
     Then Produce with JSONata
       """
       { "status": steps.comments.status }

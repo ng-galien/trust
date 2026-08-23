@@ -18,7 +18,7 @@ export interface InputField {
   readonly cardinality: "one" | "many";
 }
 
-export type EnvironmentValueType = "directory" | "url";
+export type EnvironmentValueType = "directory" | "url" | "string";
 
 export interface EnvironmentField {
   readonly type: EnvironmentValueType;
@@ -32,7 +32,7 @@ export interface ProducedField {
 
 export interface StringSchema {
   readonly type: "string";
-  readonly format?: "date-time" | "trust-directory" | "trust-url";
+  readonly format?: "date-time" | "trust-directory" | "trust-url" | "trust-string";
   readonly minLength?: number;
   readonly enum?: readonly string[];
 }

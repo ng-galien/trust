@@ -18,7 +18,14 @@ import {
 } from "@trust/gherkin";
 import jsonata from "jsonata";
 
-import type { HttpQueryParameter } from "./http.js";
+import type {
+  HttpBody,
+  HttpHeader,
+  HttpMethod,
+  HttpPathSegment,
+  HttpQueryParameter,
+  HttpValueSource,
+} from "./http.js";
 import { operationLanguage } from "./language.js";
 import type {
   CompiledOperation,
@@ -51,6 +58,7 @@ const CLASSIFICATION_TAG = operationLanguage.tags.classification;
 const CLASSIFICATION = /^@x-([a-z][a-z0-9]*(?:-[a-z0-9]+)*):([^\s:]+)$/;
 const OPERATION_NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*\.[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const FIELD_NAME = /^[a-z][A-Za-z0-9]*$/;
+const HTTP_HEADER_NAME = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/;
 const SEMANTIC_VERSION = /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)$/;
 const SECRET_LIKE = /(?:^|[^a-z0-9])(?:sk-[a-z0-9_-]{8,}|gh[pousr]_[a-z0-9]{8,}|bearer\s+[a-z0-9._-]{8,})/i;
 const ENUM_DOMAIN = /^enum "[^"]+"(?:, "[^"]+")*$/;
@@ -346,10 +354,10 @@ function readOperationDocument(
   for (const scenario of feature.children.flatMap((child) => child.scenario ? [child.scenario] : [])) {
     for (const step of scenario.steps) {
       const parsed = parseRunStepSentence(step.text);
-      if (!parsed || parsed.type === "shell-exits") continue;
+      if (!parsed || parsed.type === "shell-exits" || parsed.type === "http-statuses") continue;
       steps.push({
         name: parsed.name,
-        type: parsed.type === "http-post" || parsed.type === "http-malformed" ? "http" : parsed.type,
+        type: parsed.type === "http-malformed" ? "http" : parsed.type,
         range: sourceLineRange(context.source, step.location),
         selectionRange: sourceValueRange(context.source, step, parsed.name),
       });
@@ -676,10 +684,13 @@ function parseRun(
       if (expression !== undefined) {
         fail(context, "unknown-step", "HTTP cannot run after Produce", step);
       }
-      if (step.dataTable || step.docString) {
-        fail(context, "unknown-step", "HTTP does not accept a table or DocString", step);
+      if (step.dataTable || (parsed.body?.source !== "jsonata" && step.docString)) {
+        fail(context, "unknown-step", "HTTP accepts a DocString only for a JSONata body", step);
       }
-      const { name, environment: environmentName, format, appendInputs, query } = parsed;
+      if (parsed.body?.source === "jsonata" && !step.docString) {
+        fail(context, "unknown-step", "HTTP JSONata body requires one DocString", step);
+      }
+      const { name, method, environment: environmentName, format, path, query, headers } = parsed;
       if (names.has(name)) fail(context, "duplicate-step", `Step "${name}" is repeated`, step);
       if (!Object.hasOwn(environment, environmentName)) {
         fail(
@@ -697,19 +708,48 @@ function parseRun(
           step,
         );
       }
-      for (const appendInput of appendInputs) assertStringInput(`HTTP "${name}"`, "path", appendInput, input, context, step);
+      for (const segment of path) {
+        if (segment.kind === "input") assertStringInput(`HTTP "${name}"`, "path", segment.input, input, context, step);
+      }
       for (const parameter of query) {
-        if ("input" in parameter) assertStringInput(`HTTP "${name}"`, "query", parameter.input, input, context, step);
+        assertHttpValueSource(`HTTP "${name}"`, "query", parameter.source, input, environment, context, step);
+      }
+      for (const header of headers) {
+        if (!HTTP_HEADER_NAME.test(header.name)) {
+          fail(context, "invalid-operation", `HTTP "${name}" header name "${header.name}" is invalid`, step);
+        }
+        assertHttpValueSource(`HTTP "${name}"`, "header", header.source, input, environment, context, step);
+      }
+      if (new Set(headers.map((header) => header.name)).size !== headers.length) {
+        fail(context, "invalid-operation", `HTTP "${name}" repeats a header name`, step);
+      }
+      let body: HttpBody | undefined;
+      if (parsed.body?.source === "input") {
+        if (Object.keys(input).length === 0) fail(context, "invalid-operation", `HTTP "${name}" cannot send an empty Input body`, step);
+        body = { format: "json", source: "input" };
+      } else if (parsed.body?.source === "jsonata") {
+        const bodyExpression = step.docString?.content.trim() ?? "";
+        if (bodyExpression === "") fail(context, "invalid-operation", `HTTP "${name}" JSONata body cannot be empty`, step);
+        validateJsonataExpression(`HTTP "${name}" JSONata body`, bodyExpression, compiled, input, environment, context);
+        body = { format: "json", source: "jsonata", expression: bodyExpression };
+      } else if (parsed.body?.source !== undefined) {
+        assertHttpValueSource(`HTTP "${name}"`, "body", parsed.body.source, input, environment, context, step);
+        body = { format: "text", source: parsed.body.source };
+      }
+      if (method === "CONNECT" && (path.length > 0 || query.length > 0 || body !== undefined)) {
+        fail(context, "invalid-operation", `HTTP "${name}" CONNECT accepts headers but no path, query or body`, step);
       }
       names.add(name);
       compiled.push({
         name,
         type: "http",
         http: {
-          method: "GET",
+          method,
           url: { environment: environmentName },
-          ...(appendInputs.length === 0 ? {} : { appendInputs }),
-          ...(query.length === 0 ? {} : { query }),
+          path,
+          query,
+          headers,
+          ...(body === undefined ? {} : { body }),
           format,
         },
       });
@@ -720,36 +760,32 @@ function parseRun(
       fail(context, "unknown-step", `HTTP "${parsed.name}" ${parsed.reason}`, step);
     }
 
-    if (parsed?.type === "http-post") {
+    if (parsed?.type === "http-statuses") {
       const keyword = step.keyword.trim();
-      if (keyword !== "When" && keyword !== "And") {
-        fail(context, "unknown-step", "HTTP must use When or And", step);
+      if (keyword !== "And" || expression !== undefined || step.docString) {
+        fail(context, "unknown-step", "HTTP accepted statuses must follow an HTTP step", step);
       }
-      if (expression !== undefined || step.dataTable || step.docString) {
-        fail(context, "unknown-step", "HTTP POST must precede Produce and accepts no table or DocString", step);
+      const previous = index > 0 ? parseRunStepSentence(steps[index - 1]!.text) : undefined;
+      if (previous?.type !== "http" || previous.name !== parsed.name) {
+        fail(context, "invalid-operation", `HTTP "${parsed.name}" accepted statuses must immediately follow that HTTP step`, step);
       }
-      const { name, environment: environmentName } = parsed;
-      if (names.has(name)) fail(context, "duplicate-step", `Step "${name}" is repeated`, step);
-      if (!Object.hasOwn(environment, environmentName)) {
-        fail(context, "unknown-environment", `HTTP "${name}" uses undeclared Environment "${environmentName}"`, step);
+      const compiledIndex = compiled.findIndex((candidate) => candidate.type === "http" && candidate.name === parsed.name);
+      const existing = compiled[compiledIndex];
+      if (!existing || existing.type !== "http") {
+        fail(context, "invalid-operation", `HTTP "${parsed.name}" is unknown`, step);
       }
-      if (environment[environmentName]?.type !== "url") {
-        fail(context, "invalid-operation", `HTTP "${name}" requires Environment "${environmentName}" to be a url`, step);
-      }
-      if (Object.keys(input).length === 0) {
-        fail(context, "invalid-operation", `HTTP "${name}" cannot post an empty Input`, step);
-      }
-      names.add(name);
-      compiled.push({
-        name,
-        type: "http",
-        http: {
-          method: "POST",
-          url: { environment: environmentName },
-          body: "input-json",
-          format: "json",
-        },
+      const statuses = requireTable(step, ["status"], context).map((row) => {
+        const raw = row.cells[0]?.value.trim() ?? "";
+        const status = Number(raw);
+        if (!Number.isInteger(status) || (status !== 101 && (status < 200 || status > 599))) {
+          fail(context, "invalid-operation", `HTTP status "${raw}" must be terminal: 101 or an integer from 200 to 599`, row);
+        }
+        return status;
       });
+      if (statuses.length === 0 || new Set(statuses).size !== statuses.length) {
+        fail(context, "invalid-operation", `HTTP "${parsed.name}" accepted statuses must be non-empty and unique`, step);
+      }
+      compiled[compiledIndex] = { ...existing, http: { ...existing.http, acceptedStatuses: statuses } };
       continue;
     }
 
@@ -798,24 +834,31 @@ type ParsedRunStepSentence =
       readonly environment: string;
       readonly appendInput?: string;
     }
-  | ParsedHttpGetSentence
+  | ParsedHttpSentence
   | {
-      readonly type: "http-post";
+      readonly type: "http-statuses";
       readonly name: string;
-      readonly environment: string;
     };
 
-type ParsedHttpGetSentence =
+type ParsedHttpBody =
+  | { readonly source: "input" }
+  | { readonly source: "jsonata" }
+  | { readonly source: HttpValueSource };
+
+type ParsedHttpSentence =
   | {
       readonly type: "http";
       readonly name: string;
-      readonly format: "text" | "json";
+      readonly method: HttpMethod;
+      readonly format: "text" | "json" | "none";
       readonly environment: string;
-      readonly appendInputs: readonly string[];
+      readonly path: readonly HttpPathSegment[];
       readonly query: readonly HttpQueryParameter[];
+      readonly headers: readonly HttpHeader[];
+      readonly body?: ParsedHttpBody;
     }
   | {
-      /** An `HTTP "<name>" gets|posts …` sentence whose clauses are malformed or misordered. */
+      /** An `HTTP "<name>" sends …` sentence whose clauses are malformed or misordered. */
       readonly type: "http-malformed";
       readonly name: string;
       readonly reason: string;
@@ -900,77 +943,112 @@ function parseRunStepSentence(source: string): ParsedRunStepSentence | undefined
   if (cursor.takeText("HTTP")) {
     const name = takeField(cursor);
     if (!name) return undefined;
-    if (cursor.takeText("gets")) return parseHttpGetSentence(cursor, name);
-    if (!cursor.takeText("posts")) return undefined;
-    const environment = cursor.takeWords("Input", "as", "JSON", "to", "Environment") ? takeField(cursor) : undefined;
-    if (environment && cursor.takeWords("and", "reads", "JSON") && cursor.done) {
-      return { type: "http-post", name, environment };
+    if (cursor.takeText("accepts")) {
+      return cursor.takeText("statuses") && cursor.done ? { type: "http-statuses", name } : undefined;
     }
-    return {
-      type: "http-malformed",
-      name,
-      reason: `POST sentence must be: HTTP "${name}" posts Input as JSON to Environment "<url>" and reads JSON`,
-    };
+    return cursor.takeText("sends") ? parseHttpSentence(cursor, name) : undefined;
   }
   return undefined;
 }
 
 /**
- * `HTTP "<n>" gets Environment "<url>" [appending Input "<a>" [and Input "<b>"]…]
- *  [with query "<name>" from Input "<in>" | with query "<name>" as "<literal>"]… as Text|JSON`
- * Clauses are ordered: path segments, then query parameters, then the format. The cursor stands after `gets`.
+ * `HTTP "<n>" sends "<METHOD>" to Environment "<url>"`, followed by structured path,
+ * query, header and optional body clauses, then `and reads JSON|Text|no body`.
  */
-function parseHttpGetSentence(cursor: SentenceCursor, name: string): ParsedHttpGetSentence {
-  const expected = `HTTP "${name}" gets Environment "<url>" [appending Input "<in>" [and Input "<in>"]…] [with query "<name>" from Input "<in>" | as "<literal>"]… as Text|JSON`;
-  const malformed = (reason: string): ParsedHttpGetSentence => ({ type: "http-malformed", name, reason });
-
-  if (!cursor.takeText("Environment")) return malformed(`sentence must be: ${expected}`);
+function parseHttpSentence(cursor: SentenceCursor, name: string): ParsedHttpSentence {
+  const expected = `HTTP "${name}" sends "<METHOD>" to Environment "<url>" […] and reads JSON|Text|no body`;
+  const malformed = (reason: string): ParsedHttpSentence => ({ type: "http-malformed", name, reason });
+  const rawMethod = cursor.takeQuoted();
+  const method = operationLanguage.httpMethods.find((candidate) => candidate === rawMethod);
+  if (!method) return malformed(`method "${rawMethod ?? ""}" is not registered for application requests`);
+  if (!cursor.takeWords("to", "Environment")) return malformed(`sentence must be: ${expected}`);
   const environment = takeField(cursor);
   if (!environment) return malformed(`sentence must be: ${expected}`);
 
-  const appendInputs: string[] = [];
+  const path: HttpPathSegment[] = [];
   if (cursor.takeText("appending")) {
-    do {
-      const input = cursor.takeText("Input") ? takeField(cursor) : undefined;
-      if (!input) return malformed(`appending expects Input "<name>" [and Input "<name>"]…`);
-      appendInputs.push(input);
-    } while (cursor.takeText("and"));
+    if (cursor.takeText("Input")) {
+      const input = takeField(cursor);
+      if (!input) return malformed(`appending Input expects "<name>"`);
+      path.push({ kind: "input", input });
+    } else if (cursor.takeText("literal")) {
+      const value = cursor.takeQuoted();
+      if (!value) return malformed(`appending literal expects a non-empty "<segment>"`);
+      path.push({ kind: "literal", value });
+    } else {
+      return malformed(`appending expects Input "<name>" or literal "<segment>"`);
+    }
+    while (true) {
+      if (cursor.takeWords("and", "Input")) {
+        const input = takeField(cursor);
+        if (!input) return malformed(`appending and Input expects "<name>"`);
+        path.push({ kind: "input", input });
+        continue;
+      }
+      if (cursor.takeWords("and", "literal")) {
+        const value = cursor.takeQuoted();
+        if (!value) return malformed(`appending and literal expects a non-empty "<segment>"`);
+        path.push({ kind: "literal", value });
+        continue;
+      }
+      break;
+    }
   }
 
   const query: HttpQueryParameter[] = [];
-  while (cursor.takeText("with")) {
-    if (!cursor.takeText("query")) return malformed(`with expects query "<name>" from Input "<name>" or as "<literal>"`);
+  while (cursor.takeWords("with", "query")) {
     const parameterName = cursor.takeQuoted();
     if (!parameterName) return malformed(`with query expects a non-empty "<name>"`);
-    if (cursor.takeText("from")) {
-      const input = cursor.takeText("Input") ? takeField(cursor) : undefined;
-      if (!input) return malformed(`with query "${parameterName}" from expects Input "<name>"`);
-      query.push({ name: parameterName, input });
-      continue;
-    }
-    if (cursor.takeText("as")) {
-      const value = cursor.takeQuoted(() => true);
-      if (value === undefined) return malformed(`with query "${parameterName}" as expects one quoted literal`);
-      query.push({ name: parameterName, value });
-      continue;
-    }
-    return malformed(`with query "${parameterName}" expects from Input "<name>" or as "<literal>"`);
+    const source = parseHttpValueSource(cursor);
+    if (!source) return malformed(`with query "${parameterName}" expects from Input|Environment "<name>" or as "<literal>"`);
+    query.push({ name: parameterName, source });
   }
 
-  if (cursor.peekText("appending")) {
-    return malformed(`appending must precede with query: ${expected}`);
+  const headers: HttpHeader[] = [];
+  while (cursor.takeWords("with", "header")) {
+    const headerName = cursor.takeQuoted();
+    if (!headerName) return malformed(`with header expects a non-empty "<name>"`);
+    const source = parseHttpValueSource(cursor);
+    if (!source) return malformed(`with header "${headerName}" expects from Input|Environment "<name>" or as "<literal>"`);
+    headers.push({ name: headerName.toLowerCase(), source });
   }
-  if (!cursor.takeText("as")) return malformed(`sentence must end with as Text|JSON: ${expected}`);
-  const format = takeFormat(cursor);
-  if (!format) return malformed(`sentence must end with as Text|JSON: ${expected}`);
-  const formatWord = format === "text" ? "Text" : "JSON";
-  if (!cursor.done) {
-    if (cursor.peekText("appending") || cursor.peekText("with")) {
-      return malformed(`appending and with query must precede as ${formatWord}: ${expected}`);
+
+  let body: ParsedHttpBody | undefined;
+  if (cursor.takeText("with")) {
+    if (cursor.takeWords("Input", "as", "JSON", "body")) {
+      body = { source: "input" };
+    } else if (cursor.takeWords("JSONata", "body")) {
+      body = { source: "jsonata" };
+    } else if (cursor.takeWords("Text", "body")) {
+      const source = parseHttpValueSource(cursor);
+      if (!source) return malformed(`with Text body expects from Input|Environment "<name>" or as "<literal>"`);
+      body = { source };
+    } else {
+      return malformed(`with expects query, header, Input as JSON body, JSONata body or Text body`);
     }
-    return malformed(`has trailing words after as ${formatWord}`);
   }
-  return { type: "http", name, environment, format, appendInputs, query };
+
+  if (!cursor.takeWords("and", "reads")) return malformed(`sentence must end with and reads JSON|Text|no body: ${expected}`);
+  let format: "text" | "json" | "none" | undefined;
+  if (cursor.takeWords("no", "body")) format = "none";
+  else format = takeFormat(cursor);
+  if (!format || !cursor.done) return malformed(`sentence must end with and reads JSON|Text|no body: ${expected}`);
+  return { type: "http", name, method, environment, format, path, query, headers, ...(body === undefined ? {} : { body }) };
+}
+
+function parseHttpValueSource(cursor: SentenceCursor): HttpValueSource | undefined {
+  if (cursor.takeText("as")) {
+    const value = cursor.takeQuoted(() => true);
+    return value === undefined ? undefined : { kind: "literal", value };
+  }
+  if (!cursor.takeText("from")) return undefined;
+  if (cursor.takeText("Input")) {
+    const input = takeField(cursor);
+    return input ? { kind: "input", input } : undefined;
+  }
+  if (!cursor.takeText("Environment")) return undefined;
+  const environment = takeField(cursor);
+  return environment ? { kind: "environment", environment } : undefined;
 }
 
 function parseCardinality(
@@ -1024,7 +1102,9 @@ function compileEnvironmentSchema(
         name,
         field.type === "directory"
           ? { type: "string", format: "trust-directory" }
-          : { type: "string", format: "trust-url" },
+          : field.type === "url"
+            ? { type: "string", format: "trust-url" }
+            : { type: "string", format: "trust-string" },
       ]),
     ),
   );
@@ -1085,7 +1165,7 @@ function validateProduce(
     );
   }
 
-  assertClosedJsonata(ast, context);
+  assertClosedJsonata(ast, context, "Produce");
 
   const object = record(ast);
   const pairs = object?.type === "unary" && object.value === "{" ? object.lhs : undefined;
@@ -1118,6 +1198,35 @@ function validateProduce(
     );
   }
 
+  validateJsonataPaths("Produce", ast, steps, input, environment, context);
+}
+
+function validateJsonataExpression(
+  label: string,
+  expression: string,
+  steps: readonly OperationStep[],
+  input: Readonly<Record<string, InputField>>,
+  environment: Readonly<Record<string, EnvironmentField>>,
+  context: CompileContext,
+): void {
+  let ast: unknown;
+  try {
+    ast = jsonata(expression).ast();
+  } catch (error) {
+    fail(context, "invalid-operation", `${label} is invalid: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  assertClosedJsonata(ast, context, label);
+  validateJsonataPaths(label, ast, steps, input, environment, context);
+}
+
+function validateJsonataPaths(
+  label: string,
+  ast: unknown,
+  steps: readonly OperationStep[],
+  input: Readonly<Record<string, InputField>>,
+  environment: Readonly<Record<string, EnvironmentField>>,
+  context: CompileContext,
+): void {
   visitJsonata(ast, (path) => {
     const names = path
       .map((part) => record(part)?.value)
@@ -1127,97 +1236,97 @@ function validateProduce(
     if (root === STEPS_ROOT) {
       const step = steps.find((candidate) => candidate.name === field);
       if (!field || !step) {
-        fail(context, "invalid-operation", `Produce references unknown Operation step "${field ?? ""}"`);
+        fail(context, "invalid-operation", `${label} references unknown Operation step "${field ?? ""}"`);
       }
       const allowed = operationLanguage.stepResults[step.type];
       if (!result || !(allowed as readonly string[]).includes(result)) {
-        fail(context, "invalid-operation", `Produce references unknown ${step.type} result "${result ?? ""}"`);
+        fail(context, "invalid-operation", `${label} references unknown ${step.type} result "${result ?? ""}"`);
       }
       if (step.type === "shell" && names.length > 3) {
-        fail(context, "invalid-operation", `Produce cannot traverse Shell result "${result}"`);
+        fail(context, "invalid-operation", `${label} cannot traverse Shell result "${result}"`);
       }
       if (step.type === "file-read" && result === "relativePath" && names.length > 3) {
-        fail(context, "invalid-operation", `Produce cannot traverse File relativePath`);
+        fail(context, "invalid-operation", `${label} cannot traverse File relativePath`);
       }
       if (step.type === "file-read" && step.file.format === "text" && result === "content" && names.length > 3) {
-        fail(context, "invalid-operation", `Produce cannot traverse Text File content`);
+        fail(context, "invalid-operation", `${label} cannot traverse Text File content`);
       }
       if (step.type === "http" && (result === "status" || result === "headers") && names.length > 3) {
-        fail(context, "invalid-operation", `Produce cannot traverse HTTP result "${result}"`);
+        fail(context, "invalid-operation", `${label} cannot traverse HTTP result "${result}"`);
       }
-      if (step.type === "http" && step.http.format === "text" && result === "body" && names.length > 3) {
-        fail(context, "invalid-operation", `Produce cannot traverse Text HTTP body`);
+      if (step.type === "http" && step.http.format !== "json" && result === "body" && names.length > 3) {
+        fail(context, "invalid-operation", `${label} cannot traverse non-JSON HTTP body`);
       }
       return;
     }
     if (root === INPUT_ROOT) {
       if (!field || !Object.hasOwn(input, field)) {
-        fail(context, "invalid-operation", `Produce references unknown Input field "${field ?? ""}"`);
+        fail(context, "invalid-operation", `${label} references unknown Input field "${field ?? ""}"`);
       }
       if (names.length !== 2) {
-        fail(context, "invalid-operation", `Produce cannot traverse Input field "${field}"`);
+        fail(context, "invalid-operation", `${label} cannot traverse Input field "${field}"`);
       }
       return;
     }
     if (root === ENVIRONMENT_ROOT) {
       if (!field || !Object.hasOwn(environment, field)) {
-        fail(context, "invalid-operation", `Produce references unknown Environment field "${field ?? ""}"`);
+        fail(context, "invalid-operation", `${label} references unknown Environment field "${field ?? ""}"`);
       }
       if (names.length !== 2) {
-        fail(context, "invalid-operation", `Produce cannot traverse Environment field "${field}"`);
+        fail(context, "invalid-operation", `${label} cannot traverse Environment field "${field}"`);
       }
       return;
     }
     if (root === EXECUTION_ROOT) {
       if (field !== "id" || names.length !== 2) {
-        fail(context, "invalid-operation", `Produce references unknown Execution field "${field ?? ""}"`);
+        fail(context, "invalid-operation", `${label} references unknown Execution field "${field ?? ""}"`);
       }
       return;
     }
-    fail(context, "invalid-operation", `Produce references unknown root "${root ?? ""}"`);
+    fail(context, "invalid-operation", `${label} references unknown root "${root ?? ""}"`);
   });
 }
 
-function assertClosedJsonata(value: unknown, context: CompileContext, rootVariable = false): void {
+function assertClosedJsonata(value: unknown, context: CompileContext, label: string, rootVariable = false): void {
   if (Array.isArray(value)) {
-    for (const item of value) assertClosedJsonata(item, context, rootVariable);
+    for (const item of value) assertClosedJsonata(item, context, label, rootVariable);
     return;
   }
   const node = record(value);
   if (!node) return;
   const type = typeof node.type === "string" ? node.type : undefined;
   if (type && !JSONATA_NODE_TYPES.has(type)) {
-    fail(context, "invalid-operation", `Produce uses unsupported JSONata form "${type}"`);
+    fail(context, "invalid-operation", `${label} uses unsupported JSONata form "${type}"`);
   }
   if (type === "variable") {
     const name = typeof node.value === "string" ? node.value : "";
     if (name === "$" && !rootVariable) {
-      fail(context, "invalid-operation", "Produce uses the JSONata root only inside a rooted path");
+      fail(context, "invalid-operation", `${label} uses the JSONata root only inside a rooted path`);
     }
     if (name !== "$" && !JSONATA_FUNCTIONS.has(name)) {
-      fail(context, "invalid-operation", `Produce uses unsupported JSONata function "$${name}"`);
+      fail(context, "invalid-operation", `${label} uses unsupported JSONata function "$${name}"`);
     }
   }
   if (type === "binary") {
     const operator = typeof node.value === "string" ? node.value : "";
     if (!JSONATA_BINARY_OPERATORS.has(operator)) {
-      fail(context, "invalid-operation", `Produce uses unsupported JSONata operator "${operator}"`);
+      fail(context, "invalid-operation", `${label} uses unsupported JSONata operator "${operator}"`);
     }
   }
   if (type === "unary" && node.value !== "{") {
-    fail(context, "invalid-operation", `Produce uses unsupported JSONata unary operator`);
+    fail(context, "invalid-operation", `${label} uses unsupported JSONata unary operator`);
   }
   if (Array.isArray(node.stages) && node.stages.some((stage) => record(stage)?.type !== "filter")) {
-    fail(context, "invalid-operation", "Produce allows only fixed JSONata filter path stages");
+    fail(context, "invalid-operation", `${label} allows only fixed JSONata filter path stages`);
   }
   if (type === "path" && Array.isArray(node.steps)) {
-    node.steps.forEach((step, index) => assertClosedJsonata(step, context, index === 0));
+    node.steps.forEach((step, index) => assertClosedJsonata(step, context, label, index === 0));
     for (const [key, child] of Object.entries(node)) {
-      if (key !== "steps") assertClosedJsonata(child, context);
+      if (key !== "steps") assertClosedJsonata(child, context, label);
     }
     return;
   }
-  for (const child of Object.values(node)) assertClosedJsonata(child, context);
+  for (const child of Object.values(node)) assertClosedJsonata(child, context, label);
 }
 
 function assertRelativeFilePath(path: string, context: CompileContext, located: Located): void {
@@ -1249,6 +1358,8 @@ function visitJsonata(
     const first = record(node.steps[0]);
     if (first?.type === "variable" && first.value === "$") {
       visitPath(node.steps.slice(1));
+    } else if (first?.type === "function") {
+      visitJsonata(first.arguments, visitPath, relative);
     } else if (!relative) {
       visitPath(node.steps);
     }
@@ -1319,6 +1430,29 @@ function assertStringInput(
   }
   if (field.cardinality !== "one" || field.type === "number") {
     fail(context, "invalid-operation", `${label} ${noun} Input "${inputName}" must be one string`, located);
+  }
+}
+
+function assertHttpValueSource(
+  label: string,
+  noun: string,
+  source: HttpValueSource,
+  input: Readonly<Record<string, InputField>>,
+  environment: Readonly<Record<string, EnvironmentField>>,
+  context: CompileContext,
+  located: Located,
+): void {
+  if (source.kind === "literal") return;
+  if (source.kind === "input") {
+    assertStringInput(label, noun, source.input, input, context, located);
+    return;
+  }
+  const field = Object.hasOwn(environment, source.environment) ? environment[source.environment] : undefined;
+  if (!field) {
+    fail(context, "invalid-operation", `${label} ${noun} references unknown Environment "${source.environment}"`, located);
+  }
+  if (field.type !== "string") {
+    fail(context, "invalid-operation", `${label} ${noun} Environment "${source.environment}" must be a string`, located);
   }
 }
 

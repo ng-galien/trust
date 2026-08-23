@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import { once } from "node:events";
+import { delimiter } from "node:path";
 import type { Readable } from "node:stream";
 
 import { renderShellArgument, type OperationExecutionContext, type Shell } from "@trust/operation";
@@ -21,6 +22,11 @@ export class ShellError extends Error {
   }
 }
 
+export interface ShellRunnerConfiguration {
+  readonly additionalPath?: readonly string[];
+  readonly processEnvironment?: Readonly<Record<string, string | undefined>>;
+}
+
 const DEFAULT_TIMEOUT_MS = 30_000;
 const FORCE_KILL_DELAY_MS = 2_000;
 /** Per-command timeout; hosts running long trials raise it through TRUST_SHELL_TIMEOUT_MS. */
@@ -35,6 +41,7 @@ export async function runShell(
   environment: JsonObject,
   execution: OperationExecutionContext,
   reporter: StepReporter = nullReporter,
+  configuration: ShellRunnerConfiguration = {},
 ): Promise<ShellResult> {
   let directory: string;
   try {
@@ -57,7 +64,7 @@ export async function runShell(
     )), {
       shell: false,
       cwd: directory,
-      env: shellEnvironment(),
+      env: shellEnvironment(configuration),
       stdio: ["ignore", "pipe", "pipe"],
       detached: ownsProcessGroup,
     });
@@ -127,11 +134,14 @@ function terminateProcessTree(child: ReturnType<typeof spawn>, signal: NodeJS.Si
   child.kill(signal);
 }
 
-function shellEnvironment(): Record<string, string> {
+function shellEnvironment(configuration: ShellRunnerConfiguration): Record<string, string> {
   const environment: Record<string, string> = {};
-  for (const [name, value] of Object.entries(process.env)) {
+  for (const [name, value] of Object.entries(configuration.processEnvironment ?? process.env)) {
     if (value === undefined || name.startsWith("TRUST_") || name === "JIRA_AUTHORIZATION") continue;
     environment[name] = value;
+  }
+  if (configuration.additionalPath?.length) {
+    environment.PATH = [environment.PATH, ...configuration.additionalPath].filter((value): value is string => Boolean(value)).join(delimiter);
   }
   return environment;
 }

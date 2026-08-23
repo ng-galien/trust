@@ -43,6 +43,19 @@ test("the procedure picker does not make the engagement form scroll", async ({ p
   await expect(page.getByRole("button", { name: "Procedure", exact: true })).toContainText("Prepare and release one aircraft");
 });
 
+test("the Operation views render the unified HTTP request contract", async ({ page }) => {
+  await page.goto("/operations/jira.issue-transition");
+  await expect(page.locator("#operation-title")).toHaveText("Transition one Jira issue between two exact workflow statuses");
+  const summary = page.locator('[data-doc="operation.summary"]');
+  await expect(summary).toContainText(/sends GET to environment\.jiraIssueUrl\/\{input\.issue\}/);
+  await expect(summary).toContainText(/sends POST to environment\.jiraIssueUrl\/\{input\.issue\}\/\{literal "transitions"\} and reads no body with JSONata/);
+
+  await page.getByRole("tab", { name: "Expert" }).click();
+  await page.getByRole("button", { name: "Steps" }).click();
+  await expect(page.getByText("Accepted statuses").first()).toBeVisible();
+  await expect(page.getByText("200–299").first()).toBeVisible();
+});
+
 test("the Plan source identifies an omitted optional declaration without inventing a parent wait", async ({ page, request }) => {
   const source = `# language: en
 @trust-dsl:1 @procedure:optional-ui-declaration @version:1.0.0

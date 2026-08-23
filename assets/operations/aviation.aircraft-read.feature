@@ -17,7 +17,7 @@ Feature: Read simulated aircraft release data
       | burnRateLitersPerHour  | number    | one         | any                             |
 
   Scenario: Run
-    When HTTP "aircraft" gets Environment "aircraftUrl" appending Input "aircraft" as JSON
+    When HTTP "aircraft" sends "GET" to Environment "aircraftUrl" appending Input "aircraft" and reads JSON
     Then Produce with JSONata
       """
       {

@@ -20,13 +20,14 @@ The projection is a <Term id="jsonata">JSONata</Term> expression in a doc string
 
 ## What the expression sees
 
-Three roots, and nothing else:
+Four roots, and nothing else:
 
 | Root | Content | Depth |
 | --- | --- | --- |
 | `input.<name>` | the validated Input values | one level (`input.project`; `input.a.b` is refused) |
 | `environment.<name>` | the Environment values | one level |
 | `steps.<stepName>.<result>` | the result of the step of that name | see below |
+| `execution.id` | the stable identifier of this admitted Operation execution | exactly `id` |
 
 Step results, by step kind:
 
@@ -36,7 +37,7 @@ Step results, by step kind:
 | File `as Text` | `relativePath`, `content` | no |
 | File `as JSON` | `relativePath`, `content` | `content` yes — `steps.manifest.content.name` |
 | HTTP `as Text` | `status`, `headers`, `body` | no |
-| HTTP `as JSON` (GET and POST) | `status`, `headers`, `body` | `body` yes — `steps.issue.body.summary` |
+| HTTP `and reads JSON` (any method) | `status`, `headers`, `body` | `body` yes — `steps.issue.body.summary` |
 
 Steps are addressed **by name**, never by position.
 
@@ -49,7 +50,8 @@ reference surface:
 
 Refused: functions outside this table (including `$now` and `$eval`), lambdas, the `~>` chain,
 regular expressions, transform operators, wildcards and descendants, array constructors `[…]`, unary
-minus, path filters and index selectors (`items[0]`, `items[status = "ok"]`), variable binding.
+minus, index selectors (`items[0]`) and variable binding. Fixed filters such as
+`items[status = "ok"]` are accepted; paths inside them remain in the same closed subset.
 
 <Callout kind="note" title="Why a subset">
   The projection is part of what makes a Fact trustworthy: it must do the same thing on the Runner and in Simulate, terminate, and be readable in a review. Computation that does not fit belongs in the external system (a script, an endpoint) whose result the Operation then reads.
@@ -91,7 +93,7 @@ At run time (Runner and Simulate): the returned values are validated against the
 | --- | --- |
 | `Produce with JSONata is invalid: …` | JSONata syntax error |
 | `Produce uses unsupported JSONata form "…"` / `… function "$…"` / `… operator "…"` / `… unary operator` | outside the subset |
-| `Produce does not allow dynamic JSONata path stages` | a filter or index selector on a path |
+| `Produce allows only fixed JSONata filter path stages` | an index selector or another dynamic path stage |
 | `Produce with JSONata must return one object literal` · `… must use fixed field names` | wrong top node |
 | `Produce fields must be exactly: …` | key set differs from the produced fields |
 | `Produce references unknown root "…"` / `unknown Operation step "…"` / `unknown <kind> result "…"` / `unknown Input field "…"` / `unknown Environment field "…"` | name does not exist |

@@ -38,13 +38,13 @@ Le compilateur renvoie soit une Opération compilée, soit **un diagnostic** : u
 - `Table must declare name | type` / `input | type | cardinality` / `field | type | cardinality | domain` — mauvais en-tête.
 - `Operation must declare Environment` · `Operation must declare produced fields` · `Operation repeats Environment` / `Input` / `Produce fields`.
 - `Environment name "…" must be lower camel case` · `Input "…" must be lower camel case` · `Produced field "…" must be lower camel case`.
-- `Environment "…" has invalid type "…"` (ni `directory` ni `url`) · `Input "…" has invalid type "…"` · `Produced field "…" has invalid type "…"` (ni `string`, ni `number`, ni `instant`, ni `reference`).
+- `Environment "…" has invalid type "…"` (ni `directory`, ni `url`, ni `string`) · `Input "…" has invalid type "…"` · `Produced field "…" has invalid type "…"` (ni `string`, ni `number`, ni `instant`, ni `reference`).
 - `Cardinality "…" must be one or many` · `Only string fields may declare an enum domain` · `Domain "…" is invalid` · `Domain "…" repeats a value`.
 - `Environment "…" is repeated` · `Input "…" is repeated` · `Produced field "…" is repeated`.
 - `Operation interface must use Given or And` · `Unknown Operation interface step "…"`.
 
 ### Étapes
-- `Unknown Operation step "…"` — la phrase ne correspond à aucune de Shell, File, HTTP GET, HTTP POST, sorties acceptées, Produce.
+- `Unknown Operation step "…"` — la phrase ne correspond à aucune de Shell, File, HTTP, sorties/statuts acceptés, Produce.
 - `Operation must declare at least one step` · `Step "…" is repeated`.
 - `Shell must use When or And` / `File …` / `HTTP …` · `Shell cannot run after Produce` / `File cannot read after Produce` / `HTTP cannot run after Produce`.
 - Messages Shell, File et HTTP : voir le bloc **Diagnostics** de [Shell](/docs/operations/steps/shell), [File](/docs/operations/steps/file) et [HTTP](/docs/operations/steps/http).

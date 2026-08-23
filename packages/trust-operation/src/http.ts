@@ -1,38 +1,119 @@
 import type { JsonValue } from "./json.js";
 
-export type HttpFormat = "text" | "json";
+/** Registered HTTP methods that represent application requests. `PRI` and the reserved `*` token
+    are protocol control values, not methods an Operation can send. */
+export const HTTP_METHODS = [
+  "ACL",
+  "BASELINE-CONTROL",
+  "BIND",
+  "CHECKIN",
+  "CHECKOUT",
+  "CONNECT",
+  "COPY",
+  "DELETE",
+  "GET",
+  "HEAD",
+  "LABEL",
+  "LINK",
+  "LOCK",
+  "MERGE",
+  "MKACTIVITY",
+  "MKCALENDAR",
+  "MKCOL",
+  "MKREDIRECTREF",
+  "MKWORKSPACE",
+  "MOVE",
+  "OPTIONS",
+  "ORDERPATCH",
+  "PATCH",
+  "POST",
+  "PROPFIND",
+  "PROPPATCH",
+  "PUT",
+  "QUERY",
+  "REBIND",
+  "REPORT",
+  "SEARCH",
+  "TRACE",
+  "UNBIND",
+  "UNCHECKOUT",
+  "UNLINK",
+  "UNLOCK",
+  "UPDATE",
+  "UPDATEREDIRECTREF",
+  "VERSION-CONTROL",
+] as const;
 
-/** One query parameter appended by a GET: its value comes from one string Input or is a literal. */
-export type HttpQueryParameter =
-  | { readonly name: string; readonly input: string }
-  | { readonly name: string; readonly value: string };
+export type HttpMethod = typeof HTTP_METHODS[number];
+export type HttpFormat = "text" | "json" | "none";
 
-export interface Http {
-  readonly method: "GET" | "POST";
-  readonly url: { readonly environment: string };
-  /** GET only: string Inputs appended, in order, as successive URL-encoded path segments. */
-  readonly appendInputs?: readonly string[];
-  /** GET only: query parameters appended after the path segments, in order. */
-  readonly query?: readonly HttpQueryParameter[];
-  readonly body?: "input-json";
-  readonly format: HttpFormat;
+export type HttpValueSource =
+  | { readonly kind: "literal"; readonly value: string }
+  | { readonly kind: "input"; readonly input: string }
+  | { readonly kind: "environment"; readonly environment: string };
+
+export type HttpPathSegment =
+  | { readonly kind: "literal"; readonly value: string }
+  | { readonly kind: "input"; readonly input: string };
+
+export interface HttpQueryParameter {
+  readonly name: string;
+  readonly source: HttpValueSource;
 }
 
-/** The request URL of one HTTP step: the base URL, then one encoded path segment per appended
-    Input, then the declared query. `resolve` returns the string value of one Input. */
-export function renderHttpUrl(http: Http, base: string, resolve: (input: string) => string): string {
+export interface HttpHeader {
+  readonly name: string;
+  readonly source: HttpValueSource;
+}
+
+export type HttpBody =
+  | { readonly format: "json"; readonly source: "input" }
+  | { readonly format: "json"; readonly source: "jsonata"; readonly expression: string }
+  | { readonly format: "text"; readonly source: HttpValueSource };
+
+export interface Http {
+  readonly method: HttpMethod;
+  readonly url: { readonly environment: string };
+  readonly path: readonly HttpPathSegment[];
+  readonly query: readonly HttpQueryParameter[];
+  readonly headers: readonly HttpHeader[];
+  readonly body?: HttpBody;
+  readonly format: HttpFormat;
+  /** Absent means the standard success range 200-299. */
+  readonly acceptedStatuses?: readonly number[];
+}
+
+/** Render one request URL from its Environment base and structured path/query sources. */
+export function renderHttpUrl(
+  http: Http,
+  base: string,
+  resolveInput: (input: string) => string,
+  resolveEnvironment: (environment: string) => string = () => {
+    throw new TypeError("HTTP Environment value is unavailable.");
+  },
+): string {
   const url = new URL(base);
-  const query = http.query ?? [];
-  if (query.length > 0 && url.search !== "") {
+  if (http.query.length > 0 && url.search !== "") {
     throw new TypeError(`HTTP Environment "${http.url.environment}" already carries a query string; the step declares its own query.`);
   }
-  for (const name of http.appendInputs ?? []) {
-    url.pathname = `${url.pathname.endsWith("/") ? url.pathname : `${url.pathname}/`}${encodeURIComponent(resolve(name))}`;
+  for (const segment of http.path) {
+    const value = segment.kind === "literal" ? segment.value : resolveInput(segment.input);
+    if (value === "") throw new TypeError("HTTP path segments must be non-empty.");
+    url.pathname = `${url.pathname.endsWith("/") ? url.pathname : `${url.pathname}/`}${encodeURIComponent(value)}`;
   }
-  for (const parameter of query) {
-    url.searchParams.append(parameter.name, "value" in parameter ? parameter.value : resolve(parameter.input));
+  for (const parameter of http.query) {
+    url.searchParams.append(parameter.name, renderHttpValue(parameter.source, resolveInput, resolveEnvironment));
   }
   return url.toString();
+}
+
+export function renderHttpValue(
+  source: HttpValueSource,
+  resolveInput: (input: string) => string,
+  resolveEnvironment: (environment: string) => string,
+): string {
+  if (source.kind === "literal") return source.value;
+  return source.kind === "input" ? resolveInput(source.input) : resolveEnvironment(source.environment);
 }
 
 export interface HttpTextResult {
@@ -45,4 +126,10 @@ export interface HttpJsonResult {
   readonly status: number;
   readonly headers: Readonly<Record<string, string>>;
   readonly body: JsonValue;
+}
+
+export interface HttpEmptyResult {
+  readonly status: number;
+  readonly headers: Readonly<Record<string, string>>;
+  readonly body: "";
 }

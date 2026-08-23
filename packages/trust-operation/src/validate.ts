@@ -61,6 +61,10 @@ ajv.addFormat("trust-url", {
     }
   },
 });
+ajv.addFormat("trust-string", {
+  type: "string",
+  validate: (value: string) => value.length > 0 && !value.includes("\0"),
+});
 
 export function validateOperationInput(operation: CompiledOperation, value: unknown): void {
   validate("input", operation.input, value);

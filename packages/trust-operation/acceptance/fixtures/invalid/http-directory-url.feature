@@ -11,7 +11,7 @@ Feature: Invalid HTTP Environment type
       | status | number | one         | any    |
 
   Scenario: Run
-    When HTTP "response" gets Environment "serviceUrl" as JSON
+    When HTTP "response" sends "GET" to Environment "serviceUrl" and reads JSON
     Then Produce with JSONata
       """
       { "status": steps.response.status }

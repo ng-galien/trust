@@ -17,10 +17,15 @@ import { runFileRead } from "../file-read/run.js";
 import { runHttp } from "../http/run.js";
 import { isJsonObject, type JsonObject, type JsonValue } from "../lib/json.js";
 import { runShell } from "../shell/run.js";
+import type { ShellRunnerConfiguration } from "../shell/run.js";
 
 export interface OperationResult {
   readonly steps: JsonObject;
   readonly produced: JsonObject;
+}
+
+export interface OperationRunnerConfiguration {
+  readonly shell?: ShellRunnerConfiguration;
 }
 
 export async function runOperation(
@@ -29,6 +34,7 @@ export async function runOperation(
   environmentValue: unknown,
   diagnostics: DiagnosticsSink = nullSink,
   executionValue: unknown = {},
+  configuration: OperationRunnerConfiguration = {},
 ): Promise<OperationResult> {
   const startedAt = Date.now();
   diagnostics.emit({ type: "operation.start", at: now(), operation: operation.operation, version: operation.version, stepCount: operation.steps.length });
@@ -47,10 +53,10 @@ export async function runOperation(
       diagnostics.emit({ type: "step.start", at: now(), step: step.name, index, kind: step.type, ...describeStep(step, input, environment, execution) });
       try {
         const result = step.type === "shell"
-          ? await runShell(step.shell, input, environment, execution, reporter)
+          ? await runShell(step.shell, input, environment, execution, reporter, configuration.shell)
           : step.type === "file-read"
             ? await runFileRead(step.file, input, environment, reporter)
-            : await runHttp(step.http, input, environment, reporter);
+            : await runHttp(step.http, input, environment, steps, execution, reporter);
         const converted = json(result, `Operation step "${step.name}" result`);
         steps[step.name] = converted;
         diagnostics.emit({ type: "step.end", at: now(), step: step.name, ok: true, durationMs: Date.now() - stepStartedAt, outcome: outcomeOf(step.type, converted) });
@@ -86,12 +92,14 @@ function describeStep(step: CompiledOperation["steps"][number], input: JsonObjec
   if (step.type === "http") {
     const base = environment[step.http.url.environment];
     return {
-      summary: `${step.http.method} ${typeof base === "string" ? renderedUrl(step.http, base, resolve) : `<${step.http.url.environment}>`}`,
+      summary: `${step.http.method} ${typeof base === "string" ? renderedUrl(step.http, base, resolve, environment) : `<${step.http.url.environment}>`}`,
       detail: {
         method: step.http.method,
         environment: step.http.url.environment,
-        ...(step.http.appendInputs?.length ? { appendInputs: [...step.http.appendInputs] } : {}),
-        ...(step.http.query?.length ? { query: step.http.query.map((parameter) => ({ ...parameter })) } : {}),
+        ...(step.http.path.length ? { path: step.http.path.map((segment) => ({ ...segment })) } : {}),
+        ...(step.http.query.length ? { query: step.http.query.map((parameter) => ({ ...parameter, source: { ...parameter.source } })) } : {}),
+        ...(step.http.headers.length ? { headers: step.http.headers.map((header) => ({ ...header, source: { ...header.source } })) } : {}),
+        ...(step.http.body === undefined ? {} : { body: { format: step.http.body.format, source: step.http.body.source } }),
         format: step.http.format,
       },
     };
@@ -103,9 +111,9 @@ function describeStep(step: CompiledOperation["steps"][number], input: JsonObjec
 }
 
 /** Diagnostic only: a URL the step cannot render (a query on a base that already carries one) is reported by the step itself. */
-function renderedUrl(http: Http, base: string, resolve: (name: string) => string): string {
+function renderedUrl(http: Http, base: string, resolve: (name: string) => string, environment: JsonObject): string {
   try {
-    return renderHttpUrl(http, base, resolve);
+    return renderHttpUrl(http, base, resolve, (name) => String(environment[name] ?? `<${name}>`));
   } catch {
     return base;
   }

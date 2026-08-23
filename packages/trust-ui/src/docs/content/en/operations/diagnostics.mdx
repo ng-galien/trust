@@ -38,13 +38,13 @@ The compiler either returns a compiled Operation or **one diagnostic**: a code, 
 - `Table must declare name | type` / `input | type | cardinality` / `field | type | cardinality | domain` — wrong header.
 - `Operation must declare Environment` · `Operation must declare produced fields` · `Operation repeats Environment` / `Input` / `Produce fields`.
 - `Environment name "…" must be lower camel case` · `Input "…" must be lower camel case` · `Produced field "…" must be lower camel case`.
-- `Environment "…" has invalid type "…"` (not `directory`/`url`) · `Input "…" has invalid type "…"` · `Produced field "…" has invalid type "…"` (not `string`/`number`/`instant`/`reference`).
+- `Environment "…" has invalid type "…"` (not `directory`/`url`/`string`) · `Input "…" has invalid type "…"` · `Produced field "…" has invalid type "…"` (not `string`/`number`/`instant`/`reference`).
 - `Cardinality "…" must be one or many` · `Only string fields may declare an enum domain` · `Domain "…" is invalid` · `Domain "…" repeats a value`.
 - `Environment "…" is repeated` · `Input "…" is repeated` · `Produced field "…" is repeated`.
 - `Operation interface must use Given or And` · `Unknown Operation interface step "…"`.
 
 ### Steps
-- `Unknown Operation step "…"` — the sentence matches none of Shell, File, HTTP GET, HTTP POST, accepted exits, Produce.
+- `Unknown Operation step "…"` — the sentence matches none of Shell, File, HTTP, accepted exits/statuses, Produce.
 - `Operation must declare at least one step` · `Step "…" is repeated`.
 - `Shell must use When or And` / `File …` / `HTTP …` · `Shell cannot run after Produce` / `File cannot read after Produce` / `HTTP cannot run after Produce`.
 - Shell, File and HTTP messages: see the **Diagnostics** block of [Shell](/docs/operations/steps/shell), [File](/docs/operations/steps/file) and [HTTP](/docs/operations/steps/http).

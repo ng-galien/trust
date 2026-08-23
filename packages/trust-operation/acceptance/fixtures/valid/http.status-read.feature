@@ -12,7 +12,7 @@ Feature: Read service status
       | status  | number | one         | any    |
 
   Scenario: Run
-    When HTTP "response" gets Environment "serviceUrl" as JSON
+    When HTTP "response" sends "GET" to Environment "serviceUrl" and reads JSON
     Then Produce with JSONata
       """
       { "service": steps.response.body.service, "status": steps.response.status }

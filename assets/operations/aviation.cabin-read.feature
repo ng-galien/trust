@@ -15,7 +15,7 @@ Feature: Read simulated cabin readiness for one flight
       | cabinStatus | string    | one         | enum "ready", "not-ready" |
 
   Scenario: Run
-    When HTTP "cabin" gets Environment "cabinUrl" appending Input "flight" as JSON
+    When HTTP "cabin" sends "GET" to Environment "cabinUrl" appending Input "flight" and reads JSON
     Then Produce with JSONata
       """
       { "flight": input.flight, "cabinStatus": steps.cabin.body.cabinStatus }

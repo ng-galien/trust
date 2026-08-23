@@ -7,7 +7,7 @@ order: 1
 <Steps>
   <Step title="Ouvrir le catalogue et créer">Barre latérale → **Opérations** → **Nouvelle opération**. L'onglet Source s'ouvre sur le modèle.</Step>
   <Step title="La nommer">Renseignez `@operation:<domain>.<action>` et `@version:1.0.0` ; gardez `@trust-dsl:1`. Donnez-lui un titre et, dessous, une ou deux lignes décrivant ce qu'elle observe.</Step>
-  <Step title="Déclarer l'interface">Dans `Background` : les valeurs d'Environnement (`workspaceRoot` en `directory`, ou une `url`), l'Input que le Check fournira, et les champs produits avec leurs types — un `enum` quand la valeur est un statut.</Step>
+  <Step title="Déclarer l'interface">Dans `Background` : les valeurs d'Environnement (`directory`, `url` ou `string` non vide), l'Input que le Check fournira, et les champs produits avec leurs types — un `enum` quand la valeur est un statut.</Step>
   <Step title="Écrire les étapes">Un `When Shell …` (ou File, HTTP) par action, chacun avec un nom. Les arguments un par ligne. Ajoutez `accepts exits` quand une sortie non nulle est une observation.</Step>
   <Step title="Écrire la projection">`Then Produce with JSONata` renvoyant exactement les champs produits à partir de `input`, `environment` et `steps.<name>`.</Step>
   <Step title="Surveiller la ligne d'état">Elle affiche le premier diagnostic avec sa ligne jusqu'à ce que la source compile, puis le nombre d'étapes et de champs.</Step>

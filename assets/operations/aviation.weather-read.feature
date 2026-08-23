@@ -15,7 +15,7 @@ Feature: Read simulated weather for one flight
       | weatherStatus | string    | one         | enum "accepted", "rejected" |
 
   Scenario: Run
-    When HTTP "weather" gets Environment "weatherUrl" appending Input "flight" as JSON
+    When HTTP "weather" sends "GET" to Environment "weatherUrl" appending Input "flight" and reads JSON
     Then Produce with JSONata
       """
       { "flight": input.flight, "weatherStatus": steps.weather.body.weatherStatus }

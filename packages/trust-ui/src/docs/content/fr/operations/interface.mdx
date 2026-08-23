@@ -24,7 +24,7 @@ Le `Background` d'une Opération est son contrat : ce qu'une Procédure lie (Inp
 
 ## Types de valeur
 
-Les quatre mêmes types servent pour Input et Produced fields ; Environment a ses deux types propres.
+Les quatre mêmes types servent pour Input et Produced fields ; Environment a trois types de valeur d'exécution.
 
 | Type | Signification | Validé comme |
 | --- | --- | --- |
@@ -34,6 +34,7 @@ Les quatre mêmes types servent pour Input et Produced fields ; Environment a se
 | `reference` | un identifiant de quelque chose hors de TRUST (une révision, une clé de ticket, un nom de projet) | une chaîne non vide |
 | `directory` *(Environment seulement)* | l'endroit où vivent les projets | un chemin absolu du système de fichiers |
 | `url` *(Environment seulement)* | l'URL de base d'un service | une URL `http(s)` sans credentials embarqués |
+| `string` *(Environment seulement)* | un réglage non secret de requête ou d'exécution | une chaîne non vide sans NUL |
 
 La **cardinalité** est `one` (un scalaire) ou `many` (un tableau du type). Il n'y a pas de valeur optionnelle : chaque valeur Input et Environment déclarée est requise, et l'Opération doit produire chaque champ déclaré.
 
@@ -44,11 +45,13 @@ La **cardinalité** est `one` (un scalaire) ou `many` (un tableau du type). Il n
       | name          | type      |
       | workspaceRoot | directory |
       | serviceUrl    | url       |
+      | apiMode       | string    |
 ```
 
 - Requis, une fois, au moins une ligne. L'en-tête est exactement `| name | type |`.
 - Un `directory` nomme **l'endroit où vivent tous les projets**, pas un projet. Une étape Shell ou File le restreint à un projet avec `and Input "<name>"` : l'Input doit être une chaîne nommant un répertoire directement sous la racine — pas de séparateur de chemin, pas de `..`, pas de lien symbolique hors de la racine. Sans cette clause, l'étape s'exécute dans le répertoire lui-même.
-- Une `url` est utilisée telle quelle par un HTTP GET, ou avec un Input ajouté comme un seul segment de chemin encodé.
+- Une `url` est la base de toute méthode HTTP ; des clauses structurées peuvent ajouter des segments encodés et des paramètres de query.
+- Un `string` fournit des valeurs non secrètes de query, de header ou de corps Text HTTP.
 - Les valeurs viennent de l'Environnement choisi à l'admission (en réel) ou de l'environnement courant de l'interface (onglet **Exécuter**). Une Opération est *exécutable* sur un Environnement quand l'Environnement déclare chaque nom dont elle a besoin — c'est ce que montrent les marques ✓ du catalogue et de l'écran Environnement.
 
 ## Input
@@ -63,7 +66,7 @@ La **cardinalité** est `one` (un scalaire) ou `many` (un tableau du type). Il n
 
 - Optionnel (une Opération peut n'avoir besoin d'aucun Input), au plus une fois. L'en-tête est exactement `| input | type | cardinality |`.
 - D'où viennent les valeurs : dans un Plan, la phrase du Check lie chaque Input à un rôle de contexte du Plan (`on "project" as Input "project"`, `using "baseline" as Input "baseRevision"`). Chaque Input doit être lié exactement une fois. Dans l'interface, **Simuler** et **Exécuter** vous les demandent.
-- Ce qu'un Input peut alimenter : un argument Shell (`Input "issue"` dans la table d'arguments), la restriction de répertoire (`and Input "project"`), un segment de chemin ou un paramètre de query HTTP (`appending Input "issue"`, `with query "run" from Input "run"`), le corps entier d'un HTTP POST, et la racine `input.<name>` de la projection.
+- Ce qu'un Input peut alimenter : un argument Shell, la restriction de répertoire, une valeur de chemin/query/header/corps Text HTTP, le corps JSON complet, un corps JSONata, et la racine `input.<name>` de Produce.
 - Partout où une étape a besoin d'**une chaîne**, l'Input doit être de cardinalité `one` et de type `string`, `instant` ou `reference` — un Input `number` ou `many` y est refusé.
 
 ## Produced fields
@@ -88,8 +91,8 @@ Dans l'éditeur Source, la projection JSONata est un langage embarqué plutôt q
 
 ## Pas de secrets dans la source
 
-Il n'existe ni credential, ni en-tête, ni token, ni étape d'authentification dans le langage. Le compilateur refuse une source qui contient une valeur ressemblant à un secret (une clé `sk-…`, un token `gh…_`, un en-tête `Bearer …`) — code `secret-like-value` — et le Runner refuse les URL avec credentials embarqués. Les secrets appartiennent aux Environnements (comme références de credential en écriture seule), jamais aux Opérations. Voir [Environnements et credentials](/docs/principles/environments).
+Les headers HTTP sont structurés, mais la source de l'Opération et les `string` lisibles d'Environment ne stockent pas de secrets. Le compilateur refuse une valeur ressemblant à un secret (clé `sk-…`, token `gh…_`, valeur `Bearer …`) — code `secret-like-value` — et le Runner refuse les URL avec credentials embarqués. Les secrets appartiennent aux Environnements comme références de credential en écriture seule. Voir [Environnements et credentials](/docs/principles/environments).
 
 <Details title="Forme compilée de l'interface" expert>
-Le compilateur émet trois JSON Schemas (`input`, `environment`, `produced`), chacun `type: "object"`, chaque nom déclaré `required`, `additionalProperties: false`. Correspondance des types : `string → { type: "string" }`, `number → { type: "number" }`, `instant → { type: "string", format: "date-time" }`, `reference → { type: "string", minLength: 1 }`, `directory → { type: "string", format: "trust-directory" }`, `url → { type: "string", format: "trust-url" }` ; `many` enveloppe le schéma de l'élément dans un tableau ; un domaine enum ajoute `enum: [...]`. Les valeurs à l'exécution sont validées avec ces schémas — c'est pourquoi les formulaires **Simuler** et **Exécuter** savent quels champs sont requis, lesquels sont des énumérations et lesquels sont des listes.
+Le compilateur émet trois JSON Schemas fermés. La correspondance Environment est `directory → trust-directory`, `url → trust-url`, `string → trust-string` ; chaque valeur déclarée est requise. Les correspondances Input et Produced sont inchangées ; `many` enveloppe le schéma de l'élément et un domaine enum ajoute `enum: [...]`.
 </Details>

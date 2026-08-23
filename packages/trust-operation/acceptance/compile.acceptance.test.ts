@@ -4,6 +4,7 @@ import {
   analyzeOperation,
   compileOperation,
   CompiledOperationValidationError,
+  HTTP_METHODS,
   OperationCompilationError,
   validateCompiledOperation,
   type OperationCompilationErrorCode,
@@ -64,7 +65,7 @@ describe("Operation compiler", () => {
         sourceName: "http-unknown-environment.feature",
         range: {
           start: { line: 14, column: 5 },
-          end: { line: 14, column: 61 },
+          end: { line: 14, column: 78 },
         },
       }]);
     expect(analysis.document).toMatchObject({
@@ -130,10 +131,9 @@ describe("Operation compiler", () => {
 
     expect(compiled.steps[0]).toMatchObject({
       type: "http",
-      http: { method: "GET", url: { environment: "jiraIssueUrl" }, appendInputs: ["issue"], format: "json" },
+      http: { method: "GET", url: { environment: "jiraIssueUrl" }, path: [{ kind: "input", input: "issue" }], format: "json" },
     });
-    expect(compiled.steps[0]).not.toHaveProperty("http.appendInput");
-    expect(compiled.steps[0]).not.toHaveProperty("http.query");
+    expect(compiled.steps[0]).not.toHaveProperty("http.appendInputs");
   });
 
   test.each([
@@ -195,7 +195,7 @@ describe("Operation compiler", () => {
     expect(compiled.produce.expression).toContain('status.name = "Done" ? "done" : "other"');
   });
 
-  test("reports a misordered HTTP GET clause with the expected order", () => {
+  test("reports a misordered HTTP clause with the expected order", () => {
     const analysis = analyzeOperation({
       source: fixture("invalid/http-query-before-appending.feature"),
       sourceName: "http-query-before-appending.feature",
@@ -203,9 +203,48 @@ describe("Operation compiler", () => {
 
     expect(analysis.diagnostics).toEqual([expect.objectContaining({
       code: "unknown-step",
-      message: expect.stringContaining("appending must precede with query"),
+      message: expect.stringContaining("sentence must end with and reads"),
     })]);
     expect(analysis.document?.steps).toEqual([expect.objectContaining({ name: "comments", type: "http" })]);
+  });
+
+  test("accepts every registered application HTTP method, including QUERY", () => {
+    for (const method of HTTP_METHODS) {
+      const source = `# language: en
+@trust-dsl:1 @operation:http.method-${method.toLowerCase()} @version:1.0.0
+Feature: Send ${method}
+
+  Background: Operation interface
+    Given Environment
+      | name       | type |
+      | serviceUrl | url  |
+    And Produced fields
+      | field  | type   | cardinality | domain |
+      | status | number | one         | any    |
+
+  Scenario: Run
+    When HTTP "request" sends "${method}" to Environment "serviceUrl" and reads Text
+    Then Produce with JSONata
+      """
+      { "status": steps.request.status }
+      """
+`;
+
+      expect(compileOperation({ source, sourceName: `${method}.feature` }).steps[0]).toMatchObject({
+        type: "http",
+        http: { method },
+      });
+    }
+  });
+
+  test("refuses interim informational statuses as accepted terminal responses", () => {
+    const source = fixture("valid/http.status-read.feature").replace(
+      "    Then Produce with JSONata",
+      "    And HTTP \"response\" accepts statuses\n      | status |\n      | 103    |\n    Then Produce with JSONata",
+    );
+
+    expect(() => compileOperation({ source, sourceName: "http.interim-status.feature" }))
+      .toThrow(/must be terminal: 101 or an integer from 200 to 599/);
   });
 
   test("exposes the free-text Feature description without touching the executable contract", () => {

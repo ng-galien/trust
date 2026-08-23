@@ -15,7 +15,7 @@ Feature: Read simulated cold-chain data for one food batch
       | coldChainStatus | string    | one         | enum "maintained", "interrupted"   |
 
   Scenario: Run
-    When HTTP "coldChain" gets Environment "coldChainUrl" appending Input "batch" as JSON
+    When HTTP "coldChain" sends "GET" to Environment "coldChainUrl" appending Input "batch" and reads JSON
     Then Produce with JSONata
       """
       { "batch": input.batch, "coldChainStatus": steps.coldChain.body.coldChainStatus }

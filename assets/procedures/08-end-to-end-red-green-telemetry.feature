@@ -1,21 +1,24 @@
 # language: en
-@trust-dsl:1 @procedure:end-to-end-red-green-telemetry @version:1.0.1
+@trust-dsl:1 @procedure:end-to-end-red-green-telemetry @version:1.1.0 @intent-chaining
 Feature: Validate a multi-project change through an execution-correlated Red-Green deployment cycle
 
   Full delivery loop for a defect that touches an acceptance project, library projects and runtime
-  projects, driven by one Jira issue. The acceptance project owns the Karate change. Library projects
-  are installed but are not deployed. Runtime projects are compiled only after their changed library
+  projects, driven by one Jira issue. The acceptance project owns the Karate change. Declared library
+  projects are installed but are not deployed. Runtime projects are compiled only after their changed library
   dependencies have been installed and their resolved versions have been checked; they are then
   deployed and observed through telemetry. The agent declares the projects, the dependency edges,
   the Karate selection, the runtime images and workloads, one green execution id and one trace for
-  each runtime project; every other value is observed by a Check. Every project works on a ticket
+  each runtime project; every other value is observed by a Check. TRUST also moves the Jira issue
+  from `todo` to `in-progress` before repository work and from `in-progress` to `done` after every
+  merge. Every project works on a ticket
   branch named after the Jira issue key, cut from its clean `main`, and the Plan ends by merging
   every branch back into `main`, so the operator never branches or merges by hand (local
-  repositories only for now: nothing is pushed). Twelve Scenarios, each one Check per target:
+  repositories only for now: nothing is pushed). Thirteen Scenarios, each one Check per target:
 
+  - jira-issue: the issue is a defect in `todo`.
+  - ticket-in-progress: transition the issue exactly from `todo` to `in-progress`.
   - acceptance-baseline: switch the acceptance project to `main`, read its clean HEAD and open the
     ticket branch there.
-  - jira-issue: the issue is a defect and ready.
   - code-baselines: the same for every library and runtime project: clean `main` HEAD, ticket branch
     opened.
   - red: one Operation observes the committed Karate change (ahead of the acceptance baseline,
@@ -37,7 +40,7 @@ Feature: Validate a multi-project change through an execution-correlated Red-Gre
   - merge: the committed ticket branch of the acceptance project, then of every library and runtime
     project, is merged into `main` with a merge commit and deleted locally; each merge and deletion
     must succeed and leave a clean tree.
-  - ticket-done: after every merge, the Jira issue is read again and must be exactly `Done`.
+  - ticket-done: after every merge, transition the Jira issue exactly from `in-progress` to `done`.
 
   Every Check runs on the `trust-test` environment: workspace of the projects, jira-mock, Tempo.
   The Plan identifier is passed to Maven as `trust.run` so the Karate traffic of one Plan never
@@ -45,15 +48,18 @@ Feature: Validate a multi-project change through an execution-correlated Red-Gre
 
   Background: Plan context
     Given one reference "jira issue"
+    And one string "todo workflow status" fixed as "todo"
+    And one string "in-progress workflow status" fixed as "in-progress"
+    And one string "done workflow status" fixed as "done"
     And one reference "acceptance project" fixed as "payment-acceptance"
     And one reference "acceptance baseline revision" for "acceptance project"
     And one reference "acceptance test revision" for "acceptance project"
     And one string "test argument" declared by agent for "acceptance project"
-    And many reference "library project" declared by agent for "jira issue"
+    And many reference "library project" declared optionally by agent for "jira issue"
     And many reference "library baseline revision" for each "library project"
     And many reference "library fix revision" for each "library project"
     And many reference "installed library dependency" for each "library project"
-    And many reference "runtime dependency project" declared by agent for each "library project"
+    And many reference "runtime dependency project" declared optionally by agent for each "library project"
     And many reference "runtime project" declared by agent
     And many reference "runtime baseline revision" for each "runtime project"
     And many reference "runtime fix revision" for each "runtime project"
@@ -65,6 +71,7 @@ Feature: Validate a multi-project change through an execution-correlated Red-Gre
 
   @scenario:acceptance-baseline
   Scenario: Establish the clean acceptance baseline and open its ticket branch
+    Given scenario "ticket-in-progress" is validated
     Then Check "acceptance baseline" runs Operation "git.change-start"
         on "acceptance project" as Input "project"
         using "jira issue" as Input "branch"
@@ -83,7 +90,6 @@ Feature: Validate a multi-project change through an execution-correlated Red-Gre
 
   @scenario:jira-issue
   Scenario: Read the Jira defect
-    Given scenario "acceptance-baseline" is validated
     Then Check "issue" runs Operation "jira.issue-read"
         on "jira issue" as Input "issue"
         and must establish "the Jira issue is ready for correction"
@@ -98,9 +104,28 @@ Feature: Validate a multi-project change through an execution-correlated Red-Gre
       )
       """
 
+  @scenario:ticket-in-progress
+  Scenario: Move the Jira issue into progress before repository work
+    Given scenario "jira-issue" is validated
+    Then Check "start issue" runs Operation "jira.issue-transition"
+        on "jira issue" as Input "issue"
+        using "todo workflow status" as Input "fromWorkflowStatus"
+        using "in-progress workflow status" as Input "toWorkflowStatus"
+        and must establish "the Jira issue moved from todo to in-progress"
+      """js
+      (
+        fact.fromWorkflowStatus === context["todo workflow status"] ||
+        fail("the Jira issue did not start in todo")
+      ) &&
+      (
+        fact.toWorkflowStatus === context["in-progress workflow status"] ||
+        fail("the Jira issue did not move to in-progress")
+      )
+      """
+
   @scenario:code-baselines
   Scenario: Establish every clean library and runtime baseline and open its ticket branch
-    Given scenario "jira-issue" is validated
+    Given scenario "ticket-in-progress" is validated
     Then Check "library baseline" runs Operation "git.change-start"
         on each "library project" as Input "project"
         using "jira issue" as Input "branch"
@@ -134,7 +159,8 @@ Feature: Validate a multi-project change through an execution-correlated Red-Gre
 
   @scenario:red
   Scenario: Reproduce the defect with the committed Karate change
-    Given scenario "jira-issue" is validated
+    Given scenario "ticket-in-progress" is validated
+    And scenario "acceptance-baseline" is validated
     Then Check "red run" runs Operation "karate.change-reproduce"
         on "test argument" as Input "testArgument"
         using "acceptance project" as Input "project"
@@ -212,7 +238,9 @@ Feature: Validate a multi-project change through an execution-correlated Red-Gre
 
   @scenario:runtime-fix-verify
   Scenario: Verify every committed runtime fix with Maven after library installation
-    Given scenario "dependency-alignment" is validated
+    Given scenario "red" is validated
+    And scenario "library-fix-install" is validated
+    And scenario "dependency-alignment" is validated
     Then Check "runtime fix verification" runs Operation "maven.change-verify"
         on each "runtime project" as Input "project"
         using "runtime baseline revision" as Input "baseRevision"
@@ -356,12 +384,20 @@ Feature: Validate a multi-project change through an execution-correlated Red-Gre
       """
 
   @scenario:ticket-done
-  Scenario: Confirm the Jira issue is done after every merge
+  Scenario: Move the Jira issue to done after every merge
     Given scenario "merge" is validated
-    Then Check "done issue" runs Operation "jira.issue-read"
+    Then Check "done issue" runs Operation "jira.issue-transition"
         on "jira issue" as Input "issue"
-        and must establish "the Jira issue is done"
+        using "in-progress workflow status" as Input "fromWorkflowStatus"
+        using "done workflow status" as Input "toWorkflowStatus"
+        and must establish "the Jira issue moved from in-progress to done"
       """js
-      fact.workflowStatus === "done" ||
-      fail("the Jira issue is not Done")
+      (
+        fact.fromWorkflowStatus === context["in-progress workflow status"] ||
+        fail("the Jira issue did not start in-progress")
+      ) &&
+      (
+        fact.toWorkflowStatus === context["done workflow status"] ||
+        fail("the Jira issue did not move to done")
+      )
       """

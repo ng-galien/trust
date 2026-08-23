@@ -16,7 +16,7 @@ Feature: Read one simulated patient record
       | allergyStatus  | string    | one         | enum "recorded", "not-recorded"    |
 
   Scenario: Run
-    When HTTP "patient" gets Environment "patientUrl" appending Input "patient" as JSON
+    When HTTP "patient" sends "GET" to Environment "patientUrl" appending Input "patient" and reads JSON
     Then Produce with JSONata
       """
       {

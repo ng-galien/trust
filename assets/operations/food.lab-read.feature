@@ -15,7 +15,7 @@ Feature: Read simulated laboratory results for one food batch
       | labStatus | string    | one         | enum "accepted", "rejected" |
 
   Scenario: Run
-    When HTTP "lab" gets Environment "labUrl" appending Input "batch" as JSON
+    When HTTP "lab" sends "GET" to Environment "labUrl" appending Input "batch" and reads JSON
     Then Produce with JSONata
       """
       { "batch": input.batch, "labStatus": steps.lab.body.labStatus }

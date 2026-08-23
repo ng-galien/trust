@@ -20,13 +20,14 @@ La projection est une expression <Term id="jsonata">JSONata</Term> dans une doc 
 
 ## Ce que voit l'expression
 
-Trois racines, et rien d'autre :
+Quatre racines, et rien d'autre :
 
 | Racine | Contenu | Profondeur |
 | --- | --- | --- |
 | `input.<name>` | les valeurs d'Input validées | un niveau (`input.project` ; `input.a.b` est refusé) |
 | `environment.<name>` | les valeurs d'Environment | un niveau |
 | `steps.<stepName>.<result>` | le résultat de l'étape de ce nom | voir ci-dessous |
+| `execution.id` | l'identifiant stable de cette exécution d'Opération admise | exactement `id` |
 
 Résultats d'étapes, par sorte d'étape :
 
@@ -36,7 +37,7 @@ Résultats d'étapes, par sorte d'étape :
 | File `as Text` | `relativePath`, `content` | non |
 | File `as JSON` | `relativePath`, `content` | `content` oui — `steps.manifest.content.name` |
 | HTTP `as Text` | `status`, `headers`, `body` | non |
-| HTTP `as JSON` (GET et POST) | `status`, `headers`, `body` | `body` oui — `steps.issue.body.summary` |
+| HTTP `and reads JSON` (toute méthode) | `status`, `headers`, `body` | `body` oui — `steps.issue.body.summary` |
 
 Les étapes sont désignées **par nom**, jamais par position.
 
@@ -49,8 +50,9 @@ surface de référence générée suivante :
 
 Refusé : les fonctions absentes de cette table (dont `$now` et `$eval`), les lambdas, la chaîne `~>`,
 les expressions régulières, les opérateurs de transformation, les jokers et descendants, les
-constructeurs de tableau `[…]`, le moins unaire, les filtres de chemin et sélecteurs d'index
-(`items[0]`, `items[status = "ok"]`), la liaison de variables.
+constructeurs de tableau `[…]`, le moins unaire, les sélecteurs d'index (`items[0]`) et la liaison de
+variables. Les filtres fixes tels que `items[status = "ok"]` sont acceptés ; leurs chemins restent
+soumis au même sous-ensemble fermé.
 
 <Callout kind="note" title="Pourquoi un sous-ensemble">
   La projection fait partie de ce qui rend un Fact digne de confiance : elle doit faire la même chose sur le Runner et dans Simuler, terminer, et être lisible en revue. Le calcul qui n'y tient pas appartient au système externe (un script, un endpoint) dont l'Opération lit ensuite le résultat.
@@ -92,7 +94,7 @@ constructeurs de tableau `[…]`, le moins unaire, les filtres de chemin et sél
 | --- | --- |
 | `Produce with JSONata is invalid: …` | erreur de syntaxe JSONata |
 | `Produce uses unsupported JSONata form "…"` / `… function "$…"` / `… operator "…"` / `… unary operator` | hors du sous-ensemble |
-| `Produce does not allow dynamic JSONata path stages` | un filtre ou un sélecteur d'index sur un chemin |
+| `Produce allows only fixed JSONata filter path stages` | un sélecteur d'index ou une autre étape de chemin dynamique |
 | `Produce with JSONata must return one object literal` · `… must use fixed field names` | mauvais nœud de sommet |
 | `Produce fields must be exactly: …` | l'ensemble des clés diffère des champs produits |
 | `Produce references unknown root "…"` / `unknown Operation step "…"` / `unknown <kind> result "…"` / `unknown Input field "…"` / `unknown Environment field "…"` | le nom n'existe pas |

@@ -15,7 +15,7 @@ Feature: Record one simulated food batch release
       | releaseStatus | string    | one         | enum "released", "rejected"  |
 
   Scenario: Run
-    When HTTP "release" posts Input as JSON to Environment "releaseUrl" and reads JSON
+    When HTTP "release" sends "POST" to Environment "releaseUrl" with Input as JSON body and reads JSON
     Then Produce with JSONata
       """
       { "batch": input.batch, "releaseStatus": steps.release.body.releaseStatus }
