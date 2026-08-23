@@ -15,7 +15,7 @@ import { TextInput } from "../../ui/controls.js";
 import { blankObject, ListEditor, SchemaForm } from "../../ui/schema.js";
 import { Expert } from "../../ui/expert.js";
 import { ErrorBox } from "../../ui/states.js";
-import { CheckLine } from "./plan-overlay.js";
+import { CheckLine } from "./plan-checklist.js";
 
 /* Rehearsal cockpit of a dry-run, docked beside every view of the Plan: the operator plays the agent.
    1. Declare the dynamic context (the roles an agent declares) — same closed operation as MCP.

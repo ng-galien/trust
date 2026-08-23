@@ -1,5 +1,7 @@
 import { expect, test } from "@playwright/test";
 
+import { runtimeRpc } from "./support/runtime.js";
+
 /* The interface keeps Operations, Procedures, Plans and Checks connected, in operator mode (default) and expert mode. */
 
 test("the interface keeps Operations, Procedures, Plans and Checks connected", async ({ page }) => {
@@ -20,7 +22,7 @@ test("the interface keeps Operations, Procedures, Plans and Checks connected", a
   await expect(page.locator("#plan-title")).toHaveText("interface-acceptance");
   await page.getByRole("button", { name: /repository status/ }).first().click();
   await expect(page).toHaveURL(/sel=check/);
-  await expect(page.getByRole("button", { name: "Close the Check details" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Details of repository status" })).toBeVisible();
 
   await page.getByRole("button", { name: "Use dark theme" }).click();
   await expect(page.locator("html")).toHaveClass(/dark/);
@@ -56,14 +58,14 @@ test("the Operation views render the unified HTTP request contract", async ({ pa
   await expect(page.getByText("200–299").first()).toBeVisible();
 });
 
-test("the Plan source identifies an omitted optional declaration without inventing a parent wait", async ({ page, request }) => {
+test("the Plan keeps an omitted each branch visible and expands it without reloading", async ({ page, request }) => {
   const source = `# language: en
 @trust-dsl:1 @procedure:optional-ui-declaration @version:1.0.0
 Feature: Show an optional agent declaration
 
   Background: Plan context
     Given one reference "workspace"
-    And one reference "optional project" declared optionally by agent
+    And many reference "optional project" declared optionally by agent
 
   @scenario:workspace
   Scenario: Read the workspace
@@ -73,6 +75,16 @@ Feature: Show an optional agent declaration
       """js
       fact.headRevision !== "" ||
       fail("the workspace head is unavailable")
+      """
+
+  @scenario:optional-projects
+  Scenario: Read every optional project
+    Then Check "optional project head" runs Operation "git.head-read"
+        on each "optional project" as Input "project"
+        and must establish "every optional project head is readable"
+      """js
+      fact.headRevision !== "" ||
+      fail("an optional project head is unavailable")
       """
 `;
   await runtimeRpc(request, "procedure.publish", { source, sourceName: "optional-ui-declaration.feature" });
@@ -86,20 +98,33 @@ Feature: Show an optional agent declaration
   });
 
   await page.goto("/plans/optional-ui-declaration?tab=source");
-  const optionalLine = page.locator(".monaco-editor .view-line").filter({ hasText: "optional project" });
+  const optionalLine = page.locator(".monaco-editor .view-line").filter({ hasText: 'many reference "optional project"' });
   await expect(optionalLine).toContainText("optional — not declared");
   await expect(optionalLine).not.toContainText("waits for its parent");
-});
 
-async function runtimeRpc(
-  request: Parameters<Parameters<typeof test>[2]>[0]["request"],
-  method: string,
-  params: unknown,
-): Promise<unknown> {
-  const response = await request.post("http://127.0.0.1:4390/rpc", {
-    data: { jsonrpc: "2.0", id: method, method, params },
+  await page.getByRole("tab", { name: "Checklist" }).click();
+  await expect(page.getByText("optional project head", { exact: true })).toBeVisible();
+  await expect(page.getByText("for each optional project", { exact: true })).toBeVisible();
+  await expect(page.getByText("0 instances", { exact: true })).toBeVisible();
+  await expect(page.getByText("No instances", { exact: true })).toHaveCount(2);
+
+  await runtimeRpc(request, "plan.declarations.replace", {
+    contract: "trust.plan-declaration-replacement-request@1",
+    plan: "optional-ui-declaration",
+    expectedRevision: 1,
+    declarations: { "optional project": ["payment-api"] },
   });
-  const payload = await response.json() as { result?: unknown; error?: { message: string } };
-  if (payload.error) throw new Error(`${method}: ${payload.error.message}`);
-  return payload.result;
-}
+  await expect(page.getByText("1 instance", { exact: true })).toBeVisible();
+  const paymentApi = page.getByRole("button", { name: /payment-api/ });
+  await expect(paymentApi).toHaveAccessibleName('"payment-api" optional project · git.head-read Next Check');
+
+  await runtimeRpc(request, "plan.declarations.replace", {
+    contract: "trust.plan-declaration-replacement-request@1",
+    plan: "optional-ui-declaration",
+    expectedRevision: 2,
+    declarations: { "optional project": ["payment-api", "payment-worker"] },
+  });
+  await expect(page.getByText("2 instances", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: /payment-api/ })).toHaveCount(1);
+  await expect(page.getByRole("button", { name: /payment-worker/ })).toHaveCount(1);
+});

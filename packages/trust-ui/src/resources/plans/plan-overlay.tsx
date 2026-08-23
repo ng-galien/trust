@@ -1,6 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { parseGherkin, tokenizeSentence } from "@trust/gherkin";
-import { ArrowDown, ArrowUp, CheckCircle2, ChevronRight, FileCode2, FlaskConical, History, ListChecks, LockKeyhole, Network, Pause, Play, RotateCcw, Server, Trash2, Workflow, XCircle } from "lucide-react";
+import { ChevronRight, FileCode2, FlaskConical, History, ListChecks, LockKeyhole, Network, RotateCcw, Server, Trash2, Workflow, XCircle } from "lucide-react";
 import type { TFunction } from "i18next";
 import { type ReactNode, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -9,12 +9,12 @@ import { useLocation, useNavigate, useParams } from "react-router";
 import { cx, plural, relativeTime } from "../../lib/format.js";
 import { useCurrentEnvironment } from "../../lib/environment.js";
 import { mutationError, mutationErrorDetails, useClosePlan, useRemovePlan, useResetPlan } from "../../lib/mutations.js";
-import { useCheck, usePlan, useProcedures, useRuntime } from "../../lib/runtime-context.js";
+import { usePlan, useProcedures, useRuntime } from "../../lib/runtime-context.js";
 import type { CompiledProcedure, PlanCheck, PlanMode, PlanView } from "../../types.js";
-import { Badge, StatusBadge } from "../../ui/badge.js";
-import { Button, IconButton } from "../../ui/button.js";
+import { Badge } from "../../ui/badge.js";
+import { Button } from "../../ui/button.js";
 import { type EditorDecoration, GherkinEditor } from "../../gherkin-editor.js";
-import { type ChecklistOrder, updatePreferences, useExpert, usePreference, useResolvedTheme } from "../../lib/preferences.js";
+import { updatePreferences, useExpert, usePreference, useResolvedTheme } from "../../lib/preferences.js";
 import { ConfirmDialog } from "../../ui/confirm.js";
 import { Description } from "../../ui/description.js";
 import { Expert } from "../../ui/expert.js";
@@ -23,6 +23,7 @@ import { useCloseTo, useOrigin } from "../shared/origin.js";
 import { stripEphemeral, useOverlayViewState } from "../shared/overlay-state.js";
 import { ResourceOverlay } from "../shared/resource-overlay.js";
 import { ProcedureGraph } from "../procedures/procedure-graph.js";
+import { PlanChecklist } from "./plan-checklist.js";
 import { PlanCockpit } from "./plan-console.js";
 import { PlanEngage } from "./plan-engage.js";
 import { orderedChecks } from "./model.js";
@@ -153,7 +154,7 @@ function PlanItem({ slug, planMode, base, onClose, listSearch }: { slug: string;
           {tab === "checklist" ? (
             <div className="flex h-full min-h-0 flex-col">
               <PlanSummaryStrip plan={ordered} compiled={compiled} onSelectCheck={(uri) => setSel(`check:${uri}`)} />
-              <div className="min-h-0 flex-1"><PlanChecks plan={ordered} compiled={compiled} selected={sel} onSelect={setSel} /></div>
+              <div className="min-h-0 flex-1"><PlanChecklist plan={ordered} compiled={compiled} selected={sel} onSelect={setSel} /></div>
             </div>
           ) : null}
           {tab === "graph" ? (
@@ -209,132 +210,6 @@ function PlanSummaryStrip({ plan, compiled, onSelectCheck }: { plan: PlanView; c
             <span className="text-muted"> — {plan.latestQualification.reason}</span>
           </p>
         ) : null}
-      </section>
-    </div>
-  );
-}
-
-function PlanChecks({ plan, compiled, selected, onSelect }: { plan: PlanView; compiled: CompiledProcedure | undefined; selected: string | undefined; onSelect: (id: string | undefined) => void }) {
-  const { t } = useTranslation();
-  const selectedUri = selected?.startsWith("check:") ? selected.slice("check:".length) : undefined;
-  // Two readings of the same Procedure order: beginning first, or latest Scenario first.
-  const order = usePreference("planChecklistOrder");
-  const grouped = groupScenarios(plan.checks, compiled);
-  const scenarios = order === "reverse" ? [...grouped].reverse() : grouped;
-  const toggleOrder = () => updatePreferences({ planChecklistOrder: (order === "forward" ? "reverse" : "forward") satisfies ChecklistOrder });
-  return (
-    <div className="flex h-full min-h-0 flex-col">
-      <div className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-1">
-        <span className="kicker">{t("plans.checklist.title")}</span>
-        <span className="text-caption text-faint">{t("plans.checklist.satisfiedRatio", { satisfied: plan.satisfiedChecks, total: plan.checks.length })}</span>
-        <IconButton size="sm" className="ml-auto" label={t(`plans.checklist.order.${order}`)} onClick={toggleOrder}>
-          {order === "forward" ? <ArrowDown size={15} /> : <ArrowUp size={15} />}
-        </IconButton>
-      </div>
-      <ul className="flex min-h-0 flex-1 flex-col overflow-y-auto" data-doc="plan.checklist">
-        {scenarios.map((scenario) => (
-          <li key={scenario.slug} className={cx("relative border-b border-border pl-7", scenario.satisfied === scenario.total && "text-muted")}>
-            <span className="absolute inset-y-0 left-3 w-px bg-border" aria-hidden />
-            {scenario.actionable ? (
-              <span className="absolute left-[5px] top-2.5 flex h-4 w-4 items-center justify-center rounded-full bg-accent text-accent-contrast shadow-sm" aria-label={t("plans.checklist.current")} title={t("plans.checklist.current")}>
-                <ChevronRight size={12} strokeWidth={3} />
-              </span>
-            ) : null}
-            <div className={cx("flex items-center gap-2 bg-surface-2 px-3 py-2", scenario.actionable && "bg-accent-soft/60 ring-1 ring-inset ring-accent/20")}>
-              <ScenarioStateIcon scenario={scenario} />
-              <span className="min-w-0 flex-1 truncate text-body-lg font-medium text-text" title={scenario.title}>{scenario.title}</span>
-              <Expert><span className="mono shrink-0 text-caption text-faint">{scenario.slug}</span></Expert>
-              <span className="shrink-0 text-caption text-faint">{t("plans.checklist.satisfiedRatio", { satisfied: scenario.satisfied, total: scenario.total })}</span>
-            </div>
-            {scenario.groups.map((group) => (
-              <div key={group.key} className={cx("border-t border-border first:border-t-0", scenario.satisfied === scenario.total && "opacity-65")}>
-                {group.checks.length > 1 ? (
-                  <div className="flex items-baseline gap-2 bg-bg px-3 py-1.5 text-label">
-                    <span className="mono font-medium">{group.checks[0]!.name}</span>
-                    <span className="text-muted">{t("plans.checklist.timesOnEach", { count: group.checks.length })} <span className="mono text-text">{group.checks[0]!.target.role}</span></span>
-                    <span className="ml-auto text-faint">{t("plans.checklist.satisfiedRatio", { satisfied: group.checks.filter((check) => check.state === "SATISFIED").length, total: group.checks.length })}</span>
-                  </div>
-                ) : null}
-                {group.checks.map((entry) => (
-                  <div key={entry.checkUri} className={group.checks.length > 1 ? "border-t border-border pl-4" : ""}>
-                    <CheckLine check={entry} selected={entry.checkUri === selectedUri} onClick={() => onSelect(entry.checkUri === selectedUri ? undefined : `check:${entry.checkUri}`)} />
-                    {entry.checkUri === selectedUri ? (
-                      <div className="border-t border-border bg-bg px-10 py-3" role="region" aria-label={t("plans.checklist.checkDetails", { check: entry.name })}>
-                        <CheckDetail checkUri={entry.checkUri} />
-                      </div>
-                    ) : null}
-                  </div>
-                ))}
-              </div>
-            ))}
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
-}
-
-function ScenarioStateIcon({ scenario }: { scenario: { satisfied: number; total: number; actionable: boolean; rejected: boolean } }) {
-  const { t } = useTranslation();
-  const state = scenario.satisfied === scenario.total ? "satisfied" : scenario.rejected ? "notValidated" : scenario.actionable ? "next" : "waiting";
-  const label = t(`plans.checkLine.${state}`);
-  return (
-    <span className="flex w-4 shrink-0 justify-center" aria-label={label} title={label}>
-      {state === "satisfied" ? <CheckCircle2 size={15} className="text-success" /> : state === "notValidated" ? <XCircle size={15} className="text-danger" /> : state === "next" ? <Play size={14} className="fill-current text-accent" /> : <Pause size={14} className="fill-current text-muted" />}
-    </span>
-  );
-}
-
-export function CheckLine({ check, selected, compact = false, onClick }: { check: PlanCheck; selected?: boolean; compact?: boolean; onClick: () => void }) {
-  const { t } = useTranslation();
-  return (
-    <button type="button" onClick={onClick} aria-expanded={compact ? undefined : Boolean(selected)} className={`flex w-full items-start gap-3 px-3 py-2 text-left hover:bg-surface-2 ${selected ? "bg-accent-soft" : ""}`}>
-      <span className="min-w-0 flex-1">
-        <span className="mono text-body-lg font-medium">{check.name}</span>
-        <span className="block truncate text-label text-muted">{t("plans.checkLine.on")} <span className="mono text-text">{check.target.role}</span> = <span className="mono">{JSON.stringify(check.target.value)}</span></span>
-      </span>
-      {compact ? null : <ChevronRight size={15} className={cx("mt-0.5 shrink-0 text-faint transition-transform", selected && "rotate-90")} />}
-    </button>
-  );
-}
-
-function CheckDetail({ checkUri }: { checkUri: string }) {
-  const { t } = useTranslation();
-  const check = useCheck(checkUri);
-  if (!check.data) return <LoadingState label={t("plans.checkDetail.reading")} />;
-  const view = check.data;
-  return (
-    <div className="flex flex-col gap-4 text-body">
-      <Expert><span className="mono block break-all text-meta text-faint">{view.checkUri}</span></Expert>
-      <dl className="grid grid-cols-[max-content_minmax(0,1fr)] gap-x-4 gap-y-1">
-        <dt className="kicker">{t("plans.checkDetail.operation")}</dt><dd className="mono truncate text-accent">{view.operation}</dd>
-        <dt className="kicker">{t("plans.checkDetail.target")}</dt><dd className="mono text-muted">{view.target.role} = {JSON.stringify(view.target.value)}</dd>
-      </dl>
-      <section>
-        <span className="kicker">{t("plans.checkDetail.inputs")}</span>
-        <dl className="mt-1 grid grid-cols-[max-content_minmax(0,1fr)] gap-x-4 gap-y-1 rounded-(--radius-2) border border-border bg-surface px-3 py-2">
-          {Object.entries(view.inputs).map(([key, value]) => <div key={key} className="contents"><dt className="mono">{key}</dt><dd className="mono break-all text-muted">{JSON.stringify(value)}</dd></div>)}
-        </dl>
-      </section>
-      <section>
-        <span className="kicker">{t("plans.checkDetail.history")}</span>
-        {view.history.length === 0 ? <p className="mt-1 text-muted">{t("plans.checkDetail.noVerdict")}</p> : null}
-        <ul className="mt-1 flex flex-col gap-1">{[...view.history].reverse().map((entry) => (
-          <li key={entry.snapshotId} className="rounded-(--radius-2) border border-border bg-surface px-3 py-2">
-            <div className="flex flex-wrap items-center gap-2"><StatusBadge state={entry.verdict} /><span>{entry.reason}</span><span className="ml-auto text-caption text-faint">{relativeTime(entry.calculatedAt)}</span></div>
-            <Expert><span className="mono mt-1 block text-caption text-faint">{entry.reasonCode} · {plural(entry.factIds.length, "fact")}</span></Expert>
-          </li>
-        ))}</ul>
-      </section>
-      <section>
-        <span className="kicker">{t("plans.checkDetail.attempts")}</span>
-        {view.attempts.length === 0 ? <p className="mt-1 text-muted">{t("plans.checkDetail.noAttempt")}</p> : null}
-        <ul className="mt-1 flex flex-col gap-2">{[...view.attempts].reverse().map((attempt) => (
-          <li key={attempt.handle} className="rounded-(--radius-2) border border-border bg-surface px-3 py-2">
-            <div className="flex flex-wrap items-center gap-2"><span className="mono font-medium">{attempt.attemptKey}</span><Badge>{attempt.state}</Badge><span className="ml-auto text-caption text-faint">{t("plans.checkDetail.admitted", { when: relativeTime(attempt.admittedAt) })}</span></div>
-            {attempt.facts.length ? <div className="mt-2"><span className="kicker">{t("plans.checkDetail.facts")}</span><ul className="mt-1 flex flex-col gap-1">{attempt.facts.map((fact) => <li key={fact.id}><pre className="overflow-x-auto rounded-(--radius-1) bg-bg px-2 py-1 text-caption">{JSON.stringify(fact.values ?? {}, null, 2)}</pre></li>)}</ul></div> : null}
-          </li>
-        ))}</ul>
       </section>
     </div>
   );
@@ -461,36 +336,6 @@ function ResizeHandle({ width, onResize }: { width: number; onResize: (width: nu
       }}
     />
   );
-}
-
-/** Consecutive instances of one Check (an "each" expansion) form a group; single Checks are groups of one. */
-function groupExpanded(checks: readonly PlanCheck[]): Array<{ key: string; checks: PlanCheck[] }> {
-  const groups: Array<{ key: string; checks: PlanCheck[] }> = [];
-  for (const check of checks) {
-    const last = groups[groups.length - 1];
-    if (last && last.checks[0]!.name === check.name && last.checks[0]!.scenario === check.scenario) last.checks.push(check);
-    else groups.push({ key: `${check.scenario}:${check.name}`, checks: [check] });
-  }
-  return groups;
-}
-
-function groupScenarios(checks: readonly PlanCheck[], compiled: CompiledProcedure | undefined): Array<{ slug: string; title: string; groups: Array<{ key: string; checks: PlanCheck[] }>; satisfied: number; total: number; actionable: boolean; rejected: boolean }> {
-  const titles = new Map(compiled?.scenarios.map((scenario) => [scenario.slug, scenario.title]) ?? []);
-  const scenarios: Array<{ slug: string; title: string; checks: PlanCheck[] }> = [];
-  for (const check of checks) {
-    const last = scenarios[scenarios.length - 1];
-    if (last?.slug === check.scenario) last.checks.push(check);
-    else scenarios.push({ slug: check.scenario, title: titles.get(check.scenario) ?? check.scenario, checks: [check] });
-  }
-  return scenarios.map((scenario) => ({
-    slug: scenario.slug,
-    title: scenario.title,
-    groups: groupExpanded(scenario.checks),
-    satisfied: scenario.checks.filter((check) => check.state === "SATISFIED").length,
-    total: scenario.checks.length,
-    actionable: scenario.checks.some((check) => check.actionable),
-    rejected: scenario.checks.some((check) => check.state === "OPEN" && check.latestVerdict === "NOT_VALIDATED"),
-  }));
 }
 
 function checkName(plan: PlanView, uri: string): string {
