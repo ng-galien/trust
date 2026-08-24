@@ -1,58 +1,92 @@
 default_rules = false
 
+[rules.taxonomy]
+patterns = ["dependency"]
+components = ["gherkin", "operation", "procedure", "language-server", "runtime", "ui", "editor", "authority"]
+
+# Cross-package imports use the npm specifier (`@trust/...`) and are indexed as
+# `external_pkg:` monikers, never as workspace `dir:` paths. Every *_target alias
+# therefore matches both forms; a rule written against `dir:` alone is vacuous
+# (ng-galien/code-moniker#20 tracks exact matching of scoped package names).
 [aliases]
 gherkin_source = "source ~ '**/dir:packages/dir:trust-gherkin/**'"
 operation_source = "source ~ '**/dir:packages/dir:trust-operation/**'"
 procedure_source = "source ~ '**/dir:packages/dir:trust-procedure/**'"
 authority_source = "$gherkin_source OR $operation_source OR $procedure_source"
-gherkin_target = "target ~ '**/dir:packages/dir:trust-gherkin/**'"
-operation_target = "target ~ '**/dir:packages/dir:trust-operation/**'"
-procedure_target = "target ~ '**/dir:packages/dir:trust-procedure/**'"
-lsp_source = "source ~ '**/dir:packages/dir:trust-language-server/**'"
-lsp_target = "target ~ '**/dir:packages/dir:trust-language-server/**'"
-runtime_target = "target ~ '**/dir:packages/dir:trust-runtime/**'"
-ui_target = "target ~ '**/dir:packages/dir:trust-ui/**'"
+language_server_source = "source ~ '**/dir:packages/dir:trust-language-server/**'"
+runtime_source = "source ~ '**/dir:packages/dir:trust-runtime/**'"
+ui_source = "source ~ '**/dir:packages/dir:trust-ui/**' OR source ~ '**/dir:apps/dir:trust-web/**'"
+ui_docs_highlight_source = "source ~ '**/dir:docs/module:highlight/**' OR source ~ '**/dir:docs/module:highlight'"
+editor_source = "source ~ '**/module:gherkin-editor/**' OR source ~ '**/module:gherkin-editor' OR source ~ '**/module:lsp-client/**' OR source ~ '**/module:lsp-client'"
+
+gherkin_target = "target ~ '**/dir:packages/dir:trust-gherkin/**' OR target ~ '**/external_pkg:/@trust.gherkin/**'"
+operation_target = "target ~ '**/dir:packages/dir:trust-operation/**' OR target ~ '**/external_pkg:/@trust.operation/**'"
+procedure_target = "target ~ '**/dir:packages/dir:trust-procedure/**' OR target ~ '**/external_pkg:/@trust.procedure/**'"
+language_server_target = "target ~ '**/dir:packages/dir:trust-language-server/**' OR target ~ '**/external_pkg:/@trust.language-server/**'"
+runtime_target = "target ~ '**/dir:packages/dir:trust-runtime/**' OR target ~ '**/external_pkg:/@trust.runtime/**'"
+ui_target = "target ~ '**/dir:packages/dir:trust-ui/**' OR target ~ '**/external_pkg:/@trust.ui/**'"
+authority_target = "$gherkin_target OR $operation_target OR $procedure_target"
+gherkin_downstream_target = "$operation_target OR $procedure_target OR $language_server_target OR $runtime_target OR $ui_target"
+operation_downstream_target = "$procedure_target OR $language_server_target OR $runtime_target OR $ui_target"
+procedure_downstream_target = "$language_server_target OR $runtime_target OR $ui_target"
+language_behavior_target = "target ~ '**/external_pkg:/@trust./*:/^(parseGherkin|tokenizeSentence|highlightGherkinSource|highlightExpressionSource|formatGherkinSource|analyzeOperation|analyzeProcedure|isExpressionIdentifierPart|isExpressionIdentifierStart|qualificationCompletionPath|expressionMember|SentenceCursor)$/'"
 
 [profiles.language-authority]
 enable = [
-  "^refs\\.gherkin-is-foundational$",
-  "^refs\\.operation-owns-operation-language$",
-  "^refs\\.procedure-owns-procedure-language$",
-  "^refs\\.language-server-is-an-adapter$",
-  "^refs\\.authorities-do-not-depend-on-ui$",
+  "^refs\\.gherkin-takes-no-downstream-dependency$",
+  "^refs\\.operation-takes-no-downstream-dependency$",
+  "^refs\\.procedure-takes-no-downstream-dependency$",
+  "^refs\\.only-runtime-takes-a-dependency-on-language-server$",
+  "^refs\\.authority-dependency-never-reaches-ui$",
+  "^refs\\.editor-dependency-on-authority-goes-through-language-server$",
+  "^refs\\.ui-takes-no-dependency-on-language-behavior$",
 ]
 
 [[refs.where]]
-id = "gherkin-is-foundational"
+id = "gherkin-takes-no-downstream-dependency"
 severity = "error"
-rationale = "The shared Gherkin parser, tokenizer, locations, formatter and highlighter cannot depend on product languages or adapters."
-expr = "$gherkin_source => NOT ($operation_target OR $procedure_target OR $lsp_target OR $runtime_target OR $ui_target)"
+rationale = "Layering is gherkin ← operation ← procedure ← language-server ← runtime/ui. The shared Gherkin parser, tokenizer, locations, formatter and highlighter sit at the bottom and cannot depend on product languages or adapters."
+expr = "$gherkin_source => NOT $gherkin_downstream_target"
 message = "The Gherkin authority must remain independent from product languages and adapters."
 
 [[refs.where]]
-id = "operation-owns-operation-language"
+id = "operation-takes-no-downstream-dependency"
 severity = "error"
-rationale = "The Operation compiler and language descriptor are authoritative and cannot depend on Procedure, LSP, runtime or UI implementations."
-expr = "$operation_source => NOT ($procedure_target OR $lsp_target OR $runtime_target OR $ui_target)"
+rationale = "The Operation compiler and language descriptor are authoritative; downstream of them sit Procedure, the LSP adapter, the runtime and the UI, and depending on any of those would invert the authority."
+expr = "$operation_source => NOT $operation_downstream_target"
 message = "The Operation language authority crosses an outer boundary."
 
 [[refs.where]]
-id = "procedure-owns-procedure-language"
+id = "procedure-takes-no-downstream-dependency"
 severity = "error"
-rationale = "The Procedure compiler, expression compiler and evaluator are authoritative and cannot depend on LSP, runtime or UI implementations."
-expr = "$procedure_source => NOT ($lsp_target OR $runtime_target OR $ui_target)"
+rationale = "The Procedure compiler, expression compiler and evaluator may build on Gherkin and Operation, never on the LSP adapter, the runtime or the UI."
+expr = "$procedure_source => NOT $procedure_downstream_target"
 message = "The Procedure language authority crosses an outer boundary."
 
 [[refs.where]]
-id = "language-server-is-an-adapter"
+id = "only-runtime-takes-a-dependency-on-language-server"
 severity = "error"
-rationale = "No compiler, runtime or UI implementation may import the LSP adapter as a language authority."
-expr = "(NOT $lsp_source) => NOT $lsp_target"
-message = "Only the language-server package may depend on its adapter implementation."
+rationale = "The runtime hosts the LSP WebSocket endpoint and is the adapter's only consumer; compilers and UI must not use the adapter as a language authority."
+expr = "(NOT ($language_server_source OR $runtime_source)) => NOT $language_server_target"
+message = "Only the language-server package and its runtime host may depend on the adapter implementation."
 
 [[refs.where]]
-id = "authorities-do-not-depend-on-ui"
+id = "authority-dependency-never-reaches-ui"
 severity = "error"
 rationale = "Grammar, compilation and evaluation never depend on presentation code."
 expr = "$authority_source => NOT $ui_target"
 message = "A language authority depends on UI code."
+
+[[refs.where]]
+id = "editor-dependency-on-authority-goes-through-language-server"
+severity = "error"
+rationale = "Completion, formatting, folding, semantic tokens and diagnostics reach the editor exclusively over the LSP protocol; the Monaco surface (gherkin-editor) and its client (lsp-client) hold zero language knowledge. The editor drifted once into importing isExpressionIdentifierPart to compute replace ranges; ranges are now server-owned textEdits."
+expr = "$editor_source => NOT ($authority_target OR $language_server_target)"
+message = "The editor surface must obtain language behavior from the language server, not by importing an authority."
+
+[[refs.where]]
+id = "ui-takes-no-dependency-on-language-behavior"
+severity = "error"
+rationale = "Parsing, tokenizing and highlighting are language behavior owned by the authorities; the UI consumes them through the language server or the compiled models (plan-overlay hydrates from compiled locations since 2026-08-24). Single decided exemption: docs/highlight reuses the LSP's own highlight engine for static documentation pages — same engine, no duplication, and a live server cannot serve the standalone docs bundle."
+expr = "($ui_source AND NOT $ui_docs_highlight_source) => NOT $language_behavior_target"
+message = "UI code invokes language behavior directly instead of consuming the language server or compiled models."

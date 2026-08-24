@@ -300,6 +300,7 @@ function compileProcedureInternal(
           location: check.qualification.location,
         },
         successReason: check.successReason,
+        ...(check.location ? { location: check.location } : {}),
       });
     }
   }
@@ -320,6 +321,7 @@ function compileProcedureInternal(
             : provider
               ? { kind: "operation-field", check: provider.check, field: provider.field }
               : { kind: "plan-input" },
+      ...(role.location ? { location: role.location } : {}),
     };
   });
   validateOptionalRoleDependencies(roles, roleByName, sourceName);
@@ -366,6 +368,7 @@ function compileProcedureInternal(
     title: scenario.title,
     dependencies: scenario.dependencies,
     checks: scenario.checks.map((check) => check.name),
+    ...(scenario.location ? { location: scenario.location } : {}),
   }));
   const body = { procedure, version, title: feature.name, intentChaining, operations, roles, scenarios, checks: compiledChecks };
   const semanticBody = {
@@ -374,7 +377,9 @@ function compileProcedureInternal(
       ...operation,
       definition: operationSemantics(definition),
     })),
-    checks: compiledChecks.map((check) => ({
+    roles: roles.map(({ location: _location, ...role }) => role),
+    scenarios: scenarios.map(({ location: _location, ...scenario }) => scenario),
+    checks: compiledChecks.map(({ location: _location, ...check }) => ({
       ...check,
       qualification: { guards: check.qualification.guards },
     })),

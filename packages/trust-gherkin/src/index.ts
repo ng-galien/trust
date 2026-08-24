@@ -8,6 +8,7 @@ export {
   continuationLineIndexes,
   isContinuationLine,
   joinContinuations,
+  splitLines,
 } from "./continuation.js";
 export { formatGherkinSource, type FormatOptions } from "./format.js";
 export { highlightExpressionSource, highlightGherkinSource } from "./highlight.js";

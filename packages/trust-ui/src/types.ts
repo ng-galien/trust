@@ -1,5 +1,11 @@
 export type JsonObject = Record<string, unknown>;
 
+/** 1-based position in a compiled source; presentational only. */
+export interface SourceLocation {
+  line: number;
+  column?: number;
+}
+
 export interface OperationStep {
   name: string;
   type: "shell" | "http" | "file-read";
@@ -42,6 +48,7 @@ export interface ProcedureCheck {
     location: { line: number; column: number };
   };
   successReason: string;
+  location?: SourceLocation;
 }
 
 export type JsonLogicRule = null | boolean | number | string | JsonLogicRule[] | { [operator: string]: JsonLogicRule };
@@ -51,6 +58,7 @@ export interface ProcedureScenario {
   title: string;
   dependencies: string[];
   checks: string[];
+  location?: SourceLocation;
 }
 
 export interface CompiledProcedure {
@@ -62,7 +70,7 @@ export interface CompiledProcedure {
   source: string;
   definitionDigest: string;
   operations: Array<{ operation: string; version: string; digest: string; definition: CompiledOperation }>;
-  roles: Array<{ name: string; type: string; cardinality: string; source: JsonObject }>;
+  roles: Array<{ name: string; type: string; cardinality: string; source: JsonObject; location?: SourceLocation }>;
   scenarios: ProcedureScenario[];
   checks: ProcedureCheck[];
 }

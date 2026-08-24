@@ -3,7 +3,6 @@ import { useEffect, useRef, useState } from "react";
 import { WrapText } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { editor, IDisposable } from "monaco-editor";
-import { isExpressionIdentifierPart } from "@trust/gherkin";
 
 import { monacoCompletionKind, monacoMarker, TrustLspClient } from "./lsp-client.js";
 import { IconButton } from "./ui/button.js";
@@ -148,6 +147,15 @@ export function GherkinEditor({ kind, value, onChange, theme, languageServerUrl,
         triggerCharacters: [" ", '"', ".", "$", "@"],
         provideCompletionItems: async (model: editor.ITextModel, position: { lineNumber: number; column: number }) => {
           const completions = await client.complete(position.lineNumber - 1, position.column - 1).catch(() => []);
+          // Replace ranges are the server's decision: completions carry a textEdit whenever the
+          // prefix matters. The fallback is plain Monaco word detection, no language knowledge.
+          const word = model.getWordUntilPosition(position);
+          const wordRange = {
+            startLineNumber: position.lineNumber,
+            endLineNumber: position.lineNumber,
+            startColumn: word.startColumn,
+            endColumn: word.endColumn,
+          };
           return {
             suggestions: completions.map((completion) => ({
               label: completion.label,
@@ -160,7 +168,7 @@ export function GherkinEditor({ kind, value, onChange, theme, languageServerUrl,
                 startColumn: completion.textEdit.range.start.character + 1,
                 endLineNumber: completion.textEdit.range.end.line + 1,
                 endColumn: completion.textEdit.range.end.character + 1,
-              } : wordRange(model, position),
+              } : wordRange,
               ...(completion.insertTextFormat === 2 ? { insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet } : {}),
             })),
           };
@@ -295,15 +303,3 @@ export function defineThemes(monaco: Monaco) {
   define("trust-dark", "vs-dark");
 }
 
-function wordRange(model: editor.ITextModel, position: { lineNumber: number; column: number }) {
-  const word = model.getWordUntilPosition(position);
-  const prefix = model.getLineContent(position.lineNumber).slice(0, position.column - 1);
-  let start = prefix.length;
-  while (start > 0 && isExpressionIdentifierPart(prefix[start - 1]!)) start -= 1;
-  return {
-    startLineNumber: position.lineNumber,
-    endLineNumber: position.lineNumber,
-    startColumn: prefix[start] === "$" ? start + 1 : word.startColumn,
-    endColumn: word.endColumn,
-  };
-}

@@ -48,11 +48,19 @@ export interface ProcedureAnalysis {
   readonly diagnostics: readonly ProcedureDiagnostic[];
 }
 
+/** 1-based position in the compiled `source`; presentational, excluded from the digest. */
+export interface CompiledSourceLocation {
+  readonly line: number;
+  readonly column?: number;
+}
+
 export interface CompiledProcedureRole {
   readonly name: string;
   readonly type: ProcedureValueType;
   readonly cardinality: "one" | "many";
   readonly parents: readonly { readonly role: string; readonly each: boolean }[];
+  /** Position of the declaring Background step; absent for synthesised roles. */
+  readonly location?: CompiledSourceLocation;
   readonly source:
     | { readonly kind: "plan-input" }
     | { readonly kind: "agent-declaration"; readonly optional?: true }
@@ -112,6 +120,8 @@ export interface CompiledProcedureCheck {
   readonly materializes: readonly { readonly role: string; readonly field: string }[];
   readonly qualification: CompiledProcedureQualification;
   readonly successReason: string;
+  /** Position of the Check step. */
+  readonly location?: CompiledSourceLocation;
 }
 
 export interface CompiledProcedureScenario {
@@ -119,6 +129,8 @@ export interface CompiledProcedureScenario {
   readonly title: string;
   readonly dependencies: readonly string[];
   readonly checks: readonly string[];
+  /** Position of the Scenario line. */
+  readonly location?: CompiledSourceLocation;
 }
 
 export interface CompiledProcedureOperation {

@@ -17,9 +17,9 @@ import {
   type TextEdit,
 } from "vscode-languageserver/node";
 import { TextDocument } from "vscode-languageserver-textdocument";
-import type { GherkinDocument, Step } from "@cucumber/messages";
+import type { GherkinDocument, Step, TableRow } from "@cucumber/messages";
 
-import { GherkinSyntaxError, highlightGherkinSource, isExpressionIdentifierPart, parseGherkin, tokenizeSentence, type HighlightKind, type SentenceToken } from "@trust/gherkin";
+import { continuationLineIndexes, GherkinSyntaxError, highlightGherkinSource, isExpressionIdentifierPart, joinContinuations, parseGherkin, SentenceSyntaxError, splitLines, tokenizeSentence, type HighlightKind, type SentenceToken } from "@trust/gherkin";
 import { formatGherkinSource } from "@trust/gherkin/format";
 import {
   analyzeOperation,
@@ -189,58 +189,356 @@ function semanticType(kind: HighlightKind): number | undefined {
 }
 
 function completionItems(document: TextDocument, position: Position, kind: LanguageKind, operations: readonly CompiledOperation[]): CompletionItem[] {
-  const source = document.getText();
-  const offset = document.offsetAt(position);
-  const embedded = embeddedLanguageAt(source, position.line + 1);
+  const parsed = parseSource(document.getText());
+  const embedded = embeddedLanguageAt(parsed, position.line + 1);
   if (embedded === "js") return jsCompletions(document, position, operations);
   if (embedded === "jsonata") return jsonataCompletions(document, position);
-  return kind === "procedure"
-    ? procedureCompletions(source, position.line + 1, position.character, operations)
-    : operationCompletions(source);
+  return sentenceCompletions(document, parsed, position, kind, operations);
 }
 
-function procedureCompletions(source: string, line: number, character: number, operations: readonly CompiledOperation[]): CompletionItem[] {
-  const tokens = stepTokensAt(source, line);
-  const words = tokens.filter((token) => token.kind === "text").map((token) => token.value);
-  const physicalLine = source.split(/\r?\n/)[line - 1] ?? "";
-  const prefix = physicalLine.slice(0, character);
-  const suffix = physicalLine.slice(character);
-  const model = compileProcedureModel(source, operations);
-  const selectedOperation = operationForCheck(tokens, operations);
-  if (words.includes("Operation")) return operations.map((operation) => item(operation.operation, CompletionItemKind.Module, operation.title));
-  if (words.includes("Input") && selectedOperation) {
-    return Object.keys(selectedOperation.input.properties).map((name) => item(name, CompletionItemKind.Property, "Operation input"));
-  }
-  if (words.includes("on") || words.includes("using")) {
-    return (model?.roles ?? []).map((role) => item(role.name, CompletionItemKind.Variable, "Plan context role"));
-  }
-  if (words[0] === procedureLanguage.phrases.dependency) return (model?.scenarios ?? []).map((scenario) => item(scenario.slug, CompletionItemKind.Event, "Prerequisite Scenario"));
-  if (words.includes("field") && selectedOperation) {
-    return Object.keys(selectedOperation.produced.properties).map((name) => item(name, CompletionItemKind.Field, "Produced Fact field"));
-  }
-  if (/\bdeclared\s+$/.test(prefix) && words.includes("declared") && !words.includes("optionally")) {
-    return [{
-      ...item("optionally", CompletionItemKind.Keyword, "Optional agent declaration"),
-      insertText: /^\s*by\s+agent\b/.test(suffix) ? "optionally " : "optionally by agent",
-    }];
-  }
-  return [
-    snippet("Procedure feature", procedureLanguage.template),
-  ];
+/* Sentence completion is slot-based: the Gherkin AST locates the step under the cursor
+   (continuation lines included), the sentence tokenizer yields the tokens before the cursor,
+   and the token ending the prefix names the grammar slot being filled. Facts that feed the
+   slots (roles, scenario slugs, interface fields) come from the AST, not the compiled model,
+   so they stay available while the sentence being typed is still incomplete. */
+
+type Container = "background" | "scenario";
+
+interface Suggestion {
+  readonly label: string;
+  readonly kind: CompletionItemKind;
+  readonly detail: string;
+  readonly quoted?: boolean;
+  readonly insertText?: string;
 }
 
-function operationCompletions(source: string): CompletionItem[] {
-  const document = analyzeOperation({ source }).document;
-  return [
-    ...(document?.environment ?? []).map((field) => item(field.name, CompletionItemKind.Variable, "Operation environment")),
-    ...(document?.input ?? []).map((field) => item(field.name, CompletionItemKind.Variable, "Operation input")),
-    ...operationLanguage.environmentTypes.map((type) => item(type, CompletionItemKind.TypeParameter, "Environment type")),
-    ...operationLanguage.valueTypes.map((type) => item(type, CompletionItemKind.TypeParameter, "Operation value type")),
-    ...operationLanguage.cardinalities.map((cardinality) => item(cardinality, CompletionItemKind.EnumMember, "Cardinality")),
-    ...operationLanguage.formats.map((format) => item(format, CompletionItemKind.EnumMember, "Operation format")),
-    ...operationAuthoringSnippets.map(({ label, insertText }) => snippet(label, insertText)),
-    snippet("Operation feature", operationLanguage.template),
-  ];
+const keyword = (label: string, detail: string): Suggestion => ({ label, kind: CompletionItemKind.Keyword, detail });
+const quotedValue = (label: string, kind: CompletionItemKind, detail: string): Suggestion => ({ label, kind, detail, quoted: true });
+
+function sentenceCompletions(document: TextDocument, parsed: GherkinDocument | undefined, position: Position, kind: LanguageKind, operations: readonly CompiledOperation[]): CompletionItem[] {
+  const source = document.getText();
+  const line = position.line + 1;
+  if (!parsed?.feature) {
+    const language = kind === "operation" ? operationLanguage : procedureLanguage;
+    return source.trim() === "" ? [snippet(kind === "operation" ? "Operation feature" : "Procedure feature", language.template)] : [];
+  }
+  const cell = tableRowAt(parsed, line);
+  if (cell) return kind === "operation" ? operationTableCompletions(document, position, cell) : [];
+  const lines = splitLines(source);
+  const site = stepSiteAt(parsed, lines, line);
+  if (!site) return blockCompletions(parsed, line, kind, operations);
+  const prefix = sentencePrefixAt(lines, site.step, line, position.character);
+  if (prefix === undefined) return blockCompletions(parsed, line, kind, operations);
+  const tokens = prefixTokens(prefix);
+  if (!tokens) return [];
+  const lineSuffix = (lines[position.line] ?? "").slice(position.character);
+  const suggestions = kind === "procedure"
+    ? procedureSuggestions(site, tokens.tokens, parsed, operations, lineSuffix)
+    : operationSuggestions(site, tokens.tokens, source);
+  return suggestions.map(suggestionRenderer(document, position, tokens.inQuote));
+}
+
+interface StepSite { readonly step: Step; readonly container: Container; }
+
+function stepSiteAt(parsed: GherkinDocument, lines: readonly string[], line: number): StepSite | undefined {
+  for (const child of parsed.feature?.children ?? []) {
+    const scopes = [
+      [child.background?.steps ?? [], "background"],
+      [child.scenario?.steps ?? [], "scenario"],
+    ] as const;
+    for (const [steps, container] of scopes) for (const step of steps) {
+      if (step.location.line > line) break;
+      if (step.location.line === line) return { step, container };
+      if (continuationLineIndexes(lines, step.location.line - 1).includes(line - 1)) return { step, container };
+    }
+  }
+  return undefined;
+}
+
+/** The sentence text from the step keyword to the cursor: the source truncated at the cursor,
+    folded by the parser's own continuation rule so slot detection sees what the parser sees. */
+function sentencePrefixAt(lines: readonly string[], step: Step, line: number, character: number): string | undefined {
+  const textStart = (step.location.column ?? 1) - 1 + step.keyword.length;
+  if (line === step.location.line && character < textStart) return undefined;
+  const truncated = lines.slice(0, line);
+  truncated[line - 1] = (truncated[line - 1] ?? "").slice(0, character);
+  const folded = splitLines(joinContinuations(truncated.join("\n")))[step.location.line - 1] ?? "";
+  return folded.slice(textStart);
+}
+
+interface PrefixTokens { readonly tokens: readonly SentenceToken[]; readonly inQuote: boolean; }
+
+/** Tokenize the sentence prefix; an unclosed quote marks the cursor inside a quoted slot. */
+function prefixTokens(prefix: string): PrefixTokens | undefined {
+  try {
+    return { tokens: tokenizeSentence(prefix), inQuote: false };
+  } catch (error) {
+    if (!(error instanceof SentenceSyntaxError) || prefix[error.offset] !== '"') return undefined;
+    try {
+      return { tokens: tokenizeSentence(prefix.slice(0, error.offset)), inQuote: true };
+    } catch {
+      return undefined;
+    }
+  }
+}
+
+const lastText = (tokens: readonly SentenceToken[]): string | undefined => {
+  for (let index = tokens.length - 1; index >= 0; index -= 1) {
+    const token = tokens[index]!;
+    if (token.kind === "text") return token.value;
+  }
+  return undefined;
+};
+
+const firstWord = (tokens: readonly SentenceToken[]): string | undefined =>
+  tokens[0]?.kind === "text" ? tokens[0].value : undefined;
+
+function procedureSuggestions(site: StepSite, tokens: readonly SentenceToken[], parsed: GherkinDocument, operations: readonly CompiledOperation[], lineSuffix: string): Suggestion[] {
+  const facts = procedureFacts(parsed);
+  const roles = facts.roles.map((role) => quotedValue(role, CompletionItemKind.Variable, "Plan context role"));
+  const last = tokens[tokens.length - 1];
+  if (site.container === "background") {
+    if (!last) return procedureLanguage.cardinalities.map((cardinality) => keyword(cardinality, "Role cardinality"));
+    if (last.kind === "quoted") return [keyword("declared by agent", "Agent-declared role"), keyword("declared optionally by agent", "Optional agent-declared role"), keyword("fixed as", "Fixed role value"), keyword("for", "Parent role")];
+    if ((procedureLanguage.cardinalities as readonly string[]).includes(last.value)) return procedureLanguage.valueTypes.map((type) => ({ label: type, kind: CompletionItemKind.TypeParameter, detail: "Role value type" }));
+    switch (last.value) {
+      case "declared": {
+        const continued = /^\s*by\s+agent\b/.test(lineSuffix);
+        return [
+          { label: "optionally", kind: CompletionItemKind.Keyword, detail: "Optional agent declaration", insertText: continued ? "optionally " : "optionally by agent" },
+          ...(continued ? [] : [keyword("by agent", "Agent declaration")]),
+        ];
+      }
+      case "optionally": return [keyword("by agent", "Agent declaration")];
+      case "by": return [keyword("agent", "Agent declaration")];
+      case "fixed": return [keyword("as", "Fixed role value")];
+      case "for": return [keyword("each", "One instance per parent"), ...roles];
+      case "each": return roles;
+      default: return [];
+    }
+  }
+  if (!last) return [checkSnippetSuggestion(operations), dependencySnippetSuggestion(facts.scenarios)];
+  if (firstWord(tokens) === procedureLanguage.phrases.dependency) {
+    if (last.kind === "quoted") return [keyword("is validated", "Dependency sentence end")];
+    switch (last.value) {
+      case procedureLanguage.phrases.dependency: return facts.scenarios.map((slug) => quotedValue(slug, CompletionItemKind.Event, "Prerequisite Scenario"));
+      case "is": return [keyword("validated", "Dependency sentence end")];
+      default: return [];
+    }
+  }
+  const operation = operationForCheck(tokens, operations);
+  if (last.kind === "quoted") {
+    switch (lastText(tokens)) {
+      case procedureLanguage.phrases.check: return [keyword("runs Operation", "Names the Operation this Check runs")];
+      case "Operation": return [keyword("on", "Target role")];
+      case "on": case "each": case "all": case "using": return [keyword("as Input", "Binds the role to an Operation Input")];
+      case "Input": return [keyword("and must establish", "Success reason"), keyword("using", "Additional role binding"), keyword("and materializes", "Materializes a role from a produced field")];
+      case "materializes": return [keyword("from field", "Source produced field")];
+      case "field": return [keyword("and must establish", "Success reason")];
+      default: return [];
+    }
+  }
+  switch (last.value) {
+    case "runs": return [keyword("Operation", "Names the Operation this Check runs")];
+    case "Operation": return operations.map((candidate) => quotedValue(candidate.operation, CompletionItemKind.Module, candidate.title));
+    case "on": return [keyword("each", "One Check per instance"), keyword("all", "One Check over all instances"), ...roles];
+    case "each": case "all": return roles;
+    case "as": return [keyword("Input", "Operation Input binding")];
+    case "Input": return operation ? Object.keys(operation.input.properties).map((name) => quotedValue(name, CompletionItemKind.Property, "Operation input")) : [];
+    case "using": return [keyword("plan", "The Plan identifier"), keyword("all", "All instances of a role"), ...roles];
+    case "plan": return [keyword("as Input", "Binds the Plan identifier to an Operation Input")];
+    case "and": return [keyword("must establish", "Success reason"), keyword("materializes", "Materializes a role from a produced field")];
+    case "must": return [keyword("establish", "Success reason")];
+    case "materializes": return roles;
+    case "from": return [keyword("field", "Source produced field")];
+    case "field": return operation ? Object.keys(operation.produced.properties).map((name) => quotedValue(name, CompletionItemKind.Field, "Produced Fact field")) : [];
+    default: return [];
+  }
+}
+
+function operationSuggestions(site: StepSite, tokens: readonly SentenceToken[], source: string): Suggestion[] {
+  const model = analyzeOperation({ source }).document;
+  const environment = (model?.environment ?? []).map((field) => quotedValue(field.name, CompletionItemKind.Variable, `Environment: ${field.type}`));
+  const inputs = (model?.input ?? []).map((field) => quotedValue(field.name, CompletionItemKind.Property, `Input: ${field.type}`));
+  const last = tokens[tokens.length - 1];
+  const step = firstWord(tokens);
+  if (site.container === "background") {
+    if (!last) return [keyword(operationLanguage.phrases.environment, "Environment interface table"), keyword(operationLanguage.phrases.input, "Input interface table"), keyword(operationLanguage.phrases.produced, "Produced fields interface table")];
+    if (last.kind === "text" && last.value === "Produced") return [keyword("fields", "Produced fields interface table")];
+    return [];
+  }
+  if (!last) return scenarioStepSuggestions();
+  if (last.kind === "quoted") {
+    switch (lastText(tokens)) {
+      case "Shell": return [keyword("runs", "Executable to run"), keyword("accepts exits", "Accept non-zero exit codes")];
+      case "File": return [keyword("reads", "Path to read")];
+      case "HTTP": return [keyword("sends", "HTTP method"), keyword("accepts statuses", "Accept non-2xx statuses")];
+      case "runs": return [keyword("with cwd from Environment", "Working directory")];
+      case "reads": return step === "File" ? [keyword("as", "Content format")] : [];
+      case "sends": return [keyword("to Environment", "Target base URL")];
+      case "Environment": return step === "HTTP"
+        ? [keyword("appending", "URL path segments"), keyword("with", "Query, header or body"), keyword("and reads", "Response format")]
+        : [keyword("and Input", "Append an Input value")];
+      case "query": case "header": return [keyword("from Input", "Value from an Input"), keyword("from Environment", "Value from the Environment"), keyword("as", "Literal value")];
+      default: return [];
+    }
+  }
+  switch (last.value) {
+    case "accepts": return step === "HTTP" ? [keyword("statuses", "Accept non-2xx statuses")] : [keyword("exits", "Accept non-zero exit codes")];
+    case "with": {
+      if (step === "Shell") return [keyword("cwd from Environment", "Working directory")];
+      if (step === "HTTP") return [keyword("query", "Query parameter"), keyword("header", "Request header"), keyword("Input as JSON body", "Whole Input as JSON body"), keyword("JSONata body", "Body built by the Produce expression"), keyword("Text body", "Text body from a value source")];
+      if (step === "Produce") return [keyword("JSONata", "Produce expression")];
+      return [];
+    }
+    case "cwd": return [keyword("from Environment", "Working directory")];
+    case "from": return [keyword("Environment", "Environment field"), keyword("Input", "Input field")];
+    case "Environment": return environment;
+    case "Input": return lastText(tokens.slice(0, -1)) === "with" ? [keyword("as JSON body", "Whole Input as JSON body")] : inputs;
+    case "reads": return step === "HTTP"
+      ? [...operationLanguage.formats.map((format) => ({ label: format, kind: CompletionItemKind.EnumMember, detail: "Response format" })), keyword("no body", "Ignore the response body")]
+      : [];
+    case "as": return step === "File" ? operationLanguage.formats.map((format) => ({ label: format, kind: CompletionItemKind.EnumMember, detail: "Content format" })) : [];
+    case "sends": return operationLanguage.httpMethods.map((method) => quotedValue(method, CompletionItemKind.EnumMember, "HTTP method"));
+    case "to": return [keyword("Environment", "Target base URL")];
+    case "appending": return [keyword("Input", "Path segment from an Input"), keyword("literal", "Literal path segment")];
+    case "and": return step === "HTTP"
+      ? [keyword("reads", "Response format"), keyword("Input", "Path segment from an Input"), keyword("literal", "Literal path segment")]
+      : [keyword("Input", "Append an Input value")];
+    case "no": return [keyword("body", "Ignore the response body")];
+    case "Produce": return [keyword("with JSONata", "Produce expression")];
+    default: return [];
+  }
+}
+
+/** AST-level facts for slots: available even while the sentence being typed does not compile yet. */
+function procedureFacts(parsed: GherkinDocument): { roles: string[]; scenarios: string[] } {
+  const roles: string[] = [];
+  const scenarios: string[] = [];
+  for (const child of parsed.feature?.children ?? []) {
+    if (child.background) for (const step of child.background.steps) {
+      const name = stepTokens(step).find((token) => token.kind === "quoted")?.value;
+      if (name) roles.push(name);
+    }
+    if (child.scenario) for (const tag of child.scenario.tags) {
+      if (tag.name.startsWith(procedureLanguage.tags.scenario)) scenarios.push(tag.name.slice(procedureLanguage.tags.scenario.length));
+    }
+  }
+  return { roles, scenarios };
+}
+
+function blockCompletions(parsed: GherkinDocument, line: number, kind: LanguageKind, operations: readonly CompiledOperation[]): CompletionItem[] {
+  let container: Container | undefined;
+  for (const child of parsed.feature?.children ?? []) {
+    const node = child.background ?? child.scenario ?? child.rule;
+    if (!node || node.location.line >= line) break;
+    container = child.background ? "background" : "scenario";
+  }
+  if (!container) return [];
+  if (kind === "operation") {
+    return operationAuthoringSnippets
+      .filter(({ insertText }) => (container === "background") === /^(Given|And)\s/.test(insertText))
+      .map(({ label, insertText }) => snippet(label, insertText));
+  }
+  if (container === "background") {
+    return [snippet("Context role", `Given \${1|${procedureLanguage.cardinalities.join(",")}|} \${2|${procedureLanguage.valueTypes.join(",")}|} "\${3:name}"`)];
+  }
+  const facts = procedureFacts(parsed);
+  return [checkSnippetSuggestion(operations, "Then "), dependencySnippetSuggestion(facts.scenarios, "Given ")]
+    .map((entry) => snippet(entry.label, entry.insertText ?? entry.label));
+}
+
+function checkSnippetSuggestion(operations: readonly CompiledOperation[], keywordPrefix = ""): Suggestion {
+  const names = operations.map((operation) => operation.operation);
+  const slot = names.length > 0 ? `\${2|${names.join(",")}|}` : "${2:operation}";
+  return {
+    label: procedureLanguage.phrases.check,
+    kind: CompletionItemKind.Snippet,
+    detail: "Check sentence with its js qualification",
+    insertText: `${keywordPrefix}Check "\${1:name}" runs Operation "${slot}"\n    on "\${3:role}" as Input "\${4:input}"\n    and must establish "\${5:reason}"\n  """js\n  \${6:fact.field} || fail("\${7:reason}")\n  """`,
+  };
+}
+
+function dependencySnippetSuggestion(scenarios: readonly string[], keywordPrefix = ""): Suggestion {
+  const slot = scenarios.length > 0 ? `\${1|${scenarios.join(",")}|}` : "${1:slug}";
+  return {
+    label: procedureLanguage.phrases.dependency,
+    kind: CompletionItemKind.Snippet,
+    detail: "Prerequisite Scenario dependency",
+    insertText: `${keywordPrefix}${procedureLanguage.phrases.dependency} "${slot}" is validated`,
+  };
+}
+
+function scenarioStepSuggestions(): Suggestion[] {
+  return operationAuthoringSnippets
+    .filter(({ insertText }) => /^(When|Then)\s/.test(insertText))
+    .map(({ label, insertText }) => ({ label, kind: CompletionItemKind.Snippet, detail: "Operation step", insertText: insertText.replace(/^(When|Then)\s/, "") }));
+}
+
+interface TableSite { readonly step: Step; readonly row: TableRow; readonly header: TableRow; }
+
+function tableRowAt(parsed: GherkinDocument, line: number): TableSite | undefined {
+  for (const step of allSteps(parsed)) {
+    const rows = step.dataTable?.rows ?? [];
+    const header = rows[0];
+    if (!header) continue;
+    const row = rows.find((candidate) => candidate.location.line === line);
+    if (row && row !== header) return { step, row, header };
+  }
+  return undefined;
+}
+
+function operationTableCompletions(document: TextDocument, position: Position, site: TableSite): CompletionItem[] {
+  let index = 0;
+  for (const [at, cell] of site.row.cells.entries()) if ((cell.location.column ?? 1) <= position.character + 1) index = at;
+  const column = site.header.cells[index]?.value;
+  const cell = site.row.cells[index];
+  if (!column || !cell) return [];
+  const values: Suggestion[] = [];
+  if (column === "type") {
+    const isEnvironment = site.step.text.split(/\s+/)[0] === operationLanguage.phrases.environment;
+    const types = isEnvironment ? operationLanguage.environmentTypes : operationLanguage.valueTypes;
+    values.push(...types.map((type) => ({ label: type, detail: isEnvironment ? "Environment type" : "Operation value type", kind: CompletionItemKind.TypeParameter })));
+  } else if (column === "cardinality") {
+    values.push(...operationLanguage.cardinalities.map((cardinality) => ({ label: cardinality, detail: "Cardinality", kind: CompletionItemKind.EnumMember })));
+  } else if (column === "source") {
+    values.push(
+      { label: "literal", detail: "Literal argument", kind: CompletionItemKind.EnumMember },
+      { label: 'Input "name"', detail: "Argument from an Input", kind: CompletionItemKind.EnumMember },
+      { label: 'Execution "id"', detail: "Argument from the execution", kind: CompletionItemKind.EnumMember },
+    );
+  }
+  const start = { line: position.line, character: Math.min((cell.location.column ?? 1) - 1, position.character) };
+  return values.map(({ label, detail, kind }) => ({
+    label, kind, detail,
+    textEdit: { range: { start, end: position }, newText: label },
+  }));
+}
+
+/** Sentence words extend expression identifiers with `-` (multi-word verbs) and `.` (operation names). */
+const sentenceWordCharacter = (character: string): boolean => isExpressionIdentifierPart(character) || character === "-" || character === ".";
+
+/** One renderer per request: the prefix scans run once, not once per suggestion. */
+function suggestionRenderer(document: TextDocument, position: Position, inQuote: boolean): (suggestion: Suggestion) => CompletionItem {
+  const linePrefix = document.getText({ start: { line: position.line, character: 0 }, end: position });
+  const quote = inQuote ? linePrefix.lastIndexOf('"') : -1;
+  const closing = document.getText({ start: position, end: { line: position.line, character: position.character + 1 } }) === '"';
+  let wordStart = linePrefix.length;
+  while (wordStart > 0 && sentenceWordCharacter(linePrefix[wordStart - 1]!)) wordStart -= 1;
+  const quotedRange = { start: { line: position.line, character: quote + 1 }, end: position };
+  const wordRange = { start: { line: position.line, character: wordStart }, end: position };
+  return (suggestion) => {
+    if (suggestion.insertText !== undefined) {
+      return suggestion.kind === CompletionItemKind.Snippet
+        ? snippet(suggestion.label, suggestion.insertText)
+        : { label: suggestion.label, kind: suggestion.kind, detail: suggestion.detail, insertText: suggestion.insertText };
+    }
+    const base = { label: suggestion.label, kind: suggestion.kind, detail: suggestion.detail };
+    if (suggestion.quoted && quote >= 0) {
+      return { ...base, textEdit: { range: quotedRange, newText: closing ? suggestion.label : `${suggestion.label}"` } };
+    }
+    return { ...base, textEdit: { range: wordRange, newText: suggestion.quoted ? `"${suggestion.label}"` : suggestion.label } };
+  };
 }
 
 function jsCompletions(document: TextDocument, position: Position, operations: readonly CompiledOperation[]): CompletionItem[] {
@@ -265,11 +563,12 @@ function jsCompletions(document: TextDocument, position: Position, operations: r
   }
   const mathRoot = procedureLanguage.qualification.roots.math;
   if (path?.root === mathRoot) return Object.keys(procedureLanguage.qualification.mathFunctions).map((name) => memberItem(document, name, CompletionItemKind.Function, "Supported numeric function", path, position));
+  const root = identifierRenderer(document, position, identifierPathBefore(source, document.offsetAt(position)));
   return [
-    item(procedureLanguage.qualification.roots.fact, CompletionItemKind.Variable, "Fields produced by this Check's Operation"),
-    item(procedureLanguage.qualification.roots.context, CompletionItemKind.Variable, "Typed Plan context"),
-    item(procedureLanguage.qualification.roots.checks, CompletionItemKind.Variable, "Facts from prerequisite Checks"),
-    item(mathRoot, CompletionItemKind.Class, "Supported numeric functions"),
+    root(procedureLanguage.qualification.roots.fact, CompletionItemKind.Variable, "Fields produced by this Check's Operation"),
+    root(procedureLanguage.qualification.roots.context, CompletionItemKind.Variable, "Typed Plan context"),
+    root(procedureLanguage.qualification.roots.checks, CompletionItemKind.Variable, "Facts from prerequisite Checks"),
+    root(mathRoot, CompletionItemKind.Class, "Supported numeric functions"),
     snippet(procedureLanguage.qualification.fail, procedureLanguage.qualification.fail + '("${1:reason}")'),
   ];
 }
@@ -279,25 +578,34 @@ function jsonataCompletions(document: TextDocument, position: Position): Complet
   const path = identifierPathBefore(source, document.offsetAt(position));
   const model = analyzeOperation({ source }).document;
   const [stepsRoot, inputRoot, environmentRoot] = operationLanguage.jsonata.roots;
-  if (path === stepsRoot || path === `${stepsRoot}.`) return (model?.steps ?? []).map(({ name }) => item(name, CompletionItemKind.Variable, "Operation step result"));
+  const member = identifierRenderer(document, position, path);
+  if (path === stepsRoot || path === `${stepsRoot}.`) return (model?.steps ?? []).map(({ name }) => member(name, CompletionItemKind.Variable, "Operation step result"));
   const stepPath = path.split(".");
   if (stepPath[0] === stepsRoot && stepPath.length >= 3) {
     const step = model?.steps.find(({ name }) => name === stepPath[1]);
     const fields = step ? operationLanguage.stepResults[step.type] : [];
-    return fields.map((name) => item(name, CompletionItemKind.Property, `${step?.type ?? "Operation"} step result`));
+    return fields.map((name) => member(name, CompletionItemKind.Property, `${step?.type ?? "Operation"} step result`));
   }
-  if (path === inputRoot || path.startsWith(`${inputRoot}.`)) return (model?.input ?? []).map(({ name }) => item(name, CompletionItemKind.Property, "Operation input"));
-  if (path === environmentRoot || path.startsWith(`${environmentRoot}.`)) return (model?.environment ?? []).map(({ name }) => item(name, CompletionItemKind.Property, "Operation environment"));
+  if (path === inputRoot || path.startsWith(`${inputRoot}.`)) return (model?.input ?? []).map(({ name }) => member(name, CompletionItemKind.Property, "Operation input"));
+  if (path === environmentRoot || path.startsWith(`${environmentRoot}.`)) return (model?.environment ?? []).map(({ name }) => member(name, CompletionItemKind.Property, "Operation environment"));
   return [
-    item(stepsRoot, CompletionItemKind.Variable, "Results of named Operation steps"),
-    item(inputRoot, CompletionItemKind.Variable, "Typed Operation input"),
-    item(environmentRoot, CompletionItemKind.Variable, "Operation environment"),
-    ...operationLanguage.jsonata.functions.map((name) => item(`$${name}`, CompletionItemKind.Function, "JSONata built-in function")),
+    member(stepsRoot, CompletionItemKind.Variable, "Results of named Operation steps"),
+    member(inputRoot, CompletionItemKind.Variable, "Typed Operation input"),
+    member(environmentRoot, CompletionItemKind.Variable, "Operation environment"),
+    ...operationLanguage.jsonata.functions.map((name) => member(`$${name}`, CompletionItemKind.Function, "JSONata built-in function")),
   ];
 }
 
-function embeddedLanguageAt(source: string, line: number): "js" | "jsonata" | undefined {
-  const step = allSteps(parseSource(source)).find((candidate) => {
+/** One replace range per request: the partial identifier before the cursor (`$` included), so the client needs no word logic. */
+function identifierRenderer(document: TextDocument, position: Position, path: string): (label: string, kind: CompletionItemKind, detail: string) => CompletionItem {
+  const partial = path.slice(path.lastIndexOf(".") + 1);
+  const start = document.positionAt(document.offsetAt(position) - partial.length);
+  const range = { start, end: position };
+  return (label, kind, detail) => ({ label, kind, detail, textEdit: { range, newText: label } });
+}
+
+function embeddedLanguageAt(parsed: GherkinDocument | undefined, line: number): "js" | "jsonata" | undefined {
+  const step = allSteps(parsed).find((candidate) => {
     const start = candidate.docString?.location?.line;
     const length = candidate.docString?.content.split("\n").length ?? 0;
     return start !== undefined && line > start && line <= start + length;
@@ -342,7 +650,6 @@ function schemaDescription(schema: { type?: unknown; items?: { type?: unknown } 
   return schema.type === "array" ? `${String(schema.items?.type ?? "value")}[]` : String(schema.type ?? "value");
 }
 
-function item(label: string, kind: CompletionItemKind, detail: string): CompletionItem { return { label, kind, detail }; }
 function snippet(label: string, insertText: string): CompletionItem { return { label, kind: CompletionItemKind.Snippet, insertText, insertTextFormat: 2 }; }
 function memberItem(document: TextDocument, label: string, kind: CompletionItemKind, detail: string, path: QualificationCompletionPath, position: Position): CompletionItem {
   const member = expressionMember(label);

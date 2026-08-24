@@ -304,18 +304,13 @@ export function monacoMarker(diagnostic: LspDiagnostic): editor.IMarkerData {
   };
 }
 
+/* Complete LSP → Monaco CompletionItemKind mapping: LSP 3.17 numbering, identical kind names on both sides. */
+const lspCompletionKinds = [
+  "Text", "Method", "Function", "Constructor", "Field", "Variable", "Class", "Interface", "Module",
+  "Property", "Unit", "Value", "Enum", "Keyword", "Snippet", "Color", "File", "Reference", "Folder",
+  "EnumMember", "Constant", "Struct", "Event", "Operator", "TypeParameter",
+] as const;
+
 export function monacoCompletionKind(kind: number | undefined, monaco: typeof import("monaco-editor")): languages.CompletionItemKind {
-  const map: Record<number, languages.CompletionItemKind> = {
-    2: monaco.languages.CompletionItemKind.Method,
-    3: monaco.languages.CompletionItemKind.Function,
-    6: monaco.languages.CompletionItemKind.Variable,
-    7: monaco.languages.CompletionItemKind.Class,
-    9: monaco.languages.CompletionItemKind.Module,
-    10: monaco.languages.CompletionItemKind.Property,
-    13: monaco.languages.CompletionItemKind.Enum,
-    14: monaco.languages.CompletionItemKind.Keyword,
-    15: monaco.languages.CompletionItemKind.Snippet,
-    23: monaco.languages.CompletionItemKind.Struct,
-  };
-  return kind === undefined ? monaco.languages.CompletionItemKind.Text : map[kind] ?? monaco.languages.CompletionItemKind.Text;
+  return monaco.languages.CompletionItemKind[lspCompletionKinds[(kind ?? 1) - 1] ?? "Text"];
 }
