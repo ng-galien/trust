@@ -15,6 +15,11 @@ import { operationLanguage } from "@trust/operation/language";
 import { compileProcedure } from "@trust/procedure";
 import { CompletionItemKind } from "vscode-languageserver/node";
 
+const semanticTokenTypes = [
+  "comment", "tag", "keyword", "keyword-control", "title", "type", "verb", "string",
+  "number", "delimiter", "table-header", "table-cell", "function", "root", "operator", "variable",
+] as const;
+
 test("the Microsoft LSP server exposes the Operation language through standard JSON-RPC", async (context) => {
   const session = await startLanguageServer(context);
   const { connection } = session;
@@ -26,6 +31,7 @@ test("the Microsoft LSP server exposes the Operation language through standard J
   await assertInvalidFixtures(connection);
   await assertIncrementalDiagnostics(connection);
   await assertProcedureEditing(connection);
+  await assertNumericSemanticToken(connection);
 
   await session.shutdown();
 });
@@ -56,6 +62,11 @@ test("the server accepts step continuation lines and formats long steps onto the
     textDocument: { uri: reopened, languageId: "gherkin", version: 1, text: formatted },
   });
   assert.deepEqual(await reopenedDiagnostics, { uri: reopened, version: 1, diagnostics: [] });
+  const continuedInput = await session.connection.sendRequest<CompletionItem[]>("textDocument/completion", {
+    textDocument: { uri: reopened },
+    position: positionAt(formatted, formatted.indexOf('"project"') + 1),
+  });
+  assert.deepEqual(continuedInput.map(({ label }) => label), ["project"]);
   await session.shutdown();
 });
 
@@ -213,9 +224,37 @@ async function assertValidCatalog(connection: MessageConnection): Promise<void> 
       const semantic = await connection.sendRequest<SemanticTokens>("textDocument/semanticTokens/full", {
         textDocument: { uri },
       });
-      assert.ok(semantic.data.length > 0);
+      assertSemanticTokenAt(semantic, positionAt(source, 0), "# language: en".length, "comment");
+      assertSemanticTokenAt(semantic, positionAt(source, source.indexOf("@trust-dsl:1")), "@trust-dsl:1".length, "tag");
+      assertSemanticTokenAt(semantic, positionAt(source, source.indexOf("Feature")), "Feature".length, "keyword-control");
+      assertSemanticTokenAt(semantic, positionAt(source, source.indexOf("Feature:") + "Feature:".length), " Read Git HEAD and working tree".length, "title");
+      assertSemanticTokenAt(semantic, positionAt(source, source.indexOf("Given")), "Given".length, "keyword");
+      assertSemanticTokenAt(semantic, positionAt(source, source.indexOf("Environment", source.indexOf("Given"))), "Environment".length, "type");
+      assertSemanticTokenAt(semantic, positionAt(source, source.indexOf("runs")), "runs".length, "verb");
+      assertSemanticTokenAt(semantic, positionAt(source, source.indexOf('"head"')), '"head"'.length, "string");
+      assertSemanticTokenAt(semantic, positionAt(source, source.indexOf("name", source.indexOf("| name"))), "name".length, "table-header");
+      assertSemanticTokenAt(semantic, positionAt(source, source.indexOf("workspaceRoot", source.indexOf("| workspaceRoot"))), "workspaceRoot".length, "table-cell");
+      assertSemanticTokenAt(semantic, positionAt(source, source.indexOf("{", source.indexOf('"""'))), 1, "delimiter");
+      assertSemanticTokenAt(semantic, positionAt(source, source.indexOf("$trim")), "$trim".length, "function");
+      assertSemanticTokenAt(semantic, positionAt(source, source.indexOf("steps.head")), "steps".length, "root");
+      assertSemanticTokenAt(semantic, positionAt(source, source.indexOf("head.stdout")), "head".length, "variable");
+      assertSemanticTokenAt(semantic, positionAt(source, source.indexOf(" = \"") + 1), 1, "operator");
     }
   }
+}
+
+async function assertNumericSemanticToken(connection: MessageConnection): Promise<void> {
+  const uri = "file:///workspace/semantic/http.status-read.feature";
+  const source = operationFixture("valid/http.status-read.feature").replace("steps.response.status", "1");
+  const diagnostics = waitForDiagnostics(connection, uri, 1);
+  connection.sendNotification("textDocument/didOpen", {
+    textDocument: { uri, languageId: "trust-operation", version: 1, text: source },
+  });
+  assert.deepEqual(await diagnostics, { uri, version: 1, diagnostics: [] });
+  const tokens = await connection.sendRequest<SemanticTokens>("textDocument/semanticTokens/full", {
+    textDocument: { uri },
+  });
+  assertSemanticTokenAt(tokens, positionAt(source, source.lastIndexOf("1")), 1, "number");
 }
 
 async function assertDefaultTemplates(connection: MessageConnection): Promise<void> {
@@ -454,7 +493,7 @@ async function assertProcedureEditing(connection: MessageConnection): Promise<vo
   const optionalSemantic = await connection.sendRequest<SemanticTokens>("textDocument/semanticTokens/full", {
     textDocument: { uri: optionalUri },
   });
-  assertSemanticTokenAt(optionalSemantic, positionAt(optionalSource, optionalSource.indexOf("optionally")), "optionally".length);
+  assertSemanticTokenAt(optionalSemantic, positionAt(optionalSource, optionalSource.indexOf("optionally")), "optionally".length, "verb");
 
   const operationPosition = positionAt(source, source.indexOf('Operation "') + 'Operation "'.length);
   const operations = await connection.sendRequest<CompletionItem[]>("textDocument/completion", {
@@ -582,7 +621,11 @@ async function startLanguageServer(context: TestContext): Promise<LanguageServer
   context.after(() => connection.dispose());
 
   const initialized = await connection.sendRequest<{
-    capabilities: { textDocumentSync?: unknown; documentSymbolProvider?: unknown };
+    capabilities: {
+      textDocumentSync?: unknown;
+      documentSymbolProvider?: unknown;
+      semanticTokensProvider?: { legend: { tokenTypes: string[]; tokenModifiers: string[] }; full: boolean };
+    };
   }>("initialize", {
     processId: null,
     rootUri: null,
@@ -592,6 +635,10 @@ async function startLanguageServer(context: TestContext): Promise<LanguageServer
   });
   assert.equal(initialized.capabilities.textDocumentSync, 2);
   assert.equal(initialized.capabilities.documentSymbolProvider, true);
+  assert.deepEqual(initialized.capabilities.semanticTokensProvider, {
+    legend: { tokenTypes: [...semanticTokenTypes], tokenModifiers: [] },
+    full: true,
+  });
   connection.sendNotification("initialized", {});
 
   return {
@@ -623,7 +670,7 @@ function positionAt(source: string, offset: number): Position {
   return { line: lines.length - 1, character: lines.at(-1)?.length ?? 0 };
 }
 
-function assertSemanticTokenAt(tokens: SemanticTokens, expected: Position, length: number): void {
+function assertSemanticTokenAt(tokens: SemanticTokens, expected: Position, length: number, expectedType: typeof semanticTokenTypes[number]): void {
   let line = 0;
   let character = 0;
   for (let index = 0; index < tokens.data.length; index += 5) {
@@ -631,7 +678,7 @@ function assertSemanticTokenAt(tokens: SemanticTokens, expected: Position, lengt
     line += lineDelta;
     character = lineDelta === 0 ? character + (tokens.data[index + 1] ?? 0) : (tokens.data[index + 1] ?? 0);
     if (line === expected.line && character === expected.character && tokens.data[index + 2] === length) {
-      assert.equal(tokens.data[index + 3], 1, "optionally must be a keyword semantic token");
+      assert.equal(tokens.data[index + 3], semanticTokenTypes.indexOf(expectedType), `${expectedType} semantic token`);
       return;
     }
   }

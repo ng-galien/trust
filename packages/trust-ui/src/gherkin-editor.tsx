@@ -1,10 +1,11 @@
-import Editor, { type BeforeMount, type Monaco, type OnMount } from "@monaco-editor/react";
-import { useEffect, useRef, useState } from "react";
+import * as monaco from "@codingame/monaco-vscode-editor-api";
+import { highlightTokenTable, type HighlightTokenTone } from "@trust/gherkin";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { WrapText } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import type { editor, IDisposable } from "monaco-editor";
 
-import { monacoCompletionKind, monacoMarker, TrustLspClient } from "./lsp-client.js";
+import { TrustMonacoEditor } from "./monaco-editor.js";
+import { ensureTrustLanguageClient, initializeTrustMonaco, subscribeTrustLanguageServerStatus } from "./monaco-stack.js";
 import { IconButton } from "./ui/button.js";
 
 type LanguageKind = "operation" | "procedure";
@@ -37,38 +38,42 @@ interface GherkinEditorProps {
 }
 
 const markerOwner = "trust";
-const lspMarkerOwner = "trust-lsp";
-
 export function GherkinEditor({ kind, value, onChange, theme, languageServerUrl, readOnly, markers = [], decorations = [], fontSize = 13, onSave }: GherkinEditorProps) {
   const { t } = useTranslation();
-  const providers = useRef<IDisposable[]>([]);
-  const lspRef = useRef<TrustLspClient | null>(null);
-  const monacoRef = useRef<Monaco | null>(null);
-  const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
-  const decorationsRef = useRef<editor.IEditorDecorationsCollection | null>(null);
+  const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | undefined>(undefined);
+  const decorationsRef = useRef<monaco.editor.IEditorDecorationsCollection | null>(null);
+  const documentUri = useRef(`inmemory://trust/${kind}/${crypto.randomUUID()}.feature`);
+  const currentValue = useRef(value);
+  currentValue.current = value;
   const [mountedAt, setMountedAt] = useState(0);
+  const [editorReady, setEditorReady] = useState(false);
   const [languageServerStatus, setLanguageServerStatus] = useState<"connecting" | "ready" | "unavailable">("connecting");
   const saveRef = useRef(onSave);
   saveRef.current = onSave;
   const language = `trust-${kind}`;
+  const options = useMemo(() => editorOptions(readOnly, fontSize), [fontSize, readOnly]);
 
-  useEffect(() => () => {
-    providers.current.forEach((provider) => provider.dispose());
-    lspRef.current?.dispose();
-  }, []);
+  useEffect(() => {
+    if (!languageServerUrl) return;
+    const unsubscribe = subscribeTrustLanguageServerStatus(setLanguageServerStatus);
+    void ensureTrustLanguageClient(languageServerUrl).catch((error: unknown) => {
+      console.error("TRUST language client initialization failed", error);
+      setLanguageServerStatus("unavailable");
+    });
+    return unsubscribe;
+  }, [languageServerUrl]);
 
   // Themes are rebuilt from the token layer whenever the theme flips.
   useEffect(() => {
-    const monaco = monacoRef.current;
-    if (!monaco) return;
-    defineThemes(monaco);
-    monaco.editor.setTheme(`trust-${theme}`);
+    void initializeTrustMonaco().then(() => {
+      defineThemes(monaco);
+      monaco.editor.setTheme(`trust-${theme}`);
+    });
   }, [theme]);
 
   useEffect(() => {
-    const monaco = monacoRef.current;
     const model = editorRef.current?.getModel();
-    if (!monaco || !model) return;
+    if (!model) return;
     monaco.editor.setModelMarkers(
       model,
       markerOwner,
@@ -86,13 +91,7 @@ export function GherkinEditor({ kind, value, onChange, theme, languageServerUrl,
         endColumn: Math.max(marker.column + 1, model.getLineMaxColumn(Math.min(marker.line, model.getLineCount()))),
       })),
     );
-  }, [markers]);
-
-  // React Router can reuse the same editor while the selected resource changes.
-  // Keep the LSP document synchronized with controlled-value updates as well as typing.
-  useEffect(() => {
-    if (mountedAt > 0) void lspRef.current?.change(value);
-  }, [mountedAt, value]);
+  }, [markers, mountedAt]);
 
   // Hydration decorations: whole-line tone + inline note; re-applied whenever they change (or the editor mounts).
   useEffect(() => {
@@ -111,94 +110,17 @@ export function GherkinEditor({ kind, value, onChange, theme, languageServerUrl,
     })));
   }, [decorations, mountedAt]);
 
-  const configure: BeforeMount = (monaco) => {
-    monacoRef.current = monaco;
-    if (!monaco.languages.getLanguages().some((entry: { id: string }) => entry.id === language)) {
-      monaco.languages.register({ id: language });
-      monaco.languages.setLanguageConfiguration(language, {
-        comments: { lineComment: "#" },
-        brackets: [["{", "}"], ["[", "]"], ["(", ")"]],
-        autoClosingPairs: [{ open: "{", close: "}" }, { open: "[", close: "]" }, { open: "(", close: ")" }, { open: '"', close: '"' }],
-      });
-    }
-    defineThemes(monaco);
-  };
-
-  const mounted: OnMount = (instance, monaco) => {
+  const mounted = (instance: monaco.editor.IStandaloneCodeEditor) => {
     editorRef.current = instance;
     setMountedAt((count) => count + 1);
-    providers.current.forEach((provider) => provider.dispose());
-    providers.current = [];
-    lspRef.current?.dispose();
-    if (languageServerUrl) {
-      const client = new TrustLspClient({
-        url: languageServerUrl,
-        kind,
-        source: instance.getValue(),
-        diagnostics: (diagnostics) => {
-          const model = instance.getModel();
-          if (model) monaco.editor.setModelMarkers(model, lspMarkerOwner, diagnostics.map(monacoMarker));
-        },
-        status: setLanguageServerStatus,
-      });
-      lspRef.current = client;
-      if (!readOnly) {
-        providers.current.push(monaco.languages.registerCompletionItemProvider(language, {
-        triggerCharacters: [" ", '"', ".", "$", "@"],
-        provideCompletionItems: async (model: editor.ITextModel, position: { lineNumber: number; column: number }) => {
-          const completions = await client.complete(position.lineNumber - 1, position.column - 1).catch(() => []);
-          // Replace ranges are the server's decision: completions carry a textEdit whenever the
-          // prefix matters. The fallback is plain Monaco word detection, no language knowledge.
-          const word = model.getWordUntilPosition(position);
-          const wordRange = {
-            startLineNumber: position.lineNumber,
-            endLineNumber: position.lineNumber,
-            startColumn: word.startColumn,
-            endColumn: word.endColumn,
-          };
-          return {
-            suggestions: completions.map((completion) => ({
-              label: completion.label,
-              detail: completion.detail,
-              documentation: typeof completion.documentation === "string" ? completion.documentation : completion.documentation?.value,
-              insertText: completion.textEdit?.newText ?? completion.insertText ?? completion.label,
-              kind: monacoCompletionKind(completion.kind, monaco),
-              range: completion.textEdit ? {
-                startLineNumber: completion.textEdit.range.start.line + 1,
-                startColumn: completion.textEdit.range.start.character + 1,
-                endLineNumber: completion.textEdit.range.end.line + 1,
-                endColumn: completion.textEdit.range.end.character + 1,
-              } : wordRange,
-              ...(completion.insertTextFormat === 2 ? { insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet } : {}),
-            })),
-          };
-        },
-        }));
-        providers.current.push(monaco.languages.registerDocumentFormattingEditProvider(language, {
-          provideDocumentFormattingEdits: async () => (await client.format(2, true).catch(() => [])).map((edit) => ({
-            range: {
-              startLineNumber: edit.range.start.line + 1,
-              startColumn: edit.range.start.character + 1,
-              endLineNumber: edit.range.end.line + 1,
-              endColumn: edit.range.end.character + 1,
-            },
-            text: edit.newText,
-          })),
-        }));
-      }
-      providers.current.push(monaco.languages.registerFoldingRangeProvider(language, {
-        provideFoldingRanges: async () => (await client.foldingRanges().catch(() => [])).map((range) => ({
-          start: range.startLine + 1,
-          end: range.endLine + 1,
-          kind: range.kind === "comment" ? monaco.languages.FoldingRangeKind.Comment : monaco.languages.FoldingRangeKind.Region,
-        })),
-      }));
-      providers.current.push(monaco.languages.registerDocumentSemanticTokensProvider(language, {
-        getLegend: () => ({ tokenTypes: ["comment", "keyword", "string", "number", "operator", "type", "variable", "function", "property"], tokenModifiers: [] }),
-        provideDocumentSemanticTokens: async () => ({ data: new Uint32Array((await client.semanticTokens().catch(() => ({ data: [] }))).data) }),
-        releaseDocumentSemanticTokens: () => undefined,
-      }));
-    }
+    setEditorReady(true);
+    defineThemes(monaco);
+    monaco.editor.setTheme(`trust-${theme}`);
+    monaco.languages.setLanguageConfiguration(language, {
+      comments: { lineComment: "#" },
+      brackets: [["{", "}"], ["[", "]"], ["(", ")"]],
+      autoClosingPairs: [{ open: "{", close: "}" }, { open: "[", close: "]" }, { open: "(", close: ")" }, { open: '"', close: '"' }],
+    });
     instance.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => saveRef.current?.());
   };
 
@@ -216,43 +138,53 @@ export function GherkinEditor({ kind, value, onChange, theme, languageServerUrl,
         </IconButton>
       </div>
     ) : null}
-    <Editor
-      key={`${language}:${languageServerUrl ?? "offline"}`}
-      height="100%"
-      language={language}
+    {!editorReady ? <div className="absolute inset-0 p-4 text-body text-muted">{t("shared.gherkinEditor.loading")}</div> : null}
+    <TrustMonacoEditor
+      className="h-full"
       value={value}
-      beforeMount={configure}
-      onMount={mounted}
-      onChange={(next) => {
-        const source = next ?? "";
-        onChange(source);
+      language={language}
+      uri={documentUri.current}
+      options={options}
+      onReady={mounted}
+      onChange={(modified) => {
+        if (modified !== currentValue.current) onChange(modified);
       }}
-      theme={`trust-${theme}`}
-      loading={<div className="p-4 text-body text-muted">{t("shared.gherkinEditor.loading")}</div>}
-      options={{
-        readOnly: readOnly ?? false,
-        minimap: { enabled: false },
-        fontFamily: "JetBrains Mono Variable, ui-monospace, monospace",
-        fontSize,
-        lineHeight: Math.round(fontSize * 1.65),
-        padding: { top: 14, bottom: 14 },
-        scrollBeyondLastLine: false,
-        wordWrap: "off",
-        quickSuggestions: true,
-        wordBasedSuggestions: "off",
-        "semanticHighlighting.enabled": true,
-        suggestOnTriggerCharacters: true,
-        automaticLayout: true,
-        renderLineHighlight: "line",
-        folding: true,
-        showFoldingControls: "always",
-        foldingHighlight: false,
-        smoothScrolling: true,
-        tabSize: 2,
+      onError={(error) => {
+        console.error("TRUST Monaco initialization failed", error);
+        setLanguageServerStatus("unavailable");
+      }}
+      onDispose={() => {
+        editorRef.current = undefined;
+        decorationsRef.current = null;
+        setEditorReady(false);
       }}
     />
     </div>
   );
+}
+
+function editorOptions(readOnly: boolean | undefined, fontSize: number): monaco.editor.IStandaloneEditorConstructionOptions {
+  return {
+    readOnly: readOnly ?? false,
+    minimap: { enabled: false },
+    fontFamily: "JetBrains Mono Variable, ui-monospace, monospace",
+    fontSize,
+    lineHeight: Math.round(fontSize * 1.65),
+    padding: { top: 14, bottom: 14 },
+    scrollBeyondLastLine: false,
+    wordWrap: "off",
+    quickSuggestions: true,
+    wordBasedSuggestions: "off",
+    "semanticHighlighting.enabled": true,
+    suggestOnTriggerCharacters: true,
+    automaticLayout: true,
+    renderLineHighlight: "line",
+    folding: true,
+    showFoldingControls: "always",
+    foldingHighlight: false,
+    smoothScrolling: true,
+    tabSize: 2,
+  };
 }
 
 /* Read the token layer so Monaco follows the active theme without duplicating colours. */
@@ -265,24 +197,28 @@ function hex(value: string) {
   return value.replace("#", "");
 }
 
-export function defineThemes(monaco: Monaco) {
+export function defineThemes(monacoApi: typeof monaco) {
   const dark = document.documentElement.classList.contains("dark");
+  const tokenTones: Record<HighlightTokenTone, readonly [string, string]> = {
+    comment: ["--color-editor-comment", "8A93A1"],
+    "keyword-control": ["--color-editor-keyword-control", "6B3FA0"],
+    keyword: ["--color-editor-keyword", "1E4FC2"],
+    text: ["--color-text", dark ? "E6E9EE" : "161A20"],
+    type: ["--color-editor-type", "0F766E"],
+    verb: ["--color-editor-verb", "7C4A0F"],
+    string: ["--color-editor-string", "1F7A4A"],
+    number: ["--color-editor-number", "A2620B"],
+    "table-line": ["--color-editor-table-line", "C3C9D2"],
+    "table-header": ["--color-editor-table-header", "5B6472"],
+  };
   const define = (name: string, base: "vs" | "vs-dark") =>
-    monaco.editor.defineTheme(name, {
+    monacoApi.editor.defineTheme(name, {
       base,
       inherit: true,
-      semanticHighlighting: true,
-      rules: [
-        { token: "keyword", foreground: hex(token("--color-editor-keyword", "1E4FC2")), fontStyle: "bold" },
-        { token: "type", foreground: hex(token("--color-editor-type", "0F766E")) },
-        { token: "string", foreground: hex(token("--color-editor-string", "1F7A4A")) },
-        { token: "number", foreground: hex(token("--color-editor-number", "A2620B")) },
-        { token: "operator", foreground: hex(token("--color-editor-verb", "7C4A0F")) },
-        { token: "comment", foreground: hex(token("--color-editor-comment", "8A93A1")), fontStyle: "italic" },
-        { token: "variable", foreground: hex(token("--color-editor-verb", "7C4A0F")) },
-        { token: "function", foreground: hex(token("--color-editor-keyword-control", "6B3FA0")) },
-        { token: "property", foreground: hex(token("--color-editor-table-header", "5B6472")), fontStyle: "bold" },
-      ],
+      rules: highlightTokenTable.map(({ kind, tone, fontStyle }) => {
+        const [name, fallback] = tokenTones[tone];
+        return { token: kind, foreground: hex(token(name, fallback)), fontStyle };
+      }),
       colors: {
         "editor.background": token("--color-editor-bg", dark ? "#161a21" : "#ffffff"),
         "editor.foreground": token("--color-text", dark ? "#e6e9ee" : "#161a20"),
@@ -302,4 +238,3 @@ export function defineThemes(monaco: Monaco) {
   define("trust-light", "vs");
   define("trust-dark", "vs-dark");
 }
-

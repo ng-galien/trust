@@ -98,10 +98,16 @@ test("the Operation editor embeds JSONata and completes its typed step context",
   await page.goto("/operations/git.head-read?tab=source");
   const editor = page.locator(".monaco-editor");
   await expect(editor).toBeVisible();
+  const featureLine = editor.locator(".view-line").filter({ hasText: "Feature: Read Git HEAD and working tree" });
+  await expectTokenTone(page, featureLine.getByText("Feature", { exact: true }), "--color-editor-keyword-control");
 
   const jsonataLine = editor.locator(".view-line").filter({ hasText: "$trim(steps.head.stdout)" });
   await expect(jsonataLine).toBeVisible();
-  await expect(jsonataLine.getByText("$trim", { exact: true })).toBeVisible();
+  const functionToken = jsonataLine.getByText("$trim", { exact: true });
+  await expect(functionToken).toBeVisible();
+  await expectTokenTone(page, functionToken, "--color-editor-keyword-control");
+  await expectTokenTone(page, jsonataLine.getByText("steps", { exact: true }), "--color-editor-keyword");
+  await expectTokenTone(page, jsonataLine.getByText("head", { exact: true }), "--color-editor-number");
   await page.getByRole("button", { name: "Edit source" }).click();
 
   await placeCursorAfterDot(page, jsonataLine, "steps");
@@ -193,4 +199,18 @@ async function placeCursorAfterDot(page: Page, line: Locator, identifier: string
   if (!box) throw new Error(`The ${identifier} token is not visible`);
   const characterWidth = box.width / identifier.length;
   await page.mouse.click(box.x + box.width + characterWidth * 0.7, box.y + box.height / 2);
+}
+
+async function expectTokenTone(page: Page, token: Locator, variable: string): Promise<void> {
+  await expect(token).toBeVisible();
+  const actual = await token.evaluate((element) => getComputedStyle(element).color);
+  const expected = await page.evaluate((name) => {
+    const probe = document.createElement("span");
+    probe.style.color = `var(${name})`;
+    document.body.append(probe);
+    const color = getComputedStyle(probe).color;
+    probe.remove();
+    return color;
+  }, variable);
+  expect(actual).toBe(expected);
 }

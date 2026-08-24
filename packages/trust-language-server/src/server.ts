@@ -13,13 +13,14 @@ import {
   type FoldingRange,
   type InitializeResult,
   type Position,
+  type PublishDiagnosticsParams,
   type Range,
   type TextEdit,
 } from "vscode-languageserver/node";
 import { TextDocument } from "vscode-languageserver-textdocument";
 import type { GherkinDocument, Step, TableRow } from "@cucumber/messages";
 
-import { continuationLineIndexes, GherkinSyntaxError, highlightGherkinSource, isExpressionIdentifierPart, joinContinuations, parseGherkin, SentenceSyntaxError, splitLines, tokenizeSentence, type HighlightKind, type SentenceToken } from "@trust/gherkin";
+import { continuationLineIndexes, GherkinSyntaxError, highlightGherkinSource, highlightTokenTable, isExpressionIdentifierPart, joinContinuations, parseGherkin, SentenceSyntaxError, splitLines, tokenizeSentence, type SentenceToken } from "@trust/gherkin";
 import { formatGherkinSource } from "@trust/gherkin/format";
 import {
   analyzeOperation,
@@ -33,10 +34,12 @@ import { analyzeProcedure, isProcedureSource, transitiveScenarioDependencies, ty
 import { expressionMember, procedureHighlightVocabulary, procedureLanguage, qualificationCompletionPath, type QualificationCompletionPath } from "@trust/procedure/language";
 
 type LanguageKind = "operation" | "procedure";
-const semanticTokenTypes = ["comment", "keyword", "string", "number", "operator", "type", "variable", "function", "property"] as const;
+const semanticTokenTypes = highlightTokenTable.map(({ kind }) => kind);
+const semanticTokenIndexes = new Map(semanticTokenTypes.map((kind, index) => [kind, index]));
 
 export interface TrustLanguageServerOptions {
   readonly operations?: () => readonly CompiledOperation[];
+  readonly connectionActive?: () => boolean;
 }
 
 /** Install the TRUST language on one connection. Stdio and WebSocket use these exact handlers. */
@@ -47,6 +50,10 @@ export function startTrustLanguageServer(
   const documents = new TextDocuments(TextDocument);
   const documentKinds = new Map<string, LanguageKind>();
   const openOperations = new Map<string, CompiledOperation>();
+  const sendDiagnostics = (params: PublishDiagnosticsParams): void => {
+    if (options.connectionActive?.() === false) return;
+    connection.sendDiagnostics(params);
+  };
   const catalog = (): readonly CompiledOperation[] => {
     const byName = new Map<string, CompiledOperation>();
     for (const operation of options.operations?.() ?? []) byName.set(operation.operation, operation);
@@ -83,7 +90,7 @@ export function startTrustLanguageServer(
   documents.onDidClose(({ document }) => {
     documentKinds.delete(document.uri);
     openOperations.delete(document.uri);
-    connection.sendDiagnostics({ uri: document.uri, version: document.version, diagnostics: [] });
+    sendDiagnostics({ uri: document.uri, version: document.version, diagnostics: [] });
   });
 
   connection.onDocumentFormatting(({ textDocument }): TextEdit[] => {
@@ -143,7 +150,7 @@ export function startTrustLanguageServer(
           source: "trust-procedure",
       }));
     }
-    connection.sendDiagnostics({ uri: document.uri, version: document.version, diagnostics });
+    sendDiagnostics({ uri: document.uri, version: document.version, diagnostics });
   }
 
   documents.listen(connection);
@@ -167,25 +174,12 @@ function semanticTokens(source: string) {
   highlightGherkinSource(source, vocabulary).forEach((tokens, line) => {
     let character = 0;
     for (const token of tokens) {
-      const type = semanticType(token.cls);
+      const type = token.cls ? semanticTokenIndexes.get(token.cls) : undefined;
       if (type !== undefined && token.text.length > 0) builder.push(line, character, token.text.length, type, 0);
       character += token.text.length;
     }
   });
   return builder.build();
-}
-
-function semanticType(kind: HighlightKind): number | undefined {
-  const type = kind === "comment" ? "comment"
-    : kind === "keyword" || kind === "keyword-control" || kind === "verb" ? "keyword"
-      : kind === "string" || kind === "title" ? "string"
-        : kind === "number" ? "number"
-          : kind === "operator" || kind === "delimiter" ? "operator"
-            : kind === "type" || kind === "root" ? "type"
-              : kind === "function" ? "function"
-                : kind === "table-header" ? "property"
-                  : kind === "variable" || kind === "tag" || kind === "table-cell" ? "variable" : undefined;
-  return type === undefined ? undefined : semanticTokenTypes.indexOf(type);
 }
 
 function completionItems(document: TextDocument, position: Position, kind: LanguageKind, operations: readonly CompiledOperation[]): CompletionItem[] {

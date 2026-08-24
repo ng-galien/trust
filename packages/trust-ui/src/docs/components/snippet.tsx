@@ -1,4 +1,5 @@
 import { Check, Copy, ExternalLink } from "lucide-react";
+import { highlightTokenTable, type HighlightTokenKind } from "@trust/gherkin";
 import { Children, isValidElement, type ReactElement, type ReactNode, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router";
@@ -7,6 +8,18 @@ import { cx } from "../../lib/format.js";
 import { highlight } from "../highlight.js";
 import { standalone } from "../standalone.js";
 import { Diagram } from "./diagram.js";
+
+const tokenDefinitions = new Map(highlightTokenTable.map((definition) => [definition.kind, definition]));
+
+function tokenStyle(kind: HighlightTokenKind) {
+  const definition = tokenDefinitions.get(kind)!;
+  const color = definition.tone === "text" ? "var(--color-text)" : `var(--color-editor-${definition.tone})`;
+  return {
+    color,
+    fontStyle: definition.fontStyle === "italic" ? "italic" : undefined,
+    fontWeight: definition.fontStyle === "bold" ? 600 : undefined,
+  } as const;
+}
 
 /* Code snippet of the documentation: statically coloured, copyable, optionally linked to the catalog
    object it shows. Fence meta (```gherkin operation title="…" lines="3-5" marks="2,7"):
@@ -82,7 +95,7 @@ export function Snippet({ code, language = "text", meta = {}, className }: { cod
                 <span key={number} className={cx("docs-line", highlighted.has(number) && "docs-line-highlight", mark !== undefined && "docs-line-marked")}>
                   {marks.size ? <span className="docs-line-mark" aria-label={mark !== undefined ? t("docs.screenshot.callout", { n: String(mark) }) : undefined}>{mark ?? ""}</span> : null}
                   {meta.numbers ? <span className="docs-line-number">{number}</span> : null}
-                  {tokens.map((token, at) => (token.cls ? <span key={at} className={`tk-${token.cls}`}>{token.text}</span> : token.text))}
+                  {tokens.map((token, at) => (token.cls ? <span key={at} data-token={token.cls} style={tokenStyle(token.cls)}>{token.text}</span> : token.text))}
                   {"\n"}
                 </span>
               );

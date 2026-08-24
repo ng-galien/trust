@@ -192,21 +192,4 @@
   .docs-snippet .docs-line-mark { display: inline-grid; place-items: center; width: 1.1rem; height: 1.1rem; margin-right: 0.6rem; vertical-align: -0.15rem; border-radius: 999px; font-family: var(--font-sans); font-size: var(--text-micro); font-weight: 700; color: var(--color-accent-contrast); background: transparent; }
   .docs-snippet .docs-line-marked .docs-line-mark { background: var(--color-accent); }
   .docs-snippet .docs-line-number { display: inline-block; width: 2ch; margin-right: 1rem; text-align: right; color: var(--color-text-faint); user-select: none; }
-  /* Token colours: the same palette as the Monaco theme */
-  .tk-comment { color: var(--color-editor-comment); font-style: italic; }
-  .tk-tag { color: var(--color-editor-keyword-control); }
-  .tk-keyword { color: var(--color-editor-keyword); font-weight: 600; }
-  .tk-keyword-control { color: var(--color-editor-keyword-control); font-weight: 600; }
-  .tk-title { color: var(--color-text); font-weight: 600; }
-  .tk-type { color: var(--color-editor-type); }
-  .tk-verb { color: var(--color-editor-verb); }
-  .tk-string { color: var(--color-editor-string); }
-  .tk-number { color: var(--color-editor-number); }
-  .tk-delimiter { color: var(--color-editor-table-line); }
-  .tk-table-header { color: var(--color-editor-table-header); font-weight: 600; }
-  .tk-table-cell { color: var(--color-text); }
-  .tk-function { color: var(--color-editor-keyword-control); }
-  .tk-root { color: var(--color-editor-keyword); font-weight: 600; }
-  .tk-operator { color: var(--color-editor-verb); }
-  .tk-variable { color: var(--color-editor-number); font-style: italic; }
 }

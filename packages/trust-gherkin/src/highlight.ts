@@ -3,7 +3,29 @@ import type { GherkinDocument, Step } from "@cucumber/messages";
 import { GherkinSyntaxError, parseGherkin } from "./document.js";
 import { isExpressionIdentifierPart, isExpressionIdentifierStart, tokenizeSentence } from "./sentence.js";
 
-export type HighlightKind = "comment" | "tag" | "keyword" | "keyword-control" | "title" | "type" | "verb" | "string" | "number" | "delimiter" | "table-header" | "table-cell" | "function" | "root" | "operator" | "variable" | "";
+export const highlightTokenTable = [
+  { kind: "comment", tone: "comment", fontStyle: "italic" },
+  { kind: "tag", tone: "keyword-control", fontStyle: "" },
+  { kind: "keyword", tone: "keyword", fontStyle: "bold" },
+  { kind: "keyword-control", tone: "keyword-control", fontStyle: "bold" },
+  { kind: "title", tone: "text", fontStyle: "bold" },
+  { kind: "type", tone: "type", fontStyle: "" },
+  { kind: "verb", tone: "verb", fontStyle: "" },
+  { kind: "string", tone: "string", fontStyle: "" },
+  { kind: "number", tone: "number", fontStyle: "" },
+  { kind: "delimiter", tone: "table-line", fontStyle: "" },
+  { kind: "table-header", tone: "table-header", fontStyle: "bold" },
+  { kind: "table-cell", tone: "text", fontStyle: "" },
+  { kind: "function", tone: "keyword-control", fontStyle: "" },
+  { kind: "root", tone: "keyword", fontStyle: "bold" },
+  { kind: "operator", tone: "verb", fontStyle: "" },
+  { kind: "variable", tone: "number", fontStyle: "italic" },
+] as const;
+
+export type HighlightTokenDefinition = (typeof highlightTokenTable)[number];
+export type HighlightTokenKind = HighlightTokenDefinition["kind"];
+export type HighlightTokenTone = HighlightTokenDefinition["tone"];
+export type HighlightKind = HighlightTokenKind | "";
 export interface HighlightToken { readonly text: string; readonly cls: HighlightKind }
 export type HighlightLine = HighlightToken[];
 export interface HighlightVocabulary {

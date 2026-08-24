@@ -20,9 +20,14 @@ export function startTrustWebSocketLanguageServer(
   socket: TrustLanguageServerSocket,
   options: TrustLanguageServerOptions = {},
 ): void {
+  let active = true;
+  let connection: Connection | undefined;
+  socket.onClose(() => {
+    active = false;
+    connection?.dispose();
+  });
   const reader = new WebSocketMessageReader(socket);
   const writer = new WebSocketMessageWriter(socket);
-  let connection: Connection | undefined;
   const watchDog: WatchDog = {
     shutdownReceived: false,
     initialize: () => undefined,
@@ -38,5 +43,5 @@ export function startTrustWebSocketLanguageServer(
     watchDog,
     ProposedFeatures.all,
   );
-  startTrustLanguageServer(connection, options);
+  startTrustLanguageServer(connection, { ...options, connectionActive: () => active });
 }

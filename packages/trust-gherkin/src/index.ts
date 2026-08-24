@@ -11,8 +11,8 @@ export {
   splitLines,
 } from "./continuation.js";
 export { formatGherkinSource, type FormatOptions } from "./format.js";
-export { highlightExpressionSource, highlightGherkinSource } from "./highlight.js";
-export type { HighlightKind, HighlightLine, HighlightToken, HighlightVocabulary } from "./highlight.js";
+export { highlightExpressionSource, highlightGherkinSource, highlightTokenTable } from "./highlight.js";
+export type { HighlightKind, HighlightLine, HighlightToken, HighlightTokenDefinition, HighlightTokenKind, HighlightTokenTone, HighlightVocabulary } from "./highlight.js";
 export {
   documentRange,
   sourceLineRange,
