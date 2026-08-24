@@ -126,13 +126,8 @@ export class TrustLspClient {
     const socket = this.#socket;
     if (this.#opened && socket?.readyState === WebSocket.OPEN) {
       this.#notify("textDocument/didClose", { textDocument: { uri: this.#uri } });
-      void this.#sendRequest("shutdown", null, socket).finally(() => {
-        this.#notify("exit", null);
-        socket.close();
-      });
-    } else {
-      socket?.close();
     }
+    socket?.close();
     this.#rejectPending(new Error("TRUST language server connection closed"));
   }
 

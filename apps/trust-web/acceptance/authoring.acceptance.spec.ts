@@ -155,6 +155,38 @@ test("the Operation editor synchronizes the LSP when client-side navigation reus
   await expect(suggestions).not.toContainText("status");
 });
 
+test("leaving an editor closes its LSP connection without stopping the runtime", async ({ page, request }) => {
+  const sentMethods: string[] = [];
+  page.on("websocket", (socket) => {
+    if (!socket.url().endsWith("/lsp")) return;
+    socket.on("framesent", ({ payload }) => {
+      const message = JSON.parse(payload.toString()) as { method?: string };
+      if (message.method) sentMethods.push(message.method);
+    });
+  });
+  await page.goto("/operations/git.head-read?tab=source");
+  await expect(page.locator(".monaco-editor")).toBeVisible();
+  await expect(page.getByText("Language server unavailable")).toBeHidden();
+
+  await page.locator('aside[data-doc="shell.sidebar"]').getByRole("link", { name: "Overview", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Overview" })).toBeVisible();
+  await expect.poll(() => sentMethods).toContain("textDocument/didClose");
+  expect(sentMethods).not.toContain("shutdown");
+  expect(sentMethods).not.toContain("exit");
+  const health = await request.get("http://127.0.0.1:4390/health");
+  expect(health.status()).toBe(200);
+
+  await page.goto("/operations/aviation.aircraft-read?tab=source");
+  const editor = page.locator(".monaco-editor");
+  await expect(editor).toBeVisible();
+  await expect(page.getByText("Language server unavailable")).toBeHidden();
+  await page.getByRole("button", { name: "Edit source" }).click();
+  const aircraftLine = editor.locator(".view-line").filter({ hasText: "steps.aircraft.body.maintenanceStatus" });
+  await placeCursorAfterDot(page, aircraftLine, "steps");
+  await page.keyboard.press("Control+Space");
+  await expect(page.locator(".suggest-widget")).toContainText("aircraft");
+});
+
 async function placeCursorAfterDot(page: Page, line: Locator, identifier: string): Promise<void> {
   const token = line.getByText(identifier, { exact: true });
   const box = await token.boundingBox();

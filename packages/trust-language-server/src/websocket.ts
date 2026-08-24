@@ -1,4 +1,10 @@
-import { createConnection, ProposedFeatures } from "vscode-languageserver/node";
+import {
+  createConnection,
+  createProtocolConnection,
+  ProposedFeatures,
+  type Connection,
+  type WatchDog,
+} from "vscode-languageserver";
 import {
   WebSocketMessageReader,
   WebSocketMessageWriter,
@@ -16,5 +22,21 @@ export function startTrustWebSocketLanguageServer(
 ): void {
   const reader = new WebSocketMessageReader(socket);
   const writer = new WebSocketMessageWriter(socket);
-  startTrustLanguageServer(createConnection(ProposedFeatures.all, reader, writer), options);
+  let connection: Connection | undefined;
+  const watchDog: WatchDog = {
+    shutdownReceived: false,
+    initialize: () => undefined,
+    // This connection is embedded in the runtime. LSP lifecycle notifications own the WebSocket,
+    // never the host process. The standalone stdio entry point keeps the Node watchdog.
+    exit: () => {
+      connection?.dispose();
+      socket.dispose();
+    },
+  };
+  connection = createConnection(
+    (logger) => createProtocolConnection(reader, writer, logger),
+    watchDog,
+    ProposedFeatures.all,
+  );
+  startTrustLanguageServer(connection, options);
 }
