@@ -27,6 +27,7 @@ test("the Microsoft LSP server exposes the Operation language through standard J
   await assertIgnoredDocument(connection);
   await assertInvalidOperationOpenedDirectly(connection);
   await assertValidCatalog(connection);
+  await assertOperationCompletionCompiles(connection);
   await assertDefaultTemplates(connection);
   await assertInvalidFixtures(connection);
   await assertIncrementalDiagnostics(connection);
@@ -153,6 +154,7 @@ async function assertValidCatalog(connection: MessageConnection): Promise<void> 
     "file.license-read.feature",
     "http.status-read.feature",
     "http.text-read.feature",
+    "http.segments-query.feature",
   ];
 
   for (const [index, file] of files.entries()) {
@@ -240,6 +242,35 @@ async function assertValidCatalog(connection: MessageConnection): Promise<void> 
       assertSemanticTokenAt(semantic, positionAt(source, source.indexOf("head.stdout")), "head".length, "variable");
       assertSemanticTokenAt(semantic, positionAt(source, source.indexOf(" = \"") + 1), 1, "operator");
     }
+    if (file === "file.package-read.feature") {
+      const afterFormat = source.indexOf("JSON from Environment") + "JSON ".length;
+      const completions = await connection.sendRequest<CompletionItem[]>("textDocument/completion", {
+        textDocument: { uri }, position: positionAt(source, afterFormat),
+      });
+      assert.ok(completions.some(({ label }) => label === "from Environment"));
+    }
+    if (file === "http.status-read.feature") {
+      const afterEnvironment = source.indexOf('"serviceUrl" and reads') + '"serviceUrl" '.length;
+      const completions = await connection.sendRequest<CompletionItem[]>("textDocument/completion", {
+        textDocument: { uri }, position: positionAt(source, afterEnvironment),
+      });
+      assert.deepEqual(completions.map(({ label }) => label).sort(), [
+        "and reads",
+        "appending",
+        "with Input as JSON body",
+        "with JSONata body",
+        "with Text body",
+        "with header",
+        "with query",
+      ]);
+    }
+    if (file === "http.segments-query.feature") {
+      const afterQueryName = source.indexOf('"limit" as') + '"limit" '.length;
+      const completions = await connection.sendRequest<CompletionItem[]>("textDocument/completion", {
+        textDocument: { uri }, position: positionAt(source, afterQueryName),
+      });
+      assert.deepEqual(completions.map(({ label }) => label).sort(), ["as", "from Environment", "from Input"]);
+    }
   }
 }
 
@@ -255,6 +286,25 @@ async function assertNumericSemanticToken(connection: MessageConnection): Promis
     textDocument: { uri },
   });
   assertSemanticTokenAt(tokens, positionAt(source, source.lastIndexOf("1")), 1, "number");
+}
+
+async function assertOperationCompletionCompiles(connection: MessageConnection): Promise<void> {
+  const uri = "file:///workspace/completion/file.package-read.feature";
+  const source = operationFixture("valid/file.package-read.feature");
+  const phrase = "from Environment";
+  const insertionOffset = source.indexOf(phrase);
+  assert.ok(insertionOffset > 0);
+  const incomplete = source.slice(0, insertionOffset) + source.slice(insertionOffset + phrase.length);
+  connection.sendNotification("textDocument/didOpen", {
+    textDocument: { uri, languageId: "trust-operation", version: 1, text: incomplete },
+  });
+  const completions = await connection.sendRequest<CompletionItem[]>("textDocument/completion", {
+    textDocument: { uri }, position: positionAt(incomplete, insertionOffset),
+  });
+  const completion = completions.find(({ label }) => label === phrase);
+  assert.ok(completion);
+  const completed = incomplete.slice(0, insertionOffset) + (completion.insertText ?? completion.label) + incomplete.slice(insertionOffset);
+  compileOperation({ source: completed });
 }
 
 async function assertDefaultTemplates(connection: MessageConnection): Promise<void> {
@@ -279,6 +329,22 @@ async function assertDefaultTemplates(connection: MessageConnection): Promise<vo
   const procedureTemplate = procedureItems.find(({ label }) => label === "Procedure feature")?.insertText;
   assert.ok(procedureTemplate);
   compileProcedure({ source: procedureTemplate, operations: [compileOperation({ source: operationFixture("valid/git.head-read.feature") })] });
+
+  const phrase = "must establish";
+  const insertionOffset = procedureTemplate.indexOf(phrase);
+  assert.ok(insertionOffset > 0);
+  const incomplete = procedureTemplate.slice(0, insertionOffset) + procedureTemplate.slice(insertionOffset + phrase.length);
+  const completionUri = "file:///workspace/completion/new-procedure.feature";
+  connection.sendNotification("textDocument/didOpen", {
+    textDocument: { uri: completionUri, languageId: "trust-procedure", version: 1, text: incomplete },
+  });
+  const grammarItems = await connection.sendRequest<CompletionItem[]>("textDocument/completion", {
+    textDocument: { uri: completionUri }, position: positionAt(incomplete, insertionOffset),
+  });
+  const grammarCompletion = grammarItems.find(({ label }) => label === phrase);
+  assert.ok(grammarCompletion);
+  const completed = incomplete.slice(0, insertionOffset) + (grammarCompletion.insertText ?? grammarCompletion.label) + incomplete.slice(insertionOffset);
+  compileProcedure({ source: completed, operations: [compileOperation({ source: operationFixture("valid/git.head-read.feature") })] });
 }
 
 async function assertInvalidFixtures(connection: MessageConnection): Promise<void> {

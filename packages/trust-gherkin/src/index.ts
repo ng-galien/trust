@@ -31,3 +31,27 @@ export {
   tokenizeSentence,
 } from "./sentence.js";
 export type { SentenceToken } from "./sentence.js";
+export {
+  matchStepGrammar,
+  parseStepGrammar,
+  parseStepGrammarPrefix,
+  stepChoice,
+  stepGrammarExpectations,
+  stepGrammarFailure,
+  stepLiteral,
+  stepOneOf,
+  stepOptional,
+  stepQuoted,
+  stepRepeat,
+  stepSequence,
+} from "./step-grammar.js";
+export type {
+  StepGrammar,
+  StepGrammarCapture,
+  StepGrammarExpectation,
+  StepGrammarExpression,
+  StepGrammarFailure,
+  StepGrammarMatch,
+  StepGrammarPrefix,
+  StepGrammarProduction,
+} from "./step-grammar.js";

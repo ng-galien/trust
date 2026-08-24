@@ -1,0 +1,30 @@
+fragment = "language-server"
+
+[aliases]
+language_server_step_completion = "moniker ~ '**/dir:packages/dir:trust-language-server/dir:src/module:server/**'"
+language_server_module = "moniker ~ '**/dir:packages/dir:trust-language-server/dir:src/module:server'"
+gherkin_step_grammar_expectations_target = "target ~ '**/external_pkg:/@trust.gherkin/function:stepGrammarExpectations'"
+operation_step_grammar_target = "target ~ '**/external_pkg:/@trust.operation/path:language/path:operationStepGrammar'"
+procedure_step_grammar_target = "target ~ '**/external_pkg:/@trust.procedure/path:language/path:procedureStepGrammar'"
+
+[[ts.function.where]]
+id = "language-server-step-completion-call-flow-enters-gherkin"
+severity = "error"
+expr = """
+  $language_server_step_completion =>
+    (name != 'operationSuggestions' OR any(out_refs, $gherkin_step_grammar_expectations_target))
+    AND (name != 'procedureSuggestions' OR any(out_refs, $gherkin_step_grammar_expectations_target))
+"""
+message = "Language Server Step completion must enter the canonical Gherkin Step Grammar engine."
+rationale = "The Language Server enriches dynamic slots after the shared Gherkin engine derives valid continuations; it does not own or duplicate the accepted sequence of Step words. A separate module dependency rule verifies that both language-owned grammar descriptors are imported because imported-value argument reads are not emitted as function references."
+
+[[ts.module.where]]
+id = "language-server-dependency-on-operation-and-procedure-step-grammar-is-explicit"
+severity = "error"
+expr = """
+  $language_server_module =>
+    any(out_refs, $operation_step_grammar_target)
+    AND any(out_refs, $procedure_step_grammar_target)
+"""
+message = "The Language Server must import the canonical Operation and Procedure Step Grammars."
+rationale = "Step completion is parameterized by both language-owned grammar descriptors; the companion call-flow rule verifies that completion functions enter the shared Gherkin expectation engine."

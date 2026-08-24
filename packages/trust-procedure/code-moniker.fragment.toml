@@ -1,0 +1,20 @@
+fragment = "procedure"
+
+[aliases]
+procedure_step_parser = "moniker ~ '**/dir:packages/dir:trust-procedure/dir:src/module:compile/**'"
+procedure_compiler_module = "moniker ~ '**/dir:packages/dir:trust-procedure/dir:src/module:compile'"
+procedure_step_grammar_target = "target ~ '**/dir:packages/dir:trust-procedure/dir:src/module:language/path:procedureStepGrammar'"
+
+[[ts.function.where]]
+id = "procedure-step-parser-call-flow-enters-gherkin"
+severity = "error"
+expr = "$procedure_step_parser => (name != 'parseProcedureStep' OR any(out_refs, $gherkin_parse_step_grammar_target))"
+message = "Procedure Step parsing must enter the canonical Gherkin Step Grammar engine."
+rationale = "Procedure lowering obtains productions and captures from the shared Gherkin engine instead of interpreting Step words independently. A separate module dependency rule verifies that the compiler imports the Procedure-owned grammar descriptor because imported-value argument reads are not emitted as function references."
+
+[[ts.module.where]]
+id = "procedure-compiler-dependency-on-procedure-step-grammar-is-explicit"
+severity = "error"
+expr = "$procedure_compiler_module => any(out_refs, $procedure_step_grammar_target)"
+message = "The Procedure compiler must import the canonical Procedure Step Grammar."
+rationale = "Procedure parsing is parameterized by the grammar descriptor owned by the Procedure language module; the companion call-flow rule verifies that the parser function enters the shared Gherkin engine."

@@ -1,7 +1,7 @@
 default_rules = false
 
 [rules.taxonomy]
-patterns = ["dependency"]
+patterns = ["dependency", "call-flow"]
 components = ["gherkin", "operation", "procedure", "language-server", "runtime", "ui", "editor", "authority"]
 
 # Cross-package imports use the npm specifier (`@trust/...`) and are indexed as
@@ -29,7 +29,9 @@ authority_target = "$gherkin_target OR $operation_target OR $procedure_target"
 gherkin_downstream_target = "$operation_target OR $procedure_target OR $language_server_target OR $runtime_target OR $ui_target"
 operation_downstream_target = "$procedure_target OR $language_server_target OR $runtime_target OR $ui_target"
 procedure_downstream_target = "$language_server_target OR $runtime_target OR $ui_target"
-language_behavior_target = "target ~ '**/external_pkg:/@trust./*:/^(parseGherkin|tokenizeSentence|highlightGherkinSource|highlightExpressionSource|formatGherkinSource|analyzeOperation|analyzeProcedure|isExpressionIdentifierPart|isExpressionIdentifierStart|qualificationCompletionPath|expressionMember|SentenceCursor)$/'"
+authority_language_behavior_target = "target ~ '**/external_pkg:/@trust./*:/^(parseGherkin|tokenizeSentence|highlightGherkinSource|highlightExpressionSource|formatGherkinSource|analyzeOperation|analyzeProcedure|isExpressionIdentifierPart|isExpressionIdentifierStart|qualificationCompletionPath|expressionMember|SentenceCursor|matchStepGrammar|parseStepGrammar|parseStepGrammarPrefix|stepChoice|stepGrammarExpectations|stepGrammarFailure|stepLiteral|stepOneOf|stepOptional|stepQuoted|stepRepeat|stepSequence|operationStepGrammar|procedureStepGrammar)$/'"
+
+gherkin_parse_step_grammar_target = "target ~ '**/external_pkg:/@trust.gherkin/function:parseStepGrammar'"
 
 [profiles.language-authority]
 enable = [
@@ -38,8 +40,14 @@ enable = [
   "^refs\\.procedure-takes-no-downstream-dependency$",
   "^refs\\.only-runtime-takes-a-dependency-on-language-server$",
   "^refs\\.authority-dependency-never-reaches-ui$",
-  "^refs\\.editor-dependency-on-authority-goes-through-language-server$",
-  "^refs\\.ui-takes-no-dependency-on-language-behavior$",
+  "^refs\\.editor-dependency-on-authority-language-behavior-goes-through-language-server$",
+  "^refs\\.ui-dependency-on-authority-language-behavior-is-forbidden$",
+  "^ts\\.function\\.operation\\.operation-step-parser-call-flow-enters-gherkin$",
+  "^ts\\.module\\.operation\\.operation-compiler-dependency-on-operation-step-grammar-is-explicit$",
+  "^ts\\.function\\.procedure\\.procedure-step-parser-call-flow-enters-gherkin$",
+  "^ts\\.module\\.procedure\\.procedure-compiler-dependency-on-procedure-step-grammar-is-explicit$",
+  "^ts\\.function\\.language-server\\.language-server-step-completion-call-flow-enters-gherkin$",
+  "^ts\\.module\\.language-server\\.language-server-dependency-on-operation-and-procedure-step-grammar-is-explicit$",
 ]
 
 [[refs.where]]
@@ -78,15 +86,15 @@ expr = "$authority_source => NOT $ui_target"
 message = "A language authority depends on UI code."
 
 [[refs.where]]
-id = "editor-dependency-on-authority-goes-through-language-server"
+id = "editor-dependency-on-authority-language-behavior-goes-through-language-server"
 severity = "error"
-rationale = "Completion, formatting, folding, semantic tokens and diagnostics reach the editor exclusively over the LSP protocol; the Monaco surface (gherkin-editor) and its client (lsp-client) hold zero language knowledge. The editor drifted once into importing isExpressionIdentifierPart to compute replace ranges; ranges are now server-owned textEdits."
-expr = "$editor_source => NOT ($authority_target OR $language_server_target)"
-message = "The editor surface must obtain language behavior from the language server, not by importing an authority."
+rationale = "Completion, formatting, folding, semantic tokens and diagnostics reach the editor exclusively over the LSP protocol; the Monaco surface (gherkin-editor) and its client (lsp-client) neither execute authority behavior nor import the adapter implementation. Static presentation contracts such as the canonical highlighting token table may be shared directly. The editor drifted once into importing isExpressionIdentifierPart to compute replace ranges; ranges are now server-owned textEdits."
+expr = "$editor_source => NOT ($authority_language_behavior_target OR $language_server_target)"
+message = "The editor surface must obtain language behavior through the language server protocol, not by importing authority behavior or the adapter implementation."
 
 [[refs.where]]
-id = "ui-takes-no-dependency-on-language-behavior"
+id = "ui-dependency-on-authority-language-behavior-is-forbidden"
 severity = "error"
 rationale = "Parsing, tokenizing and highlighting are language behavior owned by the authorities; the UI consumes them through the language server or the compiled models (plan-overlay hydrates from compiled locations since 2026-08-24). Single decided exemption: docs/highlight reuses the LSP's own highlight engine for static documentation pages — same engine, no duplication, and a live server cannot serve the standalone docs bundle."
-expr = "($ui_source AND NOT $ui_docs_highlight_source) => NOT $language_behavior_target"
+expr = "($ui_source AND NOT $ui_docs_highlight_source) => NOT $authority_language_behavior_target"
 message = "UI code invokes language behavior directly instead of consuming the language server or compiled models."

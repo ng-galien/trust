@@ -1,4 +1,4 @@
-import { isExpressionIdentifierPart, isExpressionIdentifierStart } from "@trust/gherkin";
+import { isExpressionIdentifierPart, isExpressionIdentifierStart, stepChoice, stepLiteral, stepOneOf, stepOptional, stepQuoted, stepRepeat, stepSequence, type StepGrammar } from "@trust/gherkin";
 import { operationLanguage } from "@trust/operation/language";
 
 export const procedureLanguage = {
@@ -69,6 +69,84 @@ Feature: Describe what this procedure establishes
       """
 `,
 } as const;
+
+const procedureLiteral = (value: string, detail: string, capture?: string) => stepLiteral(value, detail, capture);
+const procedureQuoted = (slot: string, detail: string) => stepQuoted(slot, detail);
+
+/** Canonical grammar of the sentences carried by Procedure Steps. */
+export const procedureStepGrammar: StepGrammar = {
+  productions: [
+    {
+      name: "role",
+      context: "background",
+      expression: stepSequence(
+        stepOneOf("cardinality", procedureLanguage.cardinalities, "Role cardinality"),
+        stepOneOf("value-type", procedureLanguage.valueTypes, "Role value type"),
+        procedureQuoted("role", "Plan context role"),
+        stepRepeat(stepChoice(
+          stepSequence(
+            procedureLiteral("declared", "Agent-declared role", "declared"),
+            stepOptional(procedureLiteral("optionally", "Optional agent declaration", "optional")),
+            procedureLiteral("by agent", "Agent declaration"),
+          ),
+          stepSequence(procedureLiteral("fixed as", "Fixed role value"), procedureQuoted("fixed-value", "Fixed role value")),
+          stepSequence(procedureLiteral("for", "Parent role"), procedureQuoted("parent-role", "Plan context role")),
+          stepSequence(procedureLiteral("for each", "One instance per parent"), procedureQuoted("each-parent-role", "Plan context role")),
+        )),
+      ),
+    },
+    {
+      name: "dependency",
+      context: "scenario",
+      expression: stepSequence(
+        procedureLiteral(procedureLanguage.phrases.dependency, "Scenario dependency"),
+        procedureQuoted("scenario", "Prerequisite Scenario"),
+        procedureLiteral("is validated", "Dependency sentence end"),
+      ),
+    },
+    {
+      name: "check",
+      context: "scenario",
+      expression: stepSequence(
+        procedureLiteral(procedureLanguage.phrases.check, "Check"),
+        procedureQuoted("check", "Check name"),
+        procedureLiteral(procedureLanguage.phrases.operation, "Names the Operation this Check runs"),
+        procedureQuoted("operation", "Operation"),
+        procedureLiteral("on", "Target role"),
+        stepOptional(stepOneOf("target-selection", ["each", "all"], "Target selection")),
+        procedureQuoted("target-role", "Plan context role"),
+        procedureLiteral("as Input", "Operation Input binding"),
+        procedureQuoted("input", "Operation Input"),
+        stepRepeat(stepChoice(
+          stepSequence(
+            procedureLiteral("using plan as Input", "Bind the Plan identifier"),
+            procedureQuoted("plan-input", "Operation Input"),
+          ),
+          stepSequence(
+            procedureLiteral("using", "Additional role binding"),
+            procedureQuoted("using-role", "Plan context role"),
+            procedureLiteral("as Input", "Operation Input binding"),
+            procedureQuoted("using-input", "Operation Input"),
+          ),
+          stepSequence(
+            procedureLiteral("using all", "Bind every role instance"),
+            procedureQuoted("using-all-role", "Plan context role"),
+            procedureLiteral("as Input", "Operation Input binding"),
+            procedureQuoted("using-all-input", "Operation Input"),
+          ),
+          stepSequence(
+            procedureLiteral("and materializes", "Materialize a produced role"),
+            procedureQuoted("materialized-role", "Plan context role"),
+            procedureLiteral("from field", "Source produced field"),
+            procedureQuoted("field", "Produced Fact field"),
+          ),
+        )),
+        procedureLiteral("and must establish", "Success reason"),
+        procedureQuoted("reason", "Success reason"),
+      ),
+    },
+  ],
+};
 
 export const procedureHighlightVocabulary = {
   roots: Object.values(procedureLanguage.qualification.roots),

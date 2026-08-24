@@ -203,9 +203,34 @@ describe("Operation compiler", () => {
 
     expect(analysis.diagnostics).toEqual([expect.objectContaining({
       code: "unknown-step",
-      message: expect.stringContaining("sentence must end with and reads"),
+      message: expect.stringContaining('expected with query or with header or with Input as JSON body or with JSONata body or with Text body or and reads before "appending"'),
     })]);
     expect(analysis.document?.steps).toEqual([expect.objectContaining({ name: "comments", type: "http" })]);
+  });
+
+  test("reports a semantic capture rejected after the Step Grammar matched", () => {
+    const source = fixture("valid/http.status-read.feature")
+      .replace('to Environment "serviceUrl" and reads', 'to Environment "serviceUrl" appending literal "" and reads');
+
+    const analysis = analyzeOperation({ source, sourceName: "http-empty-segment.feature" });
+
+    expect(analysis.diagnostics).toEqual([expect.objectContaining({
+      code: "unknown-step",
+      message: expect.stringContaining('appending literal expects a non-empty "<segment>"'),
+    })]);
+    expect(analysis.document?.steps).toEqual([expect.objectContaining({ name: "response", type: "http" })]);
+  });
+
+  test("does not expose an invalid status modifier as an HTTP action Step", () => {
+    const source = fixture("valid/http.status-read.feature").replace(
+      "    Then Produce with JSONata",
+      '    And HTTP "bad name" accepts statuses\n      | status |\n      | 404    |\n    Then Produce with JSONata',
+    );
+
+    const analysis = analyzeOperation({ source, sourceName: "http-invalid-status-name.feature" });
+
+    expect(analysis.diagnostics).toEqual([expect.objectContaining({ code: "unknown-step" })]);
+    expect(analysis.document?.steps).toEqual([expect.objectContaining({ name: "response", type: "http" })]);
   });
 
   test("accepts every registered application HTTP method, including QUERY", () => {

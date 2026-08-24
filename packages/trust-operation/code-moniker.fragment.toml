@@ -1,0 +1,27 @@
+fragment = "operation"
+
+[aliases]
+operation_step_parser = "moniker ~ '**/dir:packages/dir:trust-operation/dir:src/module:compile/**'"
+operation_compiler_module = "moniker ~ '**/dir:packages/dir:trust-operation/dir:src/module:compile'"
+operation_step_grammar_target = "target ~ '**/dir:packages/dir:trust-operation/dir:src/module:language/path:operationStepGrammar'"
+gherkin_parse_step_grammar_prefix_target = "target ~ '**/external_pkg:/@trust.gherkin/function:parseStepGrammarPrefix'"
+gherkin_step_grammar_failure_target = "target ~ '**/external_pkg:/@trust.gherkin/function:stepGrammarFailure'"
+
+[[ts.function.where]]
+id = "operation-step-parser-call-flow-enters-gherkin"
+severity = "error"
+expr = """
+  $operation_step_parser =>
+    (name != 'parseOperationStep' OR any(out_refs, $gherkin_parse_step_grammar_target))
+    AND (name != 'parseOperationStepPrefix' OR any(out_refs, $gherkin_parse_step_grammar_prefix_target))
+    AND (name != 'operationStepGrammarDiagnostic' OR any(out_refs, $gherkin_step_grammar_failure_target))
+"""
+message = "Operation Step parsing must enter the canonical Gherkin Step Grammar engine."
+rationale = "Operation lowering obtains matches, prefixes and failures from the shared Gherkin engine instead of interpreting Step words independently. A separate module dependency rule verifies that the compiler imports the Operation-owned grammar descriptor because imported-value argument reads are not emitted as function references."
+
+[[ts.module.where]]
+id = "operation-compiler-dependency-on-operation-step-grammar-is-explicit"
+severity = "error"
+expr = "$operation_compiler_module => any(out_refs, $operation_step_grammar_target)"
+message = "The Operation compiler must import the canonical Operation Step Grammar."
+rationale = "Operation parsing is parameterized by the grammar descriptor owned by the Operation language module; the companion call-flow rule verifies that parser functions enter the shared Gherkin engine."

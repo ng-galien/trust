@@ -1,3 +1,5 @@
+import { stepChoice, stepLiteral, stepOneOf, stepOptional, stepQuoted, stepRepeat, stepSequence, type StepGrammar } from "@trust/gherkin";
+
 import { HTTP_METHODS } from "./http.js";
 
 export const operationLanguage = {
@@ -64,6 +66,118 @@ Feature: Describe what this operation observes
       """
 `,
 } as const;
+
+const operationLiteral = (value: string, detail: string, capture?: string) => stepLiteral(value, detail, capture);
+const operationQuoted = (slot: string, detail: string) => stepQuoted(slot, detail);
+const appendInput = stepOptional(stepSequence(
+  operationLiteral("and Input", "Append an Input value"),
+  operationQuoted("append-input", "Operation Input"),
+));
+const httpValueSource = (prefix: string) => stepChoice(
+  stepSequence(operationLiteral("from Input", "Value from an Input"), operationQuoted(`${prefix}-input`, "Operation Input")),
+  stepSequence(operationLiteral("from Environment", "Value from the Environment"), operationQuoted(`${prefix}-environment`, "Operation Environment")),
+  stepSequence(operationLiteral("as", "Literal value"), operationQuoted(`${prefix}-literal`, "Literal value")),
+);
+const httpPathSegment = stepChoice(
+  stepSequence(operationLiteral("Input", "Path segment from an Input"), operationQuoted("path-input", "Operation Input")),
+  stepSequence(operationLiteral("literal", "Literal path segment"), operationQuoted("path-literal", "Literal path segment")),
+);
+
+/** Canonical grammar of the sentences carried by Operation Steps. */
+export const operationStepGrammar: StepGrammar = {
+  productions: [
+    { name: "environment", context: "background", expression: operationLiteral(operationLanguage.phrases.environment, "Environment interface table") },
+    { name: "input", context: "background", expression: operationLiteral(operationLanguage.phrases.input, "Input interface table") },
+    { name: "produced", context: "background", expression: operationLiteral(operationLanguage.phrases.produced, "Produced fields interface table") },
+    {
+      name: "shell-run",
+      context: "scenario",
+      expression: stepSequence(
+        operationLiteral("Shell", "Shell command"),
+        operationQuoted("step", "Step name"),
+        operationLiteral("runs", "Executable to run"),
+        operationQuoted("executable", "Executable"),
+        operationLiteral("with cwd from Environment", "Working directory"),
+        operationQuoted("environment", "Operation Environment"),
+        appendInput,
+      ),
+    },
+    {
+      name: "shell-exits",
+      context: "scenario",
+      expression: stepSequence(
+        operationLiteral("Shell", "Shell command"),
+        operationQuoted("step", "Step name"),
+        operationLiteral("accepts exits", "Accept non-zero exit codes"),
+      ),
+    },
+    {
+      name: "file-read",
+      context: "scenario",
+      expression: stepSequence(
+        operationLiteral("File", "File read"),
+        operationQuoted("step", "Step name"),
+        operationLiteral("reads", "Path to read"),
+        operationQuoted("path", "Relative file path"),
+        operationLiteral("as", "Content format"),
+        stepOneOf("format", operationLanguage.formats, "Content format"),
+        operationLiteral("from Environment", "File root"),
+        operationQuoted("environment", "Operation Environment"),
+        appendInput,
+      ),
+    },
+    {
+      name: "http-statuses",
+      context: "scenario",
+      expression: stepSequence(
+        operationLiteral("HTTP", "HTTP request"),
+        operationQuoted("step", "Step name"),
+        operationLiteral("accepts statuses", "Accept non-success statuses"),
+      ),
+    },
+    {
+      name: "http-request",
+      context: "scenario",
+      expression: stepSequence(
+        operationLiteral("HTTP", "HTTP request"),
+        operationQuoted("step", "Step name"),
+        operationLiteral("sends", "HTTP method"),
+        stepOneOf("http-method", operationLanguage.httpMethods, "HTTP method", true),
+        operationLiteral("to Environment", "Target base URL"),
+        operationQuoted("environment", "Operation Environment"),
+        stepOptional(stepSequence(
+          operationLiteral("appending", "URL path segments"),
+          httpPathSegment,
+          stepRepeat(stepChoice(
+            stepSequence(operationLiteral("and Input", "Path segment from an Input"), operationQuoted("path-input", "Operation Input")),
+            stepSequence(operationLiteral("and literal", "Literal path segment"), operationQuoted("path-literal", "Literal path segment")),
+          )),
+        )),
+        stepRepeat(stepSequence(
+          operationLiteral("with query", "Query parameter"),
+          operationQuoted("query-name", "Query parameter name"),
+          httpValueSource("query"),
+        )),
+        stepRepeat(stepSequence(
+          operationLiteral("with header", "Request header"),
+          operationQuoted("header-name", "Request header name"),
+          httpValueSource("header"),
+        )),
+        stepOptional(stepChoice(
+          operationLiteral("with Input as JSON body", "Whole Input as JSON body", "body-whole-input"),
+          operationLiteral("with JSONata body", "JSONata request body", "body-jsonata"),
+          stepSequence(operationLiteral("with Text body", "Text request body"), httpValueSource("body")),
+        )),
+        operationLiteral("and reads", "Response format"),
+        stepChoice(
+          stepOneOf("response-format", operationLanguage.formats, "Response format"),
+          operationLiteral("no body", "Ignore the response body", "response-no-body"),
+        ),
+      ),
+    },
+    { name: "produce", context: "scenario", expression: operationLiteral(operationLanguage.phrases.produce, "Produce expression") },
+  ],
+};
 
 export const operationHighlightVocabulary = {
   roots: operationLanguage.jsonata.roots,

@@ -6,8 +6,9 @@ import {
   hasGherkinTag,
   normalizeGherkinSource,
   parseGherkin,
-  SentenceCursor,
+  parseStepGrammar,
   tokenizeSentence,
+  type StepGrammarMatch,
 } from "@trust/gherkin";
 import {
   CompiledOperationValidationError,
@@ -32,7 +33,7 @@ import {
   QualificationExpressionError,
 } from "./expression.js";
 import { transitiveScenarioDependencies } from "./dependencies.js";
-import { procedureLanguage } from "./language.js";
+import { procedureLanguage, procedureStepGrammar } from "./language.js";
 
 const PROCEDURE_TAG = procedureLanguage.tags.procedure;
 const VERSION_TAG = procedureLanguage.tags.version;
@@ -421,32 +422,22 @@ function parseRoles(steps: readonly Step[], sourceName: string): RoleSource[] {
     if (step.dataTable || step.docString || (step.keyword.trim() !== "Given" && step.keyword.trim() !== "And")) {
       fail("invalid-procedure", "Plan context accepts only role sentences", sourceName, step);
     }
-    const cursor = sentenceCursor(step.text, sourceName, step);
-    const cardinality = cursor.requireOneOf(procedureLanguage.cardinalities) as "one" | "many";
-    const type = cursor.requireOneOf(procedureLanguage.valueTypes) as ProcedureValueType;
-    const name = cursor.requireQuoted();
+    const parsed = parseProcedureStep(step.text, "background");
+    if (parsed?.production !== "role") fail("invalid-procedure", `Invalid role sentence "${step.text}"`, sourceName, step);
+    const cardinality = requireCapture(parsed, "cardinality", sourceName, step) as "one" | "many";
+    const type = requireCapture(parsed, "value-type", sourceName, step) as ProcedureValueType;
+    const name = requireCapture(parsed, "role", sourceName, step);
     if (name === PLAN_ROLE) fail("invalid-procedure", `Role "${PLAN_ROLE}" is reserved for the Plan identifier`, sourceName, step);
-    let declared = false;
-    let optional = false;
-    let fixed: string | undefined;
+    const declared = parsed.captures.some(({ slot }) => slot === "declared");
+    const optional = parsed.captures.some(({ slot }) => slot === "optional");
+    const fixed = parsed.captures.findLast(({ slot }) => slot === "fixed-value")?.value;
     const parents: { role: string; each: boolean }[] = [];
-    while (!cursor.done) {
-      if (cursor.takeText("declared")) {
-        optional = cursor.takeText("optionally") || optional;
-        cursor.requireText("by");
-        cursor.requireText("agent");
-        declared = true;
-        continue;
+    for (const capture of parsed.captures) {
+      if (capture.slot === "parent-role" || capture.slot === "each-parent-role") {
+        parents.push({ role: requireCaptureValue(capture, sourceName, step), each: capture.slot === "each-parent-role" });
       }
-      if (cursor.takeText("fixed")) {
-        cursor.requireText("as");
-        fixed = cursor.requireQuoted();
-        continue;
-      }
-      cursor.requireText("for");
-      const each = cursor.takeText("each");
-      parents.push({ role: cursor.requireQuoted(), each });
     }
+    if (fixed === "") fail("invalid-procedure", `Fixed role "${name}" cannot be empty`, sourceName, step);
     if (declared && fixed !== undefined) fail("invalid-procedure", `Role "${name}" cannot be declared and fixed`, sourceName, step);
     if (fixed !== undefined && cardinality !== "one") {
       fail("incompatible-cardinality", `Fixed role "${name}" must have cardinality one`, sourceName, step);
@@ -486,65 +477,42 @@ function parseScenario(scenario: Scenario, sourceName: string): ScenarioSource {
 }
 
 function parseDependency(text: string): string | undefined {
-  try {
-    const tokens = tokenizeSentence(text);
-    return tokens.length === 4
-      && tokens[0]?.kind === "text" && tokens[0].value === "scenario"
-      && tokens[1]?.kind === "quoted"
-      && tokens[2]?.kind === "text" && tokens[2].value === "is"
-      && tokens[3]?.kind === "text" && tokens[3].value === "validated"
-      ? tokens[1].value
-      : undefined;
-  } catch {
-    return undefined;
-  }
+  const parsed = parseProcedureStep(text, "scenario");
+  if (parsed?.production !== "dependency") return undefined;
+  const dependency = parsed.captures.find(({ slot }) => slot === "scenario")?.value;
+  return dependency === "" ? undefined : dependency;
 }
 
 function parseCheckSentence(text: string, sourceName: string, located: Located): Omit<CheckSource, "qualification" | "location"> {
-  const cursor = sentenceCursor(text, sourceName, located);
-  cursor.requireText("Check");
-  const name = cursor.requireQuoted();
-  cursor.requireText("runs");
-  cursor.requireText("Operation");
-  const operation = cursor.requireQuoted();
-  cursor.requireText("on");
-  const selection = cursor.takeOneOf(["each", "all"]) as "each" | "all" | undefined;
-  const role = cursor.requireQuoted();
-  cursor.requireText("as");
-  cursor.requireText("Input");
-  const input = cursor.requireQuoted();
+  const parsed = parseProcedureStep(text, "scenario");
+  if (parsed?.production !== "check") fail("invalid-procedure", `Invalid Check sentence "${text}"`, sourceName, located);
+  const name = requireCapture(parsed, "check", sourceName, located);
+  const operation = requireCapture(parsed, "operation", sourceName, located);
+  const selection = parsed.captures.find(({ slot }) => slot === "target-selection")?.value as "each" | "all" | undefined;
+  const role = requireCapture(parsed, "target-role", sourceName, located);
+  const input = requireCapture(parsed, "input", sourceName, located);
   const using: UsingSource[] = [];
   const materializes: { role: string; field: string }[] = [];
-  let successReason: string | undefined;
-  while (!cursor.done) {
-    if (cursor.takeText("using")) {
-      if (cursor.takeText(PLAN_ROLE)) {
-        cursor.requireText("as");
-        cursor.requireText("Input");
-        using.push({ role: PLAN_ROLE, selection: "one", input: cursor.requireQuoted() });
-        continue;
-      }
-      const useSelection = cursor.takeText("all") ? "all" : "one";
-      const useRole = cursor.requireQuoted();
-      cursor.requireText("as");
-      cursor.requireText("Input");
-      using.push({ role: useRole, selection: useSelection, input: cursor.requireQuoted() });
-      continue;
+  for (let index = 0; index < parsed.captures.length; index += 1) {
+    const capture = parsed.captures[index]!;
+    if (capture.slot === "plan-input") using.push({ role: PLAN_ROLE, selection: "one", input: requireCaptureValue(capture, sourceName, located) });
+    if (capture.slot === "using-role" || capture.slot === "using-all-role") {
+      const inputCapture = parsed.captures[index + 1];
+      const expected = capture.slot === "using-all-role" ? "using-all-input" : "using-input";
+      if (inputCapture?.slot !== expected) fail("invalid-procedure", `Check "${name}" has an invalid role binding`, sourceName, located);
+      using.push({
+        role: requireCaptureValue(capture, sourceName, located),
+        selection: capture.slot === "using-all-role" ? "all" : "one",
+        input: requireCaptureValue(inputCapture, sourceName, located),
+      });
     }
-    cursor.requireText("and");
-    if (cursor.takeText("materializes")) {
-      const materializedRole = cursor.requireQuoted();
-      cursor.requireText("from");
-      cursor.requireText("field");
-      materializes.push({ role: materializedRole, field: cursor.requireQuoted() });
-      continue;
+    if (capture.slot === "materialized-role") {
+      const fieldCapture = parsed.captures[index + 1];
+      if (fieldCapture?.slot !== "field") fail("invalid-procedure", `Check "${name}" has an invalid materialization`, sourceName, located);
+      materializes.push({ role: requireCaptureValue(capture, sourceName, located), field: requireCaptureValue(fieldCapture, sourceName, located) });
     }
-    cursor.requireText("must");
-    cursor.requireText("establish");
-    successReason = cursor.requireQuoted();
-    if (!cursor.done) fail("invalid-procedure", `Check "${name}" has trailing words`, sourceName, located);
   }
-  if (!successReason) fail("invalid-procedure", `Check "${name}" must establish one reason`, sourceName, located);
+  const successReason = requireCapture(parsed, "reason", sourceName, located);
   return {
     name,
     operation,
@@ -788,13 +756,21 @@ function fail(code: ProcedureCompilationErrorCode, message: string, sourceName: 
   );
 }
 
-function sentenceCursor(text: string, sourceName: string, located: Located): SentenceCursor {
+function parseProcedureStep(text: string, context: "background" | "scenario"): StepGrammarMatch | undefined {
   try {
-    return new SentenceCursor(
-      tokenizeSentence(text),
-      (expectation) => fail("invalid-procedure", expectation, sourceName, located),
-    );
+    return parseStepGrammar(procedureStepGrammar, tokenizeSentence(text), context);
   } catch {
-    return fail("invalid-procedure", `Invalid sentence "${text}"`, sourceName, located);
+    return undefined;
   }
+}
+
+function requireCapture(match: StepGrammarMatch, slot: string, sourceName: string, located: Located): string {
+  const capture = match.captures.find((candidate) => candidate.slot === slot);
+  if (!capture) fail("invalid-procedure", `Step Grammar omitted required capture "${slot}"`, sourceName, located);
+  return requireCaptureValue(capture, sourceName, located);
+}
+
+function requireCaptureValue(capture: { readonly slot: string; readonly value: string }, sourceName: string, located: Located): string {
+  if (capture.value === "") fail("invalid-procedure", `Capture "${capture.slot}" cannot be empty`, sourceName, located);
+  return capture.value;
 }

@@ -20,7 +20,7 @@ import {
 import { TextDocument } from "vscode-languageserver-textdocument";
 import type { GherkinDocument, Step, TableRow } from "@cucumber/messages";
 
-import { continuationLineIndexes, GherkinSyntaxError, highlightGherkinSource, highlightTokenTable, isExpressionIdentifierPart, joinContinuations, parseGherkin, SentenceSyntaxError, splitLines, tokenizeSentence, type SentenceToken } from "@trust/gherkin";
+import { continuationLineIndexes, GherkinSyntaxError, highlightGherkinSource, highlightTokenTable, isExpressionIdentifierPart, joinContinuations, parseGherkin, SentenceSyntaxError, splitLines, stepGrammarExpectations, tokenizeSentence, type SentenceToken, type StepGrammarExpectation } from "@trust/gherkin";
 import { formatGherkinSource } from "@trust/gherkin/format";
 import {
   analyzeOperation,
@@ -29,9 +29,9 @@ import {
   type OperationDocument,
   type SourceRange,
 } from "@trust/operation";
-import { operationAuthoringSnippets, operationHighlightVocabulary, operationLanguage } from "@trust/operation/language";
+import { operationAuthoringSnippets, operationHighlightVocabulary, operationLanguage, operationStepGrammar } from "@trust/operation/language";
 import { analyzeProcedure, isProcedureSource, transitiveScenarioDependencies, type CompiledProcedure } from "@trust/procedure";
-import { expressionMember, procedureHighlightVocabulary, procedureLanguage, qualificationCompletionPath, type QualificationCompletionPath } from "@trust/procedure/language";
+import { expressionMember, procedureHighlightVocabulary, procedureLanguage, procedureStepGrammar, qualificationCompletionPath, type QualificationCompletionPath } from "@trust/procedure/language";
 
 type LanguageKind = "operation" | "procedure";
 const semanticTokenTypes = highlightTokenTable.map(({ kind }) => kind);
@@ -276,133 +276,58 @@ function prefixTokens(prefix: string): PrefixTokens | undefined {
   }
 }
 
-const lastText = (tokens: readonly SentenceToken[]): string | undefined => {
-  for (let index = tokens.length - 1; index >= 0; index -= 1) {
-    const token = tokens[index]!;
-    if (token.kind === "text") return token.value;
-  }
-  return undefined;
-};
-
-const firstWord = (tokens: readonly SentenceToken[]): string | undefined =>
-  tokens[0]?.kind === "text" ? tokens[0].value : undefined;
-
 function procedureSuggestions(site: StepSite, tokens: readonly SentenceToken[], parsed: GherkinDocument, operations: readonly CompiledOperation[], lineSuffix: string): Suggestion[] {
   const facts = procedureFacts(parsed);
   const roles = facts.roles.map((role) => quotedValue(role, CompletionItemKind.Variable, "Plan context role"));
-  const last = tokens[tokens.length - 1];
-  if (site.container === "background") {
-    if (!last) return procedureLanguage.cardinalities.map((cardinality) => keyword(cardinality, "Role cardinality"));
-    if (last.kind === "quoted") return [keyword("declared by agent", "Agent-declared role"), keyword("declared optionally by agent", "Optional agent-declared role"), keyword("fixed as", "Fixed role value"), keyword("for", "Parent role")];
-    if ((procedureLanguage.cardinalities as readonly string[]).includes(last.value)) return procedureLanguage.valueTypes.map((type) => ({ label: type, kind: CompletionItemKind.TypeParameter, detail: "Role value type" }));
-    switch (last.value) {
-      case "declared": {
-        const continued = /^\s*by\s+agent\b/.test(lineSuffix);
-        return [
-          { label: "optionally", kind: CompletionItemKind.Keyword, detail: "Optional agent declaration", insertText: continued ? "optionally " : "optionally by agent" },
-          ...(continued ? [] : [keyword("by agent", "Agent declaration")]),
-        ];
-      }
-      case "optionally": return [keyword("by agent", "Agent declaration")];
-      case "by": return [keyword("agent", "Agent declaration")];
-      case "fixed": return [keyword("as", "Fixed role value")];
-      case "for": return [keyword("each", "One instance per parent"), ...roles];
-      case "each": return roles;
-      default: return [];
-    }
-  }
-  if (!last) return [checkSnippetSuggestion(operations), dependencySnippetSuggestion(facts.scenarios)];
-  if (firstWord(tokens) === procedureLanguage.phrases.dependency) {
-    if (last.kind === "quoted") return [keyword("is validated", "Dependency sentence end")];
-    switch (last.value) {
-      case procedureLanguage.phrases.dependency: return facts.scenarios.map((slug) => quotedValue(slug, CompletionItemKind.Event, "Prerequisite Scenario"));
-      case "is": return [keyword("validated", "Dependency sentence end")];
-      default: return [];
-    }
-  }
+  if (site.container === "scenario" && tokens.length === 0) return [checkSnippetSuggestion(operations), dependencySnippetSuggestion(facts.scenarios)];
   const operation = operationForCheck(tokens, operations);
-  if (last.kind === "quoted") {
-    switch (lastText(tokens)) {
-      case procedureLanguage.phrases.check: return [keyword("runs Operation", "Names the Operation this Check runs")];
-      case "Operation": return [keyword("on", "Target role")];
-      case "on": case "each": case "all": case "using": return [keyword("as Input", "Binds the role to an Operation Input")];
-      case "Input": return [keyword("and must establish", "Success reason"), keyword("using", "Additional role binding"), keyword("and materializes", "Materializes a role from a produced field")];
-      case "materializes": return [keyword("from field", "Source produced field")];
-      case "field": return [keyword("and must establish", "Success reason")];
+  return stepGrammarExpectations(procedureStepGrammar, tokens, site.container).flatMap((expectation) => {
+    if (expectation.kind === "literal") {
+      if (expectation.value === "optionally") {
+        return [{
+          ...keyword(expectation.value, expectation.detail),
+          insertText: /^\s*by\s+agent\b/.test(lineSuffix) ? "optionally " : "optionally by agent",
+        }];
+      }
+      return [keyword(expectation.value, expectation.detail)];
+    }
+    if (expectation.kind === "one-of") {
+      const kind = expectation.slot === "value-type" ? CompletionItemKind.TypeParameter : CompletionItemKind.Keyword;
+      return expectation.values.map((value) => ({ label: value, kind, detail: expectation.detail, quoted: expectation.quoted }));
+    }
+    switch (expectation.slot) {
+      case "scenario": return facts.scenarios.map((slug) => quotedValue(slug, CompletionItemKind.Event, expectation.detail));
+      case "operation": return operations.map((candidate) => quotedValue(candidate.operation, CompletionItemKind.Module, candidate.title));
+      case "parent-role": case "each-parent-role": case "target-role": case "using-role": case "using-all-role": case "materialized-role": return roles;
+      case "input": case "plan-input": case "using-input": case "using-all-input": return operation ? Object.keys(operation.input.properties).map((name) => quotedValue(name, CompletionItemKind.Property, expectation.detail)) : [];
+      case "field": return operation ? Object.keys(operation.produced.properties).map((name) => quotedValue(name, CompletionItemKind.Field, expectation.detail)) : [];
       default: return [];
     }
-  }
-  switch (last.value) {
-    case "runs": return [keyword("Operation", "Names the Operation this Check runs")];
-    case "Operation": return operations.map((candidate) => quotedValue(candidate.operation, CompletionItemKind.Module, candidate.title));
-    case "on": return [keyword("each", "One Check per instance"), keyword("all", "One Check over all instances"), ...roles];
-    case "each": case "all": return roles;
-    case "as": return [keyword("Input", "Operation Input binding")];
-    case "Input": return operation ? Object.keys(operation.input.properties).map((name) => quotedValue(name, CompletionItemKind.Property, "Operation input")) : [];
-    case "using": return [keyword("plan", "The Plan identifier"), keyword("all", "All instances of a role"), ...roles];
-    case "plan": return [keyword("as Input", "Binds the Plan identifier to an Operation Input")];
-    case "and": return [keyword("must establish", "Success reason"), keyword("materializes", "Materializes a role from a produced field")];
-    case "must": return [keyword("establish", "Success reason")];
-    case "materializes": return roles;
-    case "from": return [keyword("field", "Source produced field")];
-    case "field": return operation ? Object.keys(operation.produced.properties).map((name) => quotedValue(name, CompletionItemKind.Field, "Produced Fact field")) : [];
-    default: return [];
-  }
+  });
 }
 
 function operationSuggestions(site: StepSite, tokens: readonly SentenceToken[], source: string): Suggestion[] {
   const model = analyzeOperation({ source }).document;
   const environment = (model?.environment ?? []).map((field) => quotedValue(field.name, CompletionItemKind.Variable, `Environment: ${field.type}`));
   const inputs = (model?.input ?? []).map((field) => quotedValue(field.name, CompletionItemKind.Property, `Input: ${field.type}`));
-  const last = tokens[tokens.length - 1];
-  const step = firstWord(tokens);
-  if (site.container === "background") {
-    if (!last) return [keyword(operationLanguage.phrases.environment, "Environment interface table"), keyword(operationLanguage.phrases.input, "Input interface table"), keyword(operationLanguage.phrases.produced, "Produced fields interface table")];
-    if (last.kind === "text" && last.value === "Produced") return [keyword("fields", "Produced fields interface table")];
-    return [];
+  if (site.container === "scenario" && tokens.length === 0) return scenarioStepSuggestions();
+  return stepGrammarExpectations(operationStepGrammar, tokens, site.container)
+    .flatMap((expectation) => operationGrammarSuggestions(expectation, environment, inputs));
+}
+
+function operationGrammarSuggestions(expectation: StepGrammarExpectation, environment: readonly Suggestion[], inputs: readonly Suggestion[]): Suggestion[] {
+  if (expectation.kind === "literal") return [keyword(expectation.value, expectation.detail)];
+  if (expectation.kind === "one-of") {
+    return expectation.values.map((value) => ({
+      label: value,
+      kind: CompletionItemKind.EnumMember,
+      detail: expectation.detail,
+      quoted: expectation.quoted,
+    }));
   }
-  if (!last) return scenarioStepSuggestions();
-  if (last.kind === "quoted") {
-    switch (lastText(tokens)) {
-      case "Shell": return [keyword("runs", "Executable to run"), keyword("accepts exits", "Accept non-zero exit codes")];
-      case "File": return [keyword("reads", "Path to read")];
-      case "HTTP": return [keyword("sends", "HTTP method"), keyword("accepts statuses", "Accept non-2xx statuses")];
-      case "runs": return [keyword("with cwd from Environment", "Working directory")];
-      case "reads": return step === "File" ? [keyword("as", "Content format")] : [];
-      case "sends": return [keyword("to Environment", "Target base URL")];
-      case "Environment": return step === "HTTP"
-        ? [keyword("appending", "URL path segments"), keyword("with", "Query, header or body"), keyword("and reads", "Response format")]
-        : [keyword("and Input", "Append an Input value")];
-      case "query": case "header": return [keyword("from Input", "Value from an Input"), keyword("from Environment", "Value from the Environment"), keyword("as", "Literal value")];
-      default: return [];
-    }
-  }
-  switch (last.value) {
-    case "accepts": return step === "HTTP" ? [keyword("statuses", "Accept non-2xx statuses")] : [keyword("exits", "Accept non-zero exit codes")];
-    case "with": {
-      if (step === "Shell") return [keyword("cwd from Environment", "Working directory")];
-      if (step === "HTTP") return [keyword("query", "Query parameter"), keyword("header", "Request header"), keyword("Input as JSON body", "Whole Input as JSON body"), keyword("JSONata body", "Body built by the Produce expression"), keyword("Text body", "Text body from a value source")];
-      if (step === "Produce") return [keyword("JSONata", "Produce expression")];
-      return [];
-    }
-    case "cwd": return [keyword("from Environment", "Working directory")];
-    case "from": return [keyword("Environment", "Environment field"), keyword("Input", "Input field")];
-    case "Environment": return environment;
-    case "Input": return lastText(tokens.slice(0, -1)) === "with" ? [keyword("as JSON body", "Whole Input as JSON body")] : inputs;
-    case "reads": return step === "HTTP"
-      ? [...operationLanguage.formats.map((format) => ({ label: format, kind: CompletionItemKind.EnumMember, detail: "Response format" })), keyword("no body", "Ignore the response body")]
-      : [];
-    case "as": return step === "File" ? operationLanguage.formats.map((format) => ({ label: format, kind: CompletionItemKind.EnumMember, detail: "Content format" })) : [];
-    case "sends": return operationLanguage.httpMethods.map((method) => quotedValue(method, CompletionItemKind.EnumMember, "HTTP method"));
-    case "to": return [keyword("Environment", "Target base URL")];
-    case "appending": return [keyword("Input", "Path segment from an Input"), keyword("literal", "Literal path segment")];
-    case "and": return step === "HTTP"
-      ? [keyword("reads", "Response format"), keyword("Input", "Path segment from an Input"), keyword("literal", "Literal path segment")]
-      : [keyword("Input", "Append an Input value")];
-    case "no": return [keyword("body", "Ignore the response body")];
-    case "Produce": return [keyword("with JSONata", "Produce expression")];
-    default: return [];
-  }
+  if (expectation.slot === "environment" || expectation.slot.endsWith("-environment")) return [...environment];
+  if (expectation.slot === "input" || expectation.slot.endsWith("-input")) return [...inputs];
+  return [];
 }
 
 /** AST-level facts for slots: available even while the sentence being typed does not compile yet. */

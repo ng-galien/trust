@@ -9,12 +9,17 @@ import {
   hasGherkinTag,
   normalizeGherkinSource,
   parseGherkin,
+  parseStepGrammar,
+  parseStepGrammarPrefix,
+  stepGrammarFailure,
   sourceLineRange,
   sourceValueRange,
   SentenceCursor,
   tokenizeSentence,
   type Located,
   type SentenceToken,
+  type StepGrammarCapture,
+  type StepGrammarMatch,
 } from "@trust/gherkin";
 import jsonata from "jsonata";
 
@@ -26,7 +31,7 @@ import type {
   HttpQueryParameter,
   HttpValueSource,
 } from "./http.js";
-import { operationLanguage } from "./language.js";
+import { operationLanguage, operationStepGrammar } from "./language.js";
 import type {
   CompiledOperation,
   EnvironmentField,
@@ -296,7 +301,8 @@ function readOperationDocument(
   for (const background of feature.children.flatMap((child) => child.background ? [child.background] : [])) {
     for (const step of background.steps) {
       const rows = step.dataTable?.rows.slice(1) ?? [];
-      if (step.text === operationLanguage.phrases.environment) {
+      const production = parseOperationStep(step.text, "background")?.production;
+      if (production === "environment") {
         for (const row of rows) {
           const nameCell = row.cells[0];
           const name = nameCell?.value.trim() ?? "";
@@ -311,7 +317,7 @@ function readOperationDocument(
         }
         continue;
       }
-      if (step.text === operationLanguage.phrases.input) {
+      if (production === "input") {
         for (const row of rows) {
           const nameCell = row.cells[0];
           const name = nameCell?.value.trim() ?? "";
@@ -328,7 +334,7 @@ function readOperationDocument(
         }
         continue;
       }
-      if (step.text === operationLanguage.phrases.produced) {
+      if (production === "produced") {
         for (const row of rows) {
           const nameCell = row.cells[0];
           const name = nameCell?.value.trim() ?? "";
@@ -354,12 +360,15 @@ function readOperationDocument(
   for (const scenario of feature.children.flatMap((child) => child.scenario ? [child.scenario] : [])) {
     for (const step of scenario.steps) {
       const parsed = parseRunStepSentence(step.text);
-      if (!parsed || parsed.type === "shell-exits" || parsed.type === "http-statuses") continue;
+      const partial = parsed ? undefined : parseOperationStepPrefix(step.text);
+      const type = parsed?.type === "invalid" ? parsed.stepType : parsed?.type ?? partial?.type;
+      const name = parsed && "name" in parsed ? parsed.name : partial?.name;
+      if (!name || !type || type === "shell-exits" || type === "http-statuses" || type === "produce") continue;
       steps.push({
-        name: parsed.name,
-        type: parsed.type === "http-malformed" ? "http" : parsed.type,
+        name,
+        type,
         range: sourceLineRange(context.source, step.location),
-        selectionRange: sourceValueRange(context.source, step, parsed.name),
+        selectionRange: sourceValueRange(context.source, step, name),
       });
     }
   }
@@ -427,7 +436,8 @@ function parseInterface(steps: readonly Step[], context: CompileContext): {
     if (keyword !== "Given" && keyword !== "And") {
       fail(context, "invalid-operation", "Operation interface must use Given or And", step);
     }
-    if (step.text === operationLanguage.phrases.environment) {
+    const production = parseOperationStep(step.text, "background")?.production;
+    if (production === "environment") {
       if (hasEnvironment) {
         fail(context, "invalid-operation", "Operation repeats Environment", step);
       }
@@ -446,7 +456,7 @@ function parseInterface(steps: readonly Step[], context: CompileContext): {
       }
       continue;
     }
-    if (step.text === operationLanguage.phrases.input) {
+    if (production === "input") {
       if (hasInputs) fail(context, "invalid-operation", "Operation repeats Input", step);
       hasInputs = true;
       for (const row of requireTable(step, ["input", "type", "cardinality"], context)) {
@@ -461,7 +471,7 @@ function parseInterface(steps: readonly Step[], context: CompileContext): {
       }
       continue;
     }
-    if (step.text === operationLanguage.phrases.produced) {
+    if (production === "produced") {
       if (hasProduces) fail(context, "invalid-operation", "Operation repeats Produce fields", step);
       hasProduces = true;
       for (const row of requireTable(step, ["field", "type", "cardinality", "domain"], context)) {
@@ -484,7 +494,7 @@ function parseInterface(steps: readonly Step[], context: CompileContext): {
       }
       continue;
     }
-    fail(context, "invalid-operation", `Unknown Operation interface step "${step.text}"`, step);
+    fail(context, "invalid-operation", operationStepGrammarDiagnostic(step.text, "background"), step);
   }
 
   if (!hasEnvironment) {
@@ -515,6 +525,7 @@ function parseRun(
 
   for (const [index, step] of steps.entries()) {
     const parsed = parseRunStepSentence(step.text);
+    if (parsed?.type === "invalid") fail(context, "unknown-step", parsed.reason, step);
     if (parsed?.type === "shell") {
       const keyword = step.keyword.trim();
       if (keyword !== "When" && keyword !== "And") {
@@ -756,10 +767,6 @@ function parseRun(
       continue;
     }
 
-    if (parsed?.type === "http-malformed") {
-      fail(context, "unknown-step", `HTTP "${parsed.name}" ${parsed.reason}`, step);
-    }
-
     if (parsed?.type === "http-statuses") {
       const keyword = step.keyword.trim();
       if (keyword !== "And" || expression !== undefined || step.docString) {
@@ -789,7 +796,7 @@ function parseRun(
       continue;
     }
 
-    if (step.text === operationLanguage.phrases.produce) {
+    if (parsed?.type === "produce") {
       if (step.keyword.trim() !== "Then" || step.dataTable || !step.docString) {
         fail(context, "unknown-step", "Produce with JSONata must use Then and one DocString", step);
       }
@@ -806,7 +813,7 @@ function parseRun(
       continue;
     }
 
-    fail(context, "unknown-step", `Unknown Operation step "${step.text}"`, step);
+    fail(context, "unknown-step", operationStepGrammarDiagnostic(step.text, "scenario"), step);
   }
 
   if (compiled.length === 0) fail(context, "invalid-operation", "Operation must declare at least one step");
@@ -838,6 +845,13 @@ type ParsedRunStepSentence =
   | {
       readonly type: "http-statuses";
       readonly name: string;
+    }
+  | { readonly type: "produce" }
+  | {
+      readonly type: "invalid";
+      readonly reason: string;
+      readonly name?: string;
+      readonly stepType?: OperationStepSource["type"];
     };
 
 type ParsedHttpBody =
@@ -845,24 +859,17 @@ type ParsedHttpBody =
   | { readonly source: "jsonata" }
   | { readonly source: HttpValueSource };
 
-type ParsedHttpSentence =
-  | {
-      readonly type: "http";
-      readonly name: string;
-      readonly method: HttpMethod;
-      readonly format: "text" | "json" | "none";
-      readonly environment: string;
-      readonly path: readonly HttpPathSegment[];
-      readonly query: readonly HttpQueryParameter[];
-      readonly headers: readonly HttpHeader[];
-      readonly body?: ParsedHttpBody;
-    }
-  | {
-      /** An `HTTP "<name>" sends …` sentence whose clauses are malformed or misordered. */
-      readonly type: "http-malformed";
-      readonly name: string;
-      readonly reason: string;
-    };
+type ParsedHttpSentence = {
+  readonly type: "http";
+  readonly name: string;
+  readonly method: HttpMethod;
+  readonly format: "text" | "json" | "none";
+  readonly environment: string;
+  readonly path: readonly HttpPathSegment[];
+  readonly query: readonly HttpQueryParameter[];
+  readonly headers: readonly HttpHeader[];
+  readonly body?: ParsedHttpBody;
+};
 
 type ParsedArgumentSource =
   | { readonly kind: "input"; readonly input: string; readonly prefixed: boolean }
@@ -892,163 +899,151 @@ function tryTokenize(source: string): readonly SentenceToken[] | undefined {
 }
 
 const takeField = (cursor: SentenceCursor): string | undefined => cursor.takeQuoted((value) => FIELD_NAME.test(value));
-const takeFormat = (cursor: SentenceCursor): "text" | "json" | undefined => {
-  const format = cursor.takeOneOf(operationLanguage.formats);
-  return format?.toLowerCase() as "text" | "json" | undefined;
-};
-
-/** Optional `and Input "<name>"` closing a `from Environment` clause; `undefined` when absent, `null` when malformed. */
-function takeAppendInput(cursor: SentenceCursor): string | undefined | null {
-  if (cursor.done) return undefined;
-  if (!cursor.takeWords("and", "Input")) return null;
-  const input = takeField(cursor);
-  return input && cursor.done ? input : null;
-}
 
 function parseRunStepSentence(source: string): ParsedRunStepSentence | undefined {
-  const tokens = tryTokenize(source);
-  if (!tokens) return undefined;
-  const cursor = new SentenceCursor(tokens);
-
-  if (cursor.takeText("Shell")) {
-    const name = takeField(cursor);
-    if (!name) return undefined;
-    if (cursor.takeText("accepts")) {
-      return cursor.takeText("exits") && cursor.done ? { type: "shell-exits", name } : undefined;
+  const parsed = parseOperationStep(source, "scenario");
+  if (!parsed) return undefined;
+  if (parsed.production === "produce") return { type: "produce" };
+  const rawName = captureValue(parsed, "step");
+  const stepType = stepTypeForProduction(parsed.production);
+  if (!rawName || !FIELD_NAME.test(rawName)) {
+    return invalidParsedStep("Operation step name must be a non-empty field name", stepType, rawName);
+  }
+  const name = rawName;
+  if (parsed.production === "shell-exits") return { type: "shell-exits", name };
+  if (parsed.production === "http-statuses") return { type: "http-statuses", name };
+  if (parsed.production === "shell-run") {
+    const executable = captureValue(parsed, "executable");
+    const environment = captureField(parsed, "environment");
+    const appendInput = captureField(parsed, "append-input");
+    if (!executable) return invalidParsedStep(`Shell "${name}" executable cannot be empty`, "shell", name);
+    if (!environment) return invalidParsedStep(`Shell "${name}" Environment must be a field name`, "shell", name);
+    if (parsed.captures.some(({ slot }) => slot === "append-input") && !appendInput) {
+      return invalidParsedStep(`Shell "${name}" appended Input must be a field name`, "shell", name);
     }
-    if (!cursor.takeText("runs")) return undefined;
-    const executable = cursor.takeQuoted();
-    if (!executable || !cursor.takeWords("with", "cwd", "from", "Environment")) return undefined;
-    const environment = takeField(cursor);
-    if (!environment) return undefined;
-    const appendInput = takeAppendInput(cursor);
-    if (appendInput === null) return undefined;
     return { type: "shell", name, executable, environment, ...(appendInput === undefined ? {} : { appendInput }) };
   }
-
-  if (cursor.takeText("File")) {
-    const name = takeField(cursor);
-    if (!name || !cursor.takeText("reads")) return undefined;
-    const path = cursor.takeQuoted();
-    if (!path || !cursor.takeText("as")) return undefined;
-    const format = takeFormat(cursor);
-    if (!format || !cursor.takeWords("from", "Environment")) return undefined;
-    const environment = takeField(cursor);
-    if (!environment) return undefined;
-    const appendInput = takeAppendInput(cursor);
-    if (appendInput === null) return undefined;
+  if (parsed.production === "file-read") {
+    const path = captureValue(parsed, "path");
+    const format = captureValue(parsed, "format")?.toLowerCase() as "text" | "json" | undefined;
+    const environment = captureField(parsed, "environment");
+    const appendInput = captureField(parsed, "append-input");
+    if (!path) return invalidParsedStep(`File "${name}" path cannot be empty`, "file-read", name);
+    if (!format) return invalidParsedStep(`File "${name}" format is invalid`, "file-read", name);
+    if (!environment) return invalidParsedStep(`File "${name}" Environment must be a field name`, "file-read", name);
+    if (parsed.captures.some(({ slot }) => slot === "append-input") && !appendInput) {
+      return invalidParsedStep(`File "${name}" appended Input must be a field name`, "file-read", name);
+    }
     return { type: "file-read", name, path, format, environment, ...(appendInput === undefined ? {} : { appendInput }) };
   }
+  return parsed.production === "http-request" ? lowerHttpStep(parsed, name) : undefined;
+}
 
-  if (cursor.takeText("HTTP")) {
-    const name = takeField(cursor);
-    if (!name) return undefined;
-    if (cursor.takeText("accepts")) {
-      return cursor.takeText("statuses") && cursor.done ? { type: "http-statuses", name } : undefined;
-    }
-    return cursor.takeText("sends") ? parseHttpSentence(cursor, name) : undefined;
-  }
+function stepTypeForProduction(production: string): OperationStepSource["type"] | undefined {
+  if (production === "shell-run") return "shell";
+  if (production === "file-read") return "file-read";
+  if (production === "http-request") return "http";
   return undefined;
 }
 
-/**
- * `HTTP "<n>" sends "<METHOD>" to Environment "<url>"`, followed by structured path,
- * query, header and optional body clauses, then `and reads JSON|Text|no body`.
- */
-function parseHttpSentence(cursor: SentenceCursor, name: string): ParsedHttpSentence {
-  const expected = `HTTP "${name}" sends "<METHOD>" to Environment "<url>" […] and reads JSON|Text|no body`;
-  const malformed = (reason: string): ParsedHttpSentence => ({ type: "http-malformed", name, reason });
-  const rawMethod = cursor.takeQuoted();
-  const method = operationLanguage.httpMethods.find((candidate) => candidate === rawMethod);
-  if (!method) return malformed(`method "${rawMethod ?? ""}" is not registered for application requests`);
-  if (!cursor.takeWords("to", "Environment")) return malformed(`sentence must be: ${expected}`);
-  const environment = takeField(cursor);
-  if (!environment) return malformed(`sentence must be: ${expected}`);
+function invalidParsedStep(reason: string, stepType?: OperationStepSource["type"], name?: string): Extract<ParsedRunStepSentence, { readonly type: "invalid" }> {
+  return { type: "invalid", reason, ...(stepType === undefined ? {} : { stepType }), ...(name === undefined ? {} : { name }) };
+}
 
+function parseOperationStep(source: string, context: "background" | "scenario"): StepGrammarMatch | undefined {
+  const tokens = tryTokenize(source);
+  return tokens ? parseStepGrammar(operationStepGrammar, tokens, context) : undefined;
+}
+
+function parseOperationStepPrefix(source: string): { readonly name: string; readonly type: OperationStepSource["type"] } | undefined {
+  const tokens = tryTokenize(source);
+  if (!tokens) return undefined;
+  const prefix = parseStepGrammarPrefix(operationStepGrammar, tokens, "scenario");
+  const name = prefix?.captures.find(({ slot }) => slot === "step")?.value;
+  if (!prefix || !name) return undefined;
+  const type = prefix.production === "shell-run" ? "shell"
+    : prefix.production === "file-read" ? "file-read"
+      : prefix.production === "http-request" ? "http"
+        : undefined;
+  return type ? { name, type } : undefined;
+}
+
+function operationStepGrammarDiagnostic(source: string, context: "background" | "scenario"): string {
+  const tokens = tryTokenize(source);
+  if (!tokens) return `Invalid Operation step "${source}"`;
+  const failure = stepGrammarFailure(operationStepGrammar, tokens, context);
+  if (failure?.expectedEnd) return `Operation Step Grammar expected the end of the sentence before "${failure.found?.value ?? ""}"`;
+  if (!failure || failure.expectations.length === 0) return `Unknown Operation step "${source}"`;
+  const expected = failure.expectations.flatMap((expectation) => {
+    if (expectation.kind === "literal") return [expectation.value];
+    if (expectation.kind === "one-of") return expectation.values;
+    return [`"<${expectation.slot}>"`];
+  });
+  const found = failure.found ? ` before "${failure.found.value}"` : " at the end of the sentence";
+  return `Operation Step Grammar expected ${[...new Set(expected)].join(" or ")}${found}`;
+}
+
+function lowerHttpStep(parsed: StepGrammarMatch, name: string): ParsedHttpSentence | Extract<ParsedRunStepSentence, { readonly type: "invalid" }> {
+  const method = captureValue(parsed, "http-method") as HttpMethod | undefined;
+  const environment = captureField(parsed, "environment");
+  const responseFormat = captureValue(parsed, "response-format");
+  const format = parsed.captures.some(({ slot }) => slot === "response-no-body")
+    ? "none"
+    : responseFormat?.toLowerCase() as "text" | "json" | undefined;
+  if (!method) return invalidParsedStep(`HTTP "${name}" method is invalid`, "http", name);
+  if (!environment) return invalidParsedStep(`HTTP "${name}" Environment must be a field name`, "http", name);
+  if (!format) return invalidParsedStep(`HTTP "${name}" response format is invalid`, "http", name);
   const path: HttpPathSegment[] = [];
-  if (cursor.takeText("appending")) {
-    if (cursor.takeText("Input")) {
-      const input = takeField(cursor);
-      if (!input) return malformed(`appending Input expects "<name>"`);
-      path.push({ kind: "input", input });
-    } else if (cursor.takeText("literal")) {
-      const value = cursor.takeQuoted();
-      if (!value) return malformed(`appending literal expects a non-empty "<segment>"`);
-      path.push({ kind: "literal", value });
-    } else {
-      return malformed(`appending expects Input "<name>" or literal "<segment>"`);
-    }
-    while (true) {
-      if (cursor.takeWords("and", "Input")) {
-        const input = takeField(cursor);
-        if (!input) return malformed(`appending and Input expects "<name>"`);
-        path.push({ kind: "input", input });
-        continue;
-      }
-      if (cursor.takeWords("and", "literal")) {
-        const value = cursor.takeQuoted();
-        if (!value) return malformed(`appending and literal expects a non-empty "<segment>"`);
-        path.push({ kind: "literal", value });
-        continue;
-      }
-      break;
-    }
-  }
-
   const query: HttpQueryParameter[] = [];
-  while (cursor.takeWords("with", "query")) {
-    const parameterName = cursor.takeQuoted();
-    if (!parameterName) return malformed(`with query expects a non-empty "<name>"`);
-    const source = parseHttpValueSource(cursor);
-    if (!source) return malformed(`with query "${parameterName}" expects from Input|Environment "<name>" or as "<literal>"`);
-    query.push({ name: parameterName, source });
-  }
-
   const headers: HttpHeader[] = [];
-  while (cursor.takeWords("with", "header")) {
-    const headerName = cursor.takeQuoted();
-    if (!headerName) return malformed(`with header expects a non-empty "<name>"`);
-    const source = parseHttpValueSource(cursor);
-    if (!source) return malformed(`with header "${headerName}" expects from Input|Environment "<name>" or as "<literal>"`);
-    headers.push({ name: headerName.toLowerCase(), source });
-  }
-
   let body: ParsedHttpBody | undefined;
-  if (cursor.takeText("with")) {
-    if (cursor.takeWords("Input", "as", "JSON", "body")) {
-      body = { source: "input" };
-    } else if (cursor.takeWords("JSONata", "body")) {
-      body = { source: "jsonata" };
-    } else if (cursor.takeWords("Text", "body")) {
-      const source = parseHttpValueSource(cursor);
-      if (!source) return malformed(`with Text body expects from Input|Environment "<name>" or as "<literal>"`);
-      body = { source };
-    } else {
-      return malformed(`with expects query, header, Input as JSON body, JSONata body or Text body`);
+  for (let index = 0; index < parsed.captures.length; index += 1) {
+    const capture = parsed.captures[index]!;
+    if (capture.slot === "path-input") {
+      if (!FIELD_NAME.test(capture.value)) return invalidParsedStep(`HTTP "${name}" appended Input must be a field name`, "http", name);
+      path.push({ kind: "input", input: capture.value });
+    }
+    if (capture.slot === "path-literal") {
+      if (capture.value === "") return invalidParsedStep(`HTTP "${name}" appending literal expects a non-empty "<segment>"`, "http", name);
+      path.push({ kind: "literal", value: capture.value });
+    }
+    if (capture.slot === "query-name" || capture.slot === "header-name") {
+      if (capture.value === "") return invalidParsedStep(`HTTP "${name}" ${capture.slot} cannot be empty`, "http", name);
+      const prefix = capture.slot === "query-name" ? "query" : "header";
+      const source = httpValueSource(parsed.captures[index + 1], prefix);
+      if (!source) return invalidParsedStep(`HTTP "${name}" ${prefix} "${capture.value}" has an invalid value source`, "http", name);
+      if (prefix === "query") query.push({ name: capture.value, source });
+      else headers.push({ name: capture.value.toLowerCase(), source });
     }
   }
-
-  if (!cursor.takeWords("and", "reads")) return malformed(`sentence must end with and reads JSON|Text|no body: ${expected}`);
-  let format: "text" | "json" | "none" | undefined;
-  if (cursor.takeWords("no", "body")) format = "none";
-  else format = takeFormat(cursor);
-  if (!format || !cursor.done) return malformed(`sentence must end with and reads JSON|Text|no body: ${expected}`);
+  if (parsed.captures.some(({ slot }) => slot === "body-whole-input")) body = { source: "input" };
+  else if (parsed.captures.some(({ slot }) => slot === "body-jsonata")) body = { source: "jsonata" };
+  else {
+    const sourceCapture = parsed.captures.find(({ slot }) => slot === "body-input" || slot === "body-environment" || slot === "body-literal");
+    const source = httpValueSource(sourceCapture, "body");
+    if (sourceCapture && !source) return invalidParsedStep(`HTTP "${name}" Text body has an invalid value source`, "http", name);
+    if (source) body = { source };
+  }
   return { type: "http", name, method, environment, format, path, query, headers, ...(body === undefined ? {} : { body }) };
 }
 
-function parseHttpValueSource(cursor: SentenceCursor): HttpValueSource | undefined {
-  if (cursor.takeText("as")) {
-    const value = cursor.takeQuoted(() => true);
-    return value === undefined ? undefined : { kind: "literal", value };
-  }
-  if (!cursor.takeText("from")) return undefined;
-  if (cursor.takeText("Input")) {
-    const input = takeField(cursor);
-    return input ? { kind: "input", input } : undefined;
-  }
-  if (!cursor.takeText("Environment")) return undefined;
-  const environment = takeField(cursor);
-  return environment ? { kind: "environment", environment } : undefined;
+function httpValueSource(capture: StepGrammarCapture | undefined, prefix: string): HttpValueSource | undefined {
+  if (!capture || !capture.slot.startsWith(`${prefix}-`)) return undefined;
+  if (capture.slot === `${prefix}-literal`) return { kind: "literal", value: capture.value };
+  if (!FIELD_NAME.test(capture.value)) return undefined;
+  if (capture.slot === `${prefix}-input`) return { kind: "input", input: capture.value };
+  if (capture.slot === `${prefix}-environment`) return { kind: "environment", environment: capture.value };
+  return undefined;
+}
+
+function captureValue(parsed: StepGrammarMatch, slot: string): string | undefined {
+  const value = parsed.captures.find((capture) => capture.slot === slot)?.value;
+  return value === "" ? undefined : value;
+}
+
+function captureField(parsed: StepGrammarMatch, slot: string): string | undefined {
+  const value = captureValue(parsed, slot);
+  return value !== undefined && FIELD_NAME.test(value) ? value : undefined;
 }
 
 function parseCardinality(
