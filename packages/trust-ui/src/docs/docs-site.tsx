@@ -30,15 +30,15 @@ export function TrustDocumentation() {
   return (
     <HashRouter>
       <div className="flex h-full flex-col overflow-hidden bg-bg text-text">
-        <header className="flex h-(--header-h) shrink-0 items-center gap-4 border-b border-border bg-surface px-4">
-          <Link to="/docs" className="group flex items-center gap-2.5 rounded-(--radius-2) focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent">
+        <header className="flex h-(--header-h) shrink-0 items-center gap-2 border-b border-border bg-surface px-3 sm:gap-4 sm:px-4">
+          <Link to="/docs" className="group flex shrink-0 items-center gap-2.5 rounded-(--radius-2) focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent">
             <span className="grid h-6 w-6 place-items-center rounded-(--radius-1) bg-surface-inverse text-body font-bold text-inverse transition-transform group-hover:-translate-y-px">T</span>
             <span className="text-ui font-bold tracking-[0.18em]">TRUST</span>
-            <span className="text-ui text-muted transition-colors group-hover:text-text">· {t("docs.title")}</span>
+            <span className="hidden text-ui text-muted transition-colors group-hover:text-text sm:inline">· {t("docs.title")}</span>
           </Link>
-          <div className="ml-auto flex items-center gap-2">
+          <div className="ml-auto flex min-w-0 items-center gap-1 sm:gap-2">
             <span className="flex items-center gap-1.5">
-              <Languages size={15} aria-hidden="true" className="text-faint" />
+              <Languages size={15} aria-hidden="true" className="hidden text-faint sm:block" />
               <SegmentedControl<Language> ariaLabel={t("settings.home.language.label")} size="sm" value={language} onChange={(next) => updatePreferences({ language: next })} options={[{ value: "fr", label: <>FR</>, title: "Français" }, { value: "en", label: <>EN</>, title: "English" }]} />
             </span>
             <a

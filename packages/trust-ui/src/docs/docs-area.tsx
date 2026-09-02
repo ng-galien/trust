@@ -37,6 +37,7 @@ export function DocsArea() {
   const next = index >= 0 ? sequence[index + 1] : undefined;
   const article = useRef<HTMLElement>(null);
   const location = useLocation();
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   // The former Principles hub was merged into the documentation introduction.
   useEffect(() => {
@@ -49,21 +50,36 @@ export function DocsArea() {
     else article.current?.scrollTo({ top: 0 });
   }, [path, location.hash]);
 
+  useEffect(() => setMobileNavOpen(false), [path]);
+
   return (
-    <div className="flex h-full min-h-0 bg-bg">
-      {navOpen ? <ContentsTree language={language} current={path} /> : null}
+    <div className="relative flex h-full min-h-0 min-w-0 overflow-hidden bg-bg">
+      {navOpen ? <ContentsTree language={language} current={path} className="hidden md:flex" /> : null}
+      {mobileNavOpen ? (
+        <div className="absolute inset-0 z-40 flex md:hidden">
+          <ContentsTree language={language} current={path} className="relative z-10 w-[min(18rem,calc(100vw-3rem))] shadow-(--shadow-3)" onNavigate={() => setMobileNavOpen(false)} />
+          <button type="button" aria-label={t("docs.nav.collapse")} className="absolute inset-0 bg-black/25 backdrop-blur-[1px]" onClick={() => setMobileNavOpen(false)} />
+        </div>
+      ) : null}
       <div className="flex min-w-0 flex-1 flex-col">
-        <div className="flex h-11 shrink-0 items-center gap-3 border-b border-border bg-surface px-3">
-          <IconButton label={navOpen ? t("docs.nav.collapse") : t("docs.nav.expand")} size="sm" aria-expanded={navOpen} onClick={() => updatePreferences({ docsNavOpen: !navOpen })}>
-            {navOpen ? <PanelLeftClose size={15} /> : <PanelLeftOpen size={15} />}
-          </IconButton>
-          <Breadcrumb items={[standalone ? { label: "TRUST" } : { label: "TRUST", to: "/overview" }, { label: t("docs.crumb"), to: "/docs" }, ...crumbsFor(path, language)]} className="min-w-0 flex-1" />
+        <div className="flex h-11 shrink-0 items-center gap-2 border-b border-border bg-surface px-2 sm:gap-3 sm:px-3">
+          <span className="md:hidden">
+            <IconButton label={mobileNavOpen ? t("docs.nav.collapse") : t("docs.nav.expand")} size="sm" aria-expanded={mobileNavOpen} onClick={() => setMobileNavOpen((open) => !open)}>
+              {mobileNavOpen ? <PanelLeftClose size={15} /> : <PanelLeftOpen size={15} />}
+            </IconButton>
+          </span>
+          <span className="hidden md:inline-flex">
+            <IconButton label={navOpen ? t("docs.nav.collapse") : t("docs.nav.expand")} size="sm" aria-expanded={navOpen} onClick={() => updatePreferences({ docsNavOpen: !navOpen })}>
+              {navOpen ? <PanelLeftClose size={15} /> : <PanelLeftOpen size={15} />}
+            </IconButton>
+          </span>
+          <Breadcrumb items={[standalone ? { label: "TRUST" } : { label: "TRUST", to: "/overview" }, { label: t("docs.crumb"), to: "/docs" }, ...crumbsFor(path, language)]} className="hidden min-w-0 flex-1 sm:flex" />
           <DocsSearch language={language} />
         </div>
         <div className="flex min-h-0 flex-1">
           <article ref={article} className="docs-article min-w-0 flex-1 overflow-y-auto scroll-pt-6">
             {found ? (
-              <div data-doc-page className="mx-auto w-full max-w-[52rem] px-6 pt-6 pb-16 sm:px-8 2xl:max-w-[68rem] 2xl:px-10">
+              <div data-doc-page className="mx-auto w-full max-w-[52rem] px-5 pt-5 pb-16 sm:px-8 sm:pt-6 2xl:max-w-[68rem] 2xl:px-10">
                 <PageHead page={found.page} fallback={found.fallback} />
                 <MDXProvider components={mdxComponents}>
                   <found.page.Content />
@@ -112,11 +128,11 @@ function PageHead({ page, fallback }: { page: DocsPage; fallback: boolean }) {
 
 /* -------------------------------------------------------------- contents */
 
-function ContentsTree({ language, current }: { language: Language; current: string }) {
+function ContentsTree({ language, current, className, onNavigate }: { language: Language; current: string; className?: string; onNavigate?: () => void }) {
   const { t } = useTranslation();
   const tree = useMemo(() => pageTree(language), [language]);
   return (
-    <nav aria-label={t("docs.nav.label")} className="flex w-64 shrink-0 flex-col overflow-y-auto border-r border-border bg-surface px-2 py-3">
+    <nav aria-label={t("docs.nav.label")} onClick={(event) => { if ((event.target as Element).closest("a")) onNavigate?.(); }} className={cx("flex w-64 shrink-0 flex-col overflow-y-auto border-r border-border bg-surface px-2 py-3", className)}>
       <NavLink to="/docs" end className={({ isActive }) => cx("flex h-7 items-center gap-2 rounded-(--radius-2) px-2 text-ui hover:bg-surface-2", isActive ? "bg-surface-3 font-semibold" : "")}>
         <BookOpen size={14} className="text-muted" /> {t("docs.nav.home")}
       </NavLink>
@@ -203,7 +219,7 @@ function DocsSearch({ language }: { language: Language }) {
   }, [open]);
   const go = (page: DocsPage) => { navigate(`/docs/${page.path}`); setOpen(false); setQuery(""); };
   return (
-    <div ref={root} className="relative w-72 shrink-0">
+    <div ref={root} className="relative min-w-0 flex-1 sm:w-72 sm:flex-none">
       <label className="relative flex items-center">
         <Search size={13} className="pointer-events-none absolute left-2.5 text-faint" />
         <input
