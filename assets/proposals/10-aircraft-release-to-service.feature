@@ -24,6 +24,9 @@ Feature: Release one aircraft to service after a maintenance visit
   - the aircraft returns to serviceable state only after the release certificate is signed.
 
   Background: Plan context
+    Given Procedure scope
+      | check | authorized | forbidden |
+      | all   | Observe and perform only the declared maintenance release activities. | Alter maintenance records, inspection evidence, or external systems to manufacture airworthiness. |
     Given one reference "aircraft"
     And one reference "maintenance visit"
     And many reference "work order" declared by agent for "maintenance visit"

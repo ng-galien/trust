@@ -17,7 +17,14 @@ The catalog deliberately exercises different sizes and domains:
 - multi-project Red-Green: one ticket branch cut from clean `main` per project, one Karate red run, one Maven verification and one build-load-rollout per project on Kind, one green run, one trace read, one merge into `main` per project (nine Scenarios, ten Checks);
 - simulated hospital patient admission;
 - simulated aircraft departure;
-- simulated food-batch release.
+- simulated food-batch release;
+- controlled runner smoke: one fixed file observation whose external content deliberately drives
+  `NOT_VALIDATED` or `VALIDATED` without a project or remote service.
+
+This smoke is deliberately driven interactively by an agent. The operator controls
+`trust-smoke.json` outside Check execution; the agent reads the Plan, invokes the packaged runner,
+declares escalation when appropriate, waits for an operator to resume, then reads the Plan and
+invokes the Check again. The Operation and runner only read the file.
 
 The last three Procedures test language expressiveness outside software development. Their
 Operations use simulated endpoints. The Procedure language itself contains no healthcare,

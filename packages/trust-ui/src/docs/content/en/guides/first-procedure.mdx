@@ -7,7 +7,7 @@ order: 2
 <Steps>
   <Step title="Open the catalog and create">Sidebar → **Procedures** → **New procedure**. The Source tab opens on a template.</Step>
   <Step title="Name it">Set `@procedure:<slug>` and `@version:1.0.0`; keep `@trust-dsl:1`. Give it a title and, under it, a few lines describing what it establishes.</Step>
-  <Step title="Declare the context">In `Background: Plan context`, one line per role: what an engagement must give (`Given one reference "project"`), what a Check will fill later (`And one reference "fix revision" for "project"`), what the agent declares, what is fixed.</Step>
+  <Step title="Declare scope and context">Start `Background: Plan context` with the mandatory `Given Procedure scope` table, including an `all` row with authorized and forbidden prose. Then declare one line per role: what engagement gives, what a Check fills later, what the agent declares, what is fixed.</Step>
   <Step title="Write the first Scenario">`@scenario:<slug>`, a title, then a Check: `Then Check "…" runs Operation "…" on "<role>" as Input "<input>" … and must establish "…"`. Use the **Check** or **Use `<operation>`** completion: Operation names come from the catalog.</Step>
   <Step title="Write the qualification">Attach one `js` DocString to the Check. Write each guard as `condition || fail(reason)`; join independent guards with `&&`.</Step>
   <Step title="Chain Scenarios">Next Scenario: `Given scenario "<slug>" is validated` first, then its Checks. Bind materialized roles with `using "<role>"`; read an earlier Check through `checks["<check>"].field` in the qualification.</Step>

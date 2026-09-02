@@ -62,7 +62,6 @@ export function createMcpHandler(runner: CheckRunner) {
       const result = await runner.run(arguments_.checkUri);
       return success(id, {
         content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
-        ...(result.status === "REFUSED" ? { isError: true } : {}),
       });
     } catch (cause) {
       return success(id, {

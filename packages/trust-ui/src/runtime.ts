@@ -168,6 +168,15 @@ export class TrustRuntimeClient {
   resetPlan = (plan: string) => this.call<PlanEngagement>("plan.reset", { plan });
   /** Closes the Plan's open Session, if any (`closed: false` when none was open). */
   closePlan = (plan: string) => this.call<{ plan: string; closed: boolean }>("plan.close", { plan });
+  resumePlan = (plan: string, escalationId: string, resumeReason: string) => this.call<{ contract: "trust.plan-resumption@1"; status: "RESUMED"; plan: string; escalationId: string; resumeReason: string; resumedAt: string }>("plan.resume", { plan, escalationId, resumeReason });
+  escalateCheck = (checkUri: string, attemptHandle: string, blockingReason: string, forbiddenFurtherAction: string) =>
+    this.call<{ contract: "trust.check-escalation@1"; status: "ESCALATED"; plan: string; checkUri: string; snapshotId: string; blockingReason: string; forbiddenFurtherAction: string; escalatedAt: string }>("check.escalate", {
+      contract: "trust.check-escalation-request@1",
+      checkUri,
+      attemptHandle,
+      blockingReason,
+      forbiddenFurtherAction,
+    });
   finalizeAttempt = (attemptHandle: string) =>
     this.call<AttemptFinalization>("check.attempt.finalize", { contract: "trust.attempt-finalization-request@1", attemptHandle });
   check = (checkUri: string) => this.call<CheckView>("check.read", {

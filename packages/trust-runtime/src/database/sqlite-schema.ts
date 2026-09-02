@@ -139,7 +139,8 @@ export const SQLITE_SCHEMA = `
     WHERE state = 'open';
 
   CREATE TABLE IF NOT EXISTS attempts (
-    attempt_handle TEXT PRIMARY KEY,
+    attempt_order INTEGER PRIMARY KEY AUTOINCREMENT,
+    attempt_handle TEXT NOT NULL UNIQUE,
     attempt_key TEXT NOT NULL UNIQUE,
     execution_id TEXT NOT NULL UNIQUE,
     plan_slug TEXT NOT NULL,
@@ -209,6 +210,7 @@ export const SQLITE_SCHEMA = `
     checklist_delta_json TEXT NOT NULL,
     calculated_at TEXT NOT NULL,
     UNIQUE (check_uri, compiled_digest, fact_ids_json),
+    UNIQUE (snapshot_id, plan_slug, plan_revision, check_uri, compiled_digest),
     FOREIGN KEY (
       attempt_handle,
       plan_slug,
@@ -237,6 +239,52 @@ export const SQLITE_SCHEMA = `
     FOREIGN KEY (plan_slug, plan_revision, check_uri, compiled_digest)
       REFERENCES compiled_checks(plan_slug, plan_revision, check_uri, compiled_digest)
   ) STRICT;
+
+  CREATE TABLE IF NOT EXISTS plan_escalations (
+    escalation_id TEXT PRIMARY KEY,
+    plan_slug TEXT NOT NULL REFERENCES plans(plan_slug) ON DELETE CASCADE,
+    plan_revision INTEGER NOT NULL,
+    snapshot_plan_revision INTEGER NOT NULL,
+    check_uri TEXT NOT NULL,
+    compiled_digest TEXT NOT NULL,
+    snapshot_id TEXT NOT NULL,
+    attempt_handle TEXT NOT NULL REFERENCES attempts(attempt_handle),
+    blocking_reason TEXT NOT NULL,
+    forbidden_further_action TEXT NOT NULL,
+    escalated_at TEXT NOT NULL,
+    resumed_at TEXT,
+    resume_reason TEXT,
+    CHECK ((resumed_at IS NULL AND resume_reason IS NULL) OR (resumed_at IS NOT NULL AND resume_reason IS NOT NULL)),
+    FOREIGN KEY (snapshot_id, plan_slug, snapshot_plan_revision, check_uri, compiled_digest)
+      REFERENCES check_snapshots(snapshot_id, plan_slug, plan_revision, check_uri, compiled_digest)
+  ) STRICT;
+
+  CREATE UNIQUE INDEX IF NOT EXISTS one_active_escalation_per_plan
+    ON plan_escalations(plan_slug)
+    WHERE resumed_at IS NULL;
+
+  CREATE UNIQUE INDEX IF NOT EXISTS one_escalation_per_attempt
+    ON plan_escalations(attempt_handle);
+
+  CREATE TRIGGER IF NOT EXISTS attempts_require_active_plan
+  BEFORE INSERT ON attempts
+  WHEN EXISTS (
+    SELECT 1 FROM plan_escalations
+    WHERE plan_slug = NEW.plan_slug AND resumed_at IS NULL
+  )
+  BEGIN
+    SELECT RAISE(ABORT, 'Plan is escalated');
+  END;
+
+  CREATE TRIGGER IF NOT EXISTS plan_revisions_require_active_plan
+  BEFORE INSERT ON plan_revisions
+  WHEN EXISTS (
+    SELECT 1 FROM plan_escalations
+    WHERE plan_slug = NEW.plan_slug AND resumed_at IS NULL
+  )
+  BEGIN
+    SELECT RAISE(ABORT, 'Plan is escalated');
+  END;
 `;
 
 export const SQLITE_SCHEMA_DIGEST = createHash("sha256").update(SQLITE_SCHEMA).digest("hex");

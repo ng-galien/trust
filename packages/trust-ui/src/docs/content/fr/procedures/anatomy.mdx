@@ -16,6 +16,9 @@ Feature: Fix one Jira defect in one Maven project
   and confirm the fix is committed.
 
   Background: Plan context
+    Given Procedure scope
+      | check | authorized | forbidden |
+      | all   | Change and verify only the declared project for the Jira defect. | Alter the Jira evidence, project baseline, or execution environment to make a Check pass. |
     Given one reference "jira issue"
     And one reference "project"
     And one reference "baseline revision" for "project"
@@ -82,7 +85,8 @@ Feature: Fix one Jira defect in one Maven project
 <Legend items={[
   <>**Tags de Procédure.** Exactement un <code>@procedure:</code> (un slug en minuscules), un <code>@version:</code> sémantique, et <code>@trust-dsl:1</code>. Le tag optionnel <code>@intent-chaining</code> fait porter à chaque Plan engagé une intention d'agent tournante.</>,
   <>**Titre et description.** Le titre est copié tel quel ; le texte libre en dessous est la description affichée sur la page de la Procédure et sur ses Plans.</>,
-  <>**Contexte du Plan.** Exactement un <code>Background: Plan context</code> ; chaque ligne déclare un rôle typé. Voir [Contexte du Plan](/docs/procedures/context).</>,
+  <>**Contexte du Plan.** Exactement un <code>Background: Plan context</code> ; il commence par la DataTable obligatoire du périmètre de la Procedure, puis déclare les rôles typés. Voir [Contexte du Plan](/docs/procedures/context).</>,
+  <>**Périmètre de la Procedure.** Sa première DataTable obligatoire déclare les limites en prose de tous les Checks et peut en ajouter pour un Check nommé. Les deux sont montrées à l'agent.</>,
   <>**Entrée de Plan.** Un rôle sans autre source est donné à l'engagement : <code>one reference "jira issue"</code>.</>,
   <>**Rôle scopé.** <code>for "project"</code> rattache le rôle à un rôle parent ; ici une révision appartient à un projet. Rien ne déclare encore sa source : il est matérialisé par un Check plus bas.</>,
   <>**Tag de Scénario.** Exactement un <code>@scenario:&lt;slug&gt;</code> par Scénario, unique dans la Procédure.</>,
@@ -103,6 +107,8 @@ Feature: <title>
   [free-text description]
 
   Background: Plan context                              exactly one
+    Given Procedure scope                               mandatory DataTable
+      | check | authorized | forbidden |
     Given|And one|many <type> "<role>" [source clause]  one role per line
 
   @scenario:<slug>                                      one per Scenario, unique

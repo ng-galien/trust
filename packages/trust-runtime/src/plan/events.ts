@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-export type PlanEventType = "plan.engaged" | "plan.revision" | "plan.removed" | "session.changed" | "runtime.changed";
+export type PlanEventType = "plan.engaged" | "plan.revision" | "plan.state" | "plan.removed" | "session.changed" | "runtime.changed";
 
 export interface PlanEvent {
   readonly sequence: number;
@@ -11,6 +11,7 @@ export interface PlanEvent {
   readonly resync?: true;
   readonly revision?: number;
   readonly cause?: "declarations" | "verdict";
+  readonly workState?: "IN_PROGRESS" | "ESCALATED" | "COMPLETE";
   readonly checklistDelta?: {
     readonly newlySatisfied: readonly string[];
     readonly newlyOpened: readonly string[];

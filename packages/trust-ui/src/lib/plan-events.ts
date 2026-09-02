@@ -8,7 +8,7 @@ import { useRuntime } from "./runtime-context.js";
    touches — the durable state is always re-read through RPC, exactly as the runtime intends (reconnecting
    clients resync). While the stream is down, the data hooks fall back to polling (`useLiveMode`). */
 
-type PlanEventType = "plan.engaged" | "plan.revision" | "plan.removed" | "session.changed" | "runtime.changed";
+type PlanEventType = "plan.engaged" | "plan.revision" | "plan.state" | "plan.removed" | "session.changed" | "runtime.changed";
 
 interface PlanEvent {
   id: string;
@@ -55,7 +55,7 @@ export function usePlanEventsBridge(): void {
       if (event.resync || event.type === "runtime.changed") invalidateRuntime();
       else invalidatePlan(event.plan);
     };
-    const types: PlanEventType[] = ["plan.engaged", "plan.revision", "plan.removed", "session.changed", "runtime.changed"];
+    const types: PlanEventType[] = ["plan.engaged", "plan.revision", "plan.state", "plan.removed", "session.changed", "runtime.changed"];
     for (const type of types) source.addEventListener(type, onEvent as EventListener);
     source.onopen = () => {
       setConnected(true);

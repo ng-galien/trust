@@ -23,6 +23,9 @@ Feature: Establish from flight telemetry that every required checklist was actua
     neither a matched signature nor a recorded finding, and that count must be zero.
 
   Background: Plan context
+    Given Procedure scope
+      | check | authorized | forbidden |
+      | all   | Observe only the declared flight telemetry and checklist requirements. | Alter telemetry, checklist requirements, or flight records to manufacture conformance. |
     Given one reference "flight"
     And one reference "aircraft"
     And many reference "required checklist" for "flight"

@@ -10,6 +10,10 @@ Feature: <title>
   [description]
 
   Background: Plan context
+    Given Procedure scope
+      | check | authorized | forbidden |
+      | all | <authorized prose> | <forbidden prose> |
+      | <exact Check name> | <additional authorized prose> | <additional forbidden prose> |
     Given|And one|many string|number|instant|reference "<role>"
         [declared [optionally] by agent] [fixed as "<value>"] [for "<parent>"]… [for each "<parent>"]…
 
@@ -31,6 +35,7 @@ Feature: <title>
 | **Racines injectées** | `fact` · `context` · `checks` |
 | **Expressions** | comparaisons strictes, arithmétique, logique booléenne, tableaux, chaînes, instants typés, méthodes fermées de `Math` et de collections |
 | **Échec** | `condition || fail(reason)` ; plusieurs gardes peuvent être jointes avec `&&` |
+| **Périmètre de la Procedure** | table obligatoire ; au moins une ligne `all` ; les lignes nommées référencent des Checks exacts ; chaque ligne contient des cellules `authorized` et `forbidden` non vides |
 | **Liaisons intégrées** | `using plan as Input "<input>"` — l'identifiant du Plan, pour un Input `string` ou `reference` ; compile en un rôle synthétisé `"plan"` de source `plan-identifier` |
 
 | Sujet | Page |

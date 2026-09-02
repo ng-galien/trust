@@ -12,7 +12,7 @@ export const procedureLanguage = {
   dslVersion: "1",
   valueTypes: operationLanguage.valueTypes,
   cardinalities: operationLanguage.cardinalities,
-  phrases: { context: "Plan context", check: "Check", dependency: "scenario", operation: "runs Operation" },
+  phrases: { context: "Plan context", scope: "Procedure scope", check: "Check", dependency: "scenario", operation: "runs Operation" },
   qualification: {
     mediaType: "js",
     roots: { fact: "fact", context: "context", checks: "checks", math: "Math" } as const,
@@ -56,7 +56,10 @@ export const procedureLanguage = {
 Feature: Describe what this procedure establishes
 
   Background: Plan context
-    Given one reference "repository"
+    Given Procedure scope
+      | check | authorized | forbidden |
+      | all   | Change repository files required by this Procedure. | Alter the environment to make a Check pass. |
+    And one reference "repository"
 
   @scenario:repository-status
   Scenario: Read the repository status
@@ -76,6 +79,11 @@ const procedureQuoted = (slot: string, detail: string) => stepQuoted(slot, detai
 /** Canonical grammar of the sentences carried by Procedure Steps. */
 export const procedureStepGrammar: StepGrammar = {
   productions: [
+    {
+      name: "scope",
+      context: "background",
+      expression: procedureLiteral(procedureLanguage.phrases.scope, "Mandatory Procedure action scope"),
+    },
     {
       name: "role",
       context: "background",

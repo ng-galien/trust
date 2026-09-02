@@ -3,6 +3,9 @@
 Feature: Create Checks only for agent declarations that are present
 
   Background: Plan context
+    Given Procedure scope
+      | check | authorized | forbidden |
+      | all   | Perform only the actions declared by this acceptance Procedure. | Alter the environment or accepted observations to make a Check pass. |
     Given one reference "workspace"
     And one string "required note" declared by agent
     And one reference "optional project" declared optionally by agent

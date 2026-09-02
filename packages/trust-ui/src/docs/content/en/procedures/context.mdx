@@ -4,13 +4,16 @@ summary: "The typed roles of a Plan and their four sources: Plan input, agent de
 order: 2
 ---
 
-The `Background: Plan context` declares every value a Plan carries: **roles**, typed and named. A Check binds roles to the Input of its Operation; a Check can also fill a role from a produced field. Nothing else holds Plan data.
+The `Background: Plan context` first declares the Procedure's action scope, then every value a Plan carries as typed, named **roles**. A Check binds roles to the Input of its Operation; a Check can also fill a role from a produced field. Nothing else holds Plan data.
 
-> A role is declared once, with its type, its cardinality and where its value comes from.
+> The first DataTable defines the authorized and forbidden boundaries. Each following sentence declares one role, with its type, cardinality and source.
 
 ```gherkin fragment title="One role per line"
   Background: Plan context
-    Given one reference "jira issue"
+    Given Procedure scope
+      | check | authorized | forbidden |
+      | all   | Change and verify only the declared project. | Alter the environment to make a Check pass. |
+    And one reference "jira issue"
     And many reference "affected project" declared optionally by agent for "jira issue"
     And many reference "fix revision" for each "affected project"
     And one reference "acceptance project" fixed as "payment-acceptance"
@@ -24,7 +27,7 @@ Given|And one|many string|number|instant|reference "<role>" [declared [optionall
 
 | Part | Rule |
 | --- | --- |
-| `Given` / `And` | either keyword, any order; no table, no doc string |
+| `Given` / `And` | either keyword after the mandatory scope DataTable; no further table or doc string |
 | `one` / `many` | cardinality: a scalar, or a collection of the type |
 | `string` `number` `instant` `reference` | the same four types as Operation Inputs and produced fields |
 | `"<role>"` | free quoted name, non-empty, unique in the Procedure — a readable label (`"jira issue"`, `"fix revision"`), not an identifier |

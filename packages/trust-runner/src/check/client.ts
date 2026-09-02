@@ -20,9 +20,11 @@ export type CheckAdmission =
       readonly attemptKey: string;
       readonly reasonCode: string;
       readonly reason: string;
+      readonly next: CheckContinuation;
     };
 
 export interface CheckFinalization {
+  readonly attemptHandle: string;
   readonly verdict: "VALIDATED" | "NOT_VALIDATED";
   readonly reasonCode: string;
   readonly reason: string;
@@ -31,7 +33,24 @@ export interface CheckFinalization {
     readonly newlyOpened: readonly string[];
     readonly unchanged: readonly string[];
   };
+  readonly next: CheckContinuation;
 }
+
+export interface NextCheck {
+  readonly name: string;
+  readonly successReason: string;
+  readonly checkUri: string;
+  readonly actionScope: {
+    readonly authorized: readonly string[];
+    readonly forbidden: readonly string[];
+  };
+}
+
+export type CheckContinuation =
+  | { readonly action: "RUN_CHECKS"; readonly checks: readonly NextCheck[] }
+  | { readonly action: "RETRY_OR_ESCALATE"; readonly checks: readonly NextCheck[] }
+  | { readonly action: "COMPLETE" }
+  | { readonly action: "READ_PLAN" };
 
 export interface CheckInterruption {
   readonly status: "INTERRUPTED";

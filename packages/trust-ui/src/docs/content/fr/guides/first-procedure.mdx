@@ -7,7 +7,7 @@ order: 2
 <Steps>
   <Step title="Ouvrir le catalogue et créer">Barre latérale → **Procédures** → **Nouvelle procédure**. L'onglet Source s'ouvre sur un modèle.</Step>
   <Step title="La nommer">Renseignez `@procedure:<slug>` et `@version:1.0.0` ; gardez `@trust-dsl:1`. Donnez-lui un titre et, dessous, quelques lignes décrivant ce qu'elle établit.</Step>
-  <Step title="Déclarer le contexte">Dans `Background: Plan context`, une ligne par rôle : ce qu'un engagement doit donner (`Given one reference "project"`), ce qu'un Check remplira plus tard (`And one reference "fix revision" for "project"`), ce que l'agent déclare, ce qui est fixe.</Step>
+  <Step title="Déclarer le périmètre et le contexte">Commencer `Background: Plan context` par la table obligatoire `Given Procedure scope`, avec une ligne `all` en prose autorisée et interdite. Déclarer ensuite une ligne par rôle : ce que fournit l'engagement, ce qu'un Check remplira, ce que l'agent déclare, ce qui est fixe.</Step>
   <Step title="Écrire le premier Scénario">`@scenario:<slug>`, un titre, puis un Check : `Then Check "…" runs Operation "…" on "<role>" as Input "<input>" … and must establish "…"`. Utilisez la complétion **Check** ou **Use `<operation>`** : les noms d'Opération viennent du catalogue.</Step>
   <Step title="Écrire la qualification">Attachez un DocString `js` au Check. Écrivez chaque garde sous la forme `condition || fail(reason)` ; joignez les gardes indépendantes avec `&&`.</Step>
   <Step title="Enchaîner les Scénarios">Scénario suivant : `Given scenario "<slug>" is validated` d'abord, puis ses Checks. Liez les rôles matérialisés avec `using "<role>"` ; lisez un Check antérieur par `checks["<check>"].field` dans la qualification.</Step>

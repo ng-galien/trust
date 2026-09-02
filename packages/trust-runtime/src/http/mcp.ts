@@ -13,6 +13,8 @@ import {
 } from "../plan/read.js";
 import {
   PlanRuntimeError,
+  type CheckEscalationInput,
+  type CheckEscalationResult,
   type PlanEngagementInput,
   type PlanEngagementResult,
   type PlanDeclarationReplacementInput,
@@ -37,6 +39,7 @@ const TOOL_NAMES = [
   ...READ_TOOL_NAMES,
   "trust_plan_engage",
   "trust_plan_declarations_replace",
+  "trust_check_escalate",
 ] as const;
 
 type ToolName = (typeof TOOL_NAMES)[number];
@@ -189,6 +192,21 @@ async function callTool(
       throw error;
     }
   }
+  if (value.name === "trust_check_escalate") {
+    const input = exactCheckEscalation(value.arguments);
+    if (input === undefined) {
+      return failure(id, INVALID_PARAMS, "Check escalation arguments are invalid");
+    }
+    try {
+      const result = await dependencies.planRuntime.escalateCheck(input);
+      return textResult(id, renderEscalation(result));
+    } catch (error) {
+      if (error instanceof PlanRuntimeError) {
+        return toolError(id, `TRUST Check escalation refused: ${error.message}`);
+      }
+      throw error;
+    }
+  }
   const checkUri = exactCheckUri(value.arguments, value.name === "trust_procedure_read");
   if (checkUri === undefined) {
     return failure(id, INVALID_PARAMS, "Tool arguments are invalid");
@@ -279,6 +297,21 @@ function renderDeclarationReplacement(
   ].join("\n");
 }
 
+function renderEscalation(result: CheckEscalationResult): string {
+  return [
+    "CHECK ESCALATION",
+    `Result: ${result.status}`,
+    `Plan: ${result.plan}`,
+    `Check URI: ${result.checkUri}`,
+    `Blocking reason: ${result.blockingReason}`,
+    `Forbidden further action: ${result.forbiddenFurtherAction}`,
+    "",
+    "NEXT",
+    "The Procedure is stopped. Do not run another Check. Only an operator can resume the Plan.",
+    "",
+  ].join("\n");
+}
+
 function renderPlan(view: PlanView): string {
   const actionable = view.checks.filter((check) => check.actionable);
   const blocked = view.checks.filter((check) => check.state === "OPEN" && !check.actionable);
@@ -314,6 +347,17 @@ function renderPlan(view: PlanView): string {
     "NEXT",
     ...planNext(view, actionable.length),
   ];
+
+  if (view.activeEscalation !== null) {
+    lines.push(
+      "",
+      "ACTIVE ESCALATION",
+      `Check URI: ${view.activeEscalation.checkUri}`,
+      `Blocking reason: ${view.activeEscalation.blockingReason}`,
+      `Forbidden further action: ${view.activeEscalation.forbiddenFurtherAction}`,
+      `Escalated at: ${view.activeEscalation.escalatedAt}`,
+    );
+  }
 
   if (actionable.length > 0) {
     lines.push(
@@ -365,10 +409,24 @@ function renderPlan(view: PlanView): string {
       "",
       "LATEST ACCEPTED ATTEMPT",
       `Check URI: ${view.latestQualification.checkUri}`,
+      `Attempt: ${view.latestQualification.attemptHandle}`,
       `Execution ID: ${view.latestQualification.executionId}`,
       `Verdict: ${view.latestQualification.verdict}`,
       `Reason: ${view.latestQualification.reasonCode} — ${view.latestQualification.reason}`,
       ...renderChecklistDelta(view.latestQualification),
+    );
+  }
+  const escalationCandidates = view.checks.filter((check) => check.escalatable);
+  if (view.workState === "IN_PROGRESS" && escalationCandidates.length > 0) {
+    lines.push(
+      "",
+      "ESCALATION AVAILABLE",
+      "Retry within the Procedure scope, or call trust_check_escalate for one Check below with its NOT_VALIDATED Attempt handle. The runtime accepts escalation only when that referenced Attempt is still the latest for the Check.",
+      ...escalationCandidates.flatMap((check) => [
+        `- Check URI: ${check.checkUri}`,
+        `  Attempt: ${check.attemptHandle}`,
+      ]),
+      "Both blockingReason and forbiddenFurtherAction are mandatory. forbiddenFurtherAction states what could continue the work but is not performed because the Procedure scope forbids it.",
     );
   }
   lines.push("", ...renderRevisionChange(view));
@@ -402,6 +460,10 @@ function renderCheck(view: CheckView): string {
     `Scenario: ${view.scenario}`,
     `Status: ${view.state}`,
     `Operation: ${view.operation}`,
+    "Authorized scope:",
+    ...formatScope(view.actionScope.authorized),
+    "Forbidden scope:",
+    ...formatScope(view.actionScope.forbidden),
     formatTarget(view),
     "Inputs:",
     ...formatInputs(view.inputs),
@@ -420,6 +482,7 @@ function renderCheck(view: CheckView): string {
     lines.push(
       "",
       "LATEST ACCEPTED ATTEMPT",
+      `Attempt: ${view.history.at(-1)!.attemptHandle}`,
       `Execution ID: ${view.history.at(-1)!.executionId}`,
       `Verdict: ${view.latestVerdict}`,
       `Reason: ${view.latestReasonCode} — ${view.reason}`,
@@ -436,11 +499,21 @@ function renderCheck(view: CheckView): string {
       ]),
     );
   }
+  if (view.escalatable && view.attemptHandle !== null) {
+    lines.push(
+      "",
+      "ESCALATION AVAILABLE",
+      `Check URI: ${view.checkUri}`,
+      `Attempt: ${view.attemptHandle}`,
+      "Both blockingReason and forbiddenFurtherAction are mandatory.",
+    );
+  }
   return `${lines.join("\n")}\n`;
 }
 
 function planNext(view: PlanView, actionableChecks: number): readonly string[] {
   if (view.checklistComplete) return ["The Plan is complete. Do not run another Check."];
+  if (view.workState === "ESCALATED") return ["The Procedure is stopped. Do not run another Check. Only an operator can resume the Plan."];
   if (view.sessionState !== "OPEN") {
     return ["The Session is unavailable. Do not run a Check until it is open."];
   }
@@ -484,6 +557,10 @@ function renderActionableCheck(
           : `  Continuing invocation URI: ${check.checkUri}?intent={intent}&nextIntent={nextIntent}`]
       : []),
     `  Operation: ${check.operation}`,
+    "  Authorized scope:",
+    ...formatScope(check.actionScope.authorized).map((line) => `    ${line}`),
+    "  Forbidden scope:",
+    ...formatScope(check.actionScope.forbidden).map((line) => `    ${line}`),
     `  ${formatTarget(check)}`,
     "  Inputs:",
     ...formatInputs(check.inputs).map((line) => `    ${line}`),
@@ -546,6 +623,10 @@ function formatInputs(inputs: Readonly<Record<string, unknown>>): readonly strin
   return entries.length === 0
     ? ["- none"]
     : entries.map(([name, value]) => `- ${name} = ${JSON.stringify(value)}`);
+}
+
+function formatScope(values: readonly string[]): readonly string[] {
+  return values.length === 0 ? ["- none declared"] : values.map((value) => `- ${value}`);
 }
 
 function renderChecklistDelta(delta: {
@@ -687,7 +768,61 @@ function tools(): readonly unknown[] {
         additionalProperties: false,
       },
     },
+    {
+      name: "trust_check_escalate",
+      title: "Escalate a blocked TRUST Check",
+      description: "Declare the planned exit from a Procedure after the current Check's latest accepted Attempt is NOT_VALIDATED. Stops the Plan without changing Facts, qualification, or intent.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          checkUri,
+          attemptHandle: {
+            type: "string",
+            minLength: 1,
+            maxLength: 256,
+            description: "Attempt handle returned by the NOT_VALIDATED Runner result being escalated",
+          },
+          blockingReason: {
+            type: "string",
+            minLength: 1,
+            maxLength: 4096,
+            description: "Detailed reason the Check cannot continue within the authorized Procedure scope",
+          },
+          forbiddenFurtherAction: {
+            type: "string",
+            minLength: 1,
+            maxLength: 4096,
+            description: "Action that could continue the work but is deliberately not performed because the Procedure scope forbids it",
+          },
+        },
+        required: ["checkUri", "attemptHandle", "blockingReason", "forbiddenFurtherAction"],
+        additionalProperties: false,
+      },
+    },
   ];
+}
+
+function exactCheckEscalation(value: Record<string, unknown>): CheckEscalationInput | undefined {
+  const keys = ["checkUri", "attemptHandle", "blockingReason", "forbiddenFurtherAction"];
+  const expected = new Set(keys);
+  if (
+    Object.keys(value).length !== keys.length
+    || Object.keys(value).some((key) => !expected.has(key))
+    || keys.some((key) => !Object.hasOwn(value, key))
+    || !boundedString(value.checkUri, 2_048)
+    || !boundedString(value.attemptHandle, 256)
+    || !boundedTrimmedString(value.blockingReason, 4_096)
+    || !boundedTrimmedString(value.forbiddenFurtherAction, 4_096)
+  ) {
+    return undefined;
+  }
+  return {
+    contract: "trust.check-escalation-request@1",
+    checkUri: value.checkUri,
+    attemptHandle: value.attemptHandle,
+    blockingReason: value.blockingReason,
+    forbiddenFurtherAction: value.forbiddenFurtherAction,
+  };
 }
 
 function exactPlanDeclarationReplacement(
@@ -801,6 +936,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function boundedString(value: unknown, maximum = 256): value is string {
   return typeof value === "string" && value.length > 0 && value.length <= maximum;
+}
+
+function boundedTrimmedString(value: unknown, maximum: number): value is string {
+  return boundedString(value, maximum) && value === value.trim();
 }
 
 function requestId(value: unknown): JsonRpcId | null {

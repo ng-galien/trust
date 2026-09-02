@@ -6,6 +6,9 @@ Feature: Run one integration test and confirm its trace markers
   OpenTelemetry trace it emits, that the expected markers were observed end to end.
 
   Background: Plan context
+    Given Procedure scope
+      | check | authorized | forbidden |
+      | all   | Run the declared integration test and observe its emitted trace. | Alter telemetry collection or the runtime environment to manufacture the expected observations. |
     Given one reference "test project"
     And one reference "test revision" for "test project"
     And one string "test argument" declared by agent for "test project"

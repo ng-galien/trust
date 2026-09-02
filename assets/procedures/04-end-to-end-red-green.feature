@@ -33,6 +33,9 @@ Feature: Validate a multi-project change through a traced Red-Green deployment c
   mixes with another.
 
   Background: Plan context
+    Given Procedure scope
+      | check | authorized | forbidden |
+      | all   | Change, build, deploy, and verify only the declared projects and issue. | Alter baselines, cluster evidence, telemetry, or the environment to make a Check pass. |
     Given one reference "jira issue"
     And one reference "acceptance project" fixed as "payment-acceptance"
     And one reference "acceptance baseline revision" for "acceptance project"

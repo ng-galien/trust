@@ -7,6 +7,9 @@ Feature: Fix one Jira defect in one Maven project
   and confirm the fix is committed.
 
   Background: Plan context
+    Given Procedure scope
+      | check | authorized | forbidden |
+      | all   | Change and verify only the declared project for the Jira defect. | Alter the Jira evidence, project baseline, or execution environment to make a Check pass. |
     Given one reference "jira issue"
     And one reference "project"
     And one reference "baseline revision" for "project"

@@ -6,6 +6,9 @@ Feature: Prepare and release one aircraft for departure
   the missing fuel, then complete the departure checks.
 
   Background: Plan context
+    Given Procedure scope
+      | check | authorized | forbidden |
+      | all   | Observe and perform only the declared aircraft departure activities. | Alter maintenance, loading, weather, crew, or release evidence to manufacture readiness. |
     Given one reference "aircraft"
     And one reference "flight"
     And one number "fuel target" declared by agent for "aircraft"

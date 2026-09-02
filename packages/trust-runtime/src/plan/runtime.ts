@@ -10,6 +10,7 @@ import type {
   CheckSnapshot,
   Fact,
   PlanMode,
+  PlanEscalation,
   PlanRevision,
   RuntimeJsonObject,
 } from "../model.js";
@@ -24,6 +25,7 @@ import type { Procedures } from "../procedure/procedures.js";
 import type { EnvironmentService } from "../environment/service.js";
 import { buildPlanRevision, validateAgentDeclarations } from "./build.js";
 import type { PlanEvents } from "./events.js";
+import type { EscalationStore } from "./escalation-store.js";
 import { completesPlanOnValidation, dependentCheckUris, isIntentValue, MAX_INTENT_LENGTH } from "./intent.js";
 
 export const DEFAULT_SESSION_DURATION_MS = 24 * 60 * 60 * 1_000;
@@ -37,7 +39,8 @@ export type PlanRuntimeErrorCode =
   | "fact-batch-rejected"
   | "attempt-not-found"
   | "facts-present"
-  | "facts-missing";
+  | "facts-missing"
+  | "check-not-escalatable";
 
 export class PlanRuntimeError extends Error {
   constructor(readonly code: PlanRuntimeErrorCode, message: string, options?: ErrorOptions) {
@@ -47,6 +50,15 @@ export class PlanRuntimeError extends Error {
 }
 
 class IntentInUseError extends Error {}
+class PlanEscalatedDuringAdmissionError extends Error {}
+class AdmissionPlanChangedError extends Error {}
+
+interface SessionChange {
+  readonly id: string;
+  readonly plan: string;
+  readonly state: "open" | "expired";
+  readonly at: string;
+}
 
 export interface PlanEngagementInput {
   readonly contract: "trust.plan-engagement-request@1";
@@ -89,6 +101,40 @@ export interface PlanDeclarationReplacementResult {
   readonly openedCheckUris: readonly string[];
 }
 
+export interface CheckEscalationInput {
+  readonly contract: "trust.check-escalation-request@1";
+  readonly checkUri: string;
+  readonly attemptHandle: string;
+  readonly blockingReason: string;
+  readonly forbiddenFurtherAction: string;
+}
+
+export interface CheckEscalationResult {
+  readonly contract: "trust.check-escalation@1";
+  readonly status: "ESCALATED";
+  readonly plan: string;
+  readonly checkUri: string;
+  readonly snapshotId: string;
+  readonly blockingReason: string;
+  readonly forbiddenFurtherAction: string;
+  readonly escalatedAt: string;
+}
+
+export interface PlanResumptionResult {
+  readonly contract: "trust.plan-resumption@1";
+  readonly status: "RESUMED";
+  readonly plan: string;
+  readonly escalationId: string;
+  readonly resumeReason: string;
+  readonly resumedAt: string;
+}
+
+export interface PlanResumptionInput {
+  readonly plan: string;
+  readonly escalationId: string;
+  readonly resumeReason: string;
+}
+
 export interface CheckAttemptAdmissionInput {
   readonly contract: "trust.check-admission-request@1";
   readonly attemptKey: string;
@@ -119,6 +165,7 @@ interface Refusal {
   readonly attemptKey: string;
   readonly reasonCode: string;
   readonly reason: string;
+  readonly next: { readonly action: "READ_PLAN" };
 }
 
 export interface FactBatchInput {
@@ -138,6 +185,8 @@ export interface FactBatchResult {
 export interface AttemptFinalizationResult {
   readonly contract: "trust.attempt-finalization@1";
   readonly attemptHandle: string;
+  readonly plan: string;
+  readonly checkUri: string;
   readonly verdict: "VALIDATED" | "NOT_VALIDATED";
   readonly reasonCode: string;
   readonly reason: string;
@@ -161,6 +210,7 @@ export interface PlanRuntimeDependencies {
   readonly attemptStore: AttemptStore;
   readonly factStore: FactStore;
   readonly snapshotStore: SnapshotStore;
+  readonly escalationStore: EscalationStore;
   readonly planEvents: PlanEvents;
   readonly sessionDurationMs: number;
 }
@@ -176,6 +226,7 @@ export class PlanRuntime {
   readonly #attempts: AttemptStore;
   readonly #facts: FactStore;
   readonly #snapshots: SnapshotStore;
+  readonly #escalations: EscalationStore;
   readonly #events: PlanEvents;
   readonly #sessionDurationMs: number;
 
@@ -193,6 +244,7 @@ export class PlanRuntime {
     this.#attempts = dependencies.attemptStore;
     this.#facts = dependencies.factStore;
     this.#snapshots = dependencies.snapshotStore;
+    this.#escalations = dependencies.escalationStore;
     this.#events = dependencies.planEvents;
     this.#sessionDurationMs = dependencies.sessionDurationMs;
   }
@@ -311,12 +363,196 @@ export class PlanRuntime {
     return { plan: planSlug, closed: true };
   }
 
+  async escalateCheck(input: CheckEscalationInput): Promise<CheckEscalationResult> {
+    if (input.contract !== "trust.check-escalation-request@1"
+      || input.attemptHandle.length === 0
+      || !isEscalationDeclaration(input.blockingReason)
+      || !isEscalationDeclaration(input.forbiddenFurtherAction)) {
+      throw new PlanRuntimeError(
+        "check-not-escalatable",
+        "Escalation requires a non-empty blockingReason and forbiddenFurtherAction of at most 4096 characters",
+      );
+    }
+    let escalation: PlanEscalation | undefined;
+    let escalationCreated = false;
+    await this.#database.transaction().execute(async (transaction) => {
+      const plans = this.#plans.using(transaction);
+      const escalations = this.#escalations.using(transaction);
+      const snapshots = this.#snapshots.using(transaction);
+      const attempts = this.#attempts.using(transaction);
+      const facts = this.#facts.using(transaction);
+      const requestedAttempt = await attempts.find(input.attemptHandle);
+      const plan = requestedAttempt ? await plans.findPlan(requestedAttempt.planSlug) : undefined;
+      if (!requestedAttempt || !plan || requestedAttempt.checkUri !== input.checkUri
+        || requestedAttempt.state !== "finalized"
+        || requestedAttempt.finalization?.verdict !== "NOT_VALIDATED") {
+        throw new PlanRuntimeError(
+          "check-not-escalatable",
+          "Escalation must reference its finalized NOT_VALIDATED Attempt",
+        );
+      }
+      const acceptedFacts = await facts.list(requestedAttempt.handle);
+      const snapshot = await snapshots.findEquivalent(
+        requestedAttempt.checkUri,
+        requestedAttempt.compiledCheckDigest,
+        acceptedFacts.map(({ id }) => id),
+      );
+      if (!snapshot || snapshot.verdict !== "NOT_VALIDATED") {
+        throw new PlanRuntimeError("check-not-escalatable", "The requested NOT_VALIDATED qualification is unavailable");
+      }
+      const previousEscalation = await escalations.findByAttempt(requestedAttempt.handle);
+      if (previousEscalation) {
+        if (previousEscalation.blockingReason === input.blockingReason
+          && previousEscalation.forbiddenFurtherAction === input.forbiddenFurtherAction) {
+          escalation = previousEscalation;
+          return;
+        }
+        throw new PlanRuntimeError(
+          "check-not-escalatable",
+          "This NOT_VALIDATED Attempt has already been escalated with other declarations",
+        );
+      }
+      const check = await plans.findCurrentCheck(input.checkUri);
+      if (!check || check.planSlug !== plan.slug) {
+        throw new PlanRuntimeError("check-not-found", "The semantic Check URI is unknown");
+      }
+      if (!await plans.lockCurrentRevision(plan.slug, plan.currentRevision)) {
+        throw new PlanRuntimeError("check-not-escalatable", `Plan ${plan.slug} changed while escalation was requested`);
+      }
+      const activeEscalation = await escalations.findActive(plan.slug);
+      if (activeEscalation) {
+        throw new PlanRuntimeError("check-not-escalatable", `Plan ${plan.slug} is already escalated`);
+      }
+      const requestedAt = this.#now().toISOString();
+      const pendingAttempt = await attempts.findLivePendingByPlan(plan.slug, requestedAt);
+      if (pendingAttempt) {
+        throw new PlanRuntimeError(
+          "check-not-escalatable",
+          `Plan ${plan.slug} has pending Attempt ${pendingAttempt.handle}`,
+        );
+      }
+      const active = await snapshots.listActive(plan.slug, plan.currentRevision);
+      if (active.some(({ checkUri }) => checkUri === check.uri)) {
+        throw new PlanRuntimeError("check-not-escalatable", `Check ${check.uri} is already satisfied`);
+      }
+      const latestAttempt = await attempts.findLatestByCheck(check.uri);
+      if (!latestAttempt || latestAttempt.handle !== requestedAttempt.handle
+        || latestAttempt.state !== "finalized"
+        || latestAttempt.compiledCheckDigest !== check.compiledCheckDigest
+        || latestAttempt.finalization?.verdict !== "NOT_VALIDATED") {
+        throw new PlanRuntimeError(
+          "check-not-escalatable",
+          "The latest Attempt for the current Check must be finalized as NOT_VALIDATED",
+        );
+      }
+      const escalatedAt = this.#now().toISOString();
+      escalation = {
+        id: randomUUID(),
+        planSlug: plan.slug,
+        planRevision: plan.currentRevision,
+        snapshotPlanRevision: snapshot.planRevision,
+        checkUri: check.uri,
+        compiledCheckDigest: check.compiledCheckDigest,
+        snapshotId: snapshot.id,
+        attemptHandle: requestedAttempt.handle,
+        blockingReason: input.blockingReason,
+        forbiddenFurtherAction: input.forbiddenFurtherAction,
+        escalatedAt,
+      };
+      await escalations.create(escalation);
+      escalationCreated = true;
+    });
+    if (!escalation) throw new Error("Escalation transaction did not produce a result");
+    if (escalationCreated) {
+      this.#events.publish({
+        type: "plan.state",
+        at: escalation.escalatedAt,
+        plan: escalation.planSlug,
+        workState: "ESCALATED",
+      });
+    }
+    return {
+      contract: "trust.check-escalation@1",
+      status: "ESCALATED",
+      plan: escalation.planSlug,
+      checkUri: escalation.checkUri,
+      snapshotId: escalation.snapshotId,
+      blockingReason: escalation.blockingReason,
+      forbiddenFurtherAction: escalation.forbiddenFurtherAction,
+      escalatedAt: escalation.escalatedAt,
+    };
+  }
+
+  async resumePlan(input: PlanResumptionInput): Promise<PlanResumptionResult> {
+    if (!isEscalationDeclaration(input.resumeReason)) {
+      throw new PlanRuntimeError("plan-conflict", "Plan resumption requires a non-empty resumeReason of at most 4096 characters");
+    }
+    const planSlug = input.plan;
+    const now = this.#now();
+    const resumedAt = now.toISOString();
+    let escalation: PlanEscalation | undefined;
+    let resumed = false;
+    let sessionEvents: readonly SessionChange[] = [];
+    await this.#database.transaction().execute(async (transaction) => {
+      const plans = this.#plans.using(transaction);
+      const plan = await plans.findPlan(planSlug);
+      if (!plan) throw new PlanRuntimeError("plan-conflict", `Plan ${planSlug} is unknown`);
+      if (!await plans.lockCurrentRevision(plan.slug, plan.currentRevision)) {
+        throw new PlanRuntimeError("plan-conflict", `Plan ${planSlug} changed while resumption was requested`);
+      }
+      const escalations = this.#escalations.using(transaction);
+      const activeEscalation = await escalations.findActive(planSlug);
+      if (!activeEscalation) {
+        const requestedEscalation = await escalations.find(input.escalationId);
+        if (requestedEscalation?.planSlug === planSlug && requestedEscalation.resumedAt) {
+          if (requestedEscalation.resumeReason !== input.resumeReason) {
+            throw new PlanRuntimeError("plan-conflict", `Escalation ${input.escalationId} was resumed with another reason`);
+          }
+          escalation = requestedEscalation;
+          return;
+        }
+        throw new PlanRuntimeError("plan-conflict", `Plan ${planSlug} is not escalated`);
+      }
+      if (activeEscalation.id !== input.escalationId) {
+        const requestedEscalation = await escalations.find(input.escalationId);
+        if (requestedEscalation?.planSlug === planSlug && requestedEscalation.resumedAt) {
+          if (requestedEscalation.resumeReason !== input.resumeReason) {
+            throw new PlanRuntimeError("plan-conflict", `Escalation ${input.escalationId} was resumed with another reason`);
+          }
+          escalation = requestedEscalation;
+          return;
+        }
+        throw new PlanRuntimeError("plan-conflict", `Escalation ${input.escalationId} is not active for Plan ${planSlug}`);
+      }
+      sessionEvents = await this.#ensureSessionIn(transaction, planSlug, now);
+      escalation = await escalations.resume(input.escalationId, resumedAt, input.resumeReason);
+      if (!escalation) throw new PlanRuntimeError("plan-conflict", `Plan ${planSlug} is not escalated`);
+      resumed = true;
+    });
+    if (!escalation) throw new Error("Plan resumption transaction did not produce a result");
+    if (resumed) {
+      this.#publishSessionChanges(sessionEvents);
+      this.#events.publish({ type: "plan.state", at: resumedAt, plan: planSlug, workState: "IN_PROGRESS" });
+    }
+    return {
+      contract: "trust.plan-resumption@1",
+      status: "RESUMED",
+      plan: planSlug,
+      escalationId: escalation.id,
+      resumeReason: escalation.resumeReason ?? input.resumeReason,
+      resumedAt: escalation.resumedAt ?? resumedAt,
+    };
+  }
+
   async replaceDeclarations(input: PlanDeclarationReplacementInput): Promise<PlanDeclarationReplacementResult> {
     const plan = await this.#plans.findPlan(input.plan);
     const current = plan ? await this.#plans.readRevision(plan.slug, plan.currentRevision) : undefined;
     const published = plan ? await this.#procedures.find(plan.procedure, plan.procedureVersion) : undefined;
     if (!plan || !current || !published || plan.currentRevision !== input.expectedRevision) {
       throw new PlanRuntimeError("plan-conflict", `Plan ${input.plan} is unavailable or changed`);
+    }
+    if (await this.#escalations.findActive(plan.slug)) {
+      throw new PlanRuntimeError("plan-conflict", `Plan ${plan.slug} is escalated and must be resumed by an operator`);
     }
     let declarations: RuntimeJsonObject;
     try {
@@ -330,6 +566,17 @@ export class PlanRuntime {
       throw new PlanRuntimeError("invalid-plan-declarations", message(error), { cause: error });
     }
     if (canonicalJson(declarations) === canonicalJson(current.agentDeclarations)) {
+      await this.#database.transaction().execute(async (transaction) => {
+        const plans = this.#plans.using(transaction);
+        const transactionalPlan = await plans.findPlan(plan.slug);
+        if (!transactionalPlan || transactionalPlan.currentRevision !== input.expectedRevision
+          || !await plans.lockCurrentRevision(plan.slug, input.expectedRevision)) {
+          throw new PlanRuntimeError("plan-conflict", `Plan ${plan.slug} changed while declarations were requested`);
+        }
+        if (await this.#escalations.using(transaction).findActive(plan.slug)) {
+          throw new PlanRuntimeError("plan-conflict", `Plan ${plan.slug} is escalated and must be resumed by an operator`);
+        }
+      });
       return declarationResult(current, current);
     }
     const activeBefore = await this.#snapshots.listActive(plan.slug, plan.currentRevision);
@@ -368,42 +615,56 @@ export class PlanRuntime {
     ));
     const nextChecklistComplete = !missingDeclarations && retained.length === next.checks.length;
     const now = this.#now();
-    await this.#database.transaction().execute(async (transaction) => {
-      const plans = this.#plans.using(transaction);
-      const chainedPlan = await plans.findPlan(plan.slug);
-      if (chainedPlan?.intentChaining && chainedPlan.currentIntentAttemptKey !== undefined) {
-        const attempts = this.#attempts.using(transaction);
-        const sessions = this.#sessions.using(transaction);
-        const owner = await attempts.findByKey(chainedPlan.currentIntentAttemptKey);
-        const ownerSession = owner ? await sessions.findById(owner.sessionId) : undefined;
-        const ownerIsPending = owner?.state === "pending"
-          && ownerSession?.state === "open"
-          && Date.parse(owner.expiresAt) > now.getTime();
-        if (ownerIsPending) {
-          throw new PlanRuntimeError(
-            "plan-conflict",
-            `Plan ${plan.slug} has a pending Attempt for its current intent`,
+    try {
+      await this.#database.transaction().execute(async (transaction) => {
+        const plans = this.#plans.using(transaction);
+        const chainedPlan = await plans.findPlan(plan.slug);
+        if (!chainedPlan || chainedPlan.currentRevision !== input.expectedRevision
+          || !await plans.lockCurrentRevision(plan.slug, input.expectedRevision)) {
+          throw new PlanRuntimeError("plan-conflict", `Plan ${plan.slug} changed while declarations were requested`);
+        }
+        if (await this.#escalations.using(transaction).findActive(plan.slug)) {
+          throw new PlanRuntimeError("plan-conflict", `Plan ${plan.slug} is escalated and must be resumed by an operator`);
+        }
+        if (chainedPlan.intentChaining && chainedPlan.currentIntentAttemptKey !== undefined) {
+          const attempts = this.#attempts.using(transaction);
+          const sessions = this.#sessions.using(transaction);
+          const owner = await attempts.findByKey(chainedPlan.currentIntentAttemptKey);
+          const ownerSession = owner ? await sessions.findById(owner.sessionId) : undefined;
+          const ownerIsPending = owner?.state === "pending"
+            && ownerSession?.state === "open"
+            && Date.parse(owner.expiresAt) > now.getTime();
+          if (ownerIsPending) {
+            throw new PlanRuntimeError(
+              "plan-conflict",
+              `Plan ${plan.slug} has a pending Attempt for its current intent`,
+            );
+          }
+          if (chainedPlan.currentIntent === undefined) {
+            throw new PlanRuntimeError("plan-conflict", `Plan ${plan.slug} has an invalid intent reservation`);
+          }
+          await plans.releaseIntentAttempt(
+            plan.slug,
+            chainedPlan.currentIntent,
+            chainedPlan.currentIntentAttemptKey,
           );
         }
-        if (chainedPlan.currentIntent === undefined) {
-          throw new PlanRuntimeError("plan-conflict", `Plan ${plan.slug} has an invalid intent reservation`);
+        await plans.saveRevision(next, now.toISOString());
+        await this.#snapshots.using(transaction).saveActiveForRevision(plan.slug, next.revision, retained);
+        if (chainedPlan?.intentChaining && nextChecklistComplete
+          && chainedPlan.intentChainState !== "COMPLETE") {
+          await plans.completeIntentWithoutAttempt(plan.slug);
+        } else if (chainedPlan?.intentChaining && chainedPlan.intentChainState === "COMPLETE"
+          && !nextChecklistComplete) {
+          await plans.restartIntent(plan.slug);
         }
-        await plans.releaseIntentAttempt(
-          plan.slug,
-          chainedPlan.currentIntent,
-          chainedPlan.currentIntentAttemptKey,
-        );
+      });
+    } catch (error) {
+      if (isEscalatedPersistenceError(error)) {
+        throw new PlanRuntimeError("plan-conflict", `Plan ${plan.slug} is escalated and must be resumed by an operator`);
       }
-      await plans.saveRevision(next, now.toISOString());
-      await this.#snapshots.using(transaction).saveActiveForRevision(plan.slug, next.revision, retained);
-      if (chainedPlan?.intentChaining && nextChecklistComplete
-        && chainedPlan.intentChainState !== "COMPLETE") {
-        await plans.completeIntentWithoutAttempt(plan.slug);
-      } else if (chainedPlan?.intentChaining && chainedPlan.intentChainState === "COMPLETE"
-        && !nextChecklistComplete) {
-        await plans.restartIntent(plan.slug);
-      }
-    });
+      throw error;
+    }
     await this.#ensureSession(plan.slug);
     const result = declarationResult(current, next);
     this.#events.publish({
@@ -444,6 +705,22 @@ export class PlanRuntime {
     try {
       creation = await this.#createAttempt(resolved);
     } catch (error) {
+      if (error instanceof PlanEscalatedDuringAdmissionError || isEscalatedPersistenceError(error)) {
+        return refuse(
+          "trust.check-admission@1",
+          input.attemptKey,
+          "check-not-actionable",
+          "The Plan is escalated and must be resumed by an operator",
+        );
+      }
+      if (error instanceof AdmissionPlanChangedError) {
+        return refuse(
+          "trust.check-admission@1",
+          input.attemptKey,
+          "check-not-actionable",
+          "The Plan changed while admission was requested; read it again",
+        );
+      }
       if (error instanceof IntentInUseError) {
         return refuse(
           "trust.check-admission@1",
@@ -620,6 +897,8 @@ export class PlanRuntime {
         return {
           contract: "trust.attempt-finalization@1",
           attemptHandle: currentAttempt.handle,
+          plan: currentAttempt.planSlug,
+          checkUri: currentAttempt.checkUri,
           ...currentAttempt.finalization,
         } satisfies AttemptFinalizationResult;
       }
@@ -850,6 +1129,9 @@ export class PlanRuntime {
     const check = await this.#plans.findCurrentCheck(checkUri);
     let plan = check ? await this.#plans.findPlan(check.planSlug) : undefined;
     if (!check || !plan) return { refusal: refusal(attemptKey, "check-not-found", "The semantic Check URI is unknown") };
+    if (await this.#escalations.findActive(plan.slug)) {
+      return { refusal: refusal(attemptKey, "check-not-actionable", "The Plan is escalated and must be resumed by an operator") };
+    }
     const [activeQualifications, checks] = await Promise.all([
       this.#snapshots.listActive(plan.slug, plan.currentRevision),
       this.#plans.listCurrentChecks(plan.slug),
@@ -935,7 +1217,6 @@ export class PlanRuntime {
   async #createAttempt(
     resolved: AdmissionResolution,
   ): Promise<AttemptCreation> {
-    if (resolved.existing) return { attempt: resolved.existing, created: false };
     const now = this.#now();
     const attempt: Attempt = {
       handle: randomUUID(),
@@ -959,10 +1240,23 @@ export class PlanRuntime {
     };
     return this.#database.transaction().execute(async (transaction) => {
       const attempts = this.#attempts.using(transaction);
+      const plans = this.#plans.using(transaction);
+      const transactionalPlan = await plans.findPlan(resolved.plan.slug);
+      if (!transactionalPlan || transactionalPlan.currentRevision !== resolved.plan.currentRevision
+        || !await plans.lockCurrentRevision(resolved.plan.slug, resolved.plan.currentRevision)) {
+        throw new AdmissionPlanChangedError();
+      }
+      if (await this.#escalations.using(transaction).findActive(resolved.plan.slug)) {
+        throw new PlanEscalatedDuringAdmissionError();
+      }
+      if (resolved.existing) {
+        const locked = await attempts.lockPending(resolved.existing.handle);
+        if (!locked) throw new AdmissionPlanChangedError();
+        return { attempt: locked, created: false };
+      }
       const concurrent = await attempts.findByKey(attempt.attemptKey);
       if (concurrent) return { attempt: concurrent, created: false };
       if (resolved.plan.intentChaining && resolved.intent !== undefined) {
-        const plans = this.#plans.using(transaction);
         const reserved = resolved.restartIntent === undefined
           ? await plans.bindIntentAttempt(
               resolved.plan.slug,
@@ -987,19 +1281,30 @@ export class PlanRuntime {
   }
 
   async #ensureSession(plan: string): Promise<void> {
-    const current = await this.#sessions.findOpen(plan);
     const now = this.#now();
-    if (current && Date.parse(current.expiresAt) > now.getTime()) return;
+    const changes = await this.#database.transaction().execute(
+      (transaction) => this.#ensureSessionIn(transaction, plan, now),
+    );
+    this.#publishSessionChanges(changes);
+  }
+
+  async #ensureSessionIn(database: Database, plan: string, now: Date): Promise<readonly SessionChange[]> {
+    const sessions = this.#sessions.using(database);
+    const plans = this.#plans.using(database);
+    const attempts = this.#attempts.using(database);
+    const changes: SessionChange[] = [];
+    const current = await sessions.findOpen(plan);
+    if (current && Date.parse(current.expiresAt) > now.getTime()) return changes;
     if (current) {
-      await this.#sessions.changeState(current.id, "expired", now.toISOString());
-      this.#sessionEvent(current.id, plan, "expired", now.toISOString());
+      await sessions.changeState(current.id, "expired", now.toISOString());
+      changes.push({ id: current.id, plan, state: "expired", at: now.toISOString() });
     }
-    const chainedPlan = await this.#plans.findPlan(plan);
+    const chainedPlan = await plans.findPlan(plan);
     if (chainedPlan?.currentIntent !== undefined && chainedPlan.currentIntentAttemptKey !== undefined) {
-      const owner = await this.#attempts.findByKey(chainedPlan.currentIntentAttemptKey);
-      const ownerSession = owner ? await this.#sessions.findById(owner.sessionId) : undefined;
+      const owner = await attempts.findByKey(chainedPlan.currentIntentAttemptKey);
+      const ownerSession = owner ? await sessions.findById(owner.sessionId) : undefined;
       if (!owner || !ownerSession || ownerSession.state !== "open" || Date.parse(owner.expiresAt) <= now.getTime()) {
-        await this.#plans.releaseIntentAttempt(
+        await plans.releaseIntentAttempt(
           chainedPlan.slug,
           chainedPlan.currentIntent,
           chainedPlan.currentIntentAttemptKey,
@@ -1007,14 +1312,19 @@ export class PlanRuntime {
       }
     }
     const id = randomUUID();
-    await this.#sessions.create({
+    await sessions.create({
       id,
       planSlug: plan,
       state: "open",
       openedAt: now.toISOString(),
       expiresAt: new Date(now.getTime() + this.#sessionDurationMs).toISOString(),
     });
-    this.#sessionEvent(id, plan, "open", now.toISOString());
+    changes.push({ id, plan, state: "open", at: now.toISOString() });
+    return changes;
+  }
+
+  #publishSessionChanges(changes: readonly SessionChange[]): void {
+    for (const change of changes) this.#sessionEvent(change.id, change.plan, change.state, change.at);
   }
 
   #sessionEvent(id: string, plan: string, state: "open" | "closed" | "expired", at: string): void {
@@ -1042,6 +1352,14 @@ export class PlanRuntime {
   }
 }
 
+function isEscalationDeclaration(value: unknown): value is string {
+  return typeof value === "string" && value.length <= 4_096 && value.trim().length > 0 && value === value.trim();
+}
+
+function isEscalatedPersistenceError(error: unknown): boolean {
+  return error instanceof Error && error.message.includes("Plan is escalated");
+}
+
 interface AdmissionResolution {
   readonly attemptKey: string;
   readonly check: import("../model.js").PlanCheck;
@@ -1060,6 +1378,8 @@ function finalization(snapshot: CheckSnapshot): AttemptFinalizationResult {
   return {
     contract: "trust.attempt-finalization@1",
     attemptHandle: snapshot.attemptHandle,
+    plan: snapshot.planSlug,
+    checkUri: snapshot.checkUri,
     verdict: snapshot.verdict,
     reasonCode: snapshot.reasonCode,
     reason: snapshot.reason,
@@ -1144,11 +1464,11 @@ function retainQualifiedDependencies(
 }
 
 function refuse(contract: Refusal["contract"], attemptKey: string, reasonCode: string, reason: string): Refusal {
-  return { contract, status: "REFUSED", attemptKey, reasonCode, reason };
+  return { contract, status: "REFUSED", attemptKey, reasonCode, reason, next: { action: "READ_PLAN" } };
 }
 
 function refusal(attemptKey: string, reasonCode: string, reason: string): Omit<Refusal, "contract"> {
-  return { status: "REFUSED", attemptKey, reasonCode, reason };
+  return { status: "REFUSED", attemptKey, reasonCode, reason, next: { action: "READ_PLAN" } };
 }
 
 function digest(value: unknown): string {

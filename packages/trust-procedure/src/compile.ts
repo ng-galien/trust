@@ -23,6 +23,7 @@ import {
   type CompiledProcedure,
   type CompiledProcedureCheck,
   type CompiledProcedureRole,
+  type CompiledProcedureScope,
   type ProcedureCompilationErrorCode,
   type ProcedureCompilationInput,
   type ProcedureAnalysis,
@@ -101,6 +102,11 @@ interface ScenarioSource {
   readonly location?: { readonly line: number; readonly column?: number };
 }
 
+interface PlanContextSource {
+  readonly roles: RoleSource[];
+  readonly scope: CompiledProcedureScope[];
+}
+
 export function compileProcedure(input: ProcedureCompilationInput): CompiledProcedure {
   return compileProcedureInternal(input);
 }
@@ -175,7 +181,8 @@ function compileProcedureInternal(
   if (backgrounds.length !== 1 || !backgrounds[0] || backgrounds[0].name !== procedureLanguage.phrases.context) {
     fail("invalid-procedure", "Procedure must declare exactly one Background named Plan context", sourceName, feature);
   }
-  const roleSources = parseRoles(backgrounds[0].steps, sourceName);
+  const planContext = parsePlanContext(backgrounds[0].steps, sourceName);
+  const roleSources = planContext.roles;
   const roleByName = new Map<string, RoleSource>();
   for (const role of roleSources) {
     if (roleByName.has(role.name)) fail("duplicate-role", `Role "${role.name}" is repeated`, sourceName, role);
@@ -195,10 +202,14 @@ function compileProcedureInternal(
   const checkByName = new Map<string, { readonly check: CheckSource; readonly scenario: ScenarioSource }>();
   for (const scenario of scenarioSources) {
     for (const check of scenario.checks) {
+      if (check.name === "all") {
+        fail("invalid-procedure", "Check name \"all\" is reserved for the global Procedure scope", sourceName, check);
+      }
       if (checkByName.has(check.name)) fail("duplicate-check", `Check "${check.name}" is repeated`, sourceName, check);
       checkByName.set(check.name, { check, scenario });
     }
   }
+  validateProcedureScope(planContext.scope, checkByName, sourceName);
 
   const operationDigests = new Map<string, string>();
   const materialized = new Map<string, { readonly check: string; readonly field: string }>();
@@ -371,7 +382,7 @@ function compileProcedureInternal(
     checks: scenario.checks.map((check) => check.name),
     ...(scenario.location ? { location: scenario.location } : {}),
   }));
-  const body = { procedure, version, title: feature.name, intentChaining, operations, roles, scenarios, checks: compiledChecks };
+  const body = { procedure, version, title: feature.name, intentChaining, operations, scope: planContext.scope, roles, scenarios, checks: compiledChecks };
   const semanticBody = {
     ...body,
     operations: operations.map(({ definition, ...operation }) => ({
@@ -379,6 +390,7 @@ function compileProcedureInternal(
       definition: operationSemantics(definition),
     })),
     roles: roles.map(({ location: _location, ...role }) => role),
+    scope: planContext.scope.map(({ location: _location, ...scope }) => scope),
     scenarios: scenarios.map(({ location: _location, ...scenario }) => scenario),
     checks: compiledChecks.map(({ location: _location, ...check }) => ({
       ...check,
@@ -417,6 +429,39 @@ function readDescription(raw: string | undefined): string | undefined {
   return text === "" ? undefined : text;
 }
 
+function parsePlanContext(steps: readonly Step[], sourceName: string): PlanContextSource {
+  const [scopeStep, ...roleSteps] = steps;
+  const parsedScope = scopeStep ? parseProcedureStep(scopeStep.text, "background") : undefined;
+  if (!scopeStep || scopeStep.keyword.trim() !== "Given" || parsedScope?.production !== "scope"
+    || !scopeStep.dataTable || scopeStep.docString) {
+    fail("invalid-procedure", "Plan context must start with one Procedure scope DataTable", sourceName, scopeStep);
+  }
+  const rows = scopeStep.dataTable.rows;
+  const header = rows[0]?.cells.map((cell) => cell.value.trim());
+  if (header?.length !== 3 || header[0] !== "check" || header[1] !== "authorized" || header[2] !== "forbidden") {
+    fail("invalid-procedure", "Procedure scope columns must be check, authorized and forbidden", sourceName, scopeStep);
+  }
+  const scope = rows.slice(1).map((row) => {
+    if (row.cells.length !== 3) {
+      fail("invalid-procedure", "Every Procedure scope row must contain check, authorized and forbidden", sourceName, row);
+    }
+    const [check = "", authorized = "", forbidden = ""] = row.cells.map((cell) => cell.value.trim());
+    if (check === "" || authorized === "" || forbidden === "") {
+      fail("invalid-procedure", "Every Procedure scope row must name a Check and declare both authorized and forbidden boundaries", sourceName, row);
+    }
+    return {
+      check,
+      authorized,
+      forbidden,
+      ...(row.location ? { location: row.location } : {}),
+    };
+  });
+  if (scope.length === 0 || !scope.some(({ check }) => check === "all")) {
+    fail("invalid-procedure", "Procedure scope must contain at least one row for all Checks", sourceName, scopeStep);
+  }
+  return { scope, roles: parseRoles(roleSteps, sourceName) };
+}
+
 function parseRoles(steps: readonly Step[], sourceName: string): RoleSource[] {
   return steps.map((step) => {
     if (step.dataTable || step.docString || (step.keyword.trim() !== "Given" && step.keyword.trim() !== "And")) {
@@ -447,6 +492,18 @@ function parseRoles(steps: readonly Step[], sourceName: string): RoleSource[] {
     }
     return { name, type, cardinality, optional, parents, declared, ...(fixed !== undefined ? { fixed } : {}), location: step.location };
   });
+}
+
+function validateProcedureScope(
+  scope: readonly CompiledProcedureScope[],
+  checks: ReadonlyMap<string, unknown>,
+  sourceName: string,
+): void {
+  for (const row of scope) {
+    if (row.check !== "all" && !checks.has(row.check)) {
+      fail("invalid-procedure", `Procedure scope references unknown Check "${row.check}"`, sourceName, row);
+    }
+  }
 }
 
 function parseScenario(scenario: Scenario, sourceName: string): ScenarioSource {

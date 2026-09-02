@@ -2,11 +2,14 @@ import type { HistoryListInput, PlanListInput, PlanReader, ReadErrorCode } from 
 import type { PlanRuntime } from "../plan/runtime.js";
 import type {
   CheckAttemptAdmissionInput as CheckAttemptAdmissionParams,
+  CheckEscalationInput,
   FactBatchInput,
   PlanDeclarationReplacementInput,
   PlanEngagementInput as PlanEngagementParams,
+  PlanResumptionInput,
 } from "../plan/runtime.js";
 import type { RuntimeJsonObject } from "../model.js";
+import { checkContinuation } from "../plan/continuation.js";
 
 export const PLAN_ENGAGE_METHOD = "plan.engage" as const;
 export const PLAN_LIST_METHOD = "plan.list" as const;
@@ -18,10 +21,12 @@ export const PLAN_DECLARATIONS_REPLACE_METHOD = "plan.declarations.replace" as c
 export const PLAN_REMOVE_METHOD = "plan.remove" as const;
 export const PLAN_RESET_METHOD = "plan.reset" as const;
 export const PLAN_CLOSE_METHOD = "plan.close" as const;
+export const PLAN_RESUME_METHOD = "plan.resume" as const;
 export const CHECK_ATTEMPT_ADMIT_METHOD = "check.attempt.admit" as const;
 export const CHECK_ATTEMPT_FACTS_METHOD = "check.attempt.facts" as const;
 export const CHECK_ATTEMPT_FINALIZE_METHOD = "check.attempt.finalize" as const;
 export const CHECK_ATTEMPT_INTERRUPT_METHOD = "check.attempt.interrupt" as const;
+export const CHECK_ESCALATE_METHOD = "check.escalate" as const;
 export const PLAN_RUNTIME_ERROR_CONTRACT = "trust.plan-runtime-error@1" as const;
 
 interface CheckReadParams {
@@ -54,12 +59,14 @@ export const PLAN_RUNTIME_RPC_METHODS = [
   PLAN_REMOVE_METHOD,
   PLAN_RESET_METHOD,
   PLAN_CLOSE_METHOD,
+  PLAN_RESUME_METHOD,
   SESSION_READ_METHOD,
   CHECK_READ_METHOD,
   CHECK_ATTEMPT_ADMIT_METHOD,
   CHECK_ATTEMPT_FACTS_METHOD,
   CHECK_ATTEMPT_FINALIZE_METHOD,
   CHECK_ATTEMPT_INTERRUPT_METHOD,
+  CHECK_ESCALATE_METHOD,
 ] as const;
 
 export type PlanRuntimeRpcMethod = (typeof PLAN_RUNTIME_RPC_METHODS)[number];
@@ -134,6 +141,10 @@ export async function executePlanRuntimeRpc(
       const input = parsePlanRead(params);
       return dependencies.planRuntime.close(input.plan);
     }
+    case PLAN_RESUME_METHOD: {
+      const input = parsePlanResumption(params);
+      return dependencies.planRuntime.resumePlan(input);
+    }
     case PLAN_DECLARATIONS_REPLACE_METHOD: {
       const input = parsePlanDeclarationReplacement(params);
       return dependencies.planRuntime.replaceDeclarations(input);
@@ -153,13 +164,38 @@ export async function executePlanRuntimeRpc(
     }
     case CHECK_ATTEMPT_FINALIZE_METHOD: {
       const input = parseCheckFinalization(params);
-      return dependencies.planRuntime.finalizeCheck(input.attemptHandle);
+      const finalized = await dependencies.planRuntime.finalizeCheck(input.attemptHandle);
+      const view = await dependencies.planReader.readPlanBySlug(finalized.plan);
+      return {
+        contract: finalized.contract,
+        attemptHandle: finalized.attemptHandle,
+        verdict: finalized.verdict,
+        reasonCode: finalized.reasonCode,
+        reason: finalized.reason,
+        checklistDelta: finalized.checklistDelta,
+        next: checkContinuation(view, {
+          checkUri: finalized.checkUri,
+          verdict: finalized.verdict,
+        }),
+      };
     }
     case CHECK_ATTEMPT_INTERRUPT_METHOD: {
       const input = parseCheckInterruption(params);
       return dependencies.planRuntime.interruptCheck(input.attemptHandle);
     }
+    case CHECK_ESCALATE_METHOD: {
+      const input = parseCheckEscalation(params);
+      return dependencies.planRuntime.escalateCheck(input);
+    }
   }
+}
+
+function parsePlanResumption(value: unknown): PlanResumptionInput {
+  const record = exactRecord(value, ["plan", "escalationId", "resumeReason"]);
+  if (!boundedString(record.plan) || !boundedString(record.escalationId) || !boundedTrimmedString(record.resumeReason, 4_096)) {
+    throw new InvalidPlanRuntimeRpcParams();
+  }
+  return { plan: record.plan, escalationId: record.escalationId, resumeReason: record.resumeReason };
 }
 
 function parsePlanList(value: unknown): PlanListInput {
@@ -364,6 +400,26 @@ function parseCheckInterruption(value: unknown): CheckAttemptInterruptionParams 
   return { contract: record.contract, attemptHandle: record.attemptHandle };
 }
 
+function parseCheckEscalation(value: unknown): CheckEscalationInput {
+  const record = exactRecord(value, ["contract", "checkUri", "attemptHandle", "blockingReason", "forbiddenFurtherAction"]);
+  if (
+    record.contract !== "trust.check-escalation-request@1"
+    || !boundedString(record.checkUri, 2_048)
+    || !boundedString(record.attemptHandle, 256)
+    || !boundedTrimmedString(record.blockingReason, 4_096)
+    || !boundedTrimmedString(record.forbiddenFurtherAction, 4_096)
+  ) {
+    throw new InvalidPlanRuntimeRpcParams();
+  }
+  return {
+    contract: record.contract,
+    checkUri: record.checkUri,
+    attemptHandle: record.attemptHandle,
+    blockingReason: record.blockingReason,
+    forbiddenFurtherAction: record.forbiddenFurtherAction,
+  };
+}
+
 function exactRecord(value: unknown, keys: readonly string[], optional: readonly string[] = []): Record<string, unknown> {
   if (!isRecord(value)) throw new InvalidPlanRuntimeRpcParams();
   const expected = new Set([...keys, ...optional]);
@@ -382,4 +438,8 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function boundedString(value: unknown, maximum = 256): value is string {
   return typeof value === "string" && value.length > 0 && value.length <= maximum;
+}
+
+function boundedTrimmedString(value: unknown, maximum: number): value is string {
+  return boundedString(value, maximum) && value === value.trim();
 }

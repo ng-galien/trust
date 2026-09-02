@@ -181,7 +181,7 @@ function ListView({ rows, search, q }: { rows: ProcedureRow[]; search: string; q
           {row.plans.length === 0 ? <PlansMark plans={0} active={0} /> : null}
           {[...row.activePlans, ...row.plans.filter((plan) => plan.workState !== "IN_PROGRESS")].slice(0, 3).map((plan) => (
             <Link key={plan.plan} to={`/plans/${encodeURIComponent(plan.plan)}`} className="mono inline-flex items-center gap-1 truncate-1 text-accent hover:underline" title={t("procedures.home.planLinkTitle", { state: plan.workState.replace("_", " "), satisfied: String(plan.satisfiedChecks), total: String(plan.checkCount) })}>
-              <span className={plan.workState === "IN_PROGRESS" ? "h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-info" : "h-1.5 w-1.5 shrink-0 rounded-full bg-success"} />
+              <span className={plan.workState === "IN_PROGRESS" ? "h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-info" : plan.workState === "ESCALATED" ? "h-1.5 w-1.5 shrink-0 rounded-full bg-danger" : "h-1.5 w-1.5 shrink-0 rounded-full bg-success"} />
               {plan.plan}
             </Link>
           ))}
@@ -195,5 +195,4 @@ function ListView({ rows, search, q }: { rows: ProcedureRow[]; search: string; q
     />
   );
 }
-
 

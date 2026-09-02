@@ -3,6 +3,9 @@
 Feature: Keep one revision for each declared project
 
   Background: Plan context
+    Given Procedure scope
+      | check | authorized | forbidden |
+      | all   | Perform only the actions declared by this acceptance Procedure. | Alter the environment or accepted observations to make a Check pass. |
     Given many reference "project" declared by agent
     And many reference "baseline revision" for each "project"
 

@@ -7,6 +7,10 @@ Feature: Establish whether a Git repository has local changes
   is dirty.
 
   Background: Plan context
+    Given Procedure scope
+      | check | authorized | forbidden |
+      | all   | Read the declared repository state. | Modify the repository or its environment to obtain the expected state. |
+      | repository status | Read Git metadata required to observe this Check. | Change repository files while observing repository status. |
     Given one reference "repository"
 
   @scenario:repository-status

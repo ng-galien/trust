@@ -130,7 +130,7 @@ export function ProcedureOverlay({ mode = "item" }: { mode?: "item" | "new" }) {
           <InspectorSection title={t("procedures.overlay.executedBy")}>
             {executing.length === 0 ? <EmptyRelation>{t("procedures.overlay.noPlanYet")}</EmptyRelation> : null}
             {[...active, ...executing.filter((plan) => plan.workState !== "IN_PROGRESS")].map((plan) => (
-              <RelationLink key={plan.plan} to={`/plans/${encodeURIComponent(plan.plan)}`} icon={<Activity />} title={plan.plan} meta={t(expert ? "procedures.overlay.planMetaRev" : "procedures.overlay.planMeta", { environment: plan.environment, satisfied: String(plan.satisfiedChecks), total: String(plan.checkCount), revision: String(plan.revision) })} state={<Badge tone={plan.workState === "IN_PROGRESS" ? "info" : "success"}>{plan.workState.replace("_", " ")}</Badge>} />
+              <RelationLink key={plan.plan} to={`/plans/${encodeURIComponent(plan.plan)}`} icon={<Activity />} title={plan.plan} meta={t(expert ? "procedures.overlay.planMetaRev" : "procedures.overlay.planMeta", { environment: plan.environment, satisfied: String(plan.satisfiedChecks), total: String(plan.checkCount), revision: String(plan.revision) })} state={<StatusBadge state={plan.workState} />} />
             ))}
           </InspectorSection>
           <InspectorSection title={t("procedures.overlay.uses")} count={usedOperations.length}>

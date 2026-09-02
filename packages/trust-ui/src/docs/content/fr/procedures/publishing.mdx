@@ -8,7 +8,7 @@ order: 5
 
 `compileProcedure` reçoit une source et le catalogue des Opérations compilées. Il :
 
-- vérifie la forme du document (exactement les trois tags, un `Background: Plan context`, au moins un Scénario taggé contenant un Check, pas de `Rule`/`Scenario Outline`) ;
+- vérifie la forme du document (exactement les trois tags, un `Background: Plan context` commençant par sa table obligatoire de périmètre de Procedure, au moins un Scénario taggé contenant un Check, pas de `Rule`/`Scenario Outline`) ;
 - lit les rôles ; valide les rôles fixes (`one string`/`reference`), les scopes parents (déclarés, acycliques), l'unicité des noms ;
 - résout chaque `runs Operation` dans le catalogue ; valide chaque liaison `on` / `using` (Input existant, type, cardinalité, chaque Input lié une fois) et chaque `materializes` (rôle et champ existants, forme concordante, un fournisseur par rôle, aucun rôle fixe ou déclaré) ;
 - analyse le DocString `js` avec JSEP ; valide la surface d'expression fermée, les types statiques, les littéraux enum et les rôles ou Checks référencés atteignables depuis un Scénario prérequis ; émet les gardes JSON Logic canoniques ;

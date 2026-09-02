@@ -3,6 +3,9 @@
 Feature: Keep distinct Checks that use the same Operation and target
 
   Background: Plan context
+    Given Procedure scope
+      | check | authorized | forbidden |
+      | all   | Perform only the actions declared by this acceptance Procedure. | Alter the environment or accepted observations to make a Check pass. |
     Given one reference "repository"
 
   @scenario:reads

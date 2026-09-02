@@ -71,7 +71,9 @@ the action result itself.
 The software Operations exercise Git, Jira, Maven, Karate, Playwright, Docker, Kind, Kubernetes and
 trace reading. The healthcare, aviation and food Operations call simulated HTTP endpoints. They are
 language examples and runner smoke-test inputs, not claims that TRUST contains professional domain
-rules.
+rules. `file.smoke-signal-read` is the deliberately controlled live-smoke Operation: it reads only
+`trust-smoke.json` from the Environment root so an external operator can drive both qualification
+outcomes without changing runner behavior.
 
 An Operation is reusable. A compiled Procedure embeds the exact compiled Operations it uses, so a
 later catalog change cannot silently change an existing Procedure revision.

@@ -3,6 +3,9 @@
 Feature: Declare several runtime dependencies for each library
 
   Background: Plan context
+    Given Procedure scope
+      | check | authorized | forbidden |
+      | all   | Perform only the actions declared by this acceptance Procedure. | Alter the environment or accepted observations to make a Check pass. |
     Given many reference "library project"
     And many reference "runtime dependency project" declared by agent for each "library project"
 

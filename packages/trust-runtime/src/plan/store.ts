@@ -111,6 +111,7 @@ export class PlanStore {
       qualifications), in dependency order. Facts are content-addressed history and are kept. */
   async remove(planSlug: string): Promise<void> {
     const database = this.dependencies.database;
+    await database.deleteFrom("plan_escalations").where("plan_slug", "=", planSlug).execute();
     await database.deleteFrom("active_check_qualifications").where("plan_slug", "=", planSlug).execute();
     await database.deleteFrom("check_snapshots").where("plan_slug", "=", planSlug).execute();
     await database.deleteFrom("attempts").where("plan_slug", "=", planSlug).execute();
@@ -124,6 +125,17 @@ export class PlanStore {
       .where("plan_slug", "=", planSlug)
       .executeTakeFirst();
     return row ? toPlan(row) : undefined;
+  }
+
+  /** Acquire the Plan's SQLite write serialization point without changing its revision. */
+  async lockCurrentRevision(planSlug: string, revision: number): Promise<boolean> {
+    const result = await this.dependencies.database
+      .updateTable("plans")
+      .set({ current_revision: revision })
+      .where("plan_slug", "=", planSlug)
+      .where("current_revision", "=", revision)
+      .executeTakeFirst();
+    return result.numUpdatedRows === 1n;
   }
 
   async initializeIntent(planSlug: string, intent: string): Promise<Plan> {

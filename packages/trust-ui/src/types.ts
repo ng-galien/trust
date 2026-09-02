@@ -70,6 +70,7 @@ export interface CompiledProcedure {
   source: string;
   definitionDigest: string;
   operations: Array<{ operation: string; version: string; digest: string; definition: CompiledOperation }>;
+  scope: Array<{ check: "all" | string; authorized: string; forbidden: string; location?: SourceLocation }>;
   roles: Array<{ name: string; type: string; cardinality: string; source: JsonObject; location?: SourceLocation }>;
   scenarios: ProcedureScenario[];
   checks: ProcedureCheck[];
@@ -94,7 +95,7 @@ export interface PlanSummary {
   revision: number;
   createdAt: string;
   sessionState: "OPEN" | "UNAVAILABLE";
-  workState: "IN_PROGRESS" | "COMPLETE";
+  workState: "IN_PROGRESS" | "ESCALATED" | "COMPLETE";
   satisfiedChecks: number;
   checkCount: number;
 }
@@ -102,12 +103,16 @@ export interface PlanSummary {
 export interface PlanCheck {
   checkUri: string;
   name: string;
+  successReason: string;
   scenario: string;
   target: { role: string; selection: string; value: unknown };
   inputs: JsonObject;
   operation: string;
+  actionScope: { authorized: string[]; forbidden: string[] };
   state: "OPEN" | "SATISFIED";
   actionable: boolean;
+  escalatable: boolean;
+  attemptHandle: string | null;
   completesPlan: boolean;
   blockedBy: string[];
   latestVerdict: "VALIDATED" | "NOT_VALIDATED" | null;
@@ -132,7 +137,9 @@ export interface PlanView extends PlanSummary {
   declarations: JsonObject;
   declarationRoles: DeclarationRole[];
   missingDeclarations: string[];
-  latestQualification: { checkUri: string; executionId: string; verdict: "VALIDATED" | "NOT_VALIDATED"; reasonCode: string; reason: string; newlySatisfied: string[]; newlyOpened: string[]; unchanged: string[] } | null;
+  latestQualification: { checkUri: string; attemptHandle: string; executionId: string; verdict: "VALIDATED" | "NOT_VALIDATED"; reasonCode: string; reason: string; newlySatisfied: string[]; newlyOpened: string[]; unchanged: string[] } | null;
+  activeEscalation: PlanEscalation | null;
+  escalations: PlanEscalation[];
   latestRevisionChange: { fromRevision: number | null; toRevision: number; added: string[]; removed: string[]; newlySatisfied: string[]; newlyOpened: string[]; changed: string[]; unchanged: string[] };
   checklistComplete: boolean;
   openChecks: string[];
@@ -141,6 +148,20 @@ export interface PlanView extends PlanSummary {
   checks: PlanCheck[];
   revisions: Array<{ revision: number; definitionDigest: string; source: string; checkUris: string[] }>;
   sessions: Array<{ id: string; state: string; openedAt: string; expiresAt: string; closedAt?: string }>;
+}
+
+export interface PlanEscalation {
+  escalationId: string;
+  planRevision: number;
+  snapshotPlanRevision: number;
+  checkUri: string;
+  snapshotId: string;
+  attemptHandle: string;
+  blockingReason: string;
+  forbiddenFurtherAction: string;
+  escalatedAt: string;
+  resumedAt: string | null;
+  resumeReason: string | null;
 }
 
 export interface Fact {
@@ -230,7 +251,7 @@ export interface DeclarationReplacement {
 
 export type CheckAdmission =
   | { status: "ADMITTED"; attemptKey: string; attemptHandle: string; executionId: string; checkUri: string; operation: CompiledOperation; actionInput: JsonObject; environment: JsonObject; expiresAt: string }
-  | { status: "REFUSED"; attemptKey: string; reasonCode: string; reason: string };
+  | { status: "REFUSED"; attemptKey: string; reasonCode: string; reason: string; next: { action: "READ_PLAN" } };
 
 export interface AttemptFinalization {
   attemptHandle: string;
@@ -238,6 +259,9 @@ export interface AttemptFinalization {
   reasonCode: string;
   reason: string;
   checklistDelta: { newlySatisfied: string[]; newlyOpened: string[]; unchanged: string[] };
+  next:
+    | { action: "RUN_CHECKS" | "RETRY_OR_ESCALATE"; checks: Array<{ name: string; successReason: string; checkUri: string; actionScope: { authorized: string[]; forbidden: string[] } }> }
+    | { action: "COMPLETE" | "READ_PLAN" };
 }
 
 export interface OperationSimulation {

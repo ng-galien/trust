@@ -44,8 +44,7 @@ export async function runCli(options: RunnerCliOptions = {}): Promise<number> {
     });
     const result = await runner.run(argv[0]);
     stdout(json ? `${JSON.stringify(result, null, 2)}\n` : report(result));
-    if (result.status === "REFUSED") return 3;
-    return result.verdict === "VALIDATED" ? 0 : 4;
+    return 0;
   } catch (error) {
     logging.logger.error({ err: error, event: "runner.invocation.failed" }, "Runner invocation failed");
     stderr(`${error instanceof Error ? error.message : String(error)}\n`);
@@ -56,22 +55,38 @@ export async function runCli(options: RunnerCliOptions = {}): Promise<number> {
 }
 
 function report(result: CheckResult): string {
-  if (result.status === "REFUSED") {
+  if (result.result.status === "REFUSED") {
     return [
       "Status: REFUSED",
       `Check: ${result.checkUri}`,
-      `Code: ${result.reasonCode}`,
-      `Reason: ${result.reason}`,
+      `Code: ${result.result.reasonCode}`,
+      `Reason: ${result.result.reason}`,
+      "Next: READ_PLAN",
       "",
     ].join("\n");
   }
+  const next = result.next.action === "RUN_CHECKS" || result.next.action === "RETRY_OR_ESCALATE"
+    ? [
+        `Next: ${result.next.action}`,
+        ...result.next.checks.flatMap((check) => [
+          `- ${check.name}: ${check.successReason}`,
+          `  Check: ${check.checkUri}`,
+          "  Authorized scope:",
+          ...check.actionScope.authorized.map((item) => `  - ${item}`),
+          "  Forbidden scope:",
+          ...check.actionScope.forbidden.map((item) => `  - ${item}`),
+        ]),
+      ]
+    : [`Next: ${result.next.action}`];
   return [
     "Status: COMPLETED",
     `Check: ${result.checkUri}`,
-    `Verdict: ${result.verdict}`,
-    `Code: ${result.reasonCode}`,
-    `Reason: ${result.reason}`,
-    `Action output: ${JSON.stringify(result.actionOutcome)}`,
+    `Attempt: ${result.result.attemptHandle}`,
+    `Verdict: ${result.result.qualification.verdict}`,
+    `Code: ${result.result.qualification.reasonCode}`,
+    `Reason: ${result.result.qualification.reason}`,
+    `Action output: ${JSON.stringify(result.result.actionOutcome)}`,
+    ...next,
     "",
   ].join("\n");
 }

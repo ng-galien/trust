@@ -16,12 +16,14 @@ Every accepted execution leaves a **snapshot**: the Check, its Facts, the verdic
 ## Where else the history shows
 
 - **Overview** — the latest verdicts.
-- **Plan page → History** — the latest revision change (added, removed, satisfied, reopened) and, in expert mode, the revisions.
+- **Plan page → History** — escalation and resumption events with their mandatory reasons, the latest revision change, and, in expert mode, the revisions.
 - **Check details** (Plan page) — the verdicts of one Check, newest first; in expert mode its attempts.
 
 ## Revisions
 
 A Plan revision is created by an accepted execution (a verdict) or by an agent declaration. A revision may add Checks (a declared collection expands `on each` Checks), remove Checks (their context disappeared), satisfy one, reopen dependents. Revisions are numbered from 1 and never rewritten.
+
+Escalation does not create a revision or a verdict. The Plan history nevertheless records **Escalated** with `blockingReason` and `forbiddenFurtherAction`, then **Resumed** with the operator's mandatory `resumeReason`. These entries are durable on the escalation they describe.
 
 <Callout kind="rule">
   Deleting a dry-run erases its revisions and verdicts; a live Plan is never deleted. Facts themselves are content-addressed and kept.

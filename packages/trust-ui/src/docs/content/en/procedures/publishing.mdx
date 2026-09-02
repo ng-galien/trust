@@ -8,7 +8,7 @@ order: 5
 
 `compileProcedure` receives one source and the catalog of compiled Operations. It:
 
-- checks the document shape (exactly the three tags, one `Background: Plan context`, at least one tagged Scenario containing a Check, no `Rule`/`Scenario Outline`);
+- checks the document shape (exactly the three tags, one `Background: Plan context` starting with its mandatory Procedure scope table, at least one tagged Scenario containing a Check, no `Rule`/`Scenario Outline`);
 - reads the roles; validates fixed roles (`one string`/`reference`), parent scopes (declared, acyclic), unique names;
 - resolves every `runs Operation` in the catalog; validates each `on` / `using` binding (existing Input, type, cardinality, every Input bound once) and each `materializes` (existing role and field, matching shape, one provider per role, no fixed or declared role);
 - parses the `js` DocString with JSEP; validates the closed expression surface, static types, enum literals and referenced roles or Checks reachable from a prerequisite Scenario; emits canonical JSON Logic guards;

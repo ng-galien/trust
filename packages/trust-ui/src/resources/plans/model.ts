@@ -7,7 +7,7 @@ import { orderedScenarios } from "../procedures/model.js";
 type ViewMode = "cards" | "list";
 type SortKey = "recent" | "name" | "progress";
 export type GroupKey = "none" | "procedure" | "environment";
-type StateFilter = "" | "running" | "complete" | "unavailable";
+type StateFilter = "" | "running" | "escalated" | "complete" | "unavailable";
 
 export interface PlanRow {
   id: string;
@@ -81,7 +81,7 @@ export function readFilters(params: URLSearchParams): Filters {
     procedures: (params.get("procedure") ?? "").split(",").filter(Boolean),
     environments: (params.get("env") ?? "").split(",").filter(Boolean),
     mode: mode === "live" || mode === "dry-run" ? mode : "",
-    state: state === "running" || state === "complete" || state === "unavailable" ? state : "",
+    state: state === "running" || state === "escalated" || state === "complete" || state === "unavailable" ? state : "",
     sort: sort === "name" || sort === "progress" ? sort : "recent",
     group: group === "procedure" || group === "environment" ? group : "none",
     view: params.get("view") === "list" ? "list" : "cards",
@@ -118,6 +118,7 @@ export function matchReason(row: PlanRow, q: string): string | undefined {
 }
 
 function stateOf(row: PlanRow): StateFilter {
+  if (row.workState === "ESCALATED") return "escalated";
   if (row.sessionState === "UNAVAILABLE") return "unavailable";
   return row.workState === "COMPLETE" ? "complete" : "running";
 }

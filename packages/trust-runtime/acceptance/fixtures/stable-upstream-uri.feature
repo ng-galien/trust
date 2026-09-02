@@ -3,6 +3,9 @@
 Feature: Reopen a Check when an upstream Check keeps its URI but changes its context
 
   Background: Plan context
+    Given Procedure scope
+      | check | authorized | forbidden |
+      | all   | Perform only the actions declared by this acceptance Procedure. | Alter the environment or accepted observations to make a Check pass. |
     Given one reference "workspace"
     And one reference "baseline revision" declared by agent for "workspace"
 

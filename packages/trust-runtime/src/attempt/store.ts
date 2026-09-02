@@ -85,10 +85,34 @@ export class AttemptStore {
       .selectFrom("attempts")
       .selectAll()
       .where("check_uri", "=", checkUri)
-      .orderBy("admitted_at", "desc")
-      .orderBy("attempt_handle")
+      .orderBy("attempt_order", "desc")
       .execute();
     return rows.map(toAttempt);
+  }
+
+  async findLatestByCheck(checkUri: string): Promise<Attempt | undefined> {
+    const row = await this.dependencies.database
+      .selectFrom("attempts")
+      .selectAll()
+      .where("check_uri", "=", checkUri)
+      .orderBy("attempt_order", "desc")
+      .executeTakeFirst();
+    return row ? toAttempt(row) : undefined;
+  }
+
+  async findLivePendingByPlan(planSlug: string, at: string): Promise<Attempt | undefined> {
+    const row = await this.dependencies.database
+      .selectFrom("attempts")
+      .innerJoin("sessions", "sessions.session_id", "attempts.session_id")
+      .selectAll("attempts")
+      .where("attempts.plan_slug", "=", planSlug)
+      .where("attempts.state", "=", "pending")
+      .where("attempts.expires_at", ">", at)
+      .where("sessions.state", "=", "open")
+      .where("sessions.expires_at", ">", at)
+      .orderBy("attempts.attempt_order", "desc")
+      .executeTakeFirst();
+    return row ? toAttempt(row) : undefined;
   }
 
   async finalize(

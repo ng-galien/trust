@@ -45,6 +45,7 @@ function statusTone(state: string): Tone {
       return "info";
     case "DRAFT":
     case "UNSAVED":
+    case "ESCALATED":
       return "warning";
     case "NOT_VALIDATED":
     case "UNAVAILABLE":
@@ -57,7 +58,7 @@ function statusTone(state: string): Tone {
 }
 
 const knownStatuses = [
-  "OPEN", "SATISFIED", "VALIDATED", "NOT_VALIDATED", "IN_PROGRESS", "COMPLETE", "UNAVAILABLE", "OK",
+  "OPEN", "SATISFIED", "VALIDATED", "NOT_VALIDATED", "IN_PROGRESS", "ESCALATED", "COMPLETE", "UNAVAILABLE", "OK",
   "DRAFT", "INVALID", "COMPILING", "COMPILED", "PUBLISHED", "ADMITTED", "REFUSED", "ACTIONABLE", "UNSAVED",
   "ERROR", "CURRENT", "STARTING", "RUNNING", "SUCCEEDED", "FAILED", "ABORTED",
 ] as const;

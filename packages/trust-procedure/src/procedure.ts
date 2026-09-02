@@ -140,6 +140,15 @@ export interface CompiledProcedureOperation {
   readonly definition: CompiledOperation;
 }
 
+/** One prose boundary declared by the Procedure. `all` applies to every Check; a Check name adds
+    boundaries for that Check. The runner never interprets these declarations. */
+export interface CompiledProcedureScope {
+  readonly check: "all" | string;
+  readonly authorized: string;
+  readonly forbidden: string;
+  readonly location?: CompiledSourceLocation;
+}
+
 export interface CompiledProcedure {
   readonly procedure: string;
   readonly version: string;
@@ -151,6 +160,7 @@ export interface CompiledProcedure {
   readonly source: string;
   readonly definitionDigest: string;
   readonly operations: readonly CompiledProcedureOperation[];
+  readonly scope: readonly CompiledProcedureScope[];
   readonly roles: readonly CompiledProcedureRole[];
   readonly scenarios: readonly CompiledProcedureScenario[];
   readonly checks: readonly CompiledProcedureCheck[];

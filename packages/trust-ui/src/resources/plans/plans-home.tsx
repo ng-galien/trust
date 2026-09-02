@@ -76,8 +76,9 @@ function PlanFilters({ rows, filters, update }: { rows: PlanRow[]; filters: Filt
       selected: filters.state ? [filters.state] : [],
       options: [
         { value: "running", label: t("plans.home.filters.running"), count: count("state", (row) => row.workState === "IN_PROGRESS" && row.sessionState === "OPEN") },
+        { value: "escalated", label: t("plans.home.filters.escalated"), count: count("state", (row) => row.workState === "ESCALATED") },
         { value: "complete", label: t("plans.home.filters.complete"), count: count("state", (row) => row.workState === "COMPLETE" && row.sessionState === "OPEN") },
-        { value: "unavailable", label: t("plans.home.filters.unavailable"), count: count("state", (row) => row.sessionState === "UNAVAILABLE") },
+        { value: "unavailable", label: t("plans.home.filters.unavailable"), count: count("state", (row) => row.workState !== "ESCALATED" && row.sessionState === "UNAVAILABLE") },
       ],
       onToggle: (value, options) => pick({ state: filters.state === value ? "" : (value as Filters["state"]) }, options),
     },

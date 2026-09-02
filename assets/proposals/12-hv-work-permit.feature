@@ -20,6 +20,9 @@ Feature: Run one high-voltage intervention under lockout-tagout with ordered pro
   - the installation is re-energized only after the permit is closed.
 
   Background: Plan context
+    Given Procedure scope
+      | check | authorized | forbidden |
+      | all   | Observe and perform only the declared high-voltage intervention activities. | Alter lockout, authorization, measurement, or intervention evidence to manufacture safety. |
     Given one reference "intervention"
     And one reference "installation"
     And many reference "energy source" declared by agent for "installation"

@@ -16,6 +16,9 @@ Feature: Fix one Jira defect in one Maven project
   and confirm the fix is committed.
 
   Background: Plan context
+    Given Procedure scope
+      | check | authorized | forbidden |
+      | all   | Change and verify only the declared project for the Jira defect. | Alter the Jira evidence, project baseline, or execution environment to make a Check pass. |
     Given one reference "jira issue"
     And one reference "project"
     And one reference "baseline revision" for "project"
@@ -82,7 +85,8 @@ Feature: Fix one Jira defect in one Maven project
 <Legend items={[
   <>**Procedure tags.** Exactly one <code>@procedure:</code> (a lowercase slug), one semantic <code>@version:</code>, and <code>@trust-dsl:1</code>. The optional <code>@intent-chaining</code> tag makes every engaged Plan carry a rotating agent intent.</>,
   <>**Title and description.** The title is copied verbatim; the free text under it is the description shown on the Procedure page and on its Plans.</>,
-  <>**Plan context.** Exactly one <code>Background: Plan context</code>; each line declares one typed role. See [Plan context](/docs/procedures/context).</>,
+  <>**Plan context.** Exactly one <code>Background: Plan context</code>; it starts with the mandatory Procedure scope DataTable, then declares typed roles. See [Plan context](/docs/procedures/context).</>,
+  <>**Procedure scope.** Its mandatory first DataTable declares prose boundaries for every Check and may add boundaries for an exact Check name. Both are shown to the agent.</>,
   <>**Plan input.** A role with no other source is given at engagement: <code>one reference "jira issue"</code>.</>,
   <>**Scoped role.** <code>for "project"</code> attaches the role to a parent role; here a revision belongs to one project. Nothing declares its source yet: it is materialized by a Check below.</>,
   <>**Scenario tag.** Exactly one <code>@scenario:&lt;slug&gt;</code> per Scenario, unique in the Procedure.</>,
@@ -103,6 +107,8 @@ Feature: <title>
   [free-text description]
 
   Background: Plan context                              exactly one
+    Given Procedure scope                               mandatory DataTable
+      | check | authorized | forbidden |
     Given|And one|many <type> "<role>" [source clause]  one role per line
 
   @scenario:<slug>                                      one per Scenario, unique

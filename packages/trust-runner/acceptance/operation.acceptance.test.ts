@@ -53,6 +53,7 @@ describe("Operation runner", () => {
             attemptKey: "intent-attempt",
             reasonCode: "test-refusal",
             reason: "Admission was observed",
+            next: { action: "READ_PLAN" as const },
           };
         },
       } as unknown as CheckClient,
@@ -66,8 +67,9 @@ describe("Operation runner", () => {
     );
 
     expect(result).toMatchObject({
-      status: "REFUSED",
       checkUri: "trust://local/example@1.0.0/plan/scenario/check/domain-action",
+      result: { status: "REFUSED" },
+      next: { action: "READ_PLAN" },
     });
     expect(admissions).toEqual([[
       "intent-attempt",
@@ -182,6 +184,7 @@ describe("Operation runner", () => {
           reasonCode: "validated",
           reason: "The Check is validated.",
           checklistDelta: { newlySatisfied: [], newlyOpened: [], unchanged: [] },
+          next: { action: "COMPLETE" as const },
         }),
       } as unknown as CheckClient,
       facts: { export: async (trace: unknown) => { exported.push(trace); } } as FactExporter,
@@ -192,8 +195,11 @@ describe("Operation runner", () => {
     const result = await runner.run("trust://local/example@1.0.0/plan/scenario/check/execution");
 
     expect(result).toMatchObject({
-      status: "COMPLETED",
-      actionOutcome: { execution: { stdout: executionId } },
+      result: {
+        status: "COMPLETED",
+        actionOutcome: { execution: { stdout: executionId } },
+      },
+      next: { action: "COMPLETE" },
     });
     expect(exported).toEqual([
       expect.objectContaining({
@@ -319,6 +325,7 @@ describe("Operation runner", () => {
               newlyOpened: [],
               unchanged: [],
             },
+            next: { action: "COMPLETE" as const },
           };
         },
       } as unknown as CheckClient,
@@ -332,7 +339,10 @@ describe("Operation runner", () => {
     });
 
     await expect(runner.run("trust://local/example@1.0.0/plan/scenario/check/lost-response"))
-      .resolves.toMatchObject({ status: "COMPLETED", verdict: "VALIDATED" });
+      .resolves.toMatchObject({
+        result: { status: "COMPLETED", qualification: { verdict: "VALIDATED" } },
+        next: { action: "COMPLETE" },
+      });
     expect(finalized).toEqual(["lost-response-handle"]);
   });
 

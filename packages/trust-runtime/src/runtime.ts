@@ -33,6 +33,7 @@ import { EnvironmentService } from "./environment/service.js";
 import { CredentialStore } from "./credential/store.js";
 import { CredentialService } from "./credential/service.js";
 import { PlanEvents } from "./plan/events.js";
+import { EscalationStore } from "./plan/escalation-store.js";
 import { createPlanEventsHttpHandler } from "./http/events.js";
 import { OperationCatalog } from "./operation/catalog.js";
 
@@ -56,6 +57,7 @@ export interface RuntimeComponents {
   readonly attemptStore: AttemptStore;
   readonly factStore: FactStore;
   readonly snapshotStore: SnapshotStore;
+  readonly escalationStore: EscalationStore;
   readonly planRuntime: PlanRuntime;
   readonly planReader: PlanReader;
   readonly planEvents: PlanEvents;
@@ -115,6 +117,7 @@ export const createRuntimeContainer = async (
     attemptStore: asClass(AttemptStore).singleton(),
     factStore: asClass(FactStore).singleton(),
     snapshotStore: asClass(SnapshotStore).singleton(),
+    escalationStore: asClass(EscalationStore).singleton(),
     planEvents: asClass(PlanEvents).singleton(),
     environmentStore: asClass(EnvironmentStore).singleton(),
     environmentService: asClass(EnvironmentService).singleton(),

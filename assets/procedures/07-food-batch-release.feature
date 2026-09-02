@@ -6,6 +6,9 @@ Feature: Release one food batch after traceability, laboratory and cold-chain ch
   been confirmed by the simulated food-safety services.
 
   Background: Plan context
+    Given Procedure scope
+      | check | authorized | forbidden |
+      | all   | Observe and perform only the declared food batch release activities. | Alter traceability, laboratory, cold-chain, or release evidence to manufacture conformity. |
     Given one reference "batch"
 
   @scenario:traceability

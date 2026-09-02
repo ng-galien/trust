@@ -26,7 +26,7 @@ function source(file: string): string {
 }
 
 describe("Procedure compiler", () => {
-  test("compiles the complete software and professional Procedure catalog", () => {
+  test("compiles the complete Procedure catalog", () => {
     const files = readdirSync(procedureCatalog).filter((file) => file.endsWith(".feature")).sort();
 
     expect(files).toEqual([
@@ -39,6 +39,8 @@ describe("Procedure compiler", () => {
       "06-aircraft-departure.feature",
       "07-food-batch-release.feature",
       "08-end-to-end-red-green-telemetry.feature",
+      "09-runner-smoke.feature",
+      "10-runner-smoke-journey.feature",
     ]);
 
     const catalog = operations();
@@ -181,6 +183,68 @@ describe("Procedure compiler", () => {
     expect(chained.definitionDigest).not.toBe(plain.definitionDigest);
   });
 
+  test("compiles mandatory global and Check-specific Procedure scope declarations", () => {
+    const procedureSource = source("00-git-status.feature");
+    const compiled = compileProcedure({ source: procedureSource, operations: operations() });
+
+    expect(compiled.scope.map(({ location: _location, ...scope }) => scope)).toEqual([
+      {
+        check: "all",
+        authorized: "Read the declared repository state.",
+        forbidden: "Modify the repository or its environment to obtain the expected state.",
+      },
+      {
+        check: "repository status",
+        authorized: "Read Git metadata required to observe this Check.",
+        forbidden: "Change repository files while observing repository status.",
+      },
+    ]);
+    expect(compiled.definitionDigest).not.toBe(
+      compileProcedure({
+        source: procedureSource.replace("Read Git metadata required", "Read only Git metadata required"),
+        operations: operations(),
+      }).definitionDigest,
+    );
+  });
+
+  test("rejects a missing, empty, or unknown Procedure scope declaration", () => {
+    const procedureSource = source("00-git-status.feature");
+    const declaration = `    Given Procedure scope
+      | check | authorized | forbidden |
+      | all   | Read the declared repository state. | Modify the repository or its environment to obtain the expected state. |
+`;
+    expectCompilationError(procedureSource.replace(declaration, ""), "invalid-procedure");
+    expectCompilationError(
+      procedureSource.replace(
+        "      | all   | Read the declared repository state. | Modify the repository or its environment to obtain the expected state. |",
+        "      | all   |            |           |",
+      ),
+      "invalid-procedure",
+    );
+    expectCompilationError(
+      procedureSource.replace(
+        "      | all   | Read the declared repository state. | Modify the repository or its environment to obtain the expected state. |",
+        "      | all   | Read the declared repository state. |           |",
+      ),
+      "invalid-procedure",
+    );
+    expectCompilationError(
+      procedureSource.replace(
+        "      | all   | Read the declared repository state. | Modify the repository or its environment to obtain the expected state. |",
+        "      | all   |            | Modify the repository or its environment to obtain the expected state. |",
+      ),
+      "invalid-procedure",
+    );
+    expectCompilationError(
+      procedureSource.replace("| all   |", "| unknown Check |"),
+      "invalid-procedure",
+    );
+    expectCompilationError(
+      procedureSource.replace('Check "repository status"', 'Check "all"'),
+      "invalid-procedure",
+    );
+  });
+
   test("keeps source presentation outside semantic identity", () => {
     const catalog = operations();
     const procedureSource = source("00-git-status.feature");
@@ -262,6 +326,9 @@ describe("Procedure compiler", () => {
 Feature: Exercise the closed qualification expression surface
 
   Background: Plan context
+    Given Procedure scope
+      | check | authorized | forbidden |
+      | all   | Perform only the actions declared by this Procedure. | Alter the environment or accepted observations to make a Check pass. |
     Given one reference "project"
     And one reference "baseline revision"
     And many number "limits"
@@ -322,6 +389,9 @@ Feature: Exercise the closed qualification expression surface
 Feature: Pass the Plan identifier to an Operation
 
   Background: Plan context
+    Given Procedure scope
+      | check | authorized | forbidden |
+      | all   | Perform only the actions declared by this Procedure. | Alter the environment or accepted observations to make a Check pass. |
     Given one reference "project"
     And one reference "baseline revision"
 
@@ -400,6 +470,9 @@ Feature: Echo one project and one count
 Feature: Bind the Plan identifier to a number Input
 
   Background: Plan context
+    Given Procedure scope
+      | check | authorized | forbidden |
+      | all   | Perform only the actions declared by this Procedure. | Alter the environment or accepted observations to make a Check pass. |
     Given one reference "project"
 
   @scenario:count
@@ -476,6 +549,9 @@ Feature: Bind the Plan identifier to a number Input
 Feature: Compare a role before its provider Scenario
 
   Background: Plan context
+    Given Procedure scope
+      | check | authorized | forbidden |
+      | all   | Perform only the actions declared by this Procedure. | Alter the environment or accepted observations to make a Check pass. |
     Given one reference "project"
     And one reference "baseline revision" for "project"
 

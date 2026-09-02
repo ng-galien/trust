@@ -6,6 +6,9 @@ Feature: Run one Playwright user-interface test
   whether the interface behaves as expected.
 
   Background: Plan context
+    Given Procedure scope
+      | check | authorized | forbidden |
+      | all   | Run the declared user-interface test against its declared target. | Alter the browser, target environment, or observations to make the test pass. |
     Given one reference "web project"
     And one reference "web revision" for "web project"
     And one string "test selector" declared by agent for "web project"

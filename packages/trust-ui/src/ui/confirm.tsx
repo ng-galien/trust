@@ -16,6 +16,7 @@ export function ConfirmDialog({
   cancelLabel,
   tone = "primary",
   busy = false,
+  confirmDisabled = false,
   onConfirm,
   onCancel,
 }: {
@@ -26,6 +27,7 @@ export function ConfirmDialog({
   cancelLabel?: string;
   tone?: "primary" | "danger";
   busy?: boolean;
+  confirmDisabled?: boolean;
   onConfirm: () => void;
   onCancel: () => void;
 }) {
@@ -57,7 +59,7 @@ export function ConfirmDialog({
         </div>
         <div className="mt-4 flex justify-end gap-2">
           <Button ref={cancel} onClick={onCancel} disabled={busy}>{cancelLabel ?? t("common.actions.cancel")}</Button>
-          <Button variant={tone} onClick={onConfirm} disabled={busy}>{busy ? "…" : (confirmLabel ?? t("common.actions.confirm"))}</Button>
+          <Button variant={tone} onClick={onConfirm} disabled={busy || confirmDisabled}>{busy ? "…" : (confirmLabel ?? t("common.actions.confirm"))}</Button>
         </div>
       </div>
     </div>

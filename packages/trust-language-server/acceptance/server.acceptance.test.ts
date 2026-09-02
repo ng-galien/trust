@@ -330,6 +330,28 @@ async function assertDefaultTemplates(connection: MessageConnection): Promise<vo
   assert.ok(procedureTemplate);
   compileProcedure({ source: procedureTemplate, operations: [compileOperation({ source: operationFixture("valid/git.head-read.feature") })] });
 
+  const scopeBlock = `Procedure scope
+      | check | authorized | forbidden |
+      | all   | Change repository files required by this Procedure. | Alter the environment to make a Check pass. |`;
+  const incompleteScope = procedureTemplate.replace(scopeBlock, "");
+  const scopeOffset = incompleteScope.indexOf("    Given ") + "    Given ".length;
+  const scopeUri = "file:///workspace/completion/new-procedure-scope.feature";
+  connection.sendNotification("textDocument/didOpen", {
+    textDocument: { uri: scopeUri, languageId: "trust-procedure", version: 1, text: incompleteScope },
+  });
+  const scopeItems = await connection.sendRequest<CompletionItem[]>("textDocument/completion", {
+    textDocument: { uri: scopeUri }, position: positionAt(incompleteScope, scopeOffset),
+  });
+  const scopeCompletion = scopeItems.find(({ label }) => label === "Procedure scope");
+  assert.ok(scopeCompletion?.insertText);
+  assert.match(scopeCompletion.insertText, /\| check \| authorized \| forbidden \|/);
+  const completedScope = incompleteScope.slice(0, scopeOffset)
+    + scopeCompletion.insertText
+      .replace("${1:Authorized actions.}", "Read the declared repository.")
+      .replace("${2:Forbidden actions.}", "Alter the environment to make the Check pass.")
+    + incompleteScope.slice(scopeOffset);
+  compileProcedure({ source: completedScope, operations: [compileOperation({ source: operationFixture("valid/git.head-read.feature") })] });
+
   const phrase = "must establish";
   const insertionOffset = procedureTemplate.indexOf(phrase);
   assert.ok(insertionOffset > 0);
@@ -510,13 +532,15 @@ async function assertProcedureEditing(connection: MessageConnection): Promise<vo
     textDocument: { uri: completionUri, languageId: "trust-procedure", version: 1, text: completionSource },
   });
   await completionDiagnostics;
+  const declarationPrefix = 'one reference "repository" declared ';
+  const declarationOffset = completionSource.indexOf(declarationPrefix) + declarationPrefix.length;
   const optionalCompletions = await connection.sendRequest<CompletionItem[]>("textDocument/completion", {
     textDocument: { uri: completionUri },
-    position: positionAt(completionSource, completionSource.indexOf("declared ") + "declared ".length),
+    position: positionAt(completionSource, declarationOffset),
   });
   const optionalCompletion = optionalCompletions.find(({ label, kind }) => label === "optionally" && kind === CompletionItemKind.Keyword);
   assert.ok(optionalCompletion);
-  const completionOffset = completionSource.indexOf("declared ") + "declared ".length;
+  const completionOffset = declarationOffset;
   const completedSource = completionSource.slice(0, completionOffset)
     + (optionalCompletion.insertText ?? optionalCompletion.label)
     + completionSource.slice(completionOffset);
@@ -582,7 +606,12 @@ async function assertProcedureEditing(connection: MessageConnection): Promise<vo
   const folds = await connection.sendRequest<FoldingRange[]>("textDocument/foldingRange", {
     textDocument: { uri },
   });
-  assert.ok(folds.some(({ startLine, endLine }) => startLine === 14 && endLine === 17));
+  const scenarioLine = positionAt(source, source.indexOf("Scenario:")).line;
+  const qualificationLine = positionAt(source, source.lastIndexOf('"""')).line;
+  assert.ok(
+    folds.some(({ startLine, endLine }) => startLine === scenarioLine && endLine === qualificationLine),
+    JSON.stringify({ folds, scenarioLine, qualificationLine }),
+  );
 
   const symbols = await connection.sendRequest<DocumentSymbol[]>("textDocument/documentSymbol", {
     textDocument: { uri },

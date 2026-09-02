@@ -3,6 +3,9 @@
 Feature: Reopen a Check when its exact upstream Checks change
 
   Background: Plan context
+    Given Procedure scope
+      | check | authorized | forbidden |
+      | all   | Perform only the actions declared by this acceptance Procedure. | Alter the environment or accepted observations to make a Check pass. |
     Given one reference "workspace"
     And many reference "project" declared by agent for "workspace"
 

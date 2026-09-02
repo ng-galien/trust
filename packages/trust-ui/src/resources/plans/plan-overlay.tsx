@@ -1,5 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { ChevronRight, FileCode2, FlaskConical, History, ListChecks, LockKeyhole, Network, RotateCcw, Server, Trash2, Workflow, XCircle } from "lucide-react";
+import { ChevronRight, CircleArrowUp, FileCode2, FlaskConical, History, ListChecks, LockKeyhole, Network, Play, RotateCcw, Server, Trash2, Workflow, XCircle } from "lucide-react";
 import type { TFunction } from "i18next";
 import { type ReactNode, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -7,7 +7,7 @@ import { useLocation, useNavigate, useParams } from "react-router";
 
 import { cx, plural, relativeTime } from "../../lib/format.js";
 import { useCurrentEnvironment } from "../../lib/environment.js";
-import { mutationError, mutationErrorDetails, useClosePlan, useRemovePlan, useResetPlan } from "../../lib/mutations.js";
+import { mutationError, mutationErrorDetails, useClosePlan, useRemovePlan, useResetPlan, useResumePlan } from "../../lib/mutations.js";
 import { usePlan, useProcedures, useRuntime } from "../../lib/runtime-context.js";
 import type { CompiledProcedure, PlanCheck, PlanMode, PlanView } from "../../types.js";
 import { Badge } from "../../ui/badge.js";
@@ -17,6 +17,7 @@ import { updatePreferences, useExpert, usePreference, useResolvedTheme } from ".
 import { ConfirmDialog } from "../../ui/confirm.js";
 import { Description } from "../../ui/description.js";
 import { Expert } from "../../ui/expert.js";
+import { Markdown } from "../../ui/markdown.js";
 import { EmptyState, ErrorBox, LoadingState } from "../../ui/states.js";
 import { useCloseTo, useOrigin } from "../shared/origin.js";
 import { stripEphemeral, useOverlayViewState } from "../shared/overlay-state.js";
@@ -84,8 +85,12 @@ function PlanItem({ slug, planMode, base, onClose, listSearch }: { slug: string;
   const reset = useResetPlan();
   // Live Plans: the only action the interface takes on the agent's Plan is closing its open Session.
   const close = useClosePlan();
+  const resume = useResumePlan();
   const actionError = mutationError(reset.error ?? remove.error ?? close.error);
+  const resumeActionError = mutationError(resume.error);
   const [confirming, setConfirming] = useState<"reset" | "delete" | "close">();
+  const [resumeOpen, setResumeOpen] = useState(false);
+  const [resumeReason, setResumeReason] = useState("");
 
   return (
     <ResourceOverlay
@@ -101,6 +106,9 @@ function PlanItem({ slug, planMode, base, onClose, listSearch }: { slug: string;
       ) : undefined}
       actions={
         <>
+          {data?.workState === "ESCALATED" ? (
+            <Button size="sm" variant="primary" icon={<Play size={13} />} disabled={resume.isPending} title={t("plans.overlay.resumeTitle")} onClick={() => { resume.reset(); setResumeOpen(true); }}>{t("plans.overlay.resume")}</Button>
+          ) : null}
           {dryRun ? (
             <>
               <Button size="sm" icon={<RotateCcw size={13} />} disabled={reset.isPending || remove.isPending} title={t("plans.overlay.resetTitle")} onClick={() => setConfirming("reset")}>{t("plans.overlay.reset")}</Button>
@@ -144,6 +152,36 @@ function PlanItem({ slug, planMode, base, onClose, listSearch }: { slug: string;
           if (action === "close") close.mutate(data!.plan);
           else if (action === "reset") reset.mutate(data!.plan);
           else remove.mutate(data!.plan, { onSuccess: onClose });
+        }}
+      />
+      <ConfirmDialog
+        open={resumeOpen}
+        title={t("plans.overlay.confirm.resumeTitle", { slug })}
+        body={<>
+          <label className="mt-3 block text-text">
+            <span className="kicker">{t("plans.overlay.confirm.resumeReason")}</span>
+            <textarea
+              aria-label={t("plans.overlay.confirm.resumeReason")}
+              value={resumeReason}
+              maxLength={4_096}
+              rows={5}
+              placeholder={t("plans.overlay.confirm.resumePlaceholder")}
+              className="mt-2 w-full resize-y rounded-(--radius-2) border border-border bg-bg px-3 py-2 text-body-lg leading-relaxed text-text outline-none placeholder:text-faint focus:border-accent"
+              onChange={(event) => setResumeReason(event.target.value)}
+            />
+            <span className="mt-1 block text-caption text-muted">{t("plans.overlay.confirm.resumeHint")}</span>
+          </label>
+          {resumeActionError ? <div className="mt-3"><ErrorBox message={resumeActionError} details={mutationErrorDetails(resume.error)} /></div> : null}
+        </>}
+        confirmLabel={t("plans.overlay.resume")}
+        busy={resume.isPending}
+        confirmDisabled={!resumeReason.trim()}
+        onCancel={() => { resume.reset(); setResumeOpen(false); setResumeReason(""); }}
+        onConfirm={() => {
+          if (!data?.activeEscalation || !resumeReason.trim()) return;
+          resume.mutate({ plan: data.plan, escalationId: data.activeEscalation.escalationId, resumeReason: resumeReason.trim() }, {
+            onSuccess: () => { setResumeOpen(false); setResumeReason(""); },
+          });
         }}
       />
       {actionError ? <div className="border-b border-border p-2"><ErrorBox message={actionError} details={mutationErrorDetails(reset.error ?? remove.error ?? close.error)} /></div> : null}
@@ -209,8 +247,29 @@ function PlanSummaryStrip({ plan, compiled, onSelectCheck }: { plan: PlanView; c
             <span className="text-muted"> — {plan.latestQualification.reason}</span>
           </p>
         ) : null}
+        {plan.activeEscalation ? (
+          <section className="mt-3 overflow-hidden rounded-(--radius-3) border border-warning/40 bg-warning-soft" aria-labelledby="active-escalation-title">
+            <div className="flex items-center gap-2 border-b border-warning/25 px-4 py-3 text-warning">
+              <CircleArrowUp size={18} className="shrink-0" />
+              <h2 id="active-escalation-title" className="text-ui font-semibold">{t("plans.summary.escalated")}</h2>
+            </div>
+            <div className="grid min-w-0 gap-3 p-3 lg:grid-cols-2">
+              <EscalationDeclaration title={t("plans.summary.blockingReason")} value={plan.activeEscalation.blockingReason} />
+              <EscalationDeclaration title={t("plans.summary.forbiddenFurtherAction")} value={plan.activeEscalation.forbiddenFurtherAction} />
+            </div>
+          </section>
+        ) : null}
       </section>
     </div>
+  );
+}
+
+function EscalationDeclaration({ title, value }: { title: string; value: string }) {
+  return (
+    <section className="min-w-0 rounded-(--radius-2) border border-warning/20 bg-surface px-4 py-3 shadow-xs">
+      <h3 className="kicker mb-2 text-warning">{title}</h3>
+      <Markdown>{value}</Markdown>
+    </section>
   );
 }
 
@@ -218,6 +277,16 @@ function PlanHistory({ plan }: { plan: PlanView }) {
   const { t } = useTranslation();
   const expert = useExpert();
   const change = plan.latestRevisionChange;
+  const activity = plan.escalations.flatMap((escalation) => [
+    { type: "escalated" as const, at: escalation.escalatedAt, escalation },
+    ...(escalation.resumedAt && escalation.resumeReason
+      ? [{ type: "resumed" as const, at: escalation.resumedAt, escalation }]
+      : []),
+  ]).sort((left, right) => {
+    const byTime = right.at.localeCompare(left.at);
+    if (byTime !== 0) return byTime;
+    return (right.type === "resumed" ? 1 : 0) - (left.type === "resumed" ? 1 : 0);
+  });
   const parts: ReactNode[] = [
     expert ? <span key="rev">{t("plans.history.revChange", { from: String(change.fromRevision ?? "—"), to: change.toRevision })}</span> : null,
     change.added.length ? <span key="added" className="text-muted">{t("plans.history.added", { count: change.added.length })}</span> : null,
@@ -231,6 +300,36 @@ function PlanHistory({ plan }: { plan: PlanView }) {
         <span className="kicker">{t("plans.history.latestChange")}</span>
         <p className="mt-1 text-body-lg">{parts.length ? parts.map((part, index) => <span key={index}>{index ? " · " : ""}{part}</span>) : <span className="text-faint">—</span>}</p>
       </section>
+      {activity.length ? (
+        <section aria-labelledby="plan-escalation-history" className="rounded-(--radius-3) border border-border bg-surface">
+          <div className="border-b border-border px-4 py-2"><h2 id="plan-escalation-history" className="kicker inline">{t("plans.history.activity")}</h2> <span className="text-caption text-faint">{activity.length}</span></div>
+          <ol>
+            {activity.map((event) => (
+              <li key={`${event.escalation.escalationId}:${event.type}`} className="border-b border-border p-4 last:border-b-0">
+                <div className="flex items-start gap-3">
+                  <span className={cx("mt-0.5 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full", event.type === "escalated" ? "bg-warning-soft text-warning" : "bg-accent-soft text-accent")}>
+                    {event.type === "escalated" ? <CircleArrowUp size={15} /> : <Play size={14} />}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                      <div><span className="text-ui font-semibold">{t(`plans.history.${event.type}`)}</span> <span className="mono ml-2 text-caption text-muted">{t("plans.history.check", { check: checkName(plan, event.escalation.checkUri) })}</span></div>
+                      <time className="text-caption text-muted" dateTime={event.at} title={event.at}>{relativeTime(event.at)}</time>
+                    </div>
+                    {event.type === "escalated" ? (
+                      <div className="mt-3 grid gap-3 lg:grid-cols-2">
+                        <HistoryReason title={t("plans.history.blockingReason")} value={event.escalation.blockingReason} />
+                        <HistoryReason title={t("plans.history.forbiddenFurtherAction")} value={event.escalation.forbiddenFurtherAction} />
+                      </div>
+                    ) : (
+                      <div className="mt-3"><HistoryReason title={t("plans.history.resumeReason")} value={event.escalation.resumeReason!} /></div>
+                    )}
+                  </div>
+                </div>
+              </li>
+            ))}
+          </ol>
+        </section>
+      ) : null}
       <section className="rounded-(--radius-3) border border-border bg-surface">
         <div className="border-b border-border px-4 py-2 last:border-b-0"><span className="kicker">{t("plans.history.revisions")}</span> <span className="text-caption text-faint">{plan.revisions.length}</span></div>
         <Expert>
@@ -246,6 +345,15 @@ function PlanHistory({ plan }: { plan: PlanView }) {
         </Expert>
       </section>
     </div>
+  );
+}
+
+function HistoryReason({ title, value }: { title: string; value: string }) {
+  return (
+    <section className="min-w-0 rounded-(--radius-2) border border-border bg-bg px-3 py-2">
+      <h3 className="kicker mb-1.5">{title}</h3>
+      <Markdown className="text-body-lg">{value}</Markdown>
+    </section>
   );
 }
 

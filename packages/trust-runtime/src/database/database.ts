@@ -79,6 +79,7 @@ export interface SessionTable {
 }
 
 export interface AttemptTable {
+  attempt_order: Generated<number>;
   attempt_handle: string;
   attempt_key: string;
   execution_id: string;
@@ -145,6 +146,22 @@ export interface ActiveCheckQualificationTable {
   activation_digest: string;
 }
 
+export interface PlanEscalationTable {
+  escalation_id: string;
+  plan_slug: string;
+  plan_revision: number;
+  snapshot_plan_revision: number;
+  check_uri: string;
+  compiled_digest: string;
+  snapshot_id: string;
+  attempt_handle: string;
+  blocking_reason: string;
+  forbidden_further_action: string;
+  escalated_at: string;
+  resumed_at: string | null;
+  resume_reason: string | null;
+}
+
 export interface TrustDatabase {
   environments: EnvironmentTable;
   environment_variables: EnvironmentVariableTable;
@@ -159,6 +176,7 @@ export interface TrustDatabase {
   attempt_fact_receipts: AttemptFactReceiptTable;
   check_snapshots: CheckSnapshotTable;
   active_check_qualifications: ActiveCheckQualificationTable;
+  plan_escalations: PlanEscalationTable;
 }
 
 export type Database = Kysely<TrustDatabase>;

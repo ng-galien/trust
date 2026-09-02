@@ -1,4 +1,4 @@
-import { ArrowDown, ArrowUp, CheckCircle2, ChevronRight, Circle, Pause, Play, XCircle } from "lucide-react";
+import { ArrowDown, ArrowUp, CheckCircle2, ChevronRight, Circle, CircleArrowUp, Pause, Play, XCircle } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { cx, plural, relativeTime } from "../../lib/format.js";
@@ -51,6 +51,7 @@ export function PlanChecklist({ plan, compiled, selected, onSelect }: { plan: Pl
           <PlanScenarioBranch
             key={scenario.slug}
             scenario={scenario}
+            escalatedCheckUri={plan.activeEscalation?.checkUri}
             position={order === "forward" ? index + 1 : scenarios.length - index}
             selectedUri={selectedUri}
             onSelect={onSelect}
@@ -61,9 +62,9 @@ export function PlanChecklist({ plan, compiled, selected, onSelect }: { plan: Pl
   );
 }
 
-export function PlanScenarioBranch({ scenario, position, selectedUri, onSelect }: { scenario: PlanChecklistScenario; position: number; selectedUri: string | undefined; onSelect: (id: string | undefined) => void }) {
+export function PlanScenarioBranch({ scenario, position, escalatedCheckUri, selectedUri, onSelect }: { scenario: PlanChecklistScenario; position: number; escalatedCheckUri: string | undefined; selectedUri: string | undefined; onSelect: (id: string | undefined) => void }) {
   const { t } = useTranslation();
-  const state = scenarioState(scenario);
+  const state = scenarioState(scenario, escalatedCheckUri);
   return (
     <li className={cx("relative pl-9 pb-3", state === "satisfied" && "text-muted")}>
       <span className="absolute bottom-0 left-[15px] top-8 w-px bg-border" aria-hidden />
@@ -73,25 +74,25 @@ export function PlanScenarioBranch({ scenario, position, selectedUri, onSelect }
       <div className="flex min-h-8 items-center gap-2 border-b border-border pb-2">
         <ScenarioStateIcon state={state} />
         <span className="min-w-0 flex-1 text-body-lg font-semibold text-text" title={scenario.title}>{scenario.title}</span>
-        <span className={cx("shrink-0 text-label font-medium", state === "satisfied" ? "text-success" : state === "notValidated" ? "text-danger" : state === "current" ? "text-accent" : "text-muted")}>{t(`plans.checklist.scenarioState.${state}`)}</span>
+        <span className={cx("shrink-0 text-label font-medium", state === "satisfied" ? "text-success" : state === "escalated" ? "text-warning" : state === "notValidated" ? "text-danger" : state === "current" ? "text-accent" : "text-muted")}>{t(`plans.checklist.scenarioState.${state}`)}</span>
         <Expert><span className="mono shrink-0 text-caption text-faint">{scenario.slug}</span></Expert>
         {scenario.total > 0 ? <span className="shrink-0 text-caption text-faint">{t("plans.checklist.satisfiedRatio", { satisfied: scenario.satisfied, total: scenario.total })}</span> : null}
       </div>
       <ol className="mt-1">
         {scenario.groups.map((group) => (
-          <PlanCheckBranch key={group.key} group={group} selectedUri={selectedUri} onSelect={onSelect} />
+          <PlanCheckBranch key={group.key} group={group} escalatedCheckUri={escalatedCheckUri} selectedUri={selectedUri} onSelect={onSelect} />
         ))}
       </ol>
     </li>
   );
 }
 
-export function PlanCheckBranch({ group, selectedUri, onSelect }: { group: PlanChecklistGroup; selectedUri: string | undefined; onSelect: (id: string | undefined) => void }) {
+export function PlanCheckBranch({ group, escalatedCheckUri, selectedUri, onSelect }: { group: PlanChecklistGroup; escalatedCheckUri: string | undefined; selectedUri: string | undefined; onSelect: (id: string | undefined) => void }) {
   const { t } = useTranslation();
   const satisfied = group.checks.filter((check) => check.state === "SATISFIED").length;
   if (!group.each) {
     const [check] = group.checks;
-    return check ? <li><PlanCheckInstance check={check} selected={check.checkUri === selectedUri} onSelect={onSelect} /></li> : null;
+    return check ? <li><PlanCheckInstance check={check} escalated={check.checkUri === escalatedCheckUri} selected={check.checkUri === selectedUri} onSelect={onSelect} /></li> : null;
   }
   return (
     <li className="relative py-2 pl-6">
@@ -107,7 +108,7 @@ export function PlanCheckBranch({ group, selectedUri, onSelect }: { group: PlanC
         <ol className="ml-3 mt-1 border-l border-border pl-3">
           {group.checks.map((check) => (
             <li key={check.checkUri} className="relative before:absolute before:-left-3 before:top-4 before:h-px before:w-3 before:bg-border">
-              <PlanCheckInstance check={check} selected={check.checkUri === selectedUri} onSelect={onSelect} instance />
+              <PlanCheckInstance check={check} escalated={check.checkUri === escalatedCheckUri} selected={check.checkUri === selectedUri} onSelect={onSelect} instance />
             </li>
           ))}
         </ol>
@@ -116,9 +117,9 @@ export function PlanCheckBranch({ group, selectedUri, onSelect }: { group: PlanC
   );
 }
 
-export function PlanCheckInstance({ check, selected = false, onSelect, instance = false }: { check: PlanCheck; selected?: boolean; onSelect: (id: string | undefined) => void; instance?: boolean }) {
+export function PlanCheckInstance({ check, escalated = false, selected = false, onSelect, instance = false }: { check: PlanCheck; escalated?: boolean; selected?: boolean; onSelect: (id: string | undefined) => void; instance?: boolean }) {
   const { t } = useTranslation();
-  const state = checkState(check);
+  const state = checkState(check, escalated);
   return (
     <>
       <button
@@ -134,7 +135,7 @@ export function PlanCheckInstance({ check, selected = false, onSelect, instance 
             {instance ? <>{check.target.role} · <span className="mono">{check.operation}</span></> : <>{t("plans.checkLine.on")} <span className="mono text-text">{check.target.role}</span> = <span className="mono">{JSON.stringify(check.target.value)}</span></>}
           </span>
         </span>
-        <span className={cx("mt-0.5 shrink-0 text-label font-medium", state === "satisfied" ? "text-success" : state === "notValidated" ? "text-danger" : state === "next" ? "text-accent" : "text-muted")}>{t(`plans.checkLine.${state}`)}</span>
+        <span className={cx("mt-0.5 shrink-0 text-label font-medium", state === "satisfied" ? "text-success" : state === "escalated" ? "text-warning" : state === "notValidated" ? "text-danger" : state === "next" ? "text-accent" : "text-muted")}>{t(`plans.checkLine.${state}`)}</span>
         <ChevronRight size={15} className={cx("mt-0.5 shrink-0 text-faint transition-transform", selected && "rotate-90")} />
       </button>
       {selected ? (
@@ -279,8 +280,9 @@ function groupChecks(checks: readonly PlanCheck[]): PlanChecklistGroup[] {
   return groups;
 }
 
-function checkState(check: PlanCheck): "satisfied" | "notValidated" | "next" | "waiting" {
+function checkState(check: PlanCheck, escalated = false): "satisfied" | "escalated" | "notValidated" | "next" | "waiting" {
   if (check.state === "SATISFIED") return "satisfied";
+  if (escalated) return "escalated";
   if (check.latestVerdict === "NOT_VALIDATED") return "notValidated";
   return check.actionable ? "next" : "waiting";
 }
@@ -293,11 +295,12 @@ function CheckStateIcon({ state }: { state: ReturnType<typeof checkState> }) {
   );
 }
 
-type ScenarioState = "satisfied" | "notValidated" | "current" | "waiting" | "noInstances";
+type ScenarioState = "satisfied" | "escalated" | "notValidated" | "current" | "waiting" | "noInstances";
 
-function scenarioState(scenario: Pick<PlanChecklistScenario, "satisfied" | "total" | "actionable" | "rejected">): ScenarioState {
+function scenarioState(scenario: PlanChecklistScenario, escalatedCheckUri?: string): ScenarioState {
   if (scenario.total === 0) return "noInstances";
   if (scenario.satisfied === scenario.total) return "satisfied";
+  if (scenario.groups.some((group) => group.checks.some((check) => check.checkUri === escalatedCheckUri))) return "escalated";
   if (scenario.rejected) return "notValidated";
   return scenario.actionable ? "current" : "waiting";
 }
@@ -308,6 +311,7 @@ function ScenarioStateIcon({ state }: { state: ScenarioState }) {
 
 function StateGlyph({ state }: { state: ReturnType<typeof checkState> | ScenarioState }) {
   if (state === "satisfied") return <CheckCircle2 size={16} className="text-success" />;
+  if (state === "escalated") return <CircleArrowUp size={17} className="text-warning" />;
   if (state === "notValidated") return <XCircle size={16} className="text-danger" />;
   if (state === "next" || state === "current") return <Play size={15} className="fill-current text-accent" />;
   if (state === "noInstances") return <Circle size={15} className="text-faint" />;

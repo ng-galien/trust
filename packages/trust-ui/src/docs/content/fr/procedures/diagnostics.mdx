@@ -32,7 +32,9 @@ Le compilateur renvoie une Procédure compilée ou **un diagnostic** : un code, 
 - `Procedure must declare exactly one Background named Plan context` · `Procedure must declare at least one Scenario`.
 
 ### Contexte du Plan
-- `Plan context accepts only role sentences` — un mot-clé autre que `Given`/`And`, une table, une doc string.
+- `Plan context must start with one Procedure scope DataTable` · `Procedure scope columns must be check, authorized and forbidden` · `Procedure scope must contain at least one row for all Checks`.
+- `Every Procedure scope row must name a Check and declare both authorized and forbidden boundaries` · `Procedure scope references unknown Check "…"` · `Check name "all" is reserved for the global Procedure scope`.
+- Après cette première table, `Plan context accepts only role sentences` — un mot-clé autre que `Given`/`And`, une autre table ou une doc string.
 - `Role "…" is repeated` · `Role "…" has unknown parent "…"` · `Role parent cycle contains "…"`.
 - `Role "…" cannot be declared and fixed` · `Fixed role "…" must have cardinality one` · `Fixed role "…" must be a string or reference`.
 - Erreurs de phrase : `Invalid sentence "…"` · `Expected one of: one, many` · `Expected a quoted value` · `Sentence has trailing words`.

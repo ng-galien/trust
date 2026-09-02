@@ -6,6 +6,9 @@ Feature: Admit one patient with identity, coverage and consent confirmed
   healthcare services, then records the admission.
 
   Background: Plan context
+    Given Procedure scope
+      | check | authorized | forbidden |
+      | all   | Observe the declared admission records and perform the admission defined by this Procedure. | Alter source records, authorization evidence, or external systems to manufacture eligibility. |
     Given one reference "patient"
     And one reference "admission"
     And many reference "required document" declared by agent for "admission"

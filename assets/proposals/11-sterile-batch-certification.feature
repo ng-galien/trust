@@ -20,6 +20,9 @@ Feature: Certify and release one sterile batch under Qualified Person responsibi
     valid, after every test result, and the release follows the certification.
 
   Background: Plan context
+    Given Procedure scope
+      | check | authorized | forbidden |
+      | all   | Observe and perform only the declared sterile batch certification activities. | Alter manufacturing, laboratory, authorization, or release evidence to manufacture conformity. |
     Given one reference "batch"
     And one reference "manufacturing site" fixed as "site-lyon-1"
     And many reference "required test" for "batch"

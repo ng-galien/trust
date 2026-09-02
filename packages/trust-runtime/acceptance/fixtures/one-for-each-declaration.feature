@@ -3,6 +3,9 @@
 Feature: Declare one branch for each repository
 
   Background: Plan context
+    Given Procedure scope
+      | check | authorized | forbidden |
+      | all   | Perform only the actions declared by this acceptance Procedure. | Alter the environment or accepted observations to make a Check pass. |
     Given many reference "repository"
     And one string "branch" declared by agent for each "repository"
 

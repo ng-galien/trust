@@ -47,6 +47,9 @@ Feature: Validate a multi-project change through an execution-correlated Red-Gre
   mixes with another.
 
   Background: Plan context
+    Given Procedure scope
+      | check | authorized | forbidden |
+      | all   | Change, build, deploy, and verify only the declared projects and issue. | Alter runtime telemetry configuration, collected traces, baselines, or the environment to make a Check pass. |
     Given one reference "jira issue"
     And one string "todo workflow status" fixed as "todo"
     And one string "in-progress workflow status" fixed as "in-progress"

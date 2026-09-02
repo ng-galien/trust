@@ -25,6 +25,9 @@ test("the Procedure editor toggles intent chaining in the canonical source", asy
 Feature: Toggle an invalid draft
 
   Background: Plan context
+    Given Procedure scope
+      | check | authorized | forbidden |
+      | all   | Perform only the actions declared by this Procedure. | Alter the environment or accepted observations to make a Check pass. |
     Given one reference "repository"
 
   @scenario:invalid
@@ -48,6 +51,9 @@ Feature: Toggle an invalid draft
 Feature: Keep an intent marker in a comment
 
   Background: Plan context
+    Given Procedure scope
+      | check | authorized | forbidden |
+      | all   | Perform only the actions declared by this Procedure. | Alter the environment or accepted observations to make a Check pass. |
     Given one reference "repository"
 
   @scenario:comment

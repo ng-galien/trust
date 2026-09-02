@@ -7,6 +7,7 @@ export const ui: Translation<typeof en> = {
     SATISFIED: "Satisfait",
     VALIDATED: "Validé",
     NOT_VALIDATED: "Non validé",
+    ESCALATED: "Escaladé",
     IN_PROGRESS: "En cours",
     COMPLETE: "Terminé",
     UNAVAILABLE: "Indisponible",

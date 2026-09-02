@@ -14,9 +14,30 @@ The Feature has exactly the first three tags and may add `@intent-chaining`. Pro
 identifiers are lowercase slugs; the version is semantic. Intent chaining is a Procedure rule inherited
 by every Plan engaged from that published version. It does not change Check identity or order.
 
-## Plan context
+`@trust-dsl:1` is the current pre-release language, not a compatibility promise. The mandatory scope
+table replaces the earlier V1 draft: a Procedure without it is rejected and no compatibility adapter
+is provided.
 
-Every Procedure has one `Background: Plan context`. Each line declares one typed role:
+## Procedure scope and Plan context
+
+Every Procedure has one `Background: Plan context`. Its first Step is the mandatory Procedure scope
+DataTable. A row for `all` applies to every Check; a row naming an exact Check adds boundaries for
+that Check. The columns are closed, prose is preserved, and every row must declare both a non-empty
+`authorized` boundary and a non-empty `forbidden` boundary:
+
+```gherkin
+Given Procedure scope
+  | check | authorized | forbidden |
+  | all | Change only the declared project. | Alter the environment to make a Check pass. |
+  | deployment | Deploy the declared image. | Change telemetry configuration. |
+```
+
+At least one `all` row is required. A named row must reference an existing Check. Scope declarations
+are part of Procedure semantics and therefore of its definition digest. TRUST presents the applicable
+global and Check-specific prose to the agent; neither TRUST nor the runner interprets it as executable
+policy.
+
+Every following line declares one typed role:
 
 ```gherkin
 Given one reference "jira issue"
@@ -101,7 +122,7 @@ satisfaction follows from the state of those Checks and requires no closing step
 
 ## Compiled revision
 
-The compiler emits the current Procedure structure with roles, Scenarios, Checks, deterministic
+The compiler emits the current Procedure structure with scope, roles, Scenarios, Checks, deterministic
 digests and the exact `CompiledOperation` definitions used by the Procedure. Source formatting,
 comments and JSONata formatting do not change an Operation digest; a semantic Operation change
 does.

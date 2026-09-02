@@ -16,12 +16,14 @@ Chaque exécution acceptée laisse un **snapshot** : le Check, ses Facts, le ver
 ## Où l'historique apparaît aussi
 
 - **Vue d'ensemble** — les derniers verdicts.
-- **Page du Plan → Historique** — le dernier changement de révision (ajouté, retiré, satisfait, rouvert) et, en mode expert, les révisions.
+- **Page du Plan → Historique** — les événements d'escalade et de reprise avec leurs raisons obligatoires, le dernier changement de révision et, en mode expert, les révisions.
 - **Détail du Check** (page du Plan) — les verdicts d'un Check, les plus récents d'abord ; en mode expert, ses tentatives.
 
 ## Révisions
 
 Une révision de Plan est créée par une exécution acceptée (un verdict) ou par une déclaration de l'agent. Une révision peut ajouter des Checks (une collection déclarée expanse des Checks `on each`), retirer des Checks (leur contexte a disparu), en satisfaire un, rouvrir des dépendants. Les révisions sont numérotées à partir de 1 et jamais réécrites.
+
+L'escalade ne crée ni révision ni verdict. L'historique du Plan enregistre néanmoins **Escalade déclarée** avec `blockingReason` et `forbiddenFurtherAction`, puis **Plan repris** avec le `resumeReason` obligatoire de l'opérateur. Ces entrées restent durablement attachées à l'escalade qu'elles décrivent.
 
 <Callout kind="rule">
   Supprimer un dry-run efface ses révisions et ses verdicts ; un Plan en direct n'est jamais supprimé. Les Facts eux-mêmes sont adressés par contenu et conservés.

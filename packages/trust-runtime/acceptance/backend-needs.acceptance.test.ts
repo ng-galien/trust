@@ -145,6 +145,15 @@ test("Plan pages, Check history and live events are served at public boundaries"
     const second = await admit(runtime.endpoint, view.checks[0]!.checkUri, "history-second", true);
     await facts(runtime.endpoint, second, { headRevision: "def", workingTree: "clean" });
     await finalize(runtime.endpoint, second.attemptHandle);
+    await rpc(runtime.endpoint, "check.escalate", {
+      contract: "trust.check-escalation-request@1",
+      checkUri: second.checkUri,
+      attemptHandle: second.attemptHandle,
+      blockingReason: "The re-observation no longer satisfies the Check.",
+      forbiddenFurtherAction: "Modify the repository to manufacture the expected status.",
+    });
+    view = await readPlan(runtime.endpoint, "rehearsal-a");
+    await rpc(runtime.endpoint, "plan.resume", { plan: "rehearsal-a", escalationId: view.activeEscalation!.escalationId, resumeReason: "The operator reviewed the escalation and authorized a fresh observation." });
 
     const historyOne = await rpc(runtime.endpoint, "history.list", {
       filter: { plan: "rehearsal-a", mode: "dry-run", verdict: "NOT_VALIDATED" },
@@ -183,6 +192,8 @@ test("Plan pages, Check history and live events are served at public boundaries"
     const events = await stream.takeUntil((event) => event.type === "plan.removed" && event.plan === "rehearsal-a");
     assert.ok(events.some((event) => event.type === "plan.engaged" && event.plan === "rehearsal-a"));
     assert.ok(events.some((event) => event.type === "plan.revision" && event.cause === "verdict"));
+    assert.ok(events.some((event) => event.type === "plan.state" && event.workState === "ESCALATED"));
+    assert.ok(events.some((event) => event.type === "plan.state" && event.workState === "IN_PROGRESS"));
     assert.ok(events.some((event) => event.type === "session.changed" && event.session?.state === "closed"));
   } finally {
     stream.close();
@@ -202,6 +213,7 @@ interface PlanShape {
   sessionState: string;
   actionableChecks: readonly string[];
   checks: readonly { checkUri: string }[];
+  activeEscalation: { escalationId: string } | null;
 }
 
 async function engage(endpoint: string, plan: string): Promise<void> {
@@ -255,6 +267,7 @@ interface StreamEvent {
   readonly plan?: string;
   readonly resync?: true;
   readonly cause?: string;
+  readonly workState?: string;
   readonly session?: { readonly state: string };
 }
 

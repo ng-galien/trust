@@ -4,27 +4,41 @@ import type { ShellRunnerConfiguration } from "../shell/run.js";
 import { now, nullSink, type DiagnosticsSink } from "../diagnostics/events.js";
 import { runOperation } from "../operation/run.js";
 import type { FactExporter } from "../telemetry/otlp.js";
-import { CheckClientError, type CheckClient, type CheckFinalization } from "./client.js";
+import {
+  CheckClientError,
+  type CheckClient,
+  type CheckContinuation,
+  type CheckFinalization,
+} from "./client.js";
 
 export type CheckResult =
   | {
-      readonly status: "COMPLETED";
       readonly checkUri: string;
-      readonly actionOutcome: JsonObject;
-      readonly verdict: "VALIDATED" | "NOT_VALIDATED";
-      readonly reasonCode: string;
-      readonly reason: string;
-      readonly checklistDelta: {
-        readonly newlySatisfied: readonly string[];
-        readonly newlyOpened: readonly string[];
-        readonly unchanged: readonly string[];
+      readonly result: {
+        readonly status: "COMPLETED";
+        readonly attemptHandle: string;
+        readonly actionOutcome: JsonObject;
+        readonly qualification: {
+          readonly verdict: "VALIDATED" | "NOT_VALIDATED";
+          readonly reasonCode: string;
+          readonly reason: string;
+          readonly checklistDelta: {
+            readonly newlySatisfied: readonly string[];
+            readonly newlyOpened: readonly string[];
+            readonly unchanged: readonly string[];
+          };
+        };
       };
+      readonly next: CheckContinuation;
     }
   | {
-      readonly status: "REFUSED";
       readonly checkUri: string;
-      readonly reasonCode: string;
-      readonly reason: string;
+      readonly result: {
+        readonly status: "REFUSED";
+        readonly reasonCode: string;
+        readonly reason: string;
+      };
+      readonly next: CheckContinuation;
     };
 
 export interface CheckRunnerOptions {
@@ -58,10 +72,13 @@ export function createCheckRunner(options: CheckRunnerOptions) {
         if (admission.status === "REFUSED") {
           diagnostics.emit({ type: "runner.log", at: now(), level: "warn", text: `Check ${invocation.checkUri}: admission refused (${admission.reasonCode}).` });
           return {
-            status: "REFUSED",
             checkUri: invocation.checkUri,
-            reasonCode: admission.reasonCode,
-            reason: admission.reason,
+            result: {
+              status: "REFUSED",
+              reasonCode: admission.reasonCode,
+              reason: admission.reason,
+            },
+            next: admission.next,
           };
         }
         admittedAttemptHandle = admission.attemptHandle;
@@ -135,13 +152,19 @@ export function createCheckRunner(options: CheckRunnerOptions) {
 
 function completed(checkUri: string, actionOutcome: JsonObject, finalization: CheckFinalization): CheckResult {
   return {
-    status: "COMPLETED",
     checkUri,
-    actionOutcome,
-    verdict: finalization.verdict,
-    reasonCode: finalization.reasonCode,
-    reason: finalization.reason,
-    checklistDelta: finalization.checklistDelta,
+    result: {
+      status: "COMPLETED",
+      attemptHandle: finalization.attemptHandle,
+      actionOutcome,
+      qualification: {
+        verdict: finalization.verdict,
+        reasonCode: finalization.reasonCode,
+        reason: finalization.reason,
+        checklistDelta: finalization.checklistDelta,
+      },
+    },
+    next: finalization.next,
   };
 }
 

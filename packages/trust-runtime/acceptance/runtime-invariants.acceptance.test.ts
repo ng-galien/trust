@@ -426,12 +426,42 @@ test("an intent-chained Plan initializes on first read, survives resumption and 
     const notValidatedFinalization = await rpc(runtime.endpoint, "check.attempt.finalize", {
       contract: "trust.attempt-finalization-request@1",
       attemptHandle: notValidated.attemptHandle,
-    }) as { verdict: string };
+    }) as {
+      verdict: string;
+      next: { action: string; checks: readonly { name: string; successReason: string; checkUri: string }[] };
+    };
     assert.equal(notValidatedFinalization.verdict, "NOT_VALIDATED");
+    assert.equal(notValidatedFinalization.next.action, "RETRY_OR_ESCALATE");
+    assert.equal(notValidatedFinalization.next.checks.length, 1);
+    assert.ok(["working tree observation", "revision observation"].includes(notValidatedFinalization.next.checks[0]!.name));
+    assert.ok(["the working tree was observed", "the revision was observed"].includes(notValidatedFinalization.next.checks[0]!.successReason));
+    assert.match(notValidatedFinalization.next.checks[0]!.checkUri, new RegExp(
+      `^${escapeRegExp(engagement.checkUris[1]!)}\\?intent=${escapeRegExp(encodeURIComponent(initialIntent))}&nextIntent=\\{nextIntent\\}$`,
+    ));
     const afterNotValidated = await mcpTool(runtime.endpoint, "trust_plan_read", { checkUri: engagement.checkUris[1] });
     assert.match(afterNotValidated, new RegExp(`^Current intent: ${escapeRegExp(initialIntent)}$`, "m"));
     assert.doesNotMatch(afterNotValidated, /^Current intent Check:/m);
     assert.equal((afterNotValidated.match(/Continuing invocation URI:/g) ?? []).length, 2);
+
+    await mcpTool(runtime.endpoint, "trust_check_escalate", {
+      checkUri: engagement.checkUris[1],
+      attemptHandle: notValidated.attemptHandle,
+      blockingReason: "The current observation cannot satisfy the Check within the declared scope.",
+      forbiddenFurtherAction: "Change the observed repository state merely to satisfy the Check.",
+    });
+    const escalatedIntent = await rpc(runtime.endpoint, "plan.read", { plan: "intent-resumption" }) as {
+      workState: string;
+      currentIntent: string | null;
+      currentIntentCheckUri: string | null;
+      activeEscalation: { escalationId: string };
+    };
+    assert.equal(escalatedIntent.workState, "ESCALATED");
+    assert.equal(escalatedIntent.currentIntent, initialIntent);
+    assert.equal(escalatedIntent.currentIntentCheckUri, null);
+    await rpc(runtime.endpoint, "plan.resume", { plan: "intent-resumption", escalationId: escalatedIntent.activeEscalation.escalationId, resumeReason: "The operator resolved the escalation without changing the current intent." });
+    const intentAfterEscalation = await mcpTool(runtime.endpoint, "trust_plan_read", { checkUri: engagement.checkUris[1] });
+    assert.match(intentAfterEscalation, new RegExp(`^Current intent: ${escapeRegExp(initialIntent)}$`, "m"));
+    assert.doesNotMatch(intentAfterEscalation, /^Current intent Check:/m);
 
     const first = await admit(runtime.endpoint, engagement.checkUris[1]!, "intent-first", {
       intent: initialIntent,
@@ -441,8 +471,14 @@ test("an intent-chained Plan initializes on first read, survives resumption and 
     const firstFinalization = await rpc(runtime.endpoint, "check.attempt.finalize", {
       contract: "trust.attempt-finalization-request@1",
       attemptHandle: first.attemptHandle,
-    }) as { verdict: string };
+    }) as {
+      verdict: string;
+      next: { action: string; checks: readonly { name: string; successReason: string; checkUri: string }[] };
+    };
     assert.equal(firstFinalization.verdict, "VALIDATED");
+    assert.equal(firstFinalization.next.action, "RUN_CHECKS");
+    assert.equal(firstFinalization.next.checks.length, 1);
+    assert.match(firstFinalization.next.checks[0]!.checkUri, /\?intent=Observe%20the%20remaining%20repository%20Check$/);
 
     await rpc(runtime.endpoint, "plan.engage", {
       contract: "trust.plan-engagement-request@1",
@@ -473,8 +509,9 @@ test("an intent-chained Plan initializes on first read, survives resumption and 
     const finalization = await rpc(runtime.endpoint, "check.attempt.finalize", {
       contract: "trust.attempt-finalization-request@1",
       attemptHandle: final.attemptHandle,
-    }) as { verdict: string };
+    }) as { verdict: string; next: { action: string } };
     assert.equal(finalization.verdict, "VALIDATED");
+    assert.equal(finalization.next.action, "COMPLETE");
     const complete = await mcpTool(runtime.endpoint, "trust_plan_read", { checkUri: engagement.checkUris[0] });
     assert.match(complete, /State: COMPLETE/);
     assert.match(complete, /Current intent: none/);

@@ -4,13 +4,16 @@ summary: "Les rôles typés d'un Plan et leurs quatre sources : entrée de Plan,
 order: 2
 ---
 
-Le `Background: Plan context` déclare chaque valeur qu'un Plan porte : des **rôles**, typés et nommés. Un Check lie des rôles à l'Input de son Opération ; un Check peut aussi remplir un rôle à partir d'un champ produit. Rien d'autre ne porte de données de Plan.
+Le `Background: Plan context` déclare d'abord le périmètre d'action de la Procedure, puis chaque valeur qu'un Plan porte sous forme de **rôles** typés et nommés. Un Check lie des rôles à l'Input de son Opération ; un Check peut aussi remplir un rôle à partir d'un champ produit. Rien d'autre ne porte de données de Plan.
 
-> Un rôle est déclaré une fois, avec son type, sa cardinalité et l'origine de sa valeur.
+> La première DataTable définit les limites autorisées et interdites. Chaque phrase suivante déclare un rôle, avec son type, sa cardinalité et sa source.
 
 ```gherkin fragment title="Un rôle par ligne"
   Background: Plan context
-    Given one reference "jira issue"
+    Given Procedure scope
+      | check | authorized | forbidden |
+      | all   | Change and verify only the declared project. | Alter the environment to make a Check pass. |
+    And one reference "jira issue"
     And many reference "affected project" declared optionally by agent for "jira issue"
     And many reference "fix revision" for each "affected project"
     And one reference "acceptance project" fixed as "payment-acceptance"
@@ -24,7 +27,7 @@ Given|And one|many string|number|instant|reference "<role>" [declared [optionall
 
 | Partie | Règle |
 | --- | --- |
-| `Given` / `And` | l'un ou l'autre mot-clé, dans n'importe quel ordre ; pas de table, pas de doc string |
+| `Given` / `And` | l'un ou l'autre mot-clé après la DataTable obligatoire de périmètre ; aucune autre table ni doc string |
 | `one` / `many` | cardinalité : un scalaire, ou une collection du type |
 | `string` `number` `instant` `reference` | les quatre mêmes types que les Inputs d'Opération et les champs produits |
 | `"<role>"` | nom libre entre guillemets, non vide, unique dans la Procédure — un libellé lisible (`"jira issue"`, `"fix revision"`), pas un identifiant |

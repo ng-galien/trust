@@ -12,8 +12,8 @@ Un agent suit un Plan en direct avec le **skill** TRUST : un fichier d'instructi
   <Step title="Lire le Plan">`trust_plan_read` avec n'importe quelle URI de Check du Plan : révision courante, progression, les Checks actionnables (nom, URI, Opération, cible, entrées), les déclarations manquantes, les Checks bloqués avec la raison, la dernière tentative acceptée. Pour un Plan avec chaînage d'intention, cette première lecture démarre le chaînage et chaque lecture suivante renvoie son intention courante.</Step>
   <Step title="Déclarer quand c'est demandé">Si le Plan liste des déclarations manquantes, `trust_plan_declarations_replace` avec le Plan, la révision qui vient d'être lue et l'ensemble complet des valeurs déclarées. Une révision périmée est refusée ; relire.</Step>
   <Step title="Exécuter un Check">Donner au Runner exactement une URI d'invocation fournie par TRUST : `node <skill>/scripts/run.js 'trust://…' --json` (ou l'outil MCP propre au Runner `trust_check_run`). Quand le chaînage d'intention est actif, remplacer les placeholders de l'URI comme indiqué ci-dessous. Ne pas reconstruire l'Opération, ne pas exécuter ses commandes, ne pas fabriquer de Facts.</Step>
-  <Step title="Lire le résultat">`COMPLETED` + `VALIDATED` : le Check est satisfait. `COMPLETED` + `NOT_VALIDATED` : le Check reste ouvert — traiter la raison. `REFUSED` : rien ne s'est exécuté — suivre la raison. Une erreur : rien n'a été établi — relire le Check, réessayer est normal.</Step>
-  <Step title="Relire le Plan">Un verdict peut avoir ouvert, rouvert ou retiré des Checks. Choisir le prochain Check actionnable.</Step>
+  <Step title="Lire le résultat">La section `result` dit ce qui s'est passé : `COMPLETED` + `VALIDATED`, `COMPLETED` + `NOT_VALIDATED`, ou `REFUSED`, avec sa raison et, après exécution, la sortie de l'action et la qualification.</Step>
+  <Step title="Suivre next">`RUN_CHECKS` fournit les prochains Checks, `RETRY_OR_ESCALATE` fournit le Check en échec, `COMPLETE` arrête, et seul `READ_PLAN` exige un nouveau `trust_plan_read`. Chaque Check fourni porte ses champs existants `name`, `successReason`, `checkUri` et `actionScope`.</Step>
 </Steps>
 
 ## Chaînage d'intention
@@ -22,9 +22,30 @@ Une Procédure l'active avec `@intent-chaining` ; chaque Plan engagé depuis cel
 
 Pour chaque Check actionnable, le Plan présente l'URI opaque du Check et l'unique modèle d'invocation applicable. Une invocation intermédiaire porte `intent={intent}` et `nextIntent={nextIntent}`. Remplacer le premier placeholder par l'intention courante exacte et le second par une déclaration concise, sans espace périphérique et sur une seule ligne, tournée vers le prochain Check, en encodant les deux valeurs dans l'URL. Chaque valeur doit contenir de 1 à 1024 caractères et aucun caractère de contrôle. Le modèle d'un Check qui peut terminer le Plan ne porte que `intent={intent}`. Les valeurs de query sont les données tournantes de l'intention ; elles ne font jamais partie de l'identité du Check et ne choisissent pas quel Check actionnable sera exécuté.
 
-TRUST n'admet l'invocation que si son intention courante correspond au Plan. L'admission réserve atomiquement cette intention courante pour une tentative et son Check ; toute admission avec une autre clé est refusée tant que la tentative est pending, et les lectures du Plan ne présentent plus que son Check comme actionnable. TRUST exige `nextIntent` tant qu'il reste du travail et le refuse lorsque ce Check accepté terminerait le Plan. `VALIDATED` fait tourner l'intention courante vers l'intention suivante déclarée. `NOT_VALIDATED` conserve l'intention courante mais libère la réservation de la tentative résolue. Un refus ne change rien. La reprise commence toujours par une nouvelle lecture du Plan.
+TRUST n'admet l'invocation que si son intention courante correspond au Plan. L'admission réserve atomiquement cette intention courante pour une tentative et son Check ; toute admission avec une autre clé est refusée tant que la tentative est pending, et les lectures du Plan ne présentent plus que son Check comme actionnable. TRUST exige `nextIntent` tant qu'il reste du travail et le refuse lorsque ce Check accepté terminerait le Plan. `VALIDATED` fait tourner l'intention courante vers l'intention suivante déclarée. `NOT_VALIDATED` conserve l'intention courante mais libère la réservation de la tentative résolue. Un refus ne change rien. Une continuation du Runner porte déjà l'intention courante encodée dans l'URI d'invocation fournie ; seule une continuation `READ_PLAN` exige une resynchronisation.
 
 Si des déclarations retirent le dernier Check ouvert, le chaînage se termine avec la checklist. Si elles rouvrent un Plan terminé, le chaînage revient à son état initial et le prochain `trust_plan_read` crée une nouvelle intention courante appartenant au système. Les déclarations ne peuvent pas remplacer la révision du Plan tant qu'une tentative d'intention est pending. Une ré-observation terminale en dry-run ne démarre un nouveau chaînage que si son admission réussit, déjà réservé pour le Check ré-observé.
+
+## Périmètre de la Procedure et escalade
+
+Chaque Procedure déclare une table de périmètre obligatoire. `trust_plan_read` et `trust_check_read`
+combinent les lignes `all` avec celles du Check exact et affichent le **périmètre autorisé** et le
+**périmètre interdit** qui en résultent. Ce sont des limites en prose, pas des instructions du runner.
+
+Après `NOT_VALIDATED`, l'agent corrige la condition observée dans ce périmètre autorisé et réessaie,
+ou appelle `trust_check_escalate` avec l'`attemptHandle` rendu par ce résultat du Runner. Les deux déclarations sont des textes Markdown obligatoires : `blockingReason` explique
+pourquoi le Check ne peut pas continuer dans le périmètre ; `forbiddenFurtherAction` nomme ce qui
+pourrait poursuivre le travail mais n'est délibérément pas exécuté parce que le périmètre applicable
+l'interdit. TRUST n'accepte l'appel que si la tentative référencée appartient à ce Check courant
+ouvert, est finalisée `NOT_VALIDATED` et reste sa dernière tentative.
+
+L'escalade est une sortie prévue de la Procedure. Elle ne crée aucun Fact, Snapshot, verdict ou
+qualification ; le résultat négatif et l'intention courante restent inchangés. Le Plan devient
+`ESCALATED` et n'admet aucun Check. Seul un opérateur peut appeler `plan.resume`, avec un `resumeReason`
+Markdown obligatoire ; l'agent relit alors le Plan et continue avec l'intention préservée. L'escalade
+et la reprise restent toutes deux dans l'historique du Plan avec leurs raisons déclarées. En V1, la frontière opérateur est la surface RPC/UI ;
+TRUST n'introduit pas un modèle d'identité ou d'autorisation distinct pour cette action. La reprise et
+le renouvellement éventuellement nécessaire de la Session sont validés atomiquement.
 
 ## Ce que fait le Runner avec un Check
 
@@ -32,9 +53,9 @@ Si des déclarations retirent le dernier Check ouvert, le chaînage se termine a
 2. Reçoit l'**accord** : l'Opération compilée, l'Input admis résolu depuis le contexte du Plan, les valeurs d'Environnement.
 3. Exécute les étapes de l'Opération et évalue sa projection.
 4. Rapporte **un Fact** — les champs produits — à TRUST.
-5. Demande à TRUST de **finaliser** la tentative et renvoie le verdict, sa raison et le delta de checklist.
+5. Demande à TRUST de **finaliser** la tentative et renvoie deux sections : `result`, qui décrit l'action et la qualification, et `next`, qui porte le prochain contexte exécutable.
 
-Le rapport du Runner porte aussi les sorties brutes des étapes (`actionOutcome`) pour l'information de l'agent ; elles ne participent jamais à la qualification.
+Le champ `result.actionOutcome` du Runner porte les sorties brutes des étapes pour l'information de l'agent ; elles ne participent jamais à la qualification. `next.checks` réutilise les champs compilés existants `name`, `successReason`, `checkUri` et `actionScope` ; il n'ajoute pas un second vocabulaire et permet à l'agent d'agir sans relire inutilement le Plan.
 
 ## Pourquoi une admission est refusée
 
@@ -44,6 +65,7 @@ Le rapport du Runner porte aussi les sorties brutes des étapes (`actionOutcome`
 | le Check est déjà satisfait | rien à faire | choisir un autre Check |
 | les dépendances du Check ne sont pas satisfaites | un Scénario prérequis ou un Check référencé est ouvert | exécuter d'abord les prérequis |
 | le Plan n'a pas de Session active | fermée ou expirée | l'opérateur engage le Plan à nouveau |
+| le Plan est escaladé | une sortie prévue de la Procedure est active | attendre qu'un opérateur le reprenne |
 | la clé de tentative est liée à un autre Check, finalisée ou expirée | une clé réutilisée | utiliser une clé neuve |
 | l'intention courante ou suivante ne correspond pas au chaînage | paramètres d'intention absents, périmés, inchangés ou terminaux | relire le Plan et utiliser son modèle d'invocation exact |
 | la valeur d'intention est invalide | elle est vide, entourée d'espaces, multiligne, contient un caractère de contrôle ou dépasse 1024 caractères | fournir une ligne de 1 à 1024 caractères sans espace périphérique |
@@ -54,8 +76,8 @@ Le rapport du Runner porte aussi les sorties brutes des étapes (`actionOutcome`
 | Statut | Verdict | Code de sortie | Signification |
 | --- | --- | --- | --- |
 | `COMPLETED` | `VALIDATED` | 0 | Opération exécutée, Facts acceptés, Check satisfait |
-| `COMPLETED` | `NOT_VALIDATED` | 4 | Opération exécutée, Facts acceptés, une garde de qualification a échoué (raison calculée) |
-| `REFUSED` | — | 3 | rien ne s'est exécuté (code de raison et raison) |
+| `COMPLETED` | `NOT_VALIDATED` | 0 | Opération exécutée, Facts acceptés, une garde de qualification a échoué (raison calculée) |
+| `REFUSED` | — | 0 | rien ne s'est exécuté (code de raison et raison) |
 | erreur | — | 1 | admission, exécution, rapport ou finalisation interrompus ; rien d'établi |
 
 <Callout kind="rule">
@@ -67,5 +89,7 @@ Le rapport du Runner porte aussi les sorties brutes des étapes (`actionOutcome`
 Le skill est empaqueté avec `npm run package:skill` (dans `packages/trust-runner/dist/skill/trust`) : `SKILL.md`, `references/results.md`, `agents/openai.yaml`, `scripts/run.js`, `scripts/mcp-stdio.js`. Le Runner lit `TRUST_RPC_ENDPOINT` (par défaut `http://127.0.0.1:4318/rpc`) et `TRUST_OTLP_ENDPOINT` (par défaut `http://127.0.0.1:4318/v1/traces`). Le démarrage CLI et MCP accepte des options répétables `--path <absolute-directory>`, ajoutées au `PATH` Shell hérité ; les Opérations ne déclarent pas cette configuration standard du runner. Voir [Connecter un agent](/docs/guides/connect-an-agent).
 
 <Details title="Contrats et canaux" expert>
-MCP (`POST /mcp`, serveur `trust-runtime`) : `trust_plan_read`, `trust_check_read`, `trust_procedure_read` (paginé), `trust_session_read`, `trust_plan_engage` (en direct seulement), `trust_plan_declarations_replace` — tous prennent une `checkUri` ou un Plan ; les résultats sont des blocs de texte. Runner ↔ runtime : `check.attempt.admit` (`trust.check-admission-request@1`, `attemptKey`, `checkUri` opaque, `intent` optionnel, `nextIntent` optionnel) → `ADMITTED` (`attemptHandle`, `operation`, `actionInput`, `environment`, `expiresAt`) ou `REFUSED` (`reasonCode` ∈ `check-not-found`, `check-not-actionable`, `session-unavailable`, `attempt-key-conflict`, `attempt-finalized`, `attempt-expired`, `intent-not-enabled`, `intent-not-started`, `intent-required`, `intent-invalid`, `intent-mismatch`, `intent-in-use`, `next-intent-unchanged`, `next-intent-required`, `next-intent-unexpected`) ; Facts via OTLP `POST /v1/traces` — un span `trust.runner.facts` avec des événements `trust.runner.fact` (`trust.fact.kind`, `trust.fact.observed_at`, `trust.fact.values`) ; `check.attempt.finalize { attemptHandle }` → verdict, `reasonCode` (`check-qualified` / `qualification-not-satisfied`), raison, `checklistDelta`. Admission et finalisation sont idempotentes par clé de tentative / handle. Le Runner retire les paramètres de query avant la résolution sémantique du Check et le rapport des Facts. L'accord remet au Runner les valeurs de l'Environnement ; les credentials ne sont pas délégués.
+MCP (`POST /mcp`, serveur `trust-runtime`) : `trust_plan_read`, `trust_check_read`, `trust_procedure_read` (paginé), `trust_session_read`, `trust_plan_engage` (en direct seulement), `trust_plan_declarations_replace`, `trust_check_escalate` — tous prennent une `checkUri` ou un Plan ; les résultats sont des blocs de texte. Runner ↔ runtime : `check.attempt.admit` (`trust.check-admission-request@1`, `attemptKey`, `checkUri` opaque, `intent` optionnel, `nextIntent` optionnel) → `ADMITTED` (`attemptHandle`, `operation`, `actionInput`, `environment`, `expiresAt`) ou `REFUSED` (`reasonCode` ∈ `check-not-found`, `check-not-actionable`, `session-unavailable`, `attempt-key-conflict`, `attempt-finalized`, `attempt-expired`, `intent-not-enabled`, `intent-not-started`, `intent-required`, `intent-invalid`, `intent-mismatch`, `intent-in-use`, `next-intent-unchanged`, `next-intent-required`, `next-intent-unexpected`, plus `next: READ_PLAN`) ; Facts via OTLP `POST /v1/traces` — un span `trust.runner.facts` avec des événements `trust.runner.fact` (`trust.fact.kind`, `trust.fact.observed_at`, `trust.fact.values`) ; `check.attempt.finalize { attemptHandle }` → verdict, `reasonCode` (`check-qualified` / `qualification-not-satisfied`), raison, `checklistDelta`, et `next` (`RUN_CHECKS`, `RETRY_OR_ESCALATE`, `COMPLETE` ou `READ_PLAN`). Chaque entrée de `next.checks` porte les champs existants `name`, `successReason`, `checkUri` et `actionScope`. Le Runner imbrique la sortie de l'action et la qualification sous `result`, et expose `next` à côté. Admission et finalisation sont idempotentes par clé de tentative / handle. Le Runner retire les paramètres de query avant la résolution sémantique du Check et le rapport des Facts. L'accord remet au Runner les valeurs de l'Environnement ; les credentials ne sont pas délégués.
+
+L'escalade reste hors du Runner : MCP `trust_check_escalate { checkUri, attemptHandle, blockingReason, forbiddenFurtherAction }` et RPC `check.escalate` appellent la même fonction runtime. La corrélation à l'Attempt empêche un rejeu différé de se rattacher à un résultat négatif ultérieur. L'opérateur reprend via RPC `plan.resume { plan, escalationId, resumeReason }` ; l'`escalationId` actif fourni par `plan.read` empêche un rejeu différé de reprendre une escalade ultérieure, et `resumeReason` est une prose d'audit obligatoire.
 </Details>

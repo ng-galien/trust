@@ -1,8 +1,10 @@
 export { CheckClient, CheckClientError } from "./check/client.js";
 export type {
   CheckAdmission,
+  CheckContinuation,
   CheckFinalization,
   CheckInterruption,
+  NextCheck,
 } from "./check/client.js";
 export { createCheckRunner } from "./check/run.js";
 export type { CheckResult, CheckRunnerOptions } from "./check/run.js";

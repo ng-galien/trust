@@ -281,6 +281,10 @@ function CheckWorkbench({ plan, check, compiled, onChanged, runtime, reobserve =
             <p className="mt-1 text-body text-muted">{t("plans.workbench.runs")} <span className="mono text-accent">{check.operation}</span> {t("plans.workbench.on")} <span className="mono text-text">{check.target.role}</span> = <span className="mono text-text">{JSON.stringify(check.target.value)}</span></p>
             {Object.keys(check.inputs).length ? <p className="mt-1 text-label text-muted">{t("plans.workbench.inputs")} {Object.entries(check.inputs).map(([key, value], index) => <span key={key}>{index ? " · " : ""}<span className="mono">{key}</span> = <span className="mono text-text">{JSON.stringify(value)}</span></span>)}</p> : null}
             {compiledCheck?.successReason ? <p className="mt-1 text-body">{t("plans.workbench.mustEstablish")} <em>“{compiledCheck.successReason}”</em></p> : null}
+            <div className="mt-2 grid gap-2 sm:grid-cols-2">
+              <div><span className="kicker">{t("plans.workbench.authorizedScope")}</span><ul className="mt-1 list-disc pl-4 text-label text-muted">{check.actionScope.authorized.map((item) => <li key={item}>{item}</li>)}</ul></div>
+              <div><span className="kicker">{t("plans.workbench.forbiddenScope")}</span><ul className="mt-1 list-disc pl-4 text-label text-muted">{check.actionScope.forbidden.map((item) => <li key={item}>{item}</li>)}</ul></div>
+            </div>
             {compiledCheck ? <pre className="mono mt-2 overflow-x-auto whitespace-pre-wrap rounded-(--radius-1) bg-surface-2 p-2 text-label text-text"><code>{compiledCheck.qualification.source}</code></pre> : null}
           </>
         ) : null}

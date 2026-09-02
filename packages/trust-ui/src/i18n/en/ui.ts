@@ -4,6 +4,7 @@ export const ui = {
     SATISFIED: "Satisfied",
     VALIDATED: "Validated",
     NOT_VALIDATED: "Not validated",
+    ESCALATED: "Escalated",
     IN_PROGRESS: "In progress",
     COMPLETE: "Complete",
     UNAVAILABLE: "Unavailable",

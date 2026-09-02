@@ -3,6 +3,9 @@
 Feature: Carry one agent intent across independent Checks
 
   Background: Plan context
+    Given Procedure scope
+      | check | authorized | forbidden |
+      | all   | Perform only the actions declared by this acceptance Procedure. | Alter the environment or accepted observations to make a Check pass. |
     Given one reference "repository"
 
   @scenario:observations

@@ -2,6 +2,8 @@ fragment = "procedure"
 
 [aliases]
 procedure_step_parser = "moniker ~ '**/dir:packages/dir:trust-procedure/dir:src/module:compile/**'"
+procedure_plan_context_parser = "name = 'parsePlanContext'"
+procedure_canonical_step_parser_target = "target ~ '**/function:parseProcedureStep'"
 procedure_compiler_module = "moniker ~ '**/dir:packages/dir:trust-procedure/dir:src/module:compile'"
 procedure_step_grammar_target = "target ~ '**/dir:packages/dir:trust-procedure/dir:src/module:language/path:procedureStepGrammar'"
 
@@ -18,3 +20,10 @@ severity = "error"
 expr = "$procedure_compiler_module => any(out_refs, $procedure_step_grammar_target)"
 message = "The Procedure compiler must import the canonical Procedure Step Grammar."
 rationale = "Procedure parsing is parameterized by the grammar descriptor owned by the Procedure language module; the companion call-flow rule verifies that the parser function enters the shared Gherkin engine."
+
+[[ts.function.where]]
+id = "procedure-plan-context-call-flow-enters-step-parser"
+severity = "error"
+expr = "$procedure_plan_context_parser => any(out_refs, $procedure_canonical_step_parser_target)"
+message = "Plan context parsing bypasses the canonical Procedure Step parser."
+rationale = "Every sentence in Plan context, including the mandatory Procedure scope sentence, is recognized through procedureStepGrammar. DataTable lowering may validate the scope columns and rows only after the canonical Step parser selected the scope production; directly comparing Step text would create a second language authority and leave LSP completions behind."

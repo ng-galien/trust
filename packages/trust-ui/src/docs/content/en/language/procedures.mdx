@@ -10,6 +10,10 @@ Feature: <title>
   [description]
 
   Background: Plan context
+    Given Procedure scope
+      | check | authorized | forbidden |
+      | all | <authorized prose> | <forbidden prose> |
+      | <exact Check name> | <additional authorized prose> | <additional forbidden prose> |
     Given|And one|many string|number|instant|reference "<role>"
         [declared [optionally] by agent] [fixed as "<value>"] [for "<parent>"]… [for each "<parent>"]…
 
@@ -31,6 +35,7 @@ Feature: <title>
 | **Injected roots** | `fact` · `context` · `checks` |
 | **Expressions** | strict comparisons, arithmetic, boolean logic, arrays, strings, typed instants, closed `Math` and collection methods |
 | **Failure** | `condition || fail(reason)`; guards may be joined with `&&` |
+| **Procedure scope** | mandatory table; at least one `all` row; named rows reference exact Checks; every row has non-empty `authorized` and `forbidden` cells |
 | **Built-in bindings** | `using plan as Input "<input>"` — the Plan identifier, for one `string` or `reference` Input; compiles to a synthesised role `"plan"` with source `plan-identifier` |
 
 | Topic | Page |

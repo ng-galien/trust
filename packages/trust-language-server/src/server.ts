@@ -283,6 +283,9 @@ function procedureSuggestions(site: StepSite, tokens: readonly SentenceToken[], 
   const operation = operationForCheck(tokens, operations);
   return stepGrammarExpectations(procedureStepGrammar, tokens, site.container).flatMap((expectation) => {
     if (expectation.kind === "literal") {
+      if (expectation.value === procedureLanguage.phrases.scope) {
+        return [procedureScopeSnippetSuggestion()];
+      }
       if (expectation.value === "optionally") {
         return [{
           ...keyword(expectation.value, expectation.detail),
@@ -304,6 +307,15 @@ function procedureSuggestions(site: StepSite, tokens: readonly SentenceToken[], 
       default: return [];
     }
   });
+}
+
+function procedureScopeSnippetSuggestion(): Suggestion {
+  return {
+    label: procedureLanguage.phrases.scope,
+    kind: CompletionItemKind.Snippet,
+    detail: "Mandatory Procedure action scope",
+    insertText: `${procedureLanguage.phrases.scope}\n      | check | authorized | forbidden |\n      | all   | \${1:Authorized actions.} | \${2:Forbidden actions.} |`,
+  };
 }
 
 function operationSuggestions(site: StepSite, tokens: readonly SentenceToken[], source: string): Suggestion[] {

@@ -111,22 +111,127 @@ test("the packaged TRUST Skill executes the git-status Check", async () => {
       },
     );
     const output = JSON.parse(result.stdout) as {
-      status: string;
-      verdict: string;
-      reasonCode: string;
-      actionOutcome: {
-        head: { exitCode: number; stdout: string; stderr: string };
-        status: { exitCode: number; stdout: string; stderr: string };
+      result: {
+        status: string;
+        actionOutcome: {
+          head: { exitCode: number; stdout: string; stderr: string };
+          status: { exitCode: number; stdout: string; stderr: string };
+        };
+        qualification: { verdict: string; reasonCode: string };
+      };
+      next: { action: string };
+    };
+    assert.equal(output.result.status, "COMPLETED");
+    assert.equal(output.result.qualification.verdict, "VALIDATED");
+    assert.equal(output.result.qualification.reasonCode, "check-qualified");
+    assert.equal(output.result.actionOutcome.head.exitCode, 0);
+    assert.equal(output.result.actionOutcome.head.stdout.trim(), revision);
+    assert.equal(output.result.actionOutcome.status.exitCode, 0);
+    assert.match(output.result.actionOutcome.status.stdout, /untracked\.txt/);
+    assert.equal(output.next.action, "COMPLETE");
+
+    // A structured Runner result is authoritative and exits successfully regardless of its
+    // checklist outcome. Process failures are reserved for invalid invocation or technical errors.
+    const refusedReplay = await execute(
+      process.execPath,
+      [path.join(skill, "scripts/run.js"), checkUris[0]!, "--json", "--path", runnerBinRoot],
+      {
+        cwd: artifactRoot,
+        env: {
+          ...process.env,
+          PATH: "",
+          TRUST_RPC_ENDPOINT: `${runtime.endpoint}/rpc`,
+          TRUST_OTLP_ENDPOINT: `${runtime.endpoint}/v1/traces`,
+        },
+      },
+    );
+    const refusedOutput = JSON.parse(refusedReplay.stdout) as {
+      result: { status: string; reasonCode: string };
+      next: { action: string };
+    };
+    assert.equal(refusedOutput.result.status, "REFUSED");
+    assert.equal(refusedOutput.result.reasonCode, "check-not-actionable");
+    assert.equal(refusedOutput.next.action, "READ_PLAN");
+
+    await rm(path.join(project, "untracked.txt"));
+    const negativeEngagement = await mcpTool(runtime.endpoint, "trust_plan_engage", {
+      procedure: "git-status",
+      procedureVersion: "2.0.0",
+      plan: "runner-git-status-not-validated",
+      environment: "local",
+      rootInputs: { repository: projectName },
+    });
+    const negativeCheckUri = uniqueUris(negativeEngagement)[0];
+    assert.ok(negativeCheckUri);
+    const negativeResult = await execute(
+      process.execPath,
+      [path.join(skill, "scripts/run.js"), negativeCheckUri, "--json", "--path", runnerBinRoot],
+      {
+        cwd: artifactRoot,
+        env: {
+          ...process.env,
+          PATH: "",
+          TRUST_RPC_ENDPOINT: `${runtime.endpoint}/rpc`,
+          TRUST_OTLP_ENDPOINT: `${runtime.endpoint}/v1/traces`,
+        },
+      },
+    );
+    const negativeOutput = JSON.parse(negativeResult.stdout) as {
+      result: { status: string; qualification: { verdict: string; reasonCode: string } };
+      next: {
+        action: string;
+        checks: readonly { name: string; successReason: string; checkUri: string; actionScope: unknown }[];
       };
     };
-    assert.equal(output.status, "COMPLETED");
-    assert.equal(output.verdict, "VALIDATED");
-    assert.equal(output.reasonCode, "check-qualified");
-    assert.equal(output.actionOutcome.head.exitCode, 0);
-    assert.equal(output.actionOutcome.head.stdout.trim(), revision);
-    assert.equal(output.actionOutcome.status.exitCode, 0);
-    assert.match(output.actionOutcome.status.stdout, /untracked\.txt/);
+    assert.equal(negativeOutput.result.status, "COMPLETED");
+    assert.equal(negativeOutput.result.qualification.verdict, "NOT_VALIDATED");
+    assert.equal(negativeOutput.result.qualification.reasonCode, "qualification-not-satisfied");
+    assert.deepEqual(negativeOutput.next, {
+      action: "RETRY_OR_ESCALATE",
+      checks: [{
+        name: "repository status",
+        successReason: "the repository has local changes",
+        checkUri: negativeCheckUri,
+        actionScope: {
+          authorized: [
+            "Read the declared repository state.",
+            "Read Git metadata required to observe this Check.",
+          ],
+          forbidden: [
+            "Modify the repository or its environment to obtain the expected state.",
+            "Change repository files while observing repository status.",
+          ],
+        },
+      }],
+    });
 
+    const textEngagement = await mcpTool(runtime.endpoint, "trust_plan_engage", {
+      procedure: "git-status",
+      procedureVersion: "2.0.0",
+      plan: "runner-git-status-text",
+      environment: "local",
+      rootInputs: { repository: projectName },
+    });
+    const textCheckUri = uniqueUris(textEngagement)[0];
+    assert.ok(textCheckUri);
+    const textResult = await execute(
+      process.execPath,
+      [path.join(skill, "scripts/run.js"), textCheckUri, "--path", runnerBinRoot],
+      {
+        cwd: artifactRoot,
+        env: {
+          ...process.env,
+          PATH: "",
+          TRUST_RPC_ENDPOINT: `${runtime.endpoint}/rpc`,
+          TRUST_OTLP_ENDPOINT: `${runtime.endpoint}/v1/traces`,
+        },
+      },
+    );
+    assert.match(textResult.stdout, /Next: RETRY_OR_ESCALATE/);
+    assert.match(textResult.stdout, /Authorized scope:\n  - Read the declared repository state\.\n  - Read Git metadata required to observe this Check\./);
+    assert.match(textResult.stdout, /Forbidden scope:\n  - Modify the repository or its environment to obtain the expected state\.\n  - Change repository files while observing repository status\./);
+
+    await writeFile(path.join(project, "untracked.txt"), "dirty\n", "utf8");
     const mcpEngagement = await mcpTool(runtime.endpoint, "trust_plan_engage", {
       procedure: "git-status",
       procedureVersion: "2.0.0",
@@ -152,9 +257,38 @@ test("the packaged TRUST Skill executes the git-status Check", async () => {
     assert.equal(mcp.tools.result?.tools?.[0]?.name, "trust_check_run");
     const mcpText = mcp.call.result?.content?.find(({ type }) => type === "text")?.text;
     assert.equal(typeof mcpText, "string");
-    const mcpResult = JSON.parse(mcpText!) as { status: string; verdict: string };
-    assert.equal(mcpResult.status, "COMPLETED");
-    assert.equal(mcpResult.verdict, "VALIDATED");
+    const mcpResult = JSON.parse(mcpText!) as {
+      result: { status: string; qualification: { verdict: string } };
+      next: { action: string };
+    };
+    assert.equal(mcpResult.result.status, "COMPLETED");
+    assert.equal(mcpResult.result.qualification.verdict, "VALIDATED");
+    assert.equal(mcpResult.next.action, "COMPLETE");
+
+    const refusedMcp = await runMcpStdio(
+      path.join(skill, "scripts/mcp-stdio.js"),
+      mcpCheckUri,
+      artifactRoot,
+      {
+        ...process.env,
+        PATH: "",
+        TRUST_RPC_ENDPOINT: `${runtime.endpoint}/rpc`,
+        TRUST_OTLP_ENDPOINT: `${runtime.endpoint}/v1/traces`,
+      },
+      runnerBinRoot,
+    );
+    assert.notEqual(refusedMcp.call.result?.isError, true);
+    const refusedMcpText = refusedMcp.call.result?.content?.find(({ type }) => type === "text")?.text;
+    assert.equal(typeof refusedMcpText, "string");
+    assert.deepEqual(JSON.parse(refusedMcpText!), {
+      checkUri: mcpCheckUri,
+      result: {
+        status: "REFUSED",
+        reasonCode: "check-not-actionable",
+        reason: "The Check is already satisfied",
+      },
+      next: { action: "READ_PLAN" },
+    });
   } finally {
     await runtime.close();
     await Promise.all([
@@ -184,6 +318,7 @@ interface McpStdioResponse {
     readonly serverInfo?: { readonly name?: string };
     readonly tools?: readonly { readonly name?: string }[];
     readonly content?: readonly { readonly type?: string; readonly text?: string }[];
+    readonly isError?: boolean;
   };
 }
 

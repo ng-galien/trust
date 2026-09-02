@@ -74,6 +74,16 @@ export function useClosePlan() {
   });
 }
 
+/** Operator action: leave the active escalation and allow the same Plan to continue. */
+export function useResumePlan() {
+  const runtime = useRuntime();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ plan, escalationId, resumeReason }: { plan: string; escalationId: string; resumeReason: string }) => runtime.resumePlan(plan, escalationId, resumeReason),
+    onSuccess: (_result, { plan }) => invalidatePlan(queryClient, plan),
+  });
+}
+
 export function useSaveEnvironment() {
   const runtime = useRuntime();
   const queryClient = useQueryClient();

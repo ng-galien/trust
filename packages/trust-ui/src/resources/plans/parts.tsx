@@ -26,7 +26,7 @@ export function ProgressBar({ satisfied, total, className }: { satisfied: number
 
 /** Work state first (In progress / Complete); a closed or expired Session is a second, quieter badge —
     expected on a complete Plan, a warning while work remains (the agent cannot admit anything). */
-export function PlanStateBadges({ workState, sessionState }: { workState: "IN_PROGRESS" | "COMPLETE"; sessionState: "OPEN" | "UNAVAILABLE" }) {
+export function PlanStateBadges({ workState, sessionState }: { workState: "IN_PROGRESS" | "ESCALATED" | "COMPLETE"; sessionState: "OPEN" | "UNAVAILABLE" }) {
   const { t } = useTranslation();
   return (
     <>

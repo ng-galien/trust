@@ -19,6 +19,9 @@ Feature: Establish whether a Git repository has local changes
   is dirty.
 
   Background: Plan context
+    Given Procedure scope
+      | check | authorized | forbidden |
+      | all   | Read the declared repository state. | Modify the repository or its environment to obtain the expected state. |
     Given one reference "repository"
 
   @scenario:repository-status
@@ -39,6 +42,7 @@ Feature: Establish whether a Git repository has local changes
 | Identity | tags on `Feature:` | `@procedure:<slug>`, semantic `@version`, `@trust-dsl:1` |
 | Title and description | `Feature:` line and the free text under it | what the Procedure establishes, for humans; shown on its page and its Plans |
 | **Plan context** | `Background: Plan context` | one typed role per line: a Plan input, an agent declaration, a fixed value, or a value materialized by a Check |
+| **Procedure scope** | mandatory first `Given` in the Background | prose boundaries for `all` Checks and optional exact Check names: what is authorized and forbidden |
 | **Scenarios** | `@scenario:<slug>` + `Scenario:` | prerequisites (`Given scenario "…" is validated`) followed by one or more Checks |
 | **Checks** | `Then Check "…" runs Operation "…" …` | one Operation on a target role, Input bindings, materializations, success reason, `js` qualification |
 

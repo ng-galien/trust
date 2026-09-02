@@ -19,11 +19,14 @@ The Plan page shows the **current revision**: what is satisfied, what is actiona
 
 | On | Values | Meaning |
 | --- | --- | --- |
-| Plan | **In progress** · **Complete** · **Unavailable** | Complete when every Check is satisfied and nothing is left to declare; Unavailable when the Session is closed or expired |
+| Plan | **In progress** · **Escalated** · **Complete** · **Unavailable** | Escalated is a planned Procedure exit: no Check is admitted until an operator resumes it; Complete means every Check is satisfied; Unavailable means the Session is closed or expired |
 | Check | **Open** · **Actionable** · **Satisfied** | Actionable = open, prerequisites validated, context complete, Session open |
 | Verdict | **Validated** · **Not validated** | the latest qualification of the Check, with its reason |
 
-A Check *left open by a not-validated verdict* stays actionable: the agent addresses the reason and executes it again.
+A Check *left open by a not-validated verdict* stays actionable: the agent addresses the reason within its displayed Procedure scope and executes it again, or declares escalation. While escalation is active, the Check stays open but no Check is actionable.
+`escalatable` is computed from the latest Attempt, not merely from an older negative Snapshot. A pending,
+interrupted or differently finalized retry makes it false. Declaring escalation does not require the
+Session that admitted the completed Attempt to remain open.
 
 ## The tabs
 
@@ -36,6 +39,7 @@ A Check *left open by a not-validated verdict* stays actionable: the agent addre
 
 - Open at engagement; **Close session** closes it: the Plan and its history stay, nothing can be admitted until the Plan is engaged again with the same identity.
 - Expired Sessions are renewed at re-engagement or when declarations are applied.
+- Resuming an escalated Plan requires a `resumeReason`; the resumption and any Session renewal are one atomic operator action, and the reason remains in Plan history.
 - A live Plan is never deleted — it is audit history. A dry-run can be reset (erased and engaged again with the same inputs, from revision 1) or deleted.
 
 <Callout kind="note" title="Not on the current Environment">
@@ -43,5 +47,5 @@ A Check *left open by a not-validated verdict* stays actionable: the agent addre
 </Callout>
 
 <Details title="What the page reads" expert>
-`plan.read { plan }` — `PlanView`: `revision`, `sessionState`, `workState`, `checks[]` (`state`, `actionable`, `blockedBy[]`, `latestVerdict`, `reason`), `missingDeclarations`, `latestQualification` (with its `checklistDelta`), `latestRevisionChange`, `revisions`, `sessions`. `check.read { checkUri }` — `CheckView`: the same plus `context`, dependencies, `history[]` (snapshots) and `attempts[]`. Live updates: `GET /events/plans` — `plan.engaged`, `plan.revision` (cause `declarations` or `verdict`, with the delta), `session.changed`, `plan.removed`, `runtime.changed` (resync).
+`plan.read { plan }` — `PlanView`: `revision`, `sessionState`, `workState`, `activeEscalation`, `escalations[]`, `checks[]` (`name`, `successReason`, `state`, `actionable`, `escalatable`, `blockedBy[]`, `actionScope`, `latestVerdict`, `reason`), `missingDeclarations`, `latestQualification` (with its `checklistDelta`), `latestRevisionChange`, `revisions`, `sessions`. An escalation records both the active Plan revision and the Snapshot's source revision; after resumption it also carries `resumedAt` and `resumeReason`. `plan.resume { plan, escalationId, resumeReason }` requires trimmed Markdown prose. `check.read { checkUri }` — `CheckView`: the same plus `context`, dependencies, `history[]` (snapshots) and `attempts[]`. Live updates: `GET /events/plans` — `plan.engaged`, `plan.revision` (cause `declarations` or `verdict`, with the delta), `plan.state`, `session.changed`, `plan.removed`, `runtime.changed` (resync).
 </Details>

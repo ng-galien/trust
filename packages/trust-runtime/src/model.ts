@@ -24,6 +24,23 @@ export interface Plan {
   createdAt: string;
 }
 
+/** A declared, planned exit from a Procedure. It stops Check admission without qualifying anything. */
+export interface PlanEscalation {
+  id: string;
+  planSlug: string;
+  planRevision: number;
+  snapshotPlanRevision: number;
+  checkUri: string;
+  compiledCheckDigest: string;
+  snapshotId: string;
+  attemptHandle: string;
+  blockingReason: string;
+  forbiddenFurtherAction: string;
+  escalatedAt: string;
+  resumedAt?: string;
+  resumeReason?: string;
+}
+
 export interface PlanCheck {
   uri: string;
   planSlug: string;
