@@ -41,6 +41,7 @@ export function highlightGherkinSource(source: string, vocabulary: HighlightVoca
   const normalized = source.replaceAll("\r\n", "\n").replaceAll("\r", "\n");
   const lines = (normalized.endsWith("\n") ? normalized.slice(0, -1) : normalized).split("\n");
   const spans = lines.map(() => [] as Span[]);
+  highlightPhysicalLines(lines, spans, vocabulary);
   const document = parsed(source);
   if (document?.feature) {
     mark(spans, document.feature.location.line, document.feature.location.column ?? 1, document.feature.keyword.length, "keyword-control");
@@ -55,10 +56,6 @@ export function highlightGherkinSource(source: string, vocabulary: HighlightVoca
       for (const step of child.background?.steps ?? child.scenario?.steps ?? []) highlightStep(lines, spans, step, vocabulary);
     }
   }
-  lines.forEach((line, index) => {
-    const first = line.trimStart();
-    if (first.startsWith("#")) mark(spans, index + 1, line.length - first.length + 1, first.length, "comment");
-  });
   return lines.map((line, index) => lineTokens(line, spans[index]!));
 }
 
@@ -72,7 +69,8 @@ function highlightStep(lines: readonly string[], spans: Span[][], step: Step, vo
   mark(spans, step.location.line, step.location.column ?? 1, keyword.length, "keyword");
   const sentenceColumn = (step.location.column ?? 1) + step.keyword.length;
   try {
-    for (const token of tokenizeSentence(step.text)) {
+    const physicalSentence = lines[step.location.line - 1]?.slice(sentenceColumn - 1) ?? step.text;
+    for (const token of tokenizeSentence(physicalSentence)) {
       const cls = token.kind === "quoted" ? "string"
         : vocabulary.types?.includes(token.value) ? "type"
           : vocabulary.verbs?.includes(token.value) ? "verb" : "";
@@ -96,6 +94,108 @@ function highlightStep(lines: readonly string[], spans: Span[][], step: Step, vo
   });
   const closeLine = fenceLine + expression.length + 1;
   mark(spans, closeLine, doc.location.column ?? 1, (lines[closeLine - 1]?.trim().length ?? 3), "string");
+}
+
+/** Lexical colour for incomplete documents and physical continuation lines. The AST pass below adds
+    structural precision when parsing succeeds; this pass keeps authoring useful while the source is partial. */
+function highlightPhysicalLines(lines: readonly string[], spans: Span[][], vocabulary: HighlightVocabulary): void {
+  let docString: '"""' | '```' | undefined;
+  let previousWasTable = false;
+  lines.forEach((line, index) => {
+    const lineNumber = index + 1;
+    const first = line.trimStart();
+    const column = line.length - first.length + 1;
+
+    if (docString !== undefined) {
+      if (first.startsWith(docString)) {
+        mark(spans, lineNumber, column, first.length, "string");
+        docString = undefined;
+      } else {
+        markExpressionLine(spans, lineNumber, line, vocabulary);
+      }
+      previousWasTable = false;
+      return;
+    }
+    const docStringStart = first.startsWith('"""') ? '"""' : first.startsWith('```') ? '```' : undefined;
+    if (docStringStart !== undefined) {
+      mark(spans, lineNumber, column, first.length, "string");
+      docString = docStringStart;
+      previousWasTable = false;
+      return;
+    }
+    if (first.startsWith("#")) {
+      mark(spans, lineNumber, column, first.length, "comment");
+      previousWasTable = false;
+      return;
+    }
+    if (first.startsWith("|")) {
+      markTableLine(spans, lineNumber, line, !previousWasTable);
+      previousWasTable = true;
+      return;
+    }
+    previousWasTable = false;
+
+    if (first.startsWith("@")) {
+      const tagPrefix = /^@[^\s]+(?:\s+@[^\s]+)*/.exec(first)?.[0] ?? "";
+      for (const tag of tagPrefix.matchAll(/@[^\s]+/g)) mark(spans, lineNumber, column + (tag.index ?? 0), tag[0].length, "tag");
+      return;
+    }
+
+    const heading = /^(\s*)(Feature|Background|Scenario Outline|Scenario|Rule|Examples)\s*:/.exec(line);
+    if (heading) {
+      const keyword = heading[2]!;
+      mark(spans, lineNumber, heading[1]!.length + 1, keyword.length, "keyword-control");
+      markAfter(lines, spans, lineNumber, ":", "title");
+      return;
+    }
+
+    const step = /^(\s*)((?:Given|When|Then|And|But)(?:[|/](?:Given|When|Then|And|But))*)(?=\s)/.exec(line);
+    if (step) {
+      const start = step[1]!.length;
+      for (const keyword of step[2]!.matchAll(/Given|When|Then|And|But/g)) {
+        mark(spans, lineNumber, start + (keyword.index ?? 0) + 1, keyword[0].length, "keyword");
+      }
+      markSentenceTokens(spans, lineNumber, line.slice(step[0].length), step[0].length + 1, vocabulary);
+      return;
+    }
+
+    // Indented continuation lines and grammar synopsis placeholders have no standalone AST node.
+    markSentenceTokens(spans, lineNumber, line, 1, vocabulary);
+  });
+}
+
+function markSentenceTokens(spans: Span[][], line: number, sentence: string, column: number, vocabulary: HighlightVocabulary): void {
+  try {
+    for (const token of tokenizeSentence(sentence)) {
+      const cls = token.kind === "quoted" ? "string"
+        : vocabulary.types?.includes(token.value) ? "type"
+          : vocabulary.verbs?.includes(token.value) ? "verb" : "";
+      if (cls) mark(spans, line, column + token.start, token.end - token.start, cls);
+    }
+  } catch { /* partial sentences still receive the structural and placeholder tokens below */ }
+  for (const placeholder of sentence.matchAll(/<[^>]+>/g)) mark(spans, line, column + (placeholder.index ?? 0), placeholder[0].length, "variable");
+  for (const number of sentence.matchAll(/\b\d+(?:\.\d+)*\b/g)) mark(spans, line, column + (number.index ?? 0), number[0].length, "number");
+}
+
+function markExpressionLine(spans: Span[][], line: number, source: string, vocabulary: HighlightVocabulary): void {
+  let column = 1;
+  for (const token of expressionLine(source, vocabulary)) {
+    if (token.cls) mark(spans, line, column, token.text.length, token.cls);
+    column += token.text.length;
+  }
+}
+
+function markTableLine(spans: Span[][], lineNumber: number, line: string, header: boolean): void {
+  const bars = Array.from(line.matchAll(/\|/g), (match) => match.index ?? 0);
+  for (const bar of bars) mark(spans, lineNumber, bar + 1, 1, "delimiter");
+  for (let index = 0; index + 1 < bars.length; index += 1) {
+    const start = bars[index]! + 1;
+    const end = bars[index + 1]!;
+    const raw = line.slice(start, end);
+    const left = raw.length - raw.trimStart().length;
+    const value = raw.trim();
+    if (value) mark(spans, lineNumber, start + left + 1, value.length, header ? "table-header" : "table-cell");
+  }
 }
 
 function expressionLine(line: string, vocabulary: HighlightVocabulary): HighlightLine {

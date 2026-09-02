@@ -139,7 +139,7 @@ export function PlanCheckInstance({ check, escalated = false, selected = false, 
         <ChevronRight size={15} className={cx("mt-0.5 shrink-0 text-faint transition-transform", selected && "rotate-90")} />
       </button>
       {selected ? (
-        <div className="ml-7 border-l border-border bg-bg px-5 py-3" role="region" aria-label={t("plans.checklist.checkDetails", { check: check.name })}>
+        <div className="ml-7 border-l border-border bg-bg px-5 py-3" role="region" aria-label={t("plans.checklist.checkDetails", { check: check.name })} data-doc="plan.checkDetail">
           <PlanCheckDetails checkUri={check.checkUri} />
         </div>
       ) : null}

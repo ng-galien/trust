@@ -1,42 +1,160 @@
 ---
-title: "The model — from Operation to verdict"
-summary: "Operations, Procedures, Scenarios, Checks, Plans, Attempts, Facts, verdicts, revisions — what each is and how they fit."
-order: 2
+title: "Definitions and execution records"
+summary: "The definitions and records TRUST uses to evaluate work and revisit earlier conclusions."
+order: 4
 ---
 
-<Figure caption="Authored objects (top) and what a running Plan produces (bottom).">
+A risk report may depend on accepted sources, reconciliation, an exact artifact and an effective access list. To run that work repeatedly, TRUST must preserve the approved rule, identify each concrete action, require every expected observation and explain the current answer without rewriting history.
+
+The model separates what people define before work starts from what TRUST records while one Plan runs.
+
+<Figure caption="Objects written before the work starts appear above; the records produced by a running Plan appear below.">
   <ModelFigure />
 </Figure>
 
-## Design lane — authored, immutable once published
+## Definitions
 
-| Object | Is | Lives |
-| --- | --- | --- |
-| <Term id="operation" /> | how to call one external system and the typed fields it returns | in the catalog, one file per version — [Operations](/docs/operations) |
-| <Term id="procedure" /> | typed context roles, Scenarios, Checks; each Check runs one Operation on a target and states its qualification | published as `procedure@version`, embedding its Operations — [Procedures](/docs/procedures) |
-| <Term id="scenario" /> | a group of Checks with prerequisites; satisfied when every Check is validated | inside a Procedure |
-| <Term id="check" /> | one Operation on one target role, Input bindings, typed qualification, reasons | inside a Scenario |
+A **Product Action Contract** describes a reusable product capability and owns the shape and meaning of the Facts expected from it. It makes “read the report” precise: which observations must exist, what they mean and which types they use.
 
-## Run lane — one Plan, revision after revision
+An <Term id="operation">Operation</Term> makes that contract executable for one external interaction. It declares its Input and Environment requirements, ordered Shell, file or HTTP steps, and a projection that returns exactly its Produced fields. An Operation may observe, create, update, delete, publish, transition, send or deploy. It never qualifies the result.
 
-| Object | Is | Produced by |
-| --- | --- | --- |
-| <Term id="plan" /> | a Procedure engaged with concrete inputs in one Environment; carries the current revision of its Checks | engagement — [Plans](/docs/plans) |
-| <Term id="session" /> | the open work on a Plan | opened at engagement, closed by the operator |
-| <Term id="attempt" /> | one admitted execution of one Check | the Runner (live) or the operator (dry-run) |
-| <Term id="fact" /> | one typed observation — a produced field with its value | the execution |
-| <Term id="verdict" /> | validated or not, with a reason | TRUST, from a complete Fact batch |
-| <Term id="revision" /> | the state of the Plan after one accepted batch | every acceptance |
-| <Term id="snapshot" /> | the immutable record of one qualification | every acceptance — the [history](/docs/plans/history) |
+A <Term id="procedure">Procedure</Term> arranges Operations into the work people want performed. Its Scenarios establish prerequisites. Each Check binds an Operation to a target and defines the qualification, success reason, failure reasons and authorized scope for that question.
 
-## Cardinality
+| Authored object | What it fixes before execution |
+| --- | --- |
+| **Product Action Contract** | reusable capability and complete typed Fact shape |
+| **Operation** | concrete external interaction, requirements and Produced values |
+| **Procedure** | inputs, context, order, dependencies, qualifications and limits |
+| **Scenario** | a meaningful group of Checks and the Scenarios required before it |
+| **Check** | one Operation applied to one target, with its qualification and reasons |
 
-- One Operation, many Checks (in one or several Procedures).
-- One Procedure version, many Plans.
-- One Check of a Procedure, one or many Check instances in a Plan (`on each`), each with one active verdict and many Attempts over time.
-- One Plan, one Session, many revisions.
+Published definitions are immutable. A Procedure version embeds the exact compiled Operations it uses. Changing an Operation or a business decision means publishing a new version; work already engaged keeps its original meaning.
 
-## Two objects that are not in the model
+## Execution records
 
-- **Proof, evidence, binding**: there is none. A Check is validated by Facts evaluated against its qualification, nothing else is stored as "proof".
-- **A manual override**: an operator cannot mark a live Check validated by hand. On a dry-run the operator plays the agent and enters Facts; the same rules apply.
+Engaging one Procedure version with concrete root inputs and an Environment creates a <Term id="plan">Plan</Term>. The Plan contains the instantiated Checks and shows which are `OPEN`, which are `SATISFIED` and which ones are actionable because their dependencies are satisfied.
+
+A <Term id="session">Session</Term> is a period in which work on that Plan is open. The operator opens the first Session at engagement, may close it, and may later resume the same Plan in a new Session. History belongs to the Plan rather than disappearing at a session boundary.
+
+One authorized execution of one Check creates an <Term id="attempt">Attempt</Term>. Its complete observation report becomes a batch of <Term id="fact">Facts</Term> only after TRUST validates it. TRUST then applies the Check's qualification and records a <Term id="snapshot">Snapshot</Term> of the resulting decision.
+
+| Running object | What it records |
+| --- | --- |
+| **Plan** | the current checklist, dependencies, inputs, history and optional intention |
+| **Session** | one period during which work on the Plan is open |
+| **Attempt** | one admitted execution of one Check |
+| **Fact batch** | every observation required from that execution |
+| **Qualification** | `VALIDATED` or `NOT_VALIDATED`, with a reason calculated from the Procedure |
+| **Snapshot** | the immutable record of that qualification |
+| **Revision** | the current Plan state after accepted Facts |
+| **Escalation** | why the agent stopped and which out-of-scope action it declined |
+
+## How TRUST qualifies a report
+
+An action cannot return only the field that happens to support success. Its Operation declares the entire Produced record and its Product Action Contract gives that record its expected shape and meaning. TRUST validates the batch atomically. If a required observation is missing or invalid, TRUST persists no Fact, creates no Snapshot or qualification, and makes no checklist change.
+
+When the batch is complete, TRUST evaluates the Check's written guards in order. If every condition holds, the qualification is `VALIDATED` with the Check's success reason. The Check becomes `SATISFIED`. If one condition fails, the qualification is `NOT_VALIDATED` with that condition's reason and the Check remains `OPEN`.
+
+The external action result remains available to the agent, but it is not a qualification input. Submitting an identical Fact batch again is deduplicated: it produces the same stored result rather than a duplicate history entry.
+
+<Callout kind="rule" title="Qualification and Check state">
+  A qualification says what one accepted Fact batch establishes. `OPEN` or `SATISFIED` is the Check's state in the current Plan revision. Keeping the two distinct allows a later observation to replace the active qualification without erasing earlier Snapshots.
+</Callout>
+
+## Reopening dependent work
+
+A `VALIDATED` qualification is not an eternal claim. New accepted Facts for the same Check replace its active qualification. If the new qualification changes what is current, TRUST recursively reopens dependent Checks:
+
+- Checks in Scenarios that require its Scenario;
+- Checks that use a role it produced;
+- Checks whose qualification reads one of its observed fields.
+
+Earlier Facts and Snapshots remain immutable. The new revision changes only the qualification and checklist state presented as current. This is why TRUST can explain both what was established before and why work is open again now.
+
+If no complete Fact batch was accepted, replay is the normal recovery. Identical Facts, Snapshots, qualifications and checklist deltas are deduplicated. This does not make every external action safe to repeat: when an interrupted action may have had a dangerous unknown effect, an operator must decide what happens next.
+
+## The two Gherkin languages
+
+Gherkin is the standard text format shared by Cucumber tools. It is not a TRUST-specific notation. A `Feature` names the subject, a `Scenario` gives one concrete example, `Given` sets its starting context, `When` names the action and `Then` states the expected result. The same document can therefore be read by the people who define the work and executed by software. The [official Gherkin reference](https://cucumber.io/docs/gherkin/reference/) describes this widely used form.
+
+Ordinary Gherkin lets each team give those steps its own wording. TRUST keeps the form, but replaces free sentences with a closed, typed vocabulary. Each accepted step maps to the product model. The compiler accepts the complete definition or rejects it with diagnostics located in the source; it does not guess what an unfamiliar sentence means.
+
+<Callout kind="note" title="The relation to remember">
+A Procedure states the question and the rule for answering it. Its Check selects an Operation, which performs one external interaction and returns the complete observations. TRUST applies the Procedure's rule to those observations.
+</Callout>
+
+### Operation: read the weather
+
+An Operation is a reusable way to interact with an external system. It says what information it needs, what action it performs and which complete observations it must return. Here it reads the weather service for one flight and returns both the flight reference and `weatherStatus`. It does not decide whether that status is acceptable.
+
+```gherkin operation title="Operation — read weather for one flight"
+# language: en
+@trust-dsl:1 @operation:aviation.weather-read @version:1.0.0
+Feature: Read simulated weather for one flight
+
+  Background: Operation interface
+    Given Environment
+      | name       | type |
+      | weatherUrl | url  |
+    And Input
+      | input  | type      | cardinality |
+      | flight | reference | one         |
+    And Produced fields
+      | field         | type      | cardinality | domain                      |
+      | flight        | reference | one         | any                         |
+      | weatherStatus | string    | one         | enum "accepted", "rejected" |
+
+  Scenario: Run
+    When HTTP "weather" sends "GET"
+      to Environment "weatherUrl"
+      appending Input "flight"
+      and reads JSON
+    Then Produce with JSONata
+      """
+      { "flight": input.flight, "weatherStatus": steps.weather.body.weatherStatus }
+      """
+```
+
+### Procedure: decide what the observation establishes
+
+A Procedure describes the question people want answered and the limits of that work. Its Check names `aviation.weather-read`, gives it the flight, then reads the returned `weatherStatus`: `accepted` establishes success; `rejected` explains why the condition was not met. Longer Procedures use more Scenarios and prerequisites to express order and dependencies. The `@intent-chaining` tag requires the agent to carry its stated next step across Checks.
+
+```gherkin procedure title="Procedure — confirm the flight weather"
+# language: en
+@trust-dsl:1 @procedure:flight-weather-check @version:1.0.0 @intent-chaining
+Feature: Confirm the weather for one flight
+
+  Background: Plan context
+    Given Procedure scope
+      | check | authorized | forbidden |
+      | all   | Read the declared flight weather. | Change the flight or weather source. |
+    Given one reference "flight"
+
+  @scenario:weather
+  Scenario: Accept the flight weather
+    Then Check "weather" runs Operation "aviation.weather-read"
+      on "flight" as Input "flight"
+      and must establish "the flight weather is accepted"
+      """js
+      fact.weatherStatus === "accepted" ||
+      fail("the flight weather is rejected")
+      """
+```
+
+The detailed grammar belongs in the [TRUST language reference](/docs/language). Active source is always written in English, including source shown in translated documentation.
+
+## Cardinality and lifecycle
+
+- One Operation can be used by many Checks and Procedures.
+- One Procedure version can create many Plans.
+- One authored Check can create several Check instances when it targets several values.
+- A Check instance has at most one active qualification and may accumulate many Attempts and Snapshots.
+- A Plan has at most one active Session and may retain many Sessions, revisions and escalations.
+- A Plan with intent chaining has at most one current intention; one pending Attempt may reserve its next link.
+
+## Terms that are not interchangeable
+
+- **Intent is not evidence.** It explains continuity but cannot satisfy a Check.
+- **Escalation is not a qualification.** It explains why the agent stopped but does not qualify or close the Check.
+- **Manual override is not validation.** An operator cannot mark a live Check as `SATISFIED` by hand. A dry-run still supplies observations to the same rules.
+- **History is not proof stored under another name.** TRUST stores Facts and the qualifications calculated from them; it creates no separate Proof, Evidence or Binding resources.

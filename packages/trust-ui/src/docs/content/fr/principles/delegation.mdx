@@ -1,64 +1,70 @@
 ---
-title: "Délégation — agent, skill et Runner"
-summary: "Comment un agent exécute un Check sans produire sa propre preuve : lire le Plan, confier un Check au Runner, obtenir un résultat et sa continuation."
-order: 1
+title: "Responsabilités dans le travail délégué"
+summary: "Comment les responsabilités se répartissent avant, pendant et après une action."
+order: 2
 ---
 
-Un agent qui suit un Plan ne lance pas de commandes pour prouver un Check. Il confie le Check au **Runner** livré dans le skill TRUST ; le Runner demande l'admission à TRUST, exécute l'Opération compilée, rapporte les Facts ; TRUST les qualifie et renvoie le verdict. L'agent lit des résultats et des Plans — il n'affirme rien.
+Dans l'exemple du rapport de risques, plusieurs personnes et systèmes contribuent à un même résultat. L'auteur de la Procedure décide quelle source est approuvée et quel écart est acceptable. Le responsable du système externe accorde les accès nécessaires. L'opérateur démarre et suit cette exécution précise. L'agent choisit le travail utile.
 
-> L'agent choisit quel Check exécuter. Tout ce qui suit ce choix appartient à TRUST : admission, contrat d'exécution, Facts, verdict.
+L'auteur de la Procedure écrit la règle ; TRUST porte sa version publiée en tant qu'autorité du Plan. L'agent choisit un Check actionnable, mais TRUST décide si l'action proposée respecte cette Procedure et le contexte courant. Le système de l'agent réalise une action autorisée et rapporte ses observations. Si continuer exige une décision hors du périmètre écrit, cette décision revient à l'opérateur.
+
+TRUST appelle **Facts** les observations acceptées. Leur compte rendu n'est accepté que s'il est complet. La **qualification** est la décision motivée que TRUST calcule à partir de ces Facts et de la Procedure : les Facts nomment le compte rendu ; la qualification nomme la conclusion.
+
+## Avant le démarrage d'un Plan
+
+L'auteur de la Procedure définit les questions auxquelles répondre, leurs dépendances, leurs règles de qualification et les actions permises. Les Product Action Contracts définissent la forme réutilisable et le sens des Facts que ces actions doivent produire. Modifier ces décisions pour de futurs travaux exige la publication d'une nouvelle version.
+
+Les responsables d'un système externe décident quels credentials et quelles permissions y existent. Un **Environment** est le contexte nommé choisi pour le travail : il identifie les répertoires, adresses de service et références de credentials dont une action peut avoir besoin. TRUST vérifie ce contexte avant d'autoriser l'action, mais n'accorde aucun accès au système externe. L'action utilise toujours les permissions effectives disponibles dans le système de l'agent.
+
+L'opérateur engage une Procedure publiée sous forme de Plan avec ses entrées métier concrètes et son Environment. Il suit le travail, ferme sa Session et décide si un Plan arrêté par une escalade peut reprendre. Il ne transforme pas manuellement un Check live non résolu en réussite.
+
+## Pendant une action
+
+Une action se déroule comme suit.
 
 ```mermaid
-sequenceDiagram
-  autonumber
-  participant A as Agent
-  participant T as TRUST
-  participant R as Runner (skill)
-  participant X as Système externe
-  A->>T: lit le Plan — quels Checks sont actionnables ?
-  T-->>A: révision courante, Checks actionnables
-  A->>R: exécute ce Check
-  R->>T: demande l'admission
-  T-->>R: Opération compilée, Input admis, valeurs d'Environnement
-  R->>X: exécute les étapes
-  X-->>R: sorties, fichiers, réponses
-  R->>T: rapporte les Facts (champs produits)
-  T-->>R: qualification et prochaine action
-  R-->>A: résultat et next
-  opt next demande une resynchronisation
-    A->>T: relit le Plan
-  end
+flowchart TB
+  A["① L'agent choisit"] --> T["② TRUST autorise"]
+  T --> X["③ Action externe"]
+  X --> O["④ Observations complètes"]
+  O --> P["⑤ TRUST met à jour le Plan"]
+  classDef choice fill:#eef2ff,stroke:#6366f1,color:#1f2937
+  classDef action fill:#fff7ed,stroke:#d97706,color:#1f2937
+  classDef state fill:#ecfdf5,stroke:#059669,color:#1f2937
+  class A choice
+  class X,O action
+  class T,P state
 ```
 
-## Les trois parties
+1. **L'agent lit avant de choisir.** Il part du Plan courant, sélectionne un Check dont les dépendances sont satisfaites et propose uniquement cette action bornée.
+2. **TRUST exerce l'autorité de la Procedure.** Il vérifie le Plan, le Check, les dépendances et le contexte courants. Il autorise l'Operation exacte définie pour ce Check ou refuse la demande avant le début de l'action.
+3. **Le système de l'agent réalise l'action autorisée.** Le système externe peut l'accepter, la refuser ou l'interrompre selon les permissions qui y existent réellement.
+4. **Le système de l'agent rapporte les observations promises.** Le résultat externe revient à l'agent, mais cette sortie ne décide pas si le Check est satisfait.
+5. **TRUST applique la Procedure.** Il n'accepte qu'un compte rendu complet, qualifie les Facts obtenus, enregistre l'historique et l'état courant du Plan, puis expose le prochain travail actionnable.
 
-| Partie | Fait | Ne fait jamais |
+## Synthèse des responsabilités
+
+| Partie | Responsable de | Ne décide pas |
 | --- | --- | --- |
-| **Agent** | lit le Plan, choisit un Check actionnable, appelle le Runner avec, lit `result` et suit `next` | exécuter lui-même les commandes de l'Opération, fabriquer des Facts, inférer une progression depuis une sortie, décider qu'un Check est validé |
-| **Runner** (dans le skill) | demande l'admission, reçoit l'Opération compilée et son contexte, exécute les étapes, évalue la projection, rapporte les Facts | qualifier, réessayer de lui-même au-delà des règles, conserver un état |
-| **TRUST** | admet ou refuse, fournit le contrat exact et les valeurs d'Environnement, accepte ou rejette le lot de Facts, qualifie, enregistre, rouvre les dépendants | exécuter quoi que ce soit sur un système externe |
+| **Auteur de la Procedure** | règles d'acceptation, dépendances, raisons et limites | exécution d'un Check en cours |
+| **Responsable du système externe** | credentials et accès effectifs au système visé | qualification du Plan |
+| **Opérateur** | engagement, supervision, fermeture de la Session et reprise après escalade | validation manuelle d'un Check live |
+| **Agent** | choix parmi les Checks actionnables, intention courante et déclaration d'escalade | certification de l'action ou qualification des Facts |
+| **Système de l'agent** | exécution de l'action exacte autorisée et compte rendu complet des observations | sens métier des observations |
+| **Autorité TRUST** | application de la Procedure publiée, autorisation de l'action, validation des Facts, qualification, historique immuable et état courant du Plan | action dans le système externe ou écriture des règles métier |
 
-## Ce que l'agent reçoit
+Il s'agit de responsabilités logiques. Une même personne peut écrire une Procedure, administrer un Environment et suivre un Plan, mais les décisions restent distinctes et inspectables.
 
-Le Runner renvoie l'un de ces résultats :
+## Résultats possibles
 
-| Résultat | Signification | Ce que fait l'agent |
+Une action ne se réduit pas à « réussi » ou « échoué ». Son résultat doit indiquer lequel des cas suivants s'est produit.
+
+| Cas | Ce qui est connu | Conséquence |
 | --- | --- | --- |
-| **completed · validated** | l'Opération s'est exécutée, les Facts ont été acceptés, le Check est satisfait | suivre `next` : exécuter le Check fourni, s'arrêter lorsque le Plan est complet, ou le relire lorsque c'est demandé |
-| **completed · not validated** | l'Opération s'est exécutée, les Facts ont été acceptés, une garde de qualification est fausse — sa raison calculée explique l'observation | utiliser les champs `name`, `successReason` et `checkUri` fournis pour réessayer, ou escalader |
-| **refused** | rien ne s'est exécuté : le Check n'est pas courant, ses prérequis sont ouverts, la Session est fermée, le contrat ou l'Environnement ne correspond pas | suivre la raison et `READ_PLAN` |
-| **error** | l'admission, l'exécution, le rapport ou la finalisation a été interrompu : rien n'est établi | lire le Check ; réessayer est normal (un lot de Facts incomplet a été rejeté en entier ; le Runner peut exécuter l'Opération à nouveau) |
+| **Facts acceptés ; qualification `VALIDATED`** | la tentative est terminée et les observations complètes satisfont les règles de la Procedure | le Check devient `SATISFIED` ; poursuivre avec le prochain travail actionnable |
+| **Facts acceptés ; qualification `NOT_VALIDATED`** | les observations sont complètes, mais une condition écrite ne tient pas | le Check reste `OPEN` ; corriger et rejouer dans le périmètre, ou déclarer une escalade |
+| **Action refusée** | TRUST n'a pas autorisé la tentative proposée ; l'action externe n'a donc pas commencé | lire la raison et le Plan courant avant un nouveau choix |
+| **Compte rendu rejeté** | l'action peut avoir eu lieu, mais le compte rendu omet ou enfreint une partie de la forme requise des Facts | aucun historique d'observation, aucune conclusion ni modification de la checklist n'est enregistré ; observer à nouveau et soumettre le compte rendu complet lorsque c'est possible |
+| **Échange interrompu** | l'effet externe peut être inconnu et aucun Fact accepté n'établit de nouvelle conclusion | lire l'état courant ; ne répéter l'action que si cela est sûr, sinon rendre la décision à l'opérateur |
 
-## Ce que TRUST vérifie avant de déléguer
-
-L'admission valide, dans cet ordre : le Check existe dans la **révision courante** du Plan ; la **Session** est ouverte ; chaque Scénario prérequis est validé et chaque Check référencé par une attente a un verdict actif ; l'Opération embarquée dans la Procédure est celle que le Runner recevra ; l'**Environnement** du Plan fournit chaque valeur dont l'Opération a besoin. Alors seulement le Runner reçoit l'Opération compilée, l'Input admis (résolu depuis le contexte du Plan) et les valeurs d'Environnement.
-
-L'admission est un **octroi** : elle corrèle le Check, l'Opération, le contexte et une clé de tentative. Ce n'est pas la preuve que l'action a eu lieu — les Facts le sont.
-
-<Callout kind="rule">
-  Chaque tentative dont les Facts sont acceptés se termine par un verdict explicite et une raison. Sans Facts acceptés, il n'y a pas de qualification : un refus, un plantage ou une interruption laissent le Check exactement tel qu'il était.
-</Callout>
-
-## Le skill
-
-Le skill TRUST est ce qu'un agent installe : un fichier d'instructions qui lui énonce les quatre règles ci-dessus, l'exécutable du Runner, et une référence pour lire les résultats. L'agent lit les Plans et les Checks via des outils MCP et passe au Runner exactement le Check qu'on lui a donné. Voir [Connecter un agent](/docs/guides/connect-an-agent) pour la mise en place et [Plans](/docs/plans) pour ce que l'agent lit.
+L'autorisation permet une tentative ; le résultat externe rapporte ce qui s'est passé. Ce résultat n'est pas le verdict. La checklist change seulement après l'acceptation des Facts complets par TRUST et l'application de la Procedure. Voir [Connecter un agent](/docs/guides/connect-an-agent) pour l'installation et [Ce que fait l'agent](/docs/plans/agent) pour l'invocation et les règles de reprise.

@@ -91,7 +91,7 @@ Dans l'éditeur Source, la projection JSONata est un langage embarqué plutôt q
 
 ## Pas de secrets dans la source
 
-Les headers HTTP sont structurés, mais la source de l'Opération et les `string` lisibles d'Environment ne stockent pas de secrets. Le compilateur refuse une valeur ressemblant à un secret (clé `sk-…`, token `gh…_`, valeur `Bearer …`) — code `secret-like-value` — et le Runner refuse les URL avec credentials embarqués. Les secrets appartiennent aux Environnements comme références de credential en écriture seule. Voir [Environnements et credentials](/docs/principles/environments).
+Les headers HTTP sont structurés, mais la source de l'Opération et les `string` lisibles d'Environment ne stockent pas de secrets. Le compilateur refuse une valeur ressemblant à un secret (clé `sk-…`, token `gh…_`, valeur `Bearer …`) — code `secret-like-value` — et le Runner refuse les URL avec credentials embarqués. Les secrets appartiennent aux Environnements comme références de credential en écriture seule. Voir [Architecture technique](/docs/principles/architecture).
 
 <Details title="Forme compilée de l'interface" expert>
 Le compilateur émet trois JSON Schemas fermés. La correspondance Environment est `directory → trust-directory`, `url → trust-url`, `string → trust-string` ; chaque valeur déclarée est requise. Les correspondances Input et Produced sont inchangées ; `many` enveloppe le schéma de l'élément et un domaine enum ajoute `enum: [...]`.

@@ -158,6 +158,17 @@ const shots: Shot[] = [
     },
   },
   {
+    id: "plan-escalated",
+    path: "/dry-runs",
+    callouts: ["overlay.header", "plan.summary", "plan.checklist", "plan.escalation"],
+    prepare: async (page) => {
+      await ensureEscalatedPlan(page);
+      await page.goto("/dry-runs/docs-escalation");
+      await expect(page.locator("[data-doc='plan.escalation']")).toBeVisible();
+      await page.waitForTimeout(600);
+    },
+  },
+  {
     id: "dryrun-cockpit",
     path: "/dry-runs/rehearsal-docs",
     callouts: ["cockpit", "cockpit.todo", "cockpit.workbench", "cockpit.submit"],
@@ -171,6 +182,66 @@ const shots: Shot[] = [
     },
   },
 ];
+
+async function ensureEscalatedPlan(page: Page) {
+  const read = await page.request.post(`${runtimeUrl}/rpc`, {
+    data: { jsonrpc: "2.0", id: "docs-escalation-read", method: "plan.read", params: { plan: "docs-escalation" } },
+  });
+  const existing = await read.json() as { result?: { workState?: string } };
+  if (existing.result?.workState === "ESCALATED") return;
+
+  const engagement = await page.request.post(`${runtimeUrl}/rpc`, {
+    data: { jsonrpc: "2.0", id: "docs-escalation-engage", method: "plan.engage", params: {
+      contract: "trust.plan-engagement-request@1",
+      procedure: "git-status",
+      procedureVersion: "2.0.0",
+      plan: "docs-escalation",
+      environment: "local",
+      rootInputs: { repository: "trust" },
+      mode: "dry-run",
+    } },
+  });
+  expect(engagement.ok()).toBeTruthy();
+  const planResponse = await page.request.post(`${runtimeUrl}/rpc`, {
+    data: { jsonrpc: "2.0", id: "docs-escalation-plan", method: "plan.read", params: { plan: "docs-escalation" } },
+  });
+  const plan = await planResponse.json() as { result: { actionableChecks: string[] } };
+  const admissionResponse = await page.request.post(`${runtimeUrl}/rpc`, {
+    data: { jsonrpc: "2.0", id: "docs-escalation-admit", method: "check.attempt.admit", params: {
+      contract: "trust.check-admission-request@1",
+      attemptKey: "docs-escalation-attempt",
+      checkUri: plan.result.actionableChecks[0],
+    } },
+  });
+  const admission = await admissionResponse.json() as { result: { attemptKey: string; attemptHandle: string; executionId: string; checkUri: string; operation: { operation: string } } };
+  const observedAt = "2026-09-02T10:00:00.000Z";
+  await page.request.post(`${runtimeUrl}/rpc`, {
+    data: { jsonrpc: "2.0", id: "docs-escalation-facts", method: "check.attempt.facts", params: {
+      contract: "trust.fact-batch-request@1",
+      attemptKey: admission.result.attemptKey,
+      attemptHandle: admission.result.attemptHandle,
+      executionId: admission.result.executionId,
+      checkUri: admission.result.checkUri,
+      recordedAt: observedAt,
+      facts: [{ kind: admission.result.operation.operation, observedAt, values: { headRevision: "e9c4fae", workingTree: "clean" } }],
+    } },
+  });
+  await page.request.post(`${runtimeUrl}/rpc`, {
+    data: { jsonrpc: "2.0", id: "docs-escalation-finalize", method: "check.attempt.finalize", params: {
+      contract: "trust.attempt-finalization-request@1",
+      attemptHandle: admission.result.attemptHandle,
+    } },
+  });
+  await page.request.post(`${runtimeUrl}/rpc`, {
+    data: { jsonrpc: "2.0", id: "docs-escalation-stop", method: "check.escalate", params: {
+      contract: "trust.check-escalation-request@1",
+      checkUri: admission.result.checkUri,
+      attemptHandle: admission.result.attemptHandle,
+      blockingReason: "The repository does not contain the expected local change. The working tree is clean.",
+      forbiddenFurtherAction: "Modify the repository merely to manufacture the expected status.",
+    } },
+  });
+}
 
 // 1.5× keeps text crisp on retina while halving the weight of a 2× capture (two themes × two languages).
 test.use({ deviceScaleFactor: 1.5, viewport: { width: 1440, height: 900 } });
@@ -186,6 +257,7 @@ for (const shot of shots) {
         await page.goto(shot.path);
         await page.locator("main").waitFor();
         await shot.prepare?.(page);
+        await sanitizeLocalPaths(page);
         await page.evaluate(() => document.fonts.ready);
         await mkdir(captures, { recursive: true });
         const name = `${shot.id}.${theme}.${language}`;
@@ -212,6 +284,35 @@ for (const shot of shots) {
         }
         await writeFile(path.join(captures, `${name}.json`), `${JSON.stringify({ width: region.width * 1.5, height: region.height * 1.5, density: shot.density ?? "operator", callouts }, null, 2)}\n`);
       });
+    }
+  }
+}
+
+/** Captures are public documentation assets. Keep the real acceptance checkout for executable
+    behavior, but replace its machine-specific parent directory in the rendered page. */
+async function sanitizeLocalPaths(page: Page): Promise<void> {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      await page.waitForLoadState("domcontentloaded");
+      await page.locator("main").waitFor();
+      await page.evaluate(() => {
+        const localProjects = /\/Users\/[^/\s"'<>]+\/dev\/projects/g;
+        const root = document.querySelector("main");
+        if (!root) return;
+        const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+        let node = walker.nextNode();
+        while (node) {
+          if (node.textContent) node.textContent = node.textContent.replace(localProjects, "/srv/projects");
+          node = walker.nextNode();
+        }
+        for (const field of root.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>("input, textarea")) {
+          field.value = field.value.replace(localProjects, "/srv/projects");
+        }
+      });
+      return;
+    } catch (error) {
+      if (attempt === 2) throw error;
+      await page.waitForTimeout(250);
     }
   }
 }

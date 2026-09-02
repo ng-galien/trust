@@ -1,7 +1,7 @@
 ---
-title: "Référence du langage"
-summary: "Les conventions Gherkin communes aux Opérations et aux Procédures, puis les deux grammaires fermées, une page chacune."
-order: 6
+title: "Référence du DSL TRUST"
+summary: "Les conventions Gherkin partagées et les grammaires complètes des Opérations et des Procédures."
+order: 99
 ---
 
 Les Opérations et les Procédures s'écrivent en **Gherkin anglais avec un ensemble fermé de phrases** : mots fixes, en-têtes de tableaux fixes, et tout ce qui sort de la grammaire est une erreur de compilation avec une ligne. Il n'y a pas d'étape libre : le compilateur comprend entièrement une phrase ou la refuse.
@@ -31,5 +31,36 @@ Une étape peut se poursuivre sur les lignes suivantes quand elles sont indenté
 Le serveur de langage (`@trust/language-server`) donne à tout éditeur LSP les mêmes diagnostics, le même formatage et le même repliement que l'interface. Les sources sont de simples fichiers `.feature` : le catalogue d'Opérations en est un répertoire ; une Procédure est publiée depuis l'un d'eux.
 
 ## Les deux grammaires
+
+Une Opération définit une action externe bornée et les observations qu'elle doit rapporter :
+
+```gherkin fragment
+@trust-dsl:1 @operation:<domain>.<action> @version:<x.y.z>
+Feature: <title>
+  Background: <name>
+    Given Environment ...
+    And Input ...
+    And Produced fields ...
+  Scenario: Run
+    When <Shell, File or HTTP step>
+    Then Produce with JSONata
+```
+
+Une Procédure définit ce que ces observations doivent établir, dans quel ordre et dans quel périmètre :
+
+```gherkin fragment
+@trust-dsl:1 @procedure:<slug> @version:<x.y.z> [@intent-chaining]
+Feature: <title>
+  Background: Plan context
+    Given Procedure scope ...
+    And <typed context roles> ...
+  @scenario:<slug>
+  Scenario: <title>
+    Then Check "<name>" runs Operation "<domain.action>"
+        on "<role>" as Input "<input>"
+        and must establish "<success reason>"
+```
+
+Les deux pages ci-dessous énumèrent chaque phrase acceptée et renvoient vers les explications détaillées.
 
 <PageCards />

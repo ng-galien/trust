@@ -1,64 +1,70 @@
 ---
-title: "Delegation — agent, skill and Runner"
-summary: "How an agent executes a Check without producing its own proof: read the Plan, hand one Check to the Runner, get a result and its continuation."
-order: 1
+title: "Responsibilities in delegated work"
+summary: "How responsibility is divided before, during and after an action."
+order: 2
 ---
 
-An agent following a Plan does not run commands to prove a Check. It hands the Check to the **Runner** shipped in the TRUST skill; the Runner asks TRUST for admission, performs the compiled Operation, reports the Facts; TRUST qualifies them and returns the verdict. The agent reads results and Plans — it asserts nothing.
+In the risk-report example, several people and systems contribute to one result. The Procedure author decides which source is approved and what variance is acceptable. The external system owner grants access to it. The operator starts and follows this particular run. The agent chooses useful work.
 
-> The agent chooses which Check to execute. Everything after that choice is TRUST's: admission, execution contract, Facts, verdict.
+The Procedure author writes the rule; TRUST carries its published version as the authority for the Plan. The agent chooses an actionable Check, but TRUST decides whether the proposed action fits that Procedure and the current context. The agent's system performs an authorized action and reports its observations. If continuing requires a decision outside the written scope, the operator receives that decision back.
+
+TRUST calls the accepted observations **Facts**. They are accepted only as a complete record. The **qualification** is the decision and reason TRUST calculates from those Facts and the Procedure: Facts name the report; qualification names the conclusion.
+
+## Before a Plan starts
+
+The Procedure author defines the questions that must be answered, their dependencies, their qualification rules and the actions that are allowed. Product Action Contracts define the reusable shape and meaning of the Facts those actions must produce. Publishing a new version is required to change those decisions for future work.
+
+The people responsible for an external system decide which credentials and permissions exist there. An **Environment** is the named context selected for the work: it identifies the directories, service addresses and credential references an action may need. TRUST verifies that context before authorizing the action, but does not grant access to the external system. The action still uses the effective permissions available in the agent's system.
+
+The operator engages a published Procedure as a Plan with its concrete business inputs and Environment. The operator follows the work, closes its Session and decides whether a Plan stopped by escalation may resume. The operator does not manually turn an unresolved live Check into a success.
+
+## During one action
+
+One action proceeds as follows.
 
 ```mermaid
-sequenceDiagram
-  autonumber
-  participant A as Agent
-  participant T as TRUST
-  participant R as Runner (skill)
-  participant X as External system
-  A->>T: read the Plan — which Checks are actionable?
-  T-->>A: current revision, actionable Checks
-  A->>R: execute this Check
-  R->>T: ask admission
-  T-->>R: compiled Operation, admitted Input, Environment values
-  R->>X: run the steps
-  X-->>R: outputs, files, responses
-  R->>T: report the Facts (produced fields)
-  T-->>R: qualification and next action
-  R-->>A: result and next
-  opt next asks for resynchronization
-    A->>T: read the Plan again
-  end
+flowchart TB
+  A["① Agent chooses"] --> T["② TRUST authorizes"]
+  T --> X["③ External action"]
+  X --> O["④ Complete observations"]
+  O --> P["⑤ TRUST updates Plan"]
+  classDef choice fill:#eef2ff,stroke:#6366f1,color:#1f2937
+  classDef action fill:#fff7ed,stroke:#d97706,color:#1f2937
+  classDef state fill:#ecfdf5,stroke:#059669,color:#1f2937
+  class A choice
+  class X,O action
+  class T,P state
 ```
 
-## The three parties
+1. **The agent reads before choosing.** It uses the current Plan, selects a Check whose dependencies are satisfied and proposes only that bounded action.
+2. **TRUST exercises the Procedure's authority.** It verifies the current Plan, Check, dependencies and context. It authorizes the exact Operation defined for that Check or refuses the request before the action starts.
+3. **The agent's system performs the authorized action.** The external system may accept, refuse or interrupt it according to the permissions that actually exist there.
+4. **The agent's system reports the promised observations.** The external result is returned to the agent, but that output does not decide whether the Check is satisfied.
+5. **TRUST applies the Procedure.** It accepts only a complete report, qualifies the resulting Facts, records the history and current Plan state, then exposes the next actionable work.
 
-| Party | Does | Never does |
+## Responsibilities at a glance
+
+| Party | Responsible for | Not responsible for |
 | --- | --- | --- |
-| **Agent** | reads the Plan, picks an actionable Check, calls the Runner with it, reads `result` and follows `next` | run the Operation's commands itself, fabricate Facts, infer progress from an output, decide a Check is validated |
-| **Runner** (in the skill) | asks admission, receives the compiled Operation and its context, runs the steps, evaluates the projection, reports the Facts | qualify, retry on its own beyond the rules, keep state |
-| **TRUST** | admits or refuses, provides the exact contract and Environment values, accepts or rejects the Fact batch, qualifies, records, reopens dependents | run anything on an external system |
+| **Procedure author** | acceptance rules, dependencies, reasons and limits | execution of a running Check |
+| **External system owner** | credentials and effective access to the target system | the Plan's qualification |
+| **Operator** | engagement, oversight, Session closure and resumption after escalation | manual validation of a live Check |
+| **Agent** | choice among actionable Checks, current intention and escalation declaration | certification of the action or qualification of Facts |
+| **Agent system** | execution of the exact authorized action and complete observation report | the business meaning of the observations |
+| **TRUST authority** | application of the published Procedure, action authorization, Fact validation, qualification, immutable history and current Plan state | action in the external system or authorship of business rules |
 
-## What the agent receives
+These are logical responsibilities. The same person may author a Procedure, administer an Environment and operate a Plan, but the decisions remain distinguishable and inspectable.
 
-The Runner returns one of:
+## Possible outcomes
 
-| Result | Meaning | What the agent does |
+An action cannot be reduced to “worked” or “failed”. Its result must identify which of the following cases occurred.
+
+| Case | What is known | Consequence |
 | --- | --- | --- |
-| **completed · validated** | the Operation ran, the Facts were accepted, the Check is satisfied | follow `next`: run the supplied Check, stop when complete, or read the Plan when asked |
-| **completed · not validated** | the Operation ran, the Facts were accepted, a qualification guard is false — its computed reason explains the observation | use the supplied Check `name`, `successReason`, and `checkUri` to retry, or escalate |
-| **refused** | nothing ran: the Check is not current, its prerequisites are open, the Session is closed, the contract or Environment does not match | follow the reason and `READ_PLAN` |
-| **error** | admission, execution, reporting or finalisation was interrupted: nothing is established | read the Check; retrying is normal (an incomplete Fact batch was rejected whole; the Runner may run the Operation again) |
+| **Facts accepted; qualification `VALIDATED`** | the attempt completed and the complete observations satisfy the Procedure's rules | the Check becomes `SATISFIED`; continue with the next actionable work |
+| **Facts accepted; qualification `NOT_VALIDATED`** | the observations are complete but one written condition does not hold | the Check remains `OPEN`; correct and retry within scope, or escalate |
+| **Action refused** | TRUST did not authorize the proposed attempt, so the external action did not start | read the reason and the current Plan before choosing again |
+| **Observation report rejected** | the action may have run, but the report omitted or violated part of the required Fact shape | no observation history, conclusion or checklist change is recorded; re-observe and resubmit when possible |
+| **Exchange interrupted** | the external effect may be unknown and no accepted Facts establish a new conclusion | read the current state; repeat only when doing so is safe, otherwise return to operator authority |
 
-## What TRUST checks before delegating
-
-Admission validates, in this order: the Check exists in the **current revision** of the Plan; the **Session** is open; every prerequisite Scenario is validated and every Check referenced by the qualification has an active verdict; the Operation embedded in the Procedure is the one the Runner will get; the **Environment** of the Plan provides every value the Operation needs. Only then does the Runner receive the compiled Operation, the admitted Input (resolved from the Plan context) and the Environment values.
-
-Admission is a **grant**: it correlates the Check, the Operation, the context and one attempt key. It is not proof that the action happened — the Facts are.
-
-<Callout kind="rule">
-  Every attempt whose Facts are accepted ends with an explicit verdict and a reason. Without accepted Facts there is no qualification: a refusal, a crash or an interruption leaves the Check exactly as it was.
-</Callout>
-
-## The skill
-
-The TRUST skill is what an agent installs: an instruction file that tells it the four rules above, the Runner executable, and a reference for reading results. The agent reads Plans and Checks through MCP tools and passes the Runner exactly the Check it was given. See [Connect an agent](/docs/guides/connect-an-agent) for the setup and [Plans](/docs/plans) for what the agent reads.
+Authorization permits an attempt; the external result reports what happened. That result is not the verdict. The checklist changes only after TRUST accepts the complete Facts and applies the Procedure. See [Connect an agent](/docs/guides/connect-an-agent) for setup and [What the agent does](/docs/plans/agent) for invocation and recovery rules.

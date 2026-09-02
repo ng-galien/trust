@@ -39,7 +39,7 @@ Un **Scénario** regroupe des Checks et les ordonne : il est satisfait quand cha
 
 ## Check
 
-```text
+```gherkin fragment
 Then|And Check "<name>" runs Operation "<domain.action>"
     on [each|all] "<role>" as Input "<input>"
     [using [all] "<role>" as Input "<input>" | using plan as Input "<input>"]…
@@ -64,7 +64,7 @@ Then|And Check "<name>" runs Operation "<domain.action>"
 
 `using` et `and materializes` peuvent s'entremêler dans n'importe quel ordre entre `on` et `and must establish`. Les mots-clés sont sensibles à la casse.
 
-Cardinalité à chaque liaison : un Input scalaire prend `on`/`using` d'un rôle `one`, ou `each` d'un rôle `many` (une valeur par Check) ; un Input collection prend `all` d'un rôle `many`. Un rôle `many` sans `each` ni `all` n'est accepté que dans un `using` du même scope qu'une cible `each` (la valeur reliée). Les types doivent correspondre exactement (`reference` ≠ `string`).
+Cardinalité à chaque liaison : un Input scalaire prend `on`/`using` d'un rôle `one`, ou `each` d'un rôle `many` (une valeur par Check) ; un Input collection prend `all` d'un rôle `many`. Un rôle `many` sans `each` ni `all` n'est accepté que dans un `using` du même périmètre qu'une cible `each` (la valeur reliée). Les types doivent correspondre exactement (`reference` ≠ `string`).
 
 ## `each` et `all`
 
@@ -79,7 +79,7 @@ Cardinalité à chaque liaison : un Input scalaire prend `on`/`using` d'un rôle
       """
 ```
 
-- `on each "required document"` crée **un Check par document** — le Plan montre `document` une fois par valeur, chacun avec son propre verdict ; le Scénario est satisfait quand tous sont validés. Une matérialisation sur un Check `each` remplit un rôle scopé `for each` cette cible : une heure d'enregistrement par document.
+- `on each "required document"` crée **un Check par document**. Le Plan montre `document` une fois par valeur, chacun avec son propre verdict ; le Scénario est satisfait quand tous sont validés. Une matérialisation sur un Check `each` remplit un rôle associé à cette cible par `for each` : une heure d'enregistrement par document.
 - `using all "required document" as Input "documents"` passe **la collection** à un Input `many`, en un seul Check.
 - Un rôle `many` déclaré par l'agent (`declared by agent`) n'a pas de valeurs à l'engagement : les Checks `each` apparaissent une fois que l'agent les déclare.
 

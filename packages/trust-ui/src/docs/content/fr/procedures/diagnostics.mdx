@@ -4,7 +4,7 @@ summary: "Ce que le compilateur de Procédures refuse, ses quatorze codes, et le
 order: 7
 ---
 
-Le compilateur renvoie une Procédure compilée ou **un diagnostic** : un code, un message et un emplacement (la ligne physique, lignes de continuation comprises). L'interface l'affiche dans la ligne de statut et souligne la ligne dans l'éditeur de source ; la publication renvoie le même diagnostic quand le runtime compile la source.
+L'analyse pendant la rédaction renvoie une Procédure compilée ou **un ou plusieurs diagnostics**. Chacun porte un code, un message et une position dans la source physique, lignes de continuation comprises. L'interface les liste et souligne les lignes correspondantes dans l'éditeur de source. La publication compile à nouveau sur le runtime et s'arrête à la première erreur.
 
 > Une source qui ne compile pas ne peut pas être publiée ; une version publiée a compilé une fois et ne change jamais.
 

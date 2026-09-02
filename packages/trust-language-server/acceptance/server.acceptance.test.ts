@@ -68,6 +68,12 @@ test("the server accepts step continuation lines and formats long steps onto the
     position: positionAt(formatted, formatted.indexOf('"project"') + 1),
   });
   assert.deepEqual(continuedInput.map(({ label }) => label), ["project"]);
+  const semantic = await session.connection.sendRequest<SemanticTokens>("textDocument/semanticTokens/full", {
+    textDocument: { uri: reopened },
+  });
+  const continuedType = formatted.indexOf('Input "project"', formatted.indexOf("\n        and Input"));
+  assert.ok(continuedType > 0, "formatted continuation carries the Input type");
+  assertSemanticTokenAt(semantic, positionAt(formatted, continuedType), "Input".length, "type");
   await session.shutdown();
 });
 

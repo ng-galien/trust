@@ -91,7 +91,7 @@ In the Source editor, the JSONata projection is an embedded language rather than
 
 ## No secrets in the source
 
-HTTP headers are structured, but Operation source and readable Environment strings are not secret storage. The compiler refuses a secret-like value (an `sk-…` key, a `gh…_` token, a `Bearer …` value) — code `secret-like-value` — and the Runner refuses URLs with embedded credentials. Secrets belong to Environments as write-only credential references. See [Environments and credentials](/docs/principles/environments).
+HTTP headers are structured, but Operation source and readable Environment strings are not secret storage. The compiler refuses a secret-like value (an `sk-…` key, a `gh…_` token, a `Bearer …` value) — code `secret-like-value` — and the Runner refuses URLs with embedded credentials. Secrets belong to Environments as write-only credential references. See [Technical architecture](/docs/principles/architecture).
 
 <Details title="Compiled form of the interface" expert>
 The compiler emits three closed JSON Schemas. Environment mapping is `directory → trust-directory`, `url → trust-url`, `string → trust-string`; every declared Environment value is required. Input and Produced mappings are unchanged; `many` wraps the item schema in an array and an enum domain adds `enum: [...]`.

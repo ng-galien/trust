@@ -4,7 +4,7 @@ summary: "What the Procedure compiler refuses, its fourteen codes, and the messa
 order: 7
 ---
 
-The compiler returns a compiled Procedure or **one diagnostic**: a code, a message and a location (the physical line, continuation lines included). The interface shows it in the status line and underlines the line in the source editor; publication returns the same diagnostic when the runtime compiles the source.
+The authoring analysis returns a compiled Procedure or **one or more diagnostics**. Each diagnostic has a code, a message and a location on the physical source, including continuation lines. The interface lists them and underlines the corresponding lines in the source editor. Publication compiles again on the runtime and stops at the first error.
 
 > A source that does not compile cannot be published; a published version compiled once and never changes.
 

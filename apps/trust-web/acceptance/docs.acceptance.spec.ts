@@ -95,8 +95,8 @@ test("every English page has a French translation with the same structure", asyn
 
 test("the documentation area: tree, page, search, glossary and expert blocks", async ({ page }) => {
   test.setTimeout(90_000); // several navigations and a reload; the docs chunk is large
-  await page.goto("/docs");
-  await expect(page.locator("article h1")).toHaveText("Introduction");
+  await page.goto("/docs/principles/model");
+  await expect(page.locator("article h1")).toHaveText("Definitions and execution records");
   await page.getByRole("navigation", { name: "Documentation contents" }).getByRole("link", { name: "Operations" }).click();
   await expect(page).toHaveURL(/\/docs\/operations$/);
   await expect(page.locator("article h1")).toHaveText("Operations");
@@ -116,4 +116,74 @@ test("the documentation area: tree, page, search, glossary and expert blocks", a
   await expect(page.locator(".docs-details").filter({ hasText: "Diagnostics specific to Shell steps" }).getByRole("button")).toHaveAttribute("aria-expanded", "true");
   // The URL does not depend on the language.
   await page.getByRole("tab", { name: "Operator" }).click();
+});
+
+test("documentation code and visuals remain readable", async ({ page }) => {
+  await page.setViewportSize({ width: 576, height: 900 });
+  await page.goto("/docs/principles/model");
+  const narrowWidth = await page.evaluate(() => ({ client: document.documentElement.clientWidth, scroll: document.documentElement.scrollWidth }));
+  expect(narrowWidth.scroll, `documentation overflows at 576px: ${JSON.stringify(narrowWidth)}`).toBeLessThanOrEqual(narrowWidth.client);
+
+  await page.setViewportSize({ width: 1920, height: 1080 });
+  await page.goto("/docs/procedures/context");
+  expect((await page.locator("[data-doc-page]").boundingBox())?.width).toBeGreaterThan(900);
+  const tokenCounts = await page.locator('pre[data-language="gherkin"]').evaluateAll((snippets) => snippets.map((snippet) => snippet.querySelectorAll("[data-token]").length));
+  expect(tokenCounts.length).toBeGreaterThan(1);
+  expect(tokenCounts.every((count) => count > 0), `coloured token counts: ${tokenCounts.join(", ")}`).toBe(true);
+
+  await page.goto("/docs/language");
+  await expect(page.locator(".docs-cards").getByRole("link")).toHaveCount(2);
+  await expect(page.locator(".docs-cards")).toContainText("Operation grammar");
+  await expect(page.locator(".docs-cards")).toContainText("Procedure grammar");
+  const continued = page.locator(".docs-snippet").first();
+  await expect(continued.locator('.docs-line').nth(1).locator('[data-token="verb"]')).toContainText("on");
+  const procedureShape = page.locator(".docs-snippet").nth(2);
+  await expect(procedureShape.locator('[data-token="keyword"]').filter({ hasText: "Then" })).toHaveCount(1);
+  await expect(procedureShape.locator('[data-token="type"]').filter({ hasText: "Check" })).toHaveCount(1);
+  await expect(procedureShape.locator('[data-token="verb"]').filter({ hasText: "runs" })).toHaveCount(1);
+  await expect(procedureShape.locator('[data-token="type"]').filter({ hasText: "Operation" })).toHaveCount(1);
+
+  await page.goto("/docs/principles/model");
+  await page.locator(".docs-figure").first().getByRole("button", { name: "View full screen" }).click();
+  await expect(page.getByRole("dialog", { name: "Expanded figure" })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog", { name: "Expanded figure" })).toBeHidden();
+
+  await page.goto("/docs/principles/intent-and-escalation");
+  await expect(page.locator(".docs-diagram svg").first()).toBeVisible();
+  await page.locator(".docs-diagram").first().getByRole("button", { name: "View full screen" }).click();
+  await expect(page.getByRole("dialog", { name: "Expanded diagram" })).toBeVisible();
+  await page.keyboard.press("Escape");
+
+  await page.goto("/docs/screens");
+  await page.locator(".docs-screenshot").first().getByRole("button", { name: "View full screen" }).click();
+  await expect(page.getByRole("dialog")).toBeVisible();
+  await page.keyboard.press("Escape");
+});
+
+test("the conceptual entry pages do not expose implementation vocabulary", async ({ page }) => {
+  const implementationVocabulary = /\b(?:MCP|RPC|OTLP|URI|HTTP|JSONata|JSEP|Runner|VALIDATED|NOT_VALIDATED)\b/;
+  await page.goto("/docs");
+  const article = await page.locator("article").innerText();
+  expect(article, "/docs exposes implementation vocabulary").not.toMatch(implementationVocabulary);
+  await expect(page.locator("article").getByRole("heading", { name: "Introduction", exact: true })).toBeVisible();
+  await expect(page.locator(".docs-compare")).toHaveCount(2);
+});
+
+test("the former Principles hub redirects to the merged introduction", async ({ page }) => {
+  await page.goto("/docs/principles");
+  await expect(page).toHaveURL(/\/docs$/);
+  await expect(page.locator("article").getByRole("heading", { name: "Introduction", exact: true })).toBeVisible();
+});
+
+test("the Runner is introduced only by the technical architecture page", async () => {
+  for (const language of ["en", "fr"]) {
+    const earlyPages = [
+      path.join(contentRoot, language, "index.mdx"),
+      ...(await mdxFiles(path.join(contentRoot, language, "principles"))).filter((file) => !file.endsWith("architecture.mdx")),
+    ];
+    for (const file of earlyPages) {
+      expect(await readFile(file, "utf8"), path.relative(contentRoot, file)).not.toMatch(/\bRunner\b/);
+    }
+  }
 });

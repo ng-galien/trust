@@ -62,7 +62,7 @@
   html, body, #root { height: 100%; }
   body {
     margin: 0;
-    min-width: 720px;
+    min-width: 0;
     font-family: var(--font-sans);
     font-size: var(--text-ui);
     line-height: 1.45;
@@ -177,6 +177,11 @@
   .docs-article kbd { font-size: 0.85em; padding: 0.05em 0.35em; border: 1px solid var(--color-border-strong); border-bottom-width: 2px; border-radius: var(--radius-1); background: var(--color-surface); }
   .docs-article .docs-callout-body > p:last-child, .docs-article .docs-details-body > p:last-child, .docs-article .docs-step-body > p:last-child { margin-bottom: 0; }
   .docs-article .docs-callout-body > p, .docs-article .docs-details-body > p, .docs-article .docs-step-body > p { margin: 0 0 0.6rem; }
+  .docs-article .docs-compare-body > p { margin: 0; }
+  .docs-article .docs-compare-body > p + p { margin-top: 0.8rem; padding-top: 0.75rem; border-top: 1px solid var(--color-border); }
+  .docs-article .docs-compare-body > p > strong:first-child { display: block; width: max-content; margin-bottom: 0.3rem; padding: 0.12rem 0.4rem; border-radius: var(--radius-1); background: var(--color-surface-3); color: var(--color-text-muted); font-size: var(--text-caption); line-height: 1.35; }
+  .docs-article .docs-compare-body > p:nth-child(2) > strong:first-child { background: var(--color-accent-soft); color: var(--color-accent); }
+  .docs-article .docs-compare-body > p > strong:first-child + br { display: none; }
   .docs-article .docs-details-body > :first-child { margin-top: 0; }
   .docs-article .docs-legend { list-style: none; padding: 0; }
   .docs-article .docs-steps { list-style: none; padding: 0; counter-reset: docs-step; }

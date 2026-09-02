@@ -2,7 +2,7 @@ import { AlertTriangle, ArrowRight, BookMarked, ChevronRight, Info, Lightbulb, S
 import type { ParseKeys } from "i18next";
 import { type ReactNode, useCallback, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Link } from "react-router";
+import { Link, useLocation } from "react-router";
 
 import type { Language } from "../../i18n/index.js";
 import { cx } from "../../lib/format.js";
@@ -10,6 +10,7 @@ import { useExpert, usePreference } from "../../lib/preferences.js";
 import { useDismiss } from "../../lib/use-dismiss.js";
 import { Badge } from "../../ui/badge.js";
 import { findNode } from "../pages.js";
+import { VisualDialog, VisualExpandButton } from "./visual-dialog.js";
 
 /* Building blocks available inside every documentation page (mapped through MDXProvider). */
 
@@ -47,7 +48,7 @@ export function Details({ title, expert = false, open: openByDefault, children }
   );
 }
 
-type GlossaryId = "operation" | "check" | "scenario" | "procedure" | "plan" | "session" | "attempt" | "fact" | "verdict" | "qualification" | "cascade" | "environment" | "credential" | "runner" | "skill" | "delegation" | "dryRun" | "snapshot" | "revision" | "otlp" | "mcp" | "jsonata" | "grant";
+type GlossaryId = "agent" | "tool" | "operator" | "operation" | "check" | "scenario" | "procedure" | "plan" | "session" | "attempt" | "fact" | "verdict" | "qualification" | "cascade" | "environment" | "credential" | "runner" | "skill" | "delegation" | "dryRun" | "snapshot" | "revision" | "intent" | "escalation" | "otlp" | "mcp" | "jsonata" | "grant";
 
 /** Glossary term: the word stays in the sentence; a click opens its definition in place (inline elements only —
     a term lives inside a paragraph). */
@@ -78,7 +79,9 @@ export function Term({ id, children }: { id: GlossaryId; children?: ReactNode })
 export function PageCards({ of }: { of?: string }) {
   const { t } = useTranslation();
   const language = usePreference("language") as Language;
-  const path = of ?? "";
+  const location = useLocation();
+  const currentPath = location.pathname.replace(/^\/docs\/?/, "").replace(/\/+$/, "");
+  const path = of ?? currentPath;
   const node = findNode(path, language);
   if (!node || node.children.length === 0) return null;
   return (
@@ -100,10 +103,18 @@ export function PageCards({ of }: { of?: string }) {
 
 /** Figure with a caption; wraps a hero SVG component, a diagram or an image. */
 export function Figure({ caption, children, wide = false }: { caption?: ReactNode; children: ReactNode; wide?: boolean }) {
+  const { t } = useTranslation();
+  const [expanded, setExpanded] = useState(false);
   return (
     <figure className={cx("docs-figure my-5", wide && "docs-wide")}>
-      <div className="overflow-x-auto rounded-(--radius-3) border border-border bg-surface p-4">{children}</div>
+      <div className="group/visual relative overflow-x-auto rounded-(--radius-3) border border-border bg-surface p-4">
+        <VisualExpandButton onClick={() => setExpanded(true)} />
+        {children}
+      </div>
       {caption ? <figcaption className="mt-2 text-center text-body-lg text-muted">{caption}</figcaption> : null}
+      <VisualDialog open={expanded} onClose={() => setExpanded(false)} label={t("docs.visual.figure")}>
+        <div className="[&_svg]:!h-auto [&_svg]:!max-h-[86vh] [&_svg]:!w-[92vw] [&_svg]:!max-w-none">{children}</div>
+      </VisualDialog>
     </figure>
   );
 }
@@ -144,7 +155,7 @@ export function Compare({ left, right, leftTitle, rightTitle }: { left: ReactNod
       {[[leftTitle, left], [rightTitle, right]].map(([title, body], index) => (
         <div key={index} className="rounded-(--radius-3) border border-border bg-surface p-4">
           <div className="mb-2 text-caption font-semibold uppercase tracking-[0.06em] text-muted">{title}</div>
-          <div className="text-ui leading-relaxed">{body}</div>
+          <div className="docs-compare-body text-ui leading-relaxed">{body}</div>
         </div>
       ))}
     </div>

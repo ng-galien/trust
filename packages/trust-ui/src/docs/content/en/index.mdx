@@ -1,31 +1,60 @@
 ---
 title: "Introduction"
-summary: "What TRUST does, how this documentation is organised, where to start."
 order: 0
 ---
 
-TRUST runs software tasks operated by agents under a compliance rule: **the agent acts, TRUST decides what was established.** The work is written as a Procedure — a checklist of typed <Term id="check">Checks</Term>. Each Check is validated from observed <Term id="fact">Facts</Term> only. The agent never produces its own proof and never infers its own progress.
+*Trustable Runtime for Untrusted Specific Task*
 
-<Figure caption="Authored objects (top) and what a running Plan produces (bottom).">
-  <ModelFigure />
-</Figure>
+TRUST is a system that coordinates and delegates action to agents within a controlled scope.
 
-## In short
+## Structure without automation
 
-- An <Term id="operation">Operation</Term> describes one call to an external system and the typed fields it returns.
-- A <Term id="procedure">Procedure</Term> assembles Operations into Scenarios and Checks, each Check with the typed qualification that makes it validated.
-- Engaging a Procedure with concrete inputs in an <Term id="environment">Environment</Term> creates a <Term id="plan">Plan</Term>.
-- The agent reads the Plan and hands one Check at a time to the <Term id="runner">Runner</Term> shipped with the TRUST skill. The Runner performs the Operation and reports the Facts.
-- TRUST qualifies the Facts and returns a <Term id="verdict">verdict</Term> with a reason. New Facts on a Check reopen every Check that depends on it; the agent resumes from a consistent state.
+TRUST frames the work of agents, not through an accumulation of instructions written in prose, but by structuring the expected work as Procedures.
 
-> The Runner never qualifies. The agent never asserts. Only TRUST turns Facts into a verdict.
+A Procedure is not a program that reduces the agent to mechanically chaining microtasks. It organizes the work around explicit checkpoints: what must be established, what must be verified and, when it matters, which order must be respected. Between those points, the agent retains what makes it useful: it reasons, chooses its actions, performs complex tasks and adapts to the situations it encounters.
 
-## Reading this documentation
+<Callout kind="rule">
+  Trust therefore no longer rests only on the agent's account or its final result. It comes from coordinating and verifying those checkpoints.
+</Callout>
 
-Sections go from principles to details: a short hub page, then detailed pages (cards below). A term with a dotted underline opens its definition in place. Blocks marked **Expert** hold detail the operator does not need first; they open by default when the interface is in expert mode.
+## Established practices
 
-<PageCards />
+In many domains where compliance is essential, people are responsible for the work they produce and stand behind its quality. In the most critical sectors, that responsibility sits within a broader body of procedures, standards and controls. Aviation is an obvious example: reliability depends not only on individual expertise, but also on explicit and verified steps whose order is fixed when it affects the result.
 
-<Callout kind="tip" title="Where to start">
-  [Principles](/docs/principles), then [Operations](/docs/operations) — and try one in the interface with **Simulate**. To write a Procedure: the [language reference](/docs/language) and the [guides](/docs/guides).
+<Callout kind="rule" title="TRUST follows that lineage">
+  TRUST does not invent a new way to control work. It applies to agents a principle already widely used across many sectors: organize a task through an explicit procedure, follow its progress and verify what each step actually establishes.
+</Callout>
+
+## Limits of autonomy
+
+<Compare leftTitle="The full scope of the work is covered" rightTitle="The action stays within its authorized scope"
+  left={<><p><strong>Example</strong><br />An agent must prepare a risk report from several sources and analyses.</p><p><strong>What is not guaranteed</strong><br />A prose request does not guarantee that the agent explored and addressed the full required scope before producing the result.</p></>}
+  right={<><p><strong>Example</strong><br />The agent can consult data, use services and publish a document.</p><p><strong>What is not guaranteed</strong><br />Technical access does not guarantee that this action and target are authorized for the work.</p></>} />
+
+<Compare leftTitle="The result rests on verifiable observations" rightTitle="The work remains consistent when context changes"
+  left={<><p><strong>Example</strong><br />The agent says that it checked the figures and the command reports success.</p><p><strong>What is not guaranteed</strong><br />That account guarantees neither the source used, the observations collected nor compliance with the acceptance rules.</p></>}
+  right={<><p><strong>Example</strong><br />A source is approved late or corrected after the report was produced.</p><p><strong>What is not guaranteed</strong><br />Without recorded dependencies, nothing indicates what must wait, be verified again or be repeated.</p></>} />
+
+Relying on the result requires an independent record that connects the authorized work, the observations collected and the conclusion drawn by the Procedure. That record also shows whether the conclusion is still current.
+
+<Callout kind="note" title="A result must also be auditable">
+  The record provides the traceability needed to reconstruct the work: which checkpoints were reached, under which conditions, from which observations and according to which rules. It makes the result reviewable and explainable, and shows what must be repeated when its basis changes.
+</Callout>
+
+## Procedure and authority
+
+A Procedure is written and published by people before work starts. It fixes what the agent may not rewrite while acting:
+
+- the questions that must be answered, including any order that must be respected
+- the actions allowed for each question and their limits
+- the observations required and the rules that determine what they establish
+- the dependencies that can make earlier work current or obsolete
+- the authority to which a decision must be returned when it falls outside the defined scope
+
+A Procedure is never the final authority. It carries decisions made beforehand, but always provides for escalation to a higher authority. When a situation requires a new rule, an exception or authority that was not granted, the agent does not complete the Procedure itself: it returns the decision to that authority.
+
+When that Procedure is engaged as a Plan, TRUST acts as its authority. It authorizes only actions that fit the current Check and context, accepts only complete observations, applies the published qualification rules and reopens dependent work when its basis changes. TRUST applies that version throughout the execution of the Plan.
+
+<Callout kind="rule" title="Who decides what">
+  The agent chooses among the work currently allowed. TRUST applies the published Procedure and maintains the resulting Plan. The operator decides whenever continuing would require a new rule, new authority or action outside the written scope.
 </Callout>

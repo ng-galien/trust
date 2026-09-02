@@ -1,31 +1,60 @@
 ---
 title: "Introduction"
-summary: "Ce que fait TRUST, comment cette documentation est organisée, par où commencer."
 order: 0
 ---
 
-TRUST exécute des tâches logicielles opérées par des agents sous une règle de conformité : **l'agent agit, TRUST décide de ce qui a été établi.** Le travail s'écrit sous forme de Procédure — une checklist de <Term id="check">Checks</Term> typés. Chaque Check est validé uniquement à partir de <Term id="fact">Facts</Term> observés. L'agent ne produit jamais sa propre preuve et n'infère jamais sa propre progression.
+*Trustable Runtime for Untrusted Specific Task*
 
-<Figure caption="Objets rédigés (en haut) et ce qu'un Plan en cours produit (en bas).">
-  <ModelFigure />
-</Figure>
+TRUST est un système qui coordonne et délègue l'action aux agents dans un périmètre contrôlé.
 
-## En bref
+## Encadrer sans automatiser
 
-- Une <Term id="operation">Opération</Term> décrit un appel à un système externe et les champs typés qu'il renvoie.
-- Une <Term id="procedure">Procédure</Term> assemble des Opérations en Scénarios et en Checks, chaque Check avec la qualification typée qui le rend validé.
-- Engager une Procédure avec des entrées concrètes dans un <Term id="environment">Environnement</Term> crée un <Term id="plan">Plan</Term>.
-- L'agent lit le Plan et confie un Check à la fois au <Term id="runner">Runner</Term> livré avec le skill TRUST. Le Runner exécute l'Opération et rapporte les Facts.
-- TRUST qualifie les Facts et renvoie un <Term id="verdict">verdict</Term> avec une raison. De nouveaux Facts sur un Check rouvrent chaque Check qui en dépend ; l'agent reprend depuis un état cohérent.
+TRUST encadre le travail des agents, non par une accumulation d'instructions écrites en prose, mais en structurant le travail attendu sous forme de Procedures.
 
-> Le Runner ne qualifie jamais. L'agent n'affirme jamais. Seul TRUST transforme des Facts en verdict.
+Une Procedure n'est pas un programme qui réduit l'agent à l'enchaînement mécanique de micro-tâches. Elle organise le travail autour de points de passage explicites : ce qui doit être établi, ce qui doit être vérifié et, lorsque cela compte, l'ordre à respecter. Entre ces points, l'agent conserve ce qui le rend utile : il raisonne, choisit ses actions, réalise des tâches complexes et s'adapte aux situations qu'il rencontre.
 
-## Lire cette documentation
+<Callout kind="rule">
+  La confiance ne repose donc plus uniquement sur le récit de l'agent ou sur son résultat final. Elle vient de la coordination de ces points de passage et de leur vérification.
+</Callout>
 
-Les sections vont des principes aux détails : une courte page d'accueil, puis des pages détaillées (cartes ci-dessous). Un terme souligné en pointillés ouvre sa définition sur place. Les blocs marqués **Expert** contiennent le détail dont l'opérateur n'a pas besoin d'abord ; ils s'ouvrent par défaut quand l'interface est en mode expert.
+## Des pratiques déjà éprouvées
 
-<PageCards />
+Dans de nombreux domaines où la conformité est essentielle, les personnes sont responsables du travail qu'elles produisent et s'engagent sur sa qualité. Dans les secteurs les plus critiques, cette responsabilité s'inscrit dans un ensemble plus large de procédures, de normes et de contrôles. L'aviation en est un exemple évident : la fiabilité ne repose pas seulement sur l'expertise de chacun, mais aussi sur des étapes explicites et vérifiées, dont l'ordre est fixé lorsqu'il a une incidence sur le résultat.
 
-<Callout kind="tip" title="Par où commencer">
-  [Principes](/docs/principles), puis [Opérations](/docs/operations) — et essayez-en une dans l'interface avec **Simuler**. Pour écrire une Procédure : la [référence du langage](/docs/language) et les [guides](/docs/guides).
+<Callout kind="rule" title="TRUST s'inscrit dans cette filiation">
+  TRUST n'invente pas une nouvelle manière de contrôler le travail. Il applique aux agents un principe déjà largement utilisé dans de nombreux secteurs : organiser une tâche au moyen d'une procédure explicite, suivre son déroulement et vérifier ce que chaque étape permet réellement d'établir.
+</Callout>
+
+## Limites de l'autonomie
+
+<Compare leftTitle="Le périmètre du travail est couvert" rightTitle="L'action reste dans le périmètre autorisé"
+  left={<><p><strong>Cas concret</strong><br />Un agent doit préparer un rapport de risques à partir de plusieurs sources et analyses.</p><p><strong>Ce qui n'est pas garanti</strong><br />Une demande en prose ne garantit pas que tout le périmètre nécessaire a été exploré et traité avant la production du résultat.</p></>}
+  right={<><p><strong>Cas concret</strong><br />L'agent peut consulter des données, utiliser des services et publier un document.</p><p><strong>Ce qui n'est pas garanti</strong><br />Un accès technique ne garantit pas que cette action et cette cible sont autorisées pour ce travail.</p></>} />
+
+<Compare leftTitle="Le résultat repose sur des observations vérifiables" rightTitle="Le travail reste cohérent lorsque le contexte change"
+  left={<><p><strong>Cas concret</strong><br />L'agent affirme avoir vérifié les chiffres et la commande annonce une réussite.</p><p><strong>Ce qui n'est pas garanti</strong><br />Ce récit ne garantit ni la source utilisée, ni les observations recueillies, ni le respect des règles d'acceptation.</p></>}
+  right={<><p><strong>Cas concret</strong><br />Une source est approuvée tardivement ou corrigée après la production du rapport.</p><p><strong>Ce qui n'est pas garanti</strong><br />Sans dépendances enregistrées, rien n'indique ce qui doit attendre, être vérifié à nouveau ou être repris.</p></>} />
+
+Pour pouvoir se fier au résultat, il faut un registre indépendant qui relie le travail autorisé, les observations recueillies et la conclusion qu'en tire la Procedure. Ce registre permet aussi de savoir si cette conclusion est encore actuelle.
+
+<Callout kind="note" title="Un résultat doit aussi pouvoir être audité">
+  Le registre apporte la traçabilité nécessaire pour reconstituer le travail : quelles étapes ont été franchies, dans quelles conditions, à partir de quelles observations et selon quelles règles. Il permet de revoir le résultat, de l'expliquer et d'identifier ce qui doit être repris lorsque sa base change.
+</Callout>
+
+## Procedure et autorité
+
+Une Procedure est écrite et publiée par des personnes avant le début du travail. Elle fixe ce que l'agent ne peut pas réécrire pendant qu'il agit :
+
+- les questions auxquelles il faut répondre, ainsi que l'ordre à respecter lorsqu'il est nécessaire
+- les actions permises pour chaque question et leurs limites
+- les observations requises et les règles qui déterminent ce qu'elles établissent
+- les dépendances qui peuvent rendre un travail antérieur actuel ou obsolète
+- l'autorité à laquelle remettre la décision lorsqu'elle sort du cadre prévu
+
+Une Procedure n'est jamais l'autorité finale. Elle porte des décisions prises en amont, mais prévoit toujours une escalade vers une autorité supérieure. Lorsqu'une situation exige une nouvelle règle, une exception ou une autorisation qui n'a pas été donnée, l'agent ne complète pas lui-même la Procedure : il remet la décision à cette autorité.
+
+Lorsque cette Procedure est engagée sous forme de Plan, TRUST agit comme son autorité. Il autorise uniquement les actions conformes au Check et au contexte courants, n'accepte que des observations complètes, applique les règles de qualification publiées et rouvre le travail dépendant lorsque sa base change. TRUST applique cette version pendant toute l'exécution du Plan.
+
+<Callout kind="rule" title="Qui décide de quoi">
+  L'agent choisit parmi le travail actuellement permis. TRUST applique la Procedure publiée et maintient le Plan qui en résulte. L'opérateur décide dès que poursuivre demanderait une nouvelle règle, une nouvelle autorité ou une action hors du périmètre écrit.
 </Callout>

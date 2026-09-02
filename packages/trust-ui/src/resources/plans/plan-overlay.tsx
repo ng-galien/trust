@@ -248,7 +248,7 @@ function PlanSummaryStrip({ plan, compiled, onSelectCheck }: { plan: PlanView; c
           </p>
         ) : null}
         {plan.activeEscalation ? (
-          <section className="mt-3 overflow-hidden rounded-(--radius-3) border border-warning/40 bg-warning-soft" aria-labelledby="active-escalation-title">
+          <section data-doc="plan.escalation" className="mt-3 overflow-hidden rounded-(--radius-3) border border-warning/40 bg-warning-soft" aria-labelledby="active-escalation-title">
             <div className="flex items-center gap-2 border-b border-warning/25 px-4 py-3 text-warning">
               <CircleArrowUp size={18} className="shrink-0" />
               <h2 id="active-escalation-title" className="text-ui font-semibold">{t("plans.summary.escalated")}</h2>

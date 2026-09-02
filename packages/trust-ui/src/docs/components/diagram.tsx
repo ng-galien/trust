@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 
 import { cx } from "../../lib/format.js";
 import { useResolvedTheme } from "../../lib/preferences.js";
+import { VisualDialog, VisualExpandButton } from "./visual-dialog.js";
 
 /* Mermaid diagrams (flow, sequence, state…) rendered in the page with the interface tokens.
    The library loads on first use (its own chunk); a diagram re-renders when the theme changes. */
@@ -87,6 +88,7 @@ export function Diagram({ code, caption, className }: { code: string; caption?: 
   const theme = useResolvedTheme();
   const id = useId();
   const [state, setState] = useState<{ svg?: string; error?: string }>({});
+  const [expanded, setExpanded] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -99,12 +101,16 @@ export function Diagram({ code, caption, className }: { code: string; caption?: 
 
   return (
     <figure className={cx("docs-diagram my-5", className)} id={id}>
-      <div className="overflow-x-auto rounded-(--radius-3) border border-border bg-surface p-3">
+      <div className="group/visual relative overflow-x-auto rounded-(--radius-3) border border-border bg-surface p-3">
+        {state.svg ? <VisualExpandButton onClick={() => setExpanded(true)} /> : null}
         {state.svg ? <div className="docs-diagram-svg mx-auto [&>svg]:mx-auto [&>svg]:h-auto [&>svg]:max-w-full" dangerouslySetInnerHTML={{ __html: state.svg }} /> : null}
         {state.error ? <p className="text-body text-danger">{t("docs.diagram.error", { error: state.error })}</p> : null}
         {!state.svg && !state.error ? <p className="py-6 text-center text-body text-faint">{t("docs.diagram.loading")}</p> : null}
       </div>
       {caption ? <figcaption className="mt-2 text-center text-body-lg text-muted">{caption}</figcaption> : null}
+      <VisualDialog open={expanded} onClose={() => setExpanded(false)} label={caption ?? t("docs.visual.diagram")}>
+        {state.svg ? <div className="docs-diagram-svg [&>svg]:!h-auto [&>svg]:!max-h-[86vh] [&>svg]:!w-[92vw] [&>svg]:!max-w-none" dangerouslySetInnerHTML={{ __html: state.svg }} /> : null}
+      </VisualDialog>
     </figure>
   );
 }

@@ -85,10 +85,10 @@ Feature: Fix one Jira defect in one Maven project
 <Legend items={[
   <>**Tags de Procédure.** Exactement un <code>@procedure:</code> (un slug en minuscules), un <code>@version:</code> sémantique, et <code>@trust-dsl:1</code>. Le tag optionnel <code>@intent-chaining</code> fait porter à chaque Plan engagé une intention d'agent tournante.</>,
   <>**Titre et description.** Le titre est copié tel quel ; le texte libre en dessous est la description affichée sur la page de la Procédure et sur ses Plans.</>,
-  <>**Contexte du Plan.** Exactement un <code>Background: Plan context</code> ; il commence par la DataTable obligatoire du périmètre de la Procedure, puis déclare les rôles typés. Voir [Contexte du Plan](/docs/procedures/context).</>,
-  <>**Périmètre de la Procedure.** Sa première DataTable obligatoire déclare les limites en prose de tous les Checks et peut en ajouter pour un Check nommé. Les deux sont montrées à l'agent.</>,
+  <>**Contexte du Plan.** Exactement un <code>Background: Plan context</code> ; il commence par la DataTable obligatoire du périmètre de la Procédure, puis déclare les rôles typés. Voir [Contexte du Plan](/docs/procedures/context).</>,
+  <>**Périmètre de la Procédure.** Sa première DataTable obligatoire déclare les limites en prose de tous les Checks et peut en ajouter pour un Check nommé. Les deux sont montrées à l'agent.</>,
   <>**Entrée de Plan.** Un rôle sans autre source est donné à l'engagement : <code>one reference "jira issue"</code>.</>,
-  <>**Rôle scopé.** <code>for "project"</code> rattache le rôle à un rôle parent ; ici une révision appartient à un projet. Rien ne déclare encore sa source : il est matérialisé par un Check plus bas.</>,
+  <>**Rôle rattaché à un parent.** <code>for "project"</code> rattache le rôle à un rôle parent ; ici une révision appartient à un projet. Rien ne déclare encore sa source : il est matérialisé par un Check plus bas.</>,
   <>**Tag de Scénario.** Exactement un <code>@scenario:&lt;slug&gt;</code> par Scénario, unique dans la Procédure.</>,
   <>**Phrase de Check.** <code>Then Check "&lt;name&gt;" runs Operation "&lt;domain.action&gt;" on "&lt;role&gt;" as Input "&lt;input&gt;" … and must establish "&lt;success reason&gt;"</code>. <code>on</code> nomme la cible et lie un Input. Voir [Scénarios et Checks](/docs/procedures/scenarios-and-checks).</>,
   <>**Qualification.** Un DocString <code>js</code> attaché au Check ; chaque garde est une condition typée suivie de <code>|| fail(reason)</code>. Voir [Qualifications](/docs/procedures/expectations).</>,
@@ -100,7 +100,7 @@ Feature: Fix one Jira defect in one Maven project
 
 ## La forme du document
 
-```text
+```gherkin fragment
 # language: en                                          optional (English only)
 @trust-dsl:1 @procedure:<slug> @version:<x.y.z> [@intent-chaining]
 Feature: <title>

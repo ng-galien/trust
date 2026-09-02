@@ -1,68 +1,30 @@
 ---
 title: "Procedures"
-summary: "Typed context roles, Scenarios and Checks bound to Operations — the versioned definition a Plan is engaged from."
-order: 3
+summary: "How a business expectation becomes a versioned, reviewable path of Checks."
+order: 30
 screen: /procedures
 ---
 
-A <Term id="procedure">Procedure</Term> describes a Plan: the typed **roles** of its context, the **Scenarios** that group its Checks and order them, and for each <Term id="check">Check</Term> the Operation it runs, how the context binds the Operation's Input, and the typed **qualification** that makes the Check validated. A Procedure is compiled against the Operation catalog and **published** as a versioned revision that embeds the exact Operations it uses.
+A <Term id="procedure">Procedure</Term> turns a business expectation into questions TRUST can follow. It defines the people, systems and objects involved; the <Term id="check">Checks</Term> to answer; their order; and the actions that are allowed or forbidden while answering them. It may also require the agent to state how one Check leads to the next.
 
-> A Procedure says what must be established, in which order, and from which observed fields. It never says how to call a system — that is the Operation's job.
+Each Check binds one <Term id="operation">Operation</Term>, the information it needs and a qualification rule. The Procedure is compiled against the Operation catalog and published as a versioned revision that embeds the exact Operations it uses.
 
-```gherkin procedure id="git-status" title="git-status — the smallest Procedure"
-# language: en
-@trust-dsl:1 @procedure:git-status @version:2.0.0
-Feature: Establish whether a Git repository has local changes
+> A Procedure says what must be established, in which order, and from which observations. The Operation says how to act on the external system.
 
-  Answers one question about a repository checked out below the workspace: does it carry
-  local changes? A single Check reads the working tree; the Plan is satisfied only when it
-  is dirty.
+## Why write the expectation as a Procedure
 
-  Background: Plan context
-    Given Procedure scope
-      | check | authorized | forbidden |
-      | all   | Read the declared repository state. | Modify the repository or its environment to obtain the expected state. |
-    Given one reference "repository"
+An instruction such as “verify the report and share it” leaves important decisions implicit. Which report? Which sources make it reliable? Must verification happen before distribution? What may the agent do if a source is missing? A Procedure makes those decisions visible, reviewable and stable across executions.
 
-  @scenario:repository-status
-  Scenario: Read the repository status
-    Then Check "repository status" runs Operation "git.head-read"
-        on "repository" as Input "project"
-        and must establish "the repository has local changes"
-      """js
-      fact.workingTree === "dirty" ||
-      fail("the repository has no local changes")
-      """
-```
-
-## What a Procedure is made of
-
-| Part | Where | Role |
-| --- | --- | --- |
-| Identity | tags on `Feature:` | `@procedure:<slug>`, semantic `@version`, `@trust-dsl:1` |
-| Title and description | `Feature:` line and the free text under it | what the Procedure establishes, for humans; shown on its page and its Plans |
-| **Plan context** | `Background: Plan context` | one typed role per line: a Plan input, an agent declaration, a fixed value, or a value materialized by a Check |
-| **Procedure scope** | mandatory first `Given` in the Background | prose boundaries for `all` Checks and optional exact Check names: what is authorized and forbidden |
-| **Scenarios** | `@scenario:<slug>` + `Scenario:` | prerequisites (`Given scenario "…" is validated`) followed by one or more Checks |
-| **Checks** | `Then Check "…" runs Operation "…" …` | one Operation on a target role, Input bindings, materializations, success reason, `js` qualification |
+The language therefore describes more than a sequence. It records context roles, dependencies, qualification rules and reasons, the authorized scope, and optionally the <Term id="intent">intent chain</Term> that connects one Check to the next.
 
 ## How a Procedure is used
 
 ```mermaid
 flowchart LR
-  S["Source (.feature)"] -->|"compile against the catalog"| R["Published revision<br/><small>roles · Scenarios · Checks · embedded Operations</small>"]
+  S["Source (.feature)"] -->|"compile against the catalog"| R["Published revision<br/><small>roles · scope · Scenarios · Checks · embedded Operations</small>"]
   R -->|"engage: inputs + Environment"| P["Plan"]
   P -->|"one Check at a time"| C["Check verdicts"]
   C -->|"cascade"| P
 ```
-
-1. **Authoring.** The source is written in the interface or an editor. The compiler resolves every referenced Operation, validates every binding and typed qualification, and returns a compiled Procedure or a diagnostic with a line.
-2. **Publication.** The runtime stores the revision `procedure@version` with the exact Operations it embeds. It never changes afterwards.
-3. **Engagement.** A Plan is engaged from a published version with its root inputs and an Environment; the initial Checks are created. Agent declarations are filled by the agent later; materialized roles are filled by Checks.
-4. **Execution.** Checks become actionable when their Scenario's prerequisites are validated; each accepted execution produces a verdict and reopens dependent Checks.
-
-<Callout kind="rule">
-  A published revision is autonomous. Editing an Operation of the catalog, or the source of the Procedure, does not change any published version — a new version is published instead.
-</Callout>
 
 <PageCards />

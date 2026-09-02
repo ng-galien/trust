@@ -1,7 +1,7 @@
 ---
-title: "Language reference"
-summary: "The Gherkin conventions common to Operations and Procedures, then the two closed grammars on one page each."
-order: 6
+title: "TRUST DSL reference"
+summary: "The shared Gherkin conventions and the complete Operation and Procedure grammars."
+order: 99
 ---
 
 Operations and Procedures are written in **English Gherkin with a closed sentence set**: fixed words, fixed table headers, and anything outside the grammar is a compile error with a line. There is no free-form step: the compiler either understands a sentence entirely or refuses it.
@@ -31,5 +31,36 @@ A step may continue on the following lines when they are indented deeper than it
 The language server (`@trust/language-server`) gives any LSP editor the same diagnostics, formatting and folding as the interface. Sources are plain `.feature` files: the Operation catalog is a directory of them; a Procedure is published from one.
 
 ## The two grammars
+
+An Operation defines one bounded external action and the observations it must return:
+
+```gherkin fragment
+@trust-dsl:1 @operation:<domain>.<action> @version:<x.y.z>
+Feature: <title>
+  Background: <name>
+    Given Environment ...
+    And Input ...
+    And Produced fields ...
+  Scenario: Run
+    When <Shell, File or HTTP step>
+    Then Produce with JSONata
+```
+
+A Procedure defines what those observations must establish, in what order and within which scope:
+
+```gherkin fragment
+@trust-dsl:1 @procedure:<slug> @version:<x.y.z> [@intent-chaining]
+Feature: <title>
+  Background: Plan context
+    Given Procedure scope ...
+    And <typed context roles> ...
+  @scenario:<slug>
+  Scenario: <title>
+    Then Check "<name>" runs Operation "<domain.action>"
+        on "<role>" as Input "<input>"
+        and must establish "<success reason>"
+```
+
+The two pages below list every accepted sentence and link back to the detailed explanations.
 
 <PageCards />

@@ -25,6 +25,7 @@ import { standalone } from "./standalone.js";
 
 export function DocsArea() {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const params = useParams();
   const language = usePreference("language") as Language;
   const navOpen = usePreference("docsNavOpen");
@@ -36,6 +37,11 @@ export function DocsArea() {
   const next = index >= 0 ? sequence[index + 1] : undefined;
   const article = useRef<HTMLElement>(null);
   const location = useLocation();
+
+  // The former Principles hub was merged into the documentation introduction.
+  useEffect(() => {
+    if (path === "principles") navigate({ pathname: "/docs", hash: location.hash }, { replace: true });
+  }, [location.hash, navigate, path]);
 
   // A new page starts at the top (or at its hash anchor).
   useLayoutEffect(() => {
@@ -57,7 +63,7 @@ export function DocsArea() {
         <div className="flex min-h-0 flex-1">
           <article ref={article} className="docs-article min-w-0 flex-1 overflow-y-auto scroll-pt-6">
             {found ? (
-              <div className="mx-auto max-w-[52rem] px-8 pt-6 pb-16">
+              <div data-doc-page className="mx-auto w-full max-w-[52rem] px-6 pt-6 pb-16 sm:px-8 2xl:max-w-[68rem] 2xl:px-10">
                 <PageHead page={found.page} fallback={found.fallback} />
                 <MDXProvider components={mdxComponents}>
                   <found.page.Content />
@@ -148,6 +154,7 @@ function TreeNode({ node, current, depth }: { node: DocsNode; current: string; d
 
 function OnThisPage({ container }: { container: { current: HTMLElement | null } }) {
   const { t } = useTranslation();
+  const location = useLocation();
   const [headings, setHeadings] = useState<Array<{ id: string; text: string; level: number }>>([]);
   const [active, setActive] = useState<string>("");
 
@@ -171,7 +178,7 @@ function OnThisPage({ container }: { container: { current: HTMLElement | null } 
       <ul className="flex flex-col gap-1">
         {headings.map((heading) => (
           <li key={heading.id} className={heading.level === 3 ? "pl-3" : ""}>
-            <a href={`#${heading.id}`} className={cx("block truncate-1 border-l-2 py-0.5 pl-2 text-body-lg", active === heading.id ? "border-accent text-text" : "border-transparent text-muted hover:text-text")}>{heading.text}</a>
+            <Link to={{ pathname: location.pathname, search: location.search, hash: `#${heading.id}` }} className={cx("block truncate-1 border-l-2 py-0.5 pl-2 text-body-lg", active === heading.id ? "border-accent text-text" : "border-transparent text-muted hover:text-text")}>{heading.text}</Link>
           </li>
         ))}
       </ul>
@@ -232,10 +239,11 @@ function DocsSearch({ language }: { language: Language }) {
 function heading(level: 2 | 3 | 4) {
   const Tag = `h${level}` as const;
   return function Heading({ id, children, ...rest }: ComponentProps<"h2">) {
+    const location = useLocation();
     return (
       <Tag id={id} {...rest} className={cx("group/h scroll-mt-4", rest.className)}>
         {children}
-        {id ? <a href={`#${id}`} className="ml-2 text-faint opacity-0 hover:text-accent group-hover/h:opacity-100" aria-hidden>#</a> : null}
+        {id ? <Link to={{ pathname: location.pathname, search: location.search, hash: `#${id}` }} className="ml-2 text-faint opacity-0 hover:text-accent group-hover/h:opacity-100" aria-hidden>#</Link> : null}
       </Tag>
     );
   };

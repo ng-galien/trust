@@ -1,11 +1,12 @@
-import { ImageOff, X } from "lucide-react";
-import { type ReactNode, useEffect, useState } from "react";
+import { ImageOff } from "lucide-react";
+import { type ReactNode, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import type { Language } from "../../i18n/index.js";
 import { cx } from "../../lib/format.js";
 import { usePreference, useResolvedTheme } from "../../lib/preferences.js";
 import { Legend } from "./blocks.js";
+import { VisualDialog, VisualExpandButton } from "./visual-dialog.js";
 
 /* Real screenshots of the interface, captured by `apps/trust-web/acceptance/docs/*.capture.ts` on the seeded
    runtime (light/dark × language) into `../captures/<id>.<theme>.<language>.png`, with a sidecar JSON giving the
@@ -37,12 +38,6 @@ export function Screenshot({ id, legend, caption, alt, className }: { id: string
   const language = usePreference("language") as Language;
   const [active, setActive] = useState<string | null>(null);
   const [zoomed, setZoomed] = useState(false);
-  useEffect(() => {
-    if (!zoomed) return;
-    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape") setZoomed(false); };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [zoomed]);
   const src = pick(images, id, theme, language, "png");
   const capture = pick(sidecars, id, theme, language, "json");
   const keys = Object.keys(legend ?? {});
@@ -67,7 +62,8 @@ export function Screenshot({ id, legend, caption, alt, className }: { id: string
 
   return (
     <figure className={cx("docs-screenshot my-5", className)}>
-      <div className={cx("relative overflow-hidden rounded-(--radius-3) border border-border bg-surface-2 shadow-(--shadow-1)", src && "cursor-zoom-in")} onClick={() => src && setZoomed(true)}>
+      <div className={cx("group/visual relative overflow-hidden rounded-(--radius-3) border border-border bg-surface-2 shadow-(--shadow-1)", src && "cursor-zoom-in")} onClick={() => src && setZoomed(true)}>
+        {src ? <VisualExpandButton onClick={() => setZoomed(true)} /> : null}
         {picture ?? (
           <div className="flex min-h-40 flex-col items-center justify-center gap-2 p-6 text-center text-body text-muted">
             <ImageOff size={20} className="text-faint" />
@@ -86,12 +82,9 @@ export function Screenshot({ id, legend, caption, alt, className }: { id: string
           <Legend items={keys.map((key) => <span key={key} onMouseEnter={() => setActive(key)} className={cx("block rounded-(--radius-1) px-1 -mx-1", active === key && "bg-accent-soft")}>{legend[key]}</span>)} />
         </div>
       ) : null}
-      {zoomed ? (
-        <div role="dialog" aria-modal className="fixed inset-0 z-[100] flex items-center justify-center bg-[var(--color-overlay-backdrop)] p-6" onClick={() => setZoomed(false)}>
-          <button type="button" aria-label={t("common.actions.close")} className="absolute top-4 right-4 grid h-8 w-8 place-items-center rounded-full bg-surface text-text shadow-(--shadow-2)" onClick={() => setZoomed(false)}><X size={16} /></button>
-          <div className="relative max-h-full w-auto max-w-[96vw] overflow-hidden rounded-(--radius-3) shadow-(--shadow-3) [&>img]:max-h-[92vh] [&>img]:w-auto" onClick={(event) => event.stopPropagation()}>{picture}</div>
-        </div>
-      ) : null}
+      <VisualDialog open={zoomed} onClose={() => setZoomed(false)} label={typeof caption === "string" ? caption : t("docs.visual.screenshot")}>
+        <div className="relative overflow-hidden [&>img]:max-h-[86vh] [&>img]:w-auto [&>img]:max-w-[92vw]">{picture}</div>
+      </VisualDialog>
     </figure>
   );
 }

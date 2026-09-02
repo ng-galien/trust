@@ -21,7 +21,7 @@ The `Background: Plan context` first declares the Procedure's action scope, then
 
 ## The sentence
 
-```text
+```gherkin fragment
 Given|And one|many string|number|instant|reference "<role>" [declared [optionally] by agent] [fixed as "<value>"] [for "<parent>"]… [for each "<parent>"]…
 ```
 
@@ -73,5 +73,5 @@ Engagement accepts **exactly** the Plan inputs — no fixed, declared or materia
 Types and cardinalities must match the Operation's Input at each binding: a `many reference` role cannot feed a `one` Input without `each`; a `string` role cannot feed a `reference` Input.
 
 <Details title="Compiled roles" expert>
-Each role compiles to `{ name, type, cardinality, source, parent? }` where `source.kind` is `plan-input`, `agent-declaration`, `fixed` (with `value`), `operation-field` (with the Check and field) or `plan-identifier` (the synthesised role `plan`, see [Scenarios and Checks](/docs/procedures/scenarios-and-checks)). Only an optional agent declaration adds `optional: true` to its `agent-declaration` source. The Procedure page lists Plan inputs in its inspector; a Plan's engagement form is generated from them.
+Each role compiles to `{ name, type, cardinality, source, parents: [{ role, each }] }` where `source.kind` is `plan-input`, `agent-declaration`, `fixed` (with `value`), `operation-field` (with the Check and field) or `plan-identifier` (the synthesised role `plan`, see [Scenarios and Checks](/docs/procedures/scenarios-and-checks)). Only an optional agent declaration adds `optional: true` to its `agent-declaration` source. The Procedure page lists Plan inputs in its inspector; a Plan's engagement form is generated from them.
 </Details>

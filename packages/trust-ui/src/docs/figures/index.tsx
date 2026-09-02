@@ -50,35 +50,32 @@ function Defs() {
 export function ModelFigure() {
   const { t } = useTranslation();
   return (
-    <svg viewBox="0 0 780 330" role="img" aria-label={t("docs.figures.model.alt")} className="mx-auto block h-auto w-full max-w-[780px] font-sans">
+    <svg viewBox="0 0 780 260" preserveAspectRatio="xMidYMid meet" role="img" aria-label={t("docs.figures.model.alt")} className="mx-auto block h-auto min-w-0 max-w-full font-sans">
       <Defs />
-      <Lane x={8} y={8} w={764} h={128} label={t("docs.figures.model.design")}>
-        <Box x={28} y={44} w={150} h={70} title={t("docs.figures.model.operation")} sub={t("docs.figures.model.operationSub")} tone="accent" />
-        <Box x={262} y={36} w={490} h={88} title="" />
-        <text x={276} y={54} className="fill-text" fontSize={12.5} fontWeight={600}>{t("docs.figures.model.procedure")}</text>
-        <text x={276} y={68} className="fill-muted" fontSize={10.5}>{t("docs.figures.model.procedureSub")}</text>
-        <Box x={276} y={76} w={220} h={40} title={t("docs.figures.model.scenario")} sub={t("docs.figures.model.scenarioSub")} />
-        <Box x={512} y={76} w={222} h={40} title={t("docs.figures.model.check")} sub={t("docs.figures.model.checkSub")} tone="accent" />
-        <Arrow d="M 178 79 L 260 79" label={t("docs.figures.model.usedBy")} labelAt={[219, 72]} />
+      <Lane x={8} y={8} w={764} h={100} label={t("docs.figures.model.design")}>
+        <Box x={28} y={40} w={140} h={48} title={t("docs.figures.model.operation")} tone="accent" />
+        <Box x={230} y={28} w={522} h={68} title="" />
+        <text x={244} y={48} className="fill-text" fontSize={12.5} fontWeight={600}>{t("docs.figures.model.procedure")}</text>
+        <Box x={244} y={54} w={220} h={34} title={t("docs.figures.model.scenario")} />
+        <Box x={492} y={54} w={242} h={34} title={t("docs.figures.model.check")} tone="accent" />
+        <Arrow d="M 168 64 L 228 64" label={t("docs.figures.model.usedBy")} labelAt={[198, 56]} />
       </Lane>
-      <Lane x={8} y={156} w={764} h={166} label={t("docs.figures.model.run")}>
-        <Box x={28} y={196} w={150} h={70} title={t("docs.figures.model.plan")} sub={t("docs.figures.model.planSub")} tone="accent" />
-        <Box x={218} y={196} w={140} h={70} title={t("docs.figures.model.attempt")} sub={t("docs.figures.model.attemptSub")} />
-        <Box x={398} y={196} w={120} h={70} title={t("docs.figures.model.facts")} sub={t("docs.figures.model.factsSub")} />
-        <Box x={558} y={196} w={92} h={70} title={t("docs.figures.model.verdict")} sub={t("docs.figures.model.verdictSub")} tone="success" />
-        <Box x={666} y={196} w={92} h={70} title={t("docs.figures.model.revision")} sub={t("docs.figures.model.revisionSub")} />
-        <Arrow d="M 178 231 L 216 231" />
-        <Arrow d="M 358 231 L 396 231" />
-        <Arrow d="M 518 231 L 556 231" label={t("docs.figures.model.qualifies")} labelAt={[537, 188]} />
-        <Arrow d="M 650 231 L 664 231" />
-        <text x={286} y={290} textAnchor="middle" className="fill-muted" fontSize={10.5}>{t("docs.figures.model.attemptBy")}</text>
-        <text x={458} y={290} textAnchor="middle" className="fill-muted" fontSize={10.5}>{t("docs.figures.model.factsVia")}</text>
+      <Lane x={8} y={126} w={764} h={118} label={t("docs.figures.model.run")}>
+        <Box x={28} y={166} w={120} h={48} title={t("docs.figures.model.plan")} tone="accent" />
+        <Box x={178} y={166} w={120} h={48} title={t("docs.figures.model.attempt")} />
+        <Box x={328} y={166} w={100} h={48} title={t("docs.figures.model.facts")} />
+        <Box x={458} y={166} w={130} h={48} title={t("docs.figures.model.verdict")} tone="success" />
+        <Box x={618} y={166} w={120} h={48} title={t("docs.figures.model.revision")} />
+        <Arrow d="M 148 190 L 176 190" />
+        <Arrow d="M 298 190 L 326 190" />
+        <Arrow d="M 428 190 L 456 190" />
+        <Arrow d="M 588 190 L 616 190" />
       </Lane>
       {/* Design → run: a Procedure is engaged as a Plan; a Check is what an Attempt executes. */}
-      <Arrow d="M 300 124 C 300 160 103 150 103 194" label={t("docs.figures.model.engagedAs")} labelAt={[220, 158]} />
-      <Arrow d="M 623 116 C 623 150 288 150 288 194" dashed />
+      <Arrow d="M 270 96 C 270 126 88 120 88 164" label={t("docs.figures.model.engagedAs")} labelAt={[196, 122]} />
+      <Arrow d="M 613 88 C 613 124 238 122 238 164" dashed />
       {/* Cascade: a new revision reopens dependent Checks. */}
-      <Arrow d="M 712 196 C 712 150 660 140 640 116" dashed label={t("docs.figures.model.cascade")} labelAt={[712, 158]} />
+      <Arrow d="M 678 164 C 678 126 652 112 628 90" dashed label={t("docs.figures.model.cascade")} labelAt={[704, 126]} />
     </svg>
   );
 }
@@ -87,25 +84,25 @@ export function ModelFigure() {
 export function ArchitectureFigure() {
   const { t } = useTranslation();
   return (
-    <svg viewBox="0 0 780 300" role="img" aria-label={t("docs.figures.architecture.alt")} className="mx-auto block h-auto w-full max-w-[780px] font-sans">
+    <svg viewBox="0 0 780 260" preserveAspectRatio="xMidYMid meet" role="img" aria-label={t("docs.figures.architecture.alt")} className="mx-auto block h-auto min-w-0 max-w-full font-sans">
       <Defs />
-      <Box x={20} y={30} w={170} h={70} title={t("docs.figures.architecture.agent")} sub={t("docs.figures.architecture.agentSub")} tone="warning" />
-      <Box x={20} y={190} w={170} h={70} title={t("docs.figures.architecture.skill")} sub={t("docs.figures.architecture.skillSub")} tone="warning" />
-      <Box x={310} y={110} w={200} h={90} title={t("docs.figures.architecture.runtime")} sub={t("docs.figures.architecture.runtimeSub")} tone="accent" />
-      <Box x={590} y={30} w={170} h={70} title={t("docs.figures.architecture.interface")} sub={t("docs.figures.architecture.interfaceSub")} />
-      <Box x={590} y={190} w={170} h={70} title={t("docs.figures.architecture.external")} sub={t("docs.figures.architecture.externalSub")} />
+      <Lane x={8} y={8} w={210} h={244} label={t("docs.figures.architecture.agentSystem")}>
+        <Box x={28} y={40} w={170} h={48} title={t("docs.figures.architecture.agent")} tone="warning" />
+        <Box x={28} y={176} w={170} h={48} title={t("docs.figures.architecture.skill")} tone="warning" />
+        <Arrow d="M 113 88 L 113 174" label={t("docs.figures.architecture.checkUri")} labelAt={[113, 136]} />
+      </Lane>
+      <Box x={310} y={104} w={200} h={56} title={t("docs.figures.architecture.runtime")} tone="accent" />
+      <Box x={590} y={24} w={170} h={48} title={t("docs.figures.architecture.interface")} />
+      <Box x={590} y={182} w={170} h={48} title={t("docs.figures.architecture.external")} />
       {/* agent → runtime: reads Plans and Checks over MCP */}
-      <Arrow d="M 190 62 C 250 62 260 130 308 138" label={t("docs.figures.architecture.mcpRead")} labelAt={[250, 54]} />
-      {/* agent → skill: one Check URI */}
-      <Arrow d="M 105 100 L 105 188" label={t("docs.figures.architecture.checkUri")} labelAt={[105, 148]} />
+      <Arrow d="M 198 64 C 250 64 260 116 308 122" label={t("docs.figures.architecture.mcpRead")} labelAt={[250, 52]} />
       {/* skill → runtime: admission RPC, then Facts over OTLP */}
-      <Arrow d="M 190 215 C 250 215 260 175 308 168" label={t("docs.figures.architecture.admission")} labelAt={[232, 176]} />
-      <Arrow d="M 190 240 C 270 240 300 200 340 200" label={t("docs.figures.architecture.facts")} labelAt={[262, 232]} />
+      <Arrow d="M 198 192 C 250 192 260 154 308 146" label={t("docs.figures.architecture.admission")} labelAt={[238, 166]} />
+      <Arrow d="M 198 212 C 270 212 300 170 340 160" label={t("docs.figures.architecture.facts")} labelAt={[266, 208]} />
       {/* skill → external systems: the action itself */}
-      <Arrow d="M 190 258 C 380 290 460 270 588 236" label={t("docs.figures.architecture.execute")} labelAt={[400, 282]} />
+      <Arrow d="M 198 222 C 380 258 460 244 588 210" label={t("docs.figures.architecture.execute")} labelAt={[400, 248]} />
       {/* interface ↔ runtime */}
-      <Arrow d="M 590 62 C 540 62 520 100 508 122" label={t("docs.figures.architecture.rpc")} labelAt={[556, 84]} />
-      <Arrow d="M 508 175 C 540 190 560 200 588 210" dashed label={t("docs.figures.architecture.runFromInterface")} labelAt={[556, 178]} />
+      <Arrow d="M 590 48 C 540 48 520 88 508 112" label={t("docs.figures.architecture.rpc")} labelAt={[556, 72]} />
     </svg>
   );
 }
