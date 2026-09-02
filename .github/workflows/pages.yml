@@ -30,8 +30,11 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Build shared Gherkin package
-        run: npm run build --workspace=@trust/gherkin
+      - name: Build documentation dependencies
+        run: |
+          npm run build --workspace=@trust/gherkin
+          npm run build --workspace=@trust/operation
+          npm run build --workspace=@trust/procedure
 
       - name: Build documentation
         run: npm run build:docs --workspace=@trust/web
