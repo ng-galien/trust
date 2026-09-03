@@ -1,0 +1,70 @@
+---
+title: "Agent operating models"
+summary: "How instructions, toolboxes and action maps structure an agent's execution."
+order: 0
+---
+
+## Instructions and a toolbox
+
+In a common operating model, an agent receives instructions written in prose and a toolbox.
+
+The toolbox can be compared to a box containing a hammer, a saw, a drill and a stamp. The instructions describe the work and may indicate when each tool should be used. The agent interprets them, chooses among the available tools and coordinates their use.
+
+Agent systems can select a toolbox for a role or task. This selection is made before execution and may cover more actions than the one permitted at a particular moment.
+
+The agent coordinates the sequence from its instructions, current context and learned patterns. For a familiar kind of work, training already provides many examples of the usual sequence. For an organization-specific process, its order, exceptions and authority boundaries must be carried by the current instructions.
+
+<Callout kind="note" title="Where the apparent magic comes from">
+  An agent often seems to understand what to do by itself because it recognizes a conceptual model of the actions that it has already learned: the objects involved, their usual order and their plausible consequences. That model may be absent for a private or uncommon process, and the boundary is not always visible in advance. The agent may then reverse steps or reconstruct a sequence that is plausible but wrong. This is not a sudden loss of intelligence: the frame supporting its apparent autonomy was not learned.
+</Callout>
+
+## Three operating models
+
+| | Toolbox and prose | Fully wired flow | Action map |
+| --- | --- | --- | --- |
+| **Sequence** | coordinated by the agent | programmed transition by transition | maintained as checkpoints and dependencies |
+| **Toolbox** | selected before execution | fixed into the flow | made available action by action |
+| **Agent freedom** | includes sequencing and tool choice | limited to the programmed paths | exercised between accessible actions |
+| **Completion** | interpreted by the agent | produced by the transition | established from the observations returned by the action |
+| **Blocked work** | handled in the conversation | handled by a programmed branch | recorded as an explicit stop |
+
+The action-map model defines control points without programming every intermediate activity. Independent actions can be available at the same time. An action with unmet prerequisites remains unavailable.
+
+## The action map
+
+The map is a checklist whose elements are actions. An action can:
+
+- read information and verify an observed state;
+- request a decision, authorization or stamp;
+- create, update, send, publish, transition or delete something in an external system.
+
+Observation and change are therefore not separate models. Both are actions on the map. Each action has an assigned way of executing, a scope, required observations and a rule for determining what those observations establish.
+
+When the agent reaches an accessible element, it asks to attempt that action. The system verifies its prerequisites and context, then makes only the assigned execution available for that attempt. The agent does not select another action from the toolbox through that element.
+
+The execution returns complete observations. The system validates them and determines whether the checklist element is satisfied. An external success message or the agent's declaration is not sufficient on its own.
+
+If a later observation changes an earlier conclusion, the dependent elements reopen. Their history remains, but they are no longer presented as current.
+
+If the agent cannot continue within the permitted scope, it records the blocker and the out-of-scope action it will not perform. The execution stops at that point and returns the decision to an operator.
+
+<Callout kind="note" title="Scope of the action map">
+  The map controls the toolbox placed behind it. If the same capability is also available to the agent through another route, that other access is outside this control.
+</Callout>
+
+## The TRUST vocabulary
+
+| Description used above | In TRUST |
+| --- | --- |
+| reusable instructions that define the work | **Procedure** |
+| one concrete execution of those instructions | **Plan** |
+| the current checklist and its dependencies | the **Plan** state |
+| one action in the checklist | **Check** |
+| the executable definition assigned to that action | **Operation** |
+| attempt the action | run the **Check**; TRUST supplies its assigned **Operation** |
+| complete observations returned by the action | **Facts** |
+| determine what the observations establish | qualify the **Check** and update the **Plan** |
+| make dependent elements current again, or invalid again | open or reopen dependent **Checks** |
+| stop because execution cannot continue within scope | **Escalation** |
+
+Executing a Plan consists of advancing its checklist by attempting Checks. Each Check invokes its assigned Operation; the resulting Facts determine the current checklist state.

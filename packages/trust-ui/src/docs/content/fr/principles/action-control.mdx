@@ -1,0 +1,70 @@
+---
+title: "Modes opératoires des agents"
+summary: "Comment les instructions, la boîte à outils et la carte d'actions structurent l'exécution d'un agent."
+order: 0
+---
+
+## Des instructions et une boîte à outils
+
+Dans un mode opératoire courant, un agent reçoit des instructions écrites en prose et une boîte à outils.
+
+Cette boîte peut être comparée à une caisse contenant un marteau, une scie, une perceuse et un tampon. Les instructions décrivent le travail et peuvent indiquer quand utiliser chaque outil. L'agent les interprète, choisit parmi les outils disponibles et coordonne leur utilisation.
+
+Les systèmes d'agents peuvent sélectionner une boîte à outils pour un rôle ou une tâche. Cette sélection est faite avant l'exécution et peut couvrir davantage d'actions que celle qui est permise à un instant donné.
+
+L'agent coordonne la séquence à partir de ses instructions, de son contexte courant et des schémas qu'il a appris. Pour un genre de travail familier, l'apprentissage fournit déjà de nombreux exemples de la séquence habituelle. Pour un processus propre à une organisation, son ordre, ses exceptions et ses frontières d'autorité doivent être portés par les instructions courantes.
+
+<Callout kind="note" title="D'où vient l'impression de magie">
+  Un agent semble souvent comprendre seul ce qu'il faut faire parce qu'il reconnaît un modèle conceptuel des actions qu'il a déjà appris : les objets concernés, leur ordre habituel et leurs conséquences plausibles. Ce modèle peut manquer pour un processus privé ou peu courant, sans que la frontière soit toujours visible à l'avance. L'agent peut alors inverser des étapes ou reconstruire une séquence plausible mais fausse. Ce n'est pas une baisse soudaine d'intelligence : le cadre sur lequel reposait son autonomie apparente n'a simplement pas été appris.
+</Callout>
+
+## Trois modes opératoires
+
+| | Boîte à outils et prose | Flux entièrement câblé | Carte d'actions |
+| --- | --- | --- | --- |
+| **Séquence** | coordonnée par l'agent | programmée transition par transition | maintenue sous forme de checkpoints et de dépendances |
+| **Boîte à outils** | sélectionnée avant l'exécution | fixée dans le flux | rendue disponible action par action |
+| **Liberté de l'agent** | comprend l'ordre et le choix des outils | limitée aux chemins programmés | exercée entre les actions accessibles |
+| **Achèvement** | interprété par l'agent | produit par la transition | établi à partir des observations renvoyées par l'action |
+| **Travail bloqué** | traité dans la conversation | traité par une branche programmée | enregistré sous forme d'arrêt explicite |
+
+Le modèle de la carte d'actions définit des points de contrôle sans programmer chaque activité intermédiaire. Des actions indépendantes peuvent être disponibles au même moment. Une action dont les prérequis ne sont pas remplis reste indisponible.
+
+## La carte d'actions
+
+La carte est une checklist dont les éléments sont des actions. Une action peut :
+
+- lire une information et vérifier un état observé ;
+- demander une décision, une autorisation ou un coup de tampon ;
+- créer, modifier, envoyer, publier, faire évoluer ou supprimer quelque chose dans un système externe.
+
+L'observation et la modification ne constituent donc pas deux modèles séparés. Ce sont, dans les deux cas, des actions de la carte. Chaque action possède un mode d'exécution assigné, un périmètre, des observations requises et une règle qui détermine ce que ces observations permettent d'établir.
+
+Lorsque l'agent atteint un élément accessible, il demande à tenter cette action. Le système vérifie ses prérequis et son contexte, puis rend disponible uniquement l'exécution assignée à cette tentative. L'agent ne peut pas sélectionner une autre action de la boîte à outils à travers cet élément.
+
+L'exécution renvoie des observations complètes. Le système les valide et détermine si l'élément de la checklist est satisfait. Un message de réussite externe ou la déclaration de l'agent ne suffit pas à lui seul.
+
+Si une observation ultérieure modifie une conclusion antérieure, les éléments dépendants sont rouverts. Leur historique demeure, mais ils ne sont plus présentés comme actuels.
+
+Si l'agent ne peut pas continuer dans le périmètre permis, il enregistre le blocage et l'action hors périmètre qu'il n'accomplira pas. L'exécution s'arrête à cet endroit et remet la décision à un opérateur.
+
+<Callout kind="note" title="Périmètre de la carte d'actions">
+  La carte contrôle la boîte à outils placée derrière elle. Si la même capacité reste accessible à l'agent par une autre voie, cet autre accès se trouve hors de ce contrôle.
+</Callout>
+
+## Le vocabulaire TRUST
+
+| Description utilisée plus haut | Dans TRUST |
+| --- | --- |
+| les instructions réutilisables qui définissent le travail | **Procedure** |
+| une exécution concrète de ces instructions | **Plan** |
+| la checklist courante et ses dépendances | l'état du **Plan** |
+| une action de la checklist | **Check** |
+| la définition exécutable assignée à cette action | **Operation** |
+| tenter l'action | exécuter le **Check** ; TRUST fournit son **Operation** assignée |
+| les observations complètes renvoyées par l'action | **Facts** |
+| déterminer ce que les observations permettent d'établir | qualifier le **Check** et mettre à jour le **Plan** |
+| rendre les éléments dépendants à nouveau actuels, ou à nouveau invalides | ouvrir ou rouvrir les **Checks** dépendants |
+| s'arrêter parce que l'exécution ne peut pas continuer dans son périmètre | **Escalation** |
+
+Exécuter un Plan consiste à faire avancer sa checklist en tentant des Checks. Chaque Check invoque l'Operation qui lui est assignée ; les Facts obtenus déterminent l'état courant de la checklist.
