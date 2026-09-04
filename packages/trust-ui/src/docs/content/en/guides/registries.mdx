@@ -1,0 +1,22 @@
+---
+title: "Synchronize a registry"
+summary: "Configure a Git or HTTP source and import its Operations and Procedures."
+order: 5
+---
+
+A registry distributes authored definitions. It does not take part in a running Plan: synchronization copies verified Operations and Procedures into the local TRUST catalogs, where the normal compilation and publication rules apply.
+
+<Steps>
+  <Step title="Prepare one index">Use the `trust.registry-index@1` contract. Each artifact entry names its `kind`, relative `path`, authored `name` and `version`, and lowercase SHA-256 digest. Put `trust-registry.json` at the root of a Git repository. For HTTP, expose the index itself at the configured URL and keep artifacts on the same origin.</Step>
+  <Step title="Register the source">Run `npm exec -- trust registry add NAME git URL [--ref REF]` or `npm exec -- trust registry add NAME http INDEX_URL`. The named source is stored in the runtime database. Saving the same name updates its configuration.</Step>
+  <Step title="Synchronize explicitly">Run `npm exec -- trust registry sync NAME`. TRUST retrieves the index and all artifacts, verifies their digests and identities, compiles the whole batch, then imports Operations before Procedures. It reports how many definitions were imported or already unchanged.</Step>
+  <Step title="Inspect or remove configuration">`npm exec -- trust registry list` prints the configured sources. `npm exec -- trust registry remove NAME` removes only the source configuration; definitions already imported remain governed by their catalog rules.</Step>
+</Steps>
+
+<Callout kind="rule" title="Synchronization never runs a Plan">
+  A registry supplies definitions. It does not authorize an Attempt, deploy a Runner, choose an Environment or qualify a Check.
+</Callout>
+
+<Details title="Index contract" expert>
+The JSON object contains exactly `contract` and `artifacts`. Every artifact contains exactly `kind`, `path`, `name`, `version` and `sha256`. Paths are normalized relative paths without traversal. HTTP sources require HTTPS, except for loopback development. The runtime limits index and artifact sizes, rejects duplicate paths or identities, and refuses a conflicting immutable Procedure version.
+</Details>

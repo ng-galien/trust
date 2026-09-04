@@ -3,6 +3,7 @@ import {
   type CompiledProcedure,
   type ProcedureCompilationInput,
 } from "@trust/procedure";
+import type { CompiledOperation } from "@trust/operation";
 
 import type { Clock } from "../time.js";
 import type { OperationCatalog } from "../operation/catalog.js";
@@ -30,8 +31,11 @@ export class Procedures {
     this.#store = procedureStore;
   }
 
-  compile(input: ProcedureSource): CompiledProcedure {
-    return compileProcedure({ ...input, operations: this.#operations.list() });
+  compile(
+    input: ProcedureSource,
+    operations: readonly CompiledOperation[] = this.#operations.list(),
+  ): CompiledProcedure {
+    return compileProcedure({ ...input, operations });
   }
 
   async publish(input: ProcedureSource, publisher: string): Promise<PublishedProcedure> {

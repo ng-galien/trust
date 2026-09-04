@@ -5,8 +5,8 @@ order: 4
 ---
 
 <Steps>
-  <Step title="Run the runtime and the interface">`npm run dev` starts the runtime (`127.0.0.1:4318`); `npm run dev:web` the interface. Publish the Procedures and configure the Environments the agent will need (values: `workspaceRoot`, service URLs…).</Step>
-  <Step title="Package the skill">`npm run package:skill` → `packages/trust-runner/dist/skill/trust`: `SKILL.md`, `references/results.md`, `scripts/run.js`, `scripts/mcp-stdio.js`. Give this directory to the agent as its skill.</Step>
+  <Step title="Run TRUST">Build the checkout once with `npm run build`, then use `npm exec -- trust server start`. This foreground command starts the runtime and serves the interface at `http://127.0.0.1:4173`. `npm exec -- trust server status` checks both through their public health boundary.</Step>
+  <Step title="Deploy the Runner">Use `npm exec -- trust runner deploy /absolute/destination`, or start the Electron application with `npm run desktop` and choose **File → Deploy Runner…**. Both install the same complete package at the exact directory: `SKILL.md`, `agents/openai.yaml`, `references/results.md`, `scripts/run.js`, `scripts/mcp-stdio.js`, `scripts/trial.js`. Give this directory to the agent as its skill.</Step>
   <Step title="Point the Runner at the runtime">Set `TRUST_RPC_ENDPOINT` and `TRUST_OTLP_ENDPOINT` when the runtime is not local. Add repeatable `--path <absolute-directory>` startup options only when Shell commands need extra executable directories.</Step>
   <Step title="Give the agent the runtime's MCP tools">The runtime serves MCP on `POST /mcp` for Plan and Check reads, engagement, declarations and escalation. These tools are required with either Runner adapter.</Step>
   <Step title="Choose the Runner adapter">For each Check, either let the harness start `scripts/run.js` as a one-shot process and read its JSON, or configure `scripts/mcp-stdio.js` as a local stdio MCP server kept by the agent host. The second adapter exposes only `trust_check_run {checkUri}`; it does not replace the runtime MCP, and packaging the skill does not register it automatically.</Step>

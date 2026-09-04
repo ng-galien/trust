@@ -3,6 +3,16 @@ import { existsSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 
 export const SQLITE_SCHEMA = `
+  CREATE TABLE IF NOT EXISTS registry_sources (
+    name TEXT PRIMARY KEY,
+    kind TEXT NOT NULL CHECK (kind IN ('git', 'http')),
+    url TEXT NOT NULL,
+    reference TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    CHECK ((kind = 'git') OR (reference IS NULL))
+  ) STRICT;
+
   CREATE TABLE IF NOT EXISTS environments (
     name TEXT PRIMARY KEY,
     created_at TEXT NOT NULL,

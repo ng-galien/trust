@@ -2,6 +2,15 @@ import type { Generated, Kysely } from "kysely";
 
 import type { Attempt, CheckSnapshot, Session } from "../model.js";
 
+export interface RegistrySourceTable {
+  name: string;
+  kind: "git" | "http";
+  url: string;
+  reference: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface EnvironmentTable {
   name: string;
   created_at: string;
@@ -163,6 +172,7 @@ export interface PlanEscalationTable {
 }
 
 export interface TrustDatabase {
+  registry_sources: RegistrySourceTable;
   environments: EnvironmentTable;
   environment_variables: EnvironmentVariableTable;
   environment_credentials: EnvironmentCredentialTable;

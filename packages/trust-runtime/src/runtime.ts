@@ -36,6 +36,8 @@ import { PlanEvents } from "./plan/events.js";
 import { EscalationStore } from "./plan/escalation-store.js";
 import { createPlanEventsHttpHandler } from "./http/events.js";
 import { OperationCatalog } from "./operation/catalog.js";
+import { RegistrySourceStore } from "./registry/store.js";
+import { RegistryService } from "./registry/service.js";
 
 export interface RuntimeComponents {
   readonly databasePath: string;
@@ -46,6 +48,8 @@ export interface RuntimeComponents {
   readonly operations: readonly CompiledOperation[];
   readonly operationsDirectory?: string;
   readonly operationCatalog: OperationCatalog;
+  readonly registrySourceStore: RegistrySourceStore;
+  readonly registryService: RegistryService;
   readonly environmentStore: EnvironmentStore;
   readonly environmentService: EnvironmentService;
   readonly credentialStore: CredentialStore;
@@ -102,6 +106,8 @@ export const createRuntimeContainer = async (
     operations: asValue(options.operations ?? []),
     operationsDirectory: asValue(options.operationsDirectory),
     operationCatalog: asClass(OperationCatalog).singleton(),
+    registrySourceStore: asClass(RegistrySourceStore).singleton(),
+    registryService: asClass(RegistryService).singleton(),
     sessionDurationMs: asValue(options.sessionDurationMs ?? DEFAULT_SESSION_DURATION_MS),
     database: options.database === undefined
       ? asFunction(createSqliteDatabase)

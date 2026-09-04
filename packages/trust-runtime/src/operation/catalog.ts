@@ -52,6 +52,10 @@ export class OperationCatalog {
     return this.#entries.find((entry) => entry.operation.operation === operation && entry.operation.version === version)?.operation;
   }
 
+  entry(operation: string, version: string): Readonly<CatalogEntry> | undefined {
+    return this.#entries.find((entry) => entry.operation.operation === operation && entry.operation.version === version);
+  }
+
   async save(source: string, sourceName: string): Promise<CompiledOperation> {
     return this.#serialize(async () => {
       const directory = this.#writableDirectory();
@@ -68,20 +72,51 @@ export class OperationCatalog {
       await mkdir(directory, { recursive: true });
       const target = resolve(directory, sourceName);
       const temporary = resolve(directory, `.${sourceName}.${randomUUID()}.tmp`);
+      const backup = resolve(directory, `.${sourceName}.${randomUUID()}.backup`);
+      let displaced = false;
       try {
         await writeFile(temporary, source, "utf8");
+        try {
+          await rename(target, backup);
+          displaced = true;
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+        }
         await rename(temporary, target);
+        try {
+          const entries = await readEntries(directory);
+          const saved = entries.find((entry) => entry.operation.operation === compiled.operation
+            && entry.operation.version === compiled.version)?.operation;
+          if (!saved || saved.source !== compiled.source) {
+            throw new Error(`Saved Operation ${compiled.operation}@${compiled.version} cannot be read back`);
+          }
+          this.#entries = entries;
+          if (displaced) {
+            displaced = false;
+            await unlink(backup).catch(() => undefined);
+          }
+          return saved;
+        } catch (error) {
+          await unlink(target).catch((unlinkError: NodeJS.ErrnoException) => {
+            if (unlinkError.code !== "ENOENT") throw unlinkError;
+          });
+          if (displaced) {
+            await rename(backup, target);
+            displaced = false;
+          }
+          this.#entries = await readEntries(directory);
+          throw error;
+        }
       } finally {
         await unlink(temporary).catch((error: NodeJS.ErrnoException) => {
           if (error.code !== "ENOENT") throw error;
         });
+        if (displaced) {
+          await rename(backup, target);
+          displaced = false;
+        }
+        await unlink(backup).catch(() => undefined);
       }
-      this.#entries = await readEntries(directory);
-      const saved = this.find(compiled.operation, compiled.version);
-      if (!saved || saved.source !== compiled.source) {
-        throw new Error(`Saved Operation ${compiled.operation}@${compiled.version} cannot be read back`);
-      }
-      return saved;
     });
   }
 

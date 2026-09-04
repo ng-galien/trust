@@ -5,6 +5,7 @@
     { "path": "./packages/trust-operation" },
     { "path": "./packages/trust-procedure" },
     { "path": "./packages/trust-language-server" },
-    { "path": "./packages/trust-runtime" }
+    { "path": "./packages/trust-runtime" },
+    { "path": "./packages/trust-shell" }
   ]
 }

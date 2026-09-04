@@ -28,6 +28,7 @@ import type { EnvironmentService } from "../environment/service.js";
 import type { CredentialService } from "../credential/service.js";
 import { EnvironmentConfigurationError } from "../environment/validation.js";
 import { OperationCatalogError, type OperationCatalog } from "../operation/catalog.js";
+import { RegistryError, type RegistryErrorCode, type RegistryService } from "../registry/service.js";
 import { TrialError, type TrialService } from "../trial/service.js";
 import { executeTrialRpc, InvalidTrialRpcParams, isTrialRpcMethod, TRIAL_ERROR_CONTRACT, type TrialFailureData } from "./trial.js";
 import {
@@ -44,6 +45,11 @@ import {
   InvalidConfigurationRpcParams,
   isConfigurationRpcMethod,
 } from "./configuration.js";
+import {
+  executeRegistryRpc,
+  InvalidRegistryRpcParams,
+  isRegistryRpcMethod,
+} from "./registry.js";
 
 const PROCEDURE_COMPILE_METHOD = "procedure.compile" as const;
 const PROCEDURE_PUBLISH_METHOD = "procedure.publish" as const;
@@ -124,6 +130,14 @@ interface EnvironmentConfigurationFailureData {
   readonly message: string;
 }
 
+interface RegistryFailureData {
+  readonly contract: "trust.registry-error@1";
+  readonly reason: RegistryErrorCode;
+  readonly message: string;
+  readonly artifact?: string;
+  readonly summary: { readonly imported: number; readonly unchanged: number; readonly failed: number };
+}
+
 export const RPC_JSON_LIMIT_BYTES = 1_048_576;
 
 const PARSE_ERROR = -32_700;
@@ -134,6 +148,7 @@ const INTERNAL_ERROR = -32_603;
 const PROCEDURE_COMPILATION_ERROR = -32_010;
 const PLAN_RUNTIME_ERROR = -32_030;
 const TRIAL_ERROR = -32_040;
+const REGISTRY_ERROR = -32_050;
 
 interface RpcHttpDependencies {
   readonly trialService: TrialService;
@@ -143,6 +158,7 @@ interface RpcHttpDependencies {
   readonly procedures: Procedures;
   readonly operationCatalog: OperationCatalog;
   readonly planRuntime: PlanRuntime;
+  readonly registryService: RegistryService;
 }
 
 type RpcErrorData =
@@ -150,7 +166,8 @@ type RpcErrorData =
   | EnvironmentConfigurationFailureData
   | ProcedureCompilationFailureData
   | PlanRuntimeFailureData
-  | TrialFailureData;
+  | TrialFailureData
+  | RegistryFailureData;
 type RpcResult = JsonRpcResponse<unknown, RpcErrorData>;
 
 const hasOwn = (value: object, key: PropertyKey): boolean =>
@@ -282,6 +299,7 @@ const processMessage = async (
     message.method !== OPERATION_REMOVE_METHOD &&
     !isPlanRuntimeRpcMethod(message.method) &&
     !isConfigurationRpcMethod(message.method) &&
+    !isRegistryRpcMethod(message.method) &&
     !isTrialRpcMethod(message.method)
   ) {
     return respond(failure(id, METHOD_NOT_FOUND, "Method not found"));
@@ -302,6 +320,28 @@ const processMessage = async (
         } satisfies EnvironmentConfigurationFailureData));
       }
       process.stderr.write(`configuration rpc ${message.method} failed: ${error instanceof Error ? (error.stack ?? error.message) : String(error)}\n`);
+      return respond(failure(id, INTERNAL_ERROR, "Internal error"));
+    }
+  }
+
+  if (isRegistryRpcMethod(message.method)) {
+    try {
+      const result = await executeRegistryRpc(message.method, message.params, dependencies);
+      return respond({ jsonrpc: "2.0", id, result });
+    } catch (error) {
+      if (error instanceof InvalidRegistryRpcParams) {
+        return respond(failure(id, INVALID_PARAMS, "Invalid params"));
+      }
+      if (error instanceof RegistryError) {
+        return respond(failure(id, REGISTRY_ERROR, "Registry request rejected", {
+          contract: "trust.registry-error@1",
+          reason: error.reason,
+          message: error.message,
+          ...(error.artifact === undefined ? {} : { artifact: error.artifact }),
+          summary: error.summary ?? { imported: 0, unchanged: 0, failed: 1 },
+        } satisfies RegistryFailureData));
+      }
+      process.stderr.write(`registry rpc ${message.method} failed: ${error instanceof Error ? (error.stack ?? error.message) : String(error)}\n`);
       return respond(failure(id, INTERNAL_ERROR, "Internal error"));
     }
   }

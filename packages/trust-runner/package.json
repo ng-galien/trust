@@ -16,7 +16,7 @@
     "src"
   ],
   "scripts": {
-    "package:skill": "node scripts/package-skill.ts",
+    "package:skill": "npm run build --workspace=@trust/shell && node scripts/package-skill.ts",
     "test:acceptance": "npm run build --workspace=@trust/operation && npm run typecheck && vitest run acceptance",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.acceptance.json"
   },

@@ -17,6 +17,8 @@ packages/trust-runtime/   shared runtime: domain, services, SQLite, RPC, MCP and
 packages/trust-operation/ Operation types shared by the runtime and runner
 packages/trust-procedure/ Procedure types and Gherkin compiler
 packages/trust-runner/    one generic Check runner
+packages/trust-shell/     common server shell, CLI and Runner deployment
+apps/trust-desktop/       Electron shell over the common server
 assets/procedures/        authoritative grammar and product Action Contracts
 assets/operations/        Operation catalog and design direction
 environments/trust-test/  retained Kind environment: projects, cluster, manifests, connectors and scripts
@@ -72,8 +74,15 @@ environments/trust-test/  retained Kind environment: projects, cluster, manifest
   explicitly re-observe a satisfied Check. Live Facts enter through OTLP from the runner.
 - A procedure may compile and publish independently of runner availability. Plan engagement validates
   its closed business inputs and creates the initial Checks. Attempt admission validates the current
-  Check, Session, dependencies, Action Contract and Environment without a release registry or
-  deployment lifecycle.
+  Check, Session, dependencies, Action Contract and Environment; registry synchronization and Runner
+  deployment prepare those inputs but never participate in admission or qualification.
+- Registry sources are named configuration stored by the runtime. An HTTP source points directly to a
+  `trust.registry-index@1` index; a Git source clones one repository (optionally at one ref) and reads
+  `trust-registry.json` at its root. Synchronization is explicit, verifies every artifact digest and
+  declared identity, validates the complete batch, then imports Operations before Procedures.
+- The server CLI and Electron application use `trust-shell` as their common shell. Runner deployment
+  installs the complete package at one exact absolute directory and replaces an existing directory
+  atomically; the Electron menu must call that same implementation.
 - RPC and MCP call the same runtime functions. MCP never proxies RPC or exposes raw DTOs.
 - Do not create Proof, Evidence or Binding resources, SQL per requirement, manual references,
   `checks.refresh`, compatibility adapters or another product module.

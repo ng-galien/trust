@@ -1,0 +1,22 @@
+---
+title: "Synchroniser une registry"
+summary: "Configurer une source Git ou HTTP et importer ses Opérations et Procédures."
+order: 5
+---
+
+Une registry distribue des définitions écrites. Elle n'intervient pas dans un Plan en cours : la synchronisation copie les Opérations et Procédures vérifiées dans les catalogues locaux de TRUST, où les règles normales de compilation et de publication s'appliquent.
+
+<Steps>
+  <Step title="Préparer un index">Utilisez le contrat `trust.registry-index@1`. Chaque entrée indique son `kind`, son `path` relatif, ses `name` et `version` déclarés, ainsi que son empreinte SHA-256 en minuscules. Placez `trust-registry.json` à la racine d'un dépôt Git. En HTTP, exposez directement l'index à l'URL configurée et gardez les artefacts sur la même origine.</Step>
+  <Step title="Enregistrer la source">Exécutez `npm exec -- trust registry add NAME git URL [--ref REF]` ou `npm exec -- trust registry add NAME http INDEX_URL`. La source nommée est conservée dans la base du runtime. Enregistrer de nouveau le même nom met sa configuration à jour.</Step>
+  <Step title="Synchroniser explicitement">Exécutez `npm exec -- trust registry sync NAME`. TRUST récupère l'index et tous les artefacts, vérifie leurs empreintes et leurs identités, compile le lot complet, puis importe les Opérations avant les Procédures. Le résultat distingue les définitions importées de celles déjà inchangées.</Step>
+  <Step title="Inspecter ou retirer la configuration">`npm exec -- trust registry list` affiche les sources configurées. `npm exec -- trust registry remove NAME` retire uniquement la configuration de la source ; les définitions déjà importées restent soumises aux règles de leur catalogue.</Step>
+</Steps>
+
+<Callout kind="rule" title="La synchronisation n'exécute jamais un Plan">
+  Une registry fournit des définitions. Elle n'autorise pas une Attempt, ne déploie pas de Runner, ne choisit pas d'Environment et ne qualifie pas de Check.
+</Callout>
+
+<Details title="Contrat de l'index" expert>
+L'objet JSON contient exactement `contract` et `artifacts`. Chaque artefact contient exactement `kind`, `path`, `name`, `version` et `sha256`. Les chemins sont relatifs, normalisés et sans traversée. Les sources HTTP exigent HTTPS, sauf en développement sur l'adresse locale. Le runtime limite la taille de l'index et des artefacts, refuse les chemins ou identités répétés, ainsi qu'une version de Procédure immuable en conflit.
+</Details>

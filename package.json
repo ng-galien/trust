@@ -7,6 +7,7 @@
     "node": ">=24.10.0"
   },
   "workspaces": [
+    "apps/trust-desktop",
     "apps/trust-web",
     "packages/trust-runtime",
     "packages/trust-gherkin",
@@ -14,11 +15,13 @@
     "packages/trust-operation",
     "packages/trust-procedure",
     "packages/trust-runner",
+    "packages/trust-shell",
     "packages/trust-ui"
   ],
   "scripts": {
     "dev": "node environments/trust-test/scripts/server.ts start --web",
     "dev:web": "npm run dev --workspace=@trust/web",
+    "desktop": "npm start --workspace=@trust/desktop",
     "build": "tsc -b && npm run build --workspace=@trust/ui && npm run build --workspace=@trust/web",
     "package:skill": "npm run package:skill --workspace=@trust/runner",
     "check:dependencies": "node scripts/check-workspace-dependencies.mjs",

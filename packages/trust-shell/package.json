@@ -1,0 +1,35 @@
+{
+  "name": "@trust/shell",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24.10.0"
+  },
+  "bin": {
+    "trust": "./bin/trust.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "import": "./dist/src/index.js"
+    }
+  },
+  "files": [
+    "bin",
+    "dist/src"
+  ],
+  "scripts": {
+    "build": "tsc -b tsconfig.json",
+    "clean": "node --input-type=module -e \"import { rmSync } from 'node:fs'; rmSync('dist', { recursive: true, force: true })\"",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test:acceptance": "npm run build --workspace=@trust/runtime && npm run build --workspace=@trust/web && npm run build && node --test --test-concurrency=1 dist/acceptance/*.acceptance.test.js"
+  },
+  "dependencies": {
+    "esbuild": "^0.28.2"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "^5.7.2"
+  }
+}
