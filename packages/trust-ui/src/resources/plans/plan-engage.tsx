@@ -22,8 +22,8 @@ import { Breadcrumb } from "../../ui/breadcrumb.js";
 import { OverlayHeader } from "../shared/resource-overlay.js";
 import { ModeBadge } from "./parts.js";
 
-/* Engaging a Plan: the closed set of compiled root inputs of a published Procedure, on a configured
-   environment. Live Plans are then driven by an agent; dry-runs by the operator (Rehearse). */
+/* Engaging a Plan: immutable presentation metadata plus the closed set of compiled root inputs of a
+   published Procedure, on a configured environment. Live Plans are then driven by an agent; dry-runs by the operator (Rehearse). */
 
 export function PlanEngage({ planMode, base, onClose, listSearch }: { planMode: PlanMode; base: string; onClose: () => void; listSearch: string }) {
   const { t } = useTranslation();
@@ -39,6 +39,8 @@ export function PlanEngage({ planMode, base, onClose, listSearch }: { planMode: 
   const [procedureId, setProcedureId] = useState("");
   const [environment, setEnvironment] = useState("");
   const [slug, setSlug] = useState("");
+  const [title, setTitle] = useState("");
+  const [labelsText, setLabelsText] = useState("");
   const [rootInputs, setRootInputs] = useState<JsonObject>({});
   const [valid, setValid] = useState(false);
   const [touchedAll, setTouchedAll] = useState(false);
@@ -50,8 +52,20 @@ export function PlanEngage({ planMode, base, onClose, listSearch }: { planMode: 
     if (!environment && environments.data?.length) setEnvironment(current ?? environments.data[0]!.name);
   }, [environments.data, environment]);
 
+  const labels = labelsText.split(",").map((label) => label.trim()).filter(Boolean);
+  const titleValue = title.trim();
+  const titleOk = titleValue.length <= 256 && !/[\p{Cc}\p{Zl}\p{Zp}]/u.test(titleValue);
+  const labelsOk = labels.length <= 32
+    && new Set(labels).size === labels.length
+    && labels.every((label) => /^[a-z0-9][a-z0-9._/-]{0,63}$/.test(label));
+  const metadata = {
+    ...(titleValue ? { title: titleValue } : {}),
+    labels,
+    annotations: {},
+  };
+
   const engage = useMutation({
-    mutationFn: () => runtime.engagePlan({ procedure: published!.procedure, procedureVersion: published!.version, plan: slug.trim(), environment, rootInputs, ...(planMode === "dry-run" ? { mode: "dry-run" as const } : {}) }),
+    mutationFn: () => runtime.engagePlan({ procedure: published!.procedure, procedureVersion: published!.version, plan: slug.trim(), environment, metadata, rootInputs, ...(planMode === "dry-run" ? { mode: "dry-run" as const } : {}) }),
     onSuccess: async (result) => {
       await queryClient.invalidateQueries({ queryKey: ["plans"] });
       navigate(`${base}/${encodeURIComponent(result.plan)}${listSearch}`, { replace: true });
@@ -59,7 +73,7 @@ export function PlanEngage({ planMode, base, onClose, listSearch }: { planMode: 
   });
   const error = mutationError(engage.error);
   const slugOk = /^[a-z0-9][a-z0-9-]*$/.test(slug.trim());
-  const ready = Boolean(published) && environment !== "" && slugOk && valid;
+  const ready = Boolean(published) && environment !== "" && slugOk && titleOk && labelsOk && valid;
   // The aside carries the chosen procedure (description, counts): nothing to show before a choice.
   const asideOpen = Boolean(published) && inspectorOpen;
 
@@ -96,6 +110,14 @@ export function PlanEngage({ planMode, base, onClose, listSearch }: { planMode: 
           <Field label={t("plans.engage.identifier")} hint={t("plans.engage.identifierHint")}>
             <TextInput value={slug} onChange={(event) => setSlug(event.target.value)} placeholder={planMode === "dry-run" ? "simulation-pay-42" : "pay-42"} className="w-72" aria-invalid={touchedAll && !slugOk} />
             {touchedAll && !slugOk ? <span className="text-caption text-danger">{t("plans.engage.identifierInvalid")}</span> : null}
+          </Field>
+          <Field label={t("plans.engage.metadataTitle")} hint={t("plans.engage.metadataTitleHint")}>
+            <TextInput value={title} onChange={(event) => setTitle(event.target.value)} placeholder={published?.title ?? t("plans.engage.metadataTitlePlaceholder")} className="w-full max-w-2xl" aria-invalid={touchedAll && !titleOk} />
+            {touchedAll && !titleOk ? <span className="text-caption text-danger">{t("plans.engage.metadataTitleInvalid")}</span> : null}
+          </Field>
+          <Field label={t("plans.engage.labels")} hint={t("plans.engage.labelsHint")}>
+            <TextInput value={labelsText} onChange={(event) => setLabelsText(event.target.value)} placeholder="release, payments" className="w-full max-w-2xl mono" aria-invalid={touchedAll && !labelsOk} />
+            {touchedAll && !labelsOk ? <span className="text-caption text-danger">{t("plans.engage.labelsInvalid")}</span> : null}
           </Field>
           <Field label={t("plans.engage.rootInputs")}>
             {published ? <SchemaForm idPrefix="engage" schema={schema} value={rootInputs} onChange={setRootInputs} onValidity={setValid} touchedAll={touchedAll} empty={t("plans.engage.noRootInput")} /> : <p className="text-body text-faint">{t("plans.engage.chooseProcedureFirst")}</p>}

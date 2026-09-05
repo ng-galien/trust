@@ -9,6 +9,7 @@
     "preview": "vite preview --host 127.0.0.1",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test:acceptance": "npm run build --workspace=@trust/runtime && playwright test --project acceptance",
+    "test:extensions": "npm run build --workspace=@trust/runtime && npm run build:ui --workspace=@trust-extension/coordination && npm run build && playwright test --config playwright.extensions.config.ts",
     "docs:capture": "npm run build --workspace=@trust/runtime && playwright test --project docs-capture",
     "build:docs": "vite build --config vite.docs.config.ts && mv dist-docs/docs-site.html dist-docs/index.html",
     "zip:docs": "npm run build:docs && cd dist-docs && rm -f ../trust-docs.zip && zip -q ../trust-docs.zip index.html && echo trust-docs.zip"
@@ -20,6 +21,7 @@
   },
   "devDependencies": {
     "@mdx-js/rollup": "^3.1.1",
+    "@module-federation/vite": "^1.21.3",
     "@playwright/test": "^1.62.1",
     "@tailwindcss/vite": "^4.3.3",
     "@types/react": "^19.2.8",

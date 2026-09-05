@@ -22,10 +22,12 @@
   },
   "dependencies": {
     "@trust/operation": "file:../trust-operation",
+    "pg": "^8.23.0",
     "pino": "^10.3.1"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
+    "@types/pg": "^8.23.1",
     "esbuild": "^0.28.2",
     "typescript": "^5.7.2",
     "vitest": "^4.1.10"

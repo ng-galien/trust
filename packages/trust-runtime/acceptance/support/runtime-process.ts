@@ -14,6 +14,7 @@ export interface PublicRuntimeProcess {
 }
 
 export interface PublicRuntimeOptions {
+  readonly extensionsFile?: string;
   readonly databasePath?: string;
   readonly operationsDirectory?: string;
   readonly environments?: Readonly<Record<string, EnvironmentValues>>;
@@ -31,6 +32,7 @@ export async function startPublicRuntime(
       ...process.env,
       TRUST_HOST: "127.0.0.1",
       TRUST_PORT: "0",
+      ...(options.extensionsFile === undefined ? {} : { TRUST_EXTENSIONS_FILE: options.extensionsFile }),
       TRUST_DATABASE_PATH: options.databasePath ?? path.join(dataDirectory, "trust.sqlite"),
       ...(options.operationsDirectory === undefined
         ? {}

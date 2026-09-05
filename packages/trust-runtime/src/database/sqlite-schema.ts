@@ -71,6 +71,7 @@ export const SQLITE_SCHEMA = `
     current_intent TEXT,
     current_intent_check_uri TEXT,
     current_intent_attempt_key TEXT,
+    metadata_json TEXT NOT NULL,
     root_inputs_json TEXT NOT NULL,
     current_revision INTEGER NOT NULL CHECK (current_revision >= 1),
     created_at TEXT NOT NULL,

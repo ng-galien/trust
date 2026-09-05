@@ -76,3 +76,7 @@ The compiled revision: roles, Scenarios, Checks with their bindings and qualific
   <Step title="Duplicate">A new source pre-filled with the published one; change `@procedure` or raise `@version` before publishing.</Step>
   <Step title="Publish">Enabled once the source compiles. The runtime compiles it against the current catalog, embeds the Operations and stores the revision. The page reopens on the published Procedure; Plans can be engaged from it.</Step>
 </Steps>
+
+## Agent access
+
+The runtime MCP can list and read published Procedures, compile a draft against the current Operation catalog, and publish an immutable version. These tools use the same `Procedures` authority as the interface. The **Simulate** tab remains a local reading aid: it walks Scenario dependencies without creating runtime state. To exercise qualifications and cascades, engage the published Procedure as a dry-run Plan.

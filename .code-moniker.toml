@@ -2,7 +2,7 @@ default_rules = false
 
 [rules.taxonomy]
 patterns = ["dependency", "call-flow"]
-components = ["gherkin", "operation", "procedure", "language-server", "runtime", "ui", "editor", "authority"]
+components = ["gherkin", "operation", "procedure", "language-server", "runtime", "ui", "editor", "authority", "extension-host", "coordination", "coordination-ui"]
 
 # Cross-package imports use the npm specifier (`@trust/...`) and are indexed as
 # `external_pkg:` monikers, never as workspace `dir:` paths. Every *_target alias
@@ -32,6 +32,22 @@ procedure_downstream_target = "$language_server_target OR $runtime_target OR $ui
 authority_language_behavior_target = "target ~ '**/external_pkg:/@trust./*:/^(parseGherkin|tokenizeSentence|highlightGherkinSource|highlightExpressionSource|formatGherkinSource|analyzeOperation|analyzeProcedure|isExpressionIdentifierPart|isExpressionIdentifierStart|qualificationCompletionPath|expressionMember|SentenceCursor|matchStepGrammar|parseStepGrammar|parseStepGrammarPrefix|stepChoice|stepGrammarExpectations|stepGrammarFailure|stepLiteral|stepOneOf|stepOptional|stepQuoted|stepRepeat|stepSequence|operationStepGrammar|procedureStepGrammar)$/'"
 
 gherkin_parse_step_grammar_target = "target ~ '**/external_pkg:/@trust.gherkin/function:parseStepGrammar'"
+
+# These components describe responsibilities: coordination-ui is the browser
+# part of coordination, while extension-host spans runtime and UI adapters.
+extension_host_source = "source ~ '**/dir:packages/dir:trust-runtime/dir:src/dir:extensions/**' OR source ~ '**/dir:packages/dir:trust-runtime/dir:src/dir:http/module:extensions/**' OR source ~ '**/dir:packages/dir:trust-runtime/dir:src/dir:http/module:extensions' OR source ~ '**/dir:packages/dir:trust-ui/dir:src/dir:extensions/**'"
+coordination_source = "source ~ '**/dir:extensions/dir:coordination/module:/^(server|commands)$/**' OR source ~ '**/dir:extensions/dir:coordination/module:/^(server|commands)$/' OR $coordination_ui_source"
+coordination_ui_source = "source ~ '**/dir:extensions/dir:coordination/dir:ui/**'"
+coordination_target = "target ~ '**/dir:extensions/dir:coordination/**' OR target ~ '**/external_pkg:/@trust-extension.coordination/**'"
+coordination_server_target = "target ~ '**/dir:extensions/dir:coordination/module:/^(server|commands)$/**' OR target ~ '**/dir:extensions/dir:coordination/module:/^(server|commands)$/' OR target ~ '**/external_pkg:/@trust-extension.coordination/path:/^(server|commands)$/**' OR target ~ '**/external_pkg:/@trust-extension.coordination/path:/^(server|commands)$/'"
+coordination_ui_server_api_target = "target ~ '**/external_pkg:pg/**' OR target ~ '**/sdk:ts/path:/^node:/**'"
+
+[profiles.extension-boundaries]
+enable = [
+  "^refs\\.extension-host-dependency-excludes-coordination$",
+  "^refs\\.coordination-dependency-excludes-runtime-and-ui-implementation$",
+  "^refs\\.coordination-ui-dependency-excludes-server-implementation$",
+]
 
 [profiles.language-authority]
 enable = [
@@ -98,3 +114,24 @@ severity = "error"
 rationale = "Parsing, tokenizing and highlighting are language behavior owned by the authorities; the UI consumes them through the language server or the compiled models (plan-overlay hydrates from compiled locations since 2026-08-24). Single decided exemption: docs/highlight reuses the LSP's own highlight engine for static documentation pages — same engine, no duplication, and a live server cannot serve the standalone docs bundle."
 expr = "($ui_source AND NOT $ui_docs_highlight_source) => NOT $authority_language_behavior_target"
 message = "UI code invokes language behavior directly instead of consuming the language server or compiled models."
+
+[[refs.where]]
+id = "extension-host-dependency-excludes-coordination"
+severity = "error"
+expr = "$extension_host_source => NOT $coordination_target"
+message = "The generic extension host must not statically depend on the coordination implementation."
+rationale = "Extension hosting spans the runtime lifecycle, HTTP adapter and federated UI loader. Installed manifests select the implementation; the host must remain usable without coordination. This rule checks emitted static references only: computed child imports and federation remote loading require public runtime acceptance evidence."
+
+[[refs.where]]
+id = "coordination-dependency-excludes-runtime-and-ui-implementation"
+severity = "error"
+expr = "$coordination_source => NOT ($runtime_target OR $ui_target)"
+message = "Coordination must use its supplied host capabilities, not import TRUST runtime or UI implementation."
+rationale = "The coordination server and commands modules own the external PostgreSQL integration and its browser view consumes supplied URLs and language. Neither reaches TRUST database, qualification, container or UI internals. Coordination includes coordination-ui as a responsibility subset; build scripts and acceptance harnesses are outside this production boundary."
+
+[[refs.where]]
+id = "coordination-ui-dependency-excludes-server-implementation"
+severity = "error"
+expr = "$coordination_ui_source => NOT ($coordination_server_target OR $coordination_ui_server_api_target)"
+message = "The coordination browser view must not import its server, PostgreSQL driver or Node APIs."
+rationale = "The separately built federation remote reads through host-supplied endpoints. PostgreSQL connections and server credentials remain in the extension backend; static imports must not pull that implementation into the browser bundle. This boundary does not prove bundle contents or dynamic import targets."

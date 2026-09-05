@@ -1,7 +1,7 @@
 import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 
 import { checkIsActionable } from "../check/actionability.js";
-import type { Attempt, CheckSnapshot, Fact, Plan, PlanCheck, PlanEscalation, PlanMode, PlanRevision } from "../model.js";
+import type { Attempt, CheckSnapshot, Fact, Plan, PlanCheck, PlanEscalation, PlanMetadata, PlanMode, PlanRevision } from "../model.js";
 import type { AttemptStore } from "../attempt/store.js";
 import type { FactStore } from "../fact/store.js";
 import type { SnapshotStore } from "../snapshot/store.js";
@@ -74,7 +74,9 @@ export interface PlanView {
   readonly intentChaining: boolean;
   readonly intentChainState: import("../model.js").IntentChainState;
   readonly currentIntent: string | null;
+  readonly nextIntent: string | null;
   readonly currentIntentCheckUri: string | null;
+  readonly metadata: PlanMetadata;
   readonly rootInputs: Readonly<Record<string, unknown>>;
   readonly createdAt: string;
   readonly state: "ENGAGED";
@@ -129,6 +131,12 @@ export interface PlanSummaryView {
   readonly procedureVersion: string;
   readonly environment: string;
   readonly mode: PlanMode;
+  readonly intentChaining: boolean;
+  readonly intentChainState: import("../model.js").IntentChainState;
+  readonly currentIntent: string | null;
+  readonly nextIntent: string | null;
+  readonly currentIntentCheckUri: string | null;
+  readonly metadata: PlanMetadata;
   readonly revision: number;
   readonly createdAt: string;
   readonly sessionState: "OPEN" | "UNAVAILABLE";
@@ -387,6 +395,12 @@ export class PlanReader {
         procedureVersion: view.procedureVersion,
         environment: view.environment,
         mode: view.mode,
+        intentChaining: view.intentChaining,
+        intentChainState: view.intentChainState,
+        currentIntent: view.currentIntent,
+        nextIntent: view.nextIntent,
+        currentIntentCheckUri: view.currentIntentCheckUri,
+        metadata: view.metadata,
         revision: view.revision,
         createdAt: view.createdAt,
         sessionState: view.sessionState,
@@ -539,6 +553,15 @@ export class PlanReader {
       .filter((check) => check.state === "OPEN" && !check.actionable)
       .map((check) => check.checkUri);
     const checklistComplete = missingDeclarations.length === 0 && openChecks.length === 0;
+    // A historical announcement is not the next intent of the active chain.
+    const currentIntentAttempt = plan.intentChaining && plan.intentChainState === "ACTIVE"
+      ? latestAttemptsByCheck.find(attempt => attempt !== undefined
+        && attempt.attemptKey === plan.currentIntentAttemptKey
+        && attempt.checkUri === plan.currentIntentCheckUri
+        && attempt.planRevision === plan.currentRevision
+        && attempt.intent === plan.currentIntent
+        && (attempt.state === "pending" || attempt.state === "interrupted"))
+      : undefined;
     return {
       plan: plan.slug,
       procedure: plan.procedure,
@@ -548,7 +571,9 @@ export class PlanReader {
       intentChaining: plan.intentChaining,
       intentChainState: plan.intentChainState,
       currentIntent: plan.currentIntent ?? null,
+      nextIntent: currentIntentAttempt?.nextIntent ?? null,
       currentIntentCheckUri: plan.currentIntentCheckUri ?? null,
+      metadata: plan.metadata,
       rootInputs: plan.rootInputs,
       createdAt: plan.createdAt,
       state: "ENGAGED",

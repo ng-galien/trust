@@ -277,13 +277,14 @@ function parsePlanEngagement(value: unknown): PlanEngagementParams {
     "plan",
     "environment",
     "rootInputs",
-  ], ["mode"]);
+  ], ["mode", "metadata"]);
   if (
     record.contract !== "trust.plan-engagement-request@1"
     || !boundedString(record.procedure)
     || !boundedString(record.procedureVersion)
     || !boundedString(record.plan)
     || !boundedString(record.environment)
+    || (record.metadata !== undefined && !isRecord(record.metadata))
     || !isRecord(record.rootInputs)
     || (record.mode !== undefined && record.mode !== "live" && record.mode !== "dry-run")
   ) {
@@ -295,6 +296,7 @@ function parsePlanEngagement(value: unknown): PlanEngagementParams {
     procedureVersion: record.procedureVersion,
     plan: record.plan,
     environment: record.environment,
+    ...(record.metadata === undefined ? {} : { metadata: record.metadata }),
     rootInputs: record.rootInputs,
     ...(record.mode === undefined ? {} : { mode: record.mode }),
   };

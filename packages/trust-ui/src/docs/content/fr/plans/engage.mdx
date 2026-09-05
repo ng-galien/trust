@@ -1,14 +1,14 @@
 ---
 title: "Engager un Plan"
-summary: "Ce que demande un engagement — version de Procédure, Environnement, identifiant, entrées racines — ce qu'il construit, et comment le contexte se complète ensuite."
+summary: "Ce que demande un engagement — version de Procédure, Environnement, identifiant, métadonnées et entrées racines — ce qu'il construit, et comment le contexte se complète ensuite."
 order: 1
 ---
 
-Engager crée un Plan à partir d'une version **publiée** de Procédure. Cela demande exactement ce que les entrées de Plan de la Procédure exigent, rien d'autre ; les rôles fixes viennent de la Procédure, les déclarations de l'agent viennent plus tard, les rôles matérialisés viennent des Checks.
+Engager crée un Plan à partir d'une version **publiée** de Procédure. Des métadonnées facultatives nomment et classent cette instance. Le contexte métier contient toujours exactement ce que les entrées de Plan de la Procédure exigent : les rôles fixes viennent de la Procédure, les déclarations de l'agent viennent plus tard, les rôles matérialisés viennent des Checks.
 
 <Screenshot id="plan-engage" caption="Engager un plan / Nouveau dry-run — le même formulaire, le mode donné par l'endroit d'où vous venez." legend={{
   "overlay.header": "En direct ou dry-run ; Engager / Lancer le dry-run une fois le formulaire complet.",
-  "engage.form": "Procédure (versions publiées), Environnement (par défaut l'environnement courant), identifiant du Plan (slug en minuscules, unique), puis un champ par entrée racine de la Procédure choisie.",
+  "engage.form": "Procédure (versions publiées), Environnement (par défaut l'environnement courant), identifiant du Plan, titre et labels facultatifs, puis un champ par entrée racine de la Procédure choisie.",
 }} />
 
 ## Ce que demande un engagement
@@ -18,6 +18,7 @@ Engager crée un Plan à partir d'une version **publiée** de Procédure. Cela d
 | **Procédure** | une `procedure@version` publiée ; la version fige la définition pour toute la vie du Plan |
 | **Environnement** | un Environnement configuré ; par défaut l'environnement courant. Même un dry-run en nomme un (rien ne lui est délégué) |
 | **Identifiant du Plan** | un slug en minuscules, unique parmi les Plans et les dry-runs ; il apparaît dans chaque URI de Check et dans l'historique |
+| **Métadonnées** | un titre facultatif, jusqu'à 32 labels uniques en minuscules et des annotations textuelles fournies par RPC ou MCP. Elles décrivent ce Plan ; elles ne sont ni son contexte métier ni son état d'exécution |
 | **Entrées racines** | exactement les rôles que la Procédure a compilés comme entrées de Plan — ni plus, ni moins ; typées comme déclarées (`string`, `number`, `instant`, `reference` ; `many` = une liste non vide) |
 | **Mode** | en direct depuis **Plans → Engager un plan**, dry-run depuis **Dry-runs → Nouveau dry-run**. Fait partie de l'identité du Plan |
 
@@ -33,12 +34,12 @@ La page s'ouvre alors sur le nouveau Plan. À partir de là, un Plan en direct a
 
 - **Déclarations de l'agent** — les rôles écrits `declared by agent` dans la Procédure. Sur un Plan en direct, l'agent les déclare (une opération fermée qui remplace l'ensemble des déclarations, vérifiée contre la révision du Plan qu'il a lue). Sur un dry-run, l'étape *Déclarer le contexte* du cockpit fait la même chose. Une déclaration crée une nouvelle révision ; les Checks satisfaits dont la définition n'a pas changé gardent leur verdict.
 - Les **rôles matérialisés** sont remplis par leur Check fournisseur quand il est validé — aucune action nécessaire.
-- Les entrées racines et les rôles fixes ne changent jamais après l'engagement.
+- Les métadonnées, les entrées racines et les rôles fixes ne changent jamais après l'engagement.
 
 <Callout kind="rule">
-  Engager à nouveau le même identifiant avec la même Procédure, les mêmes entrées, le même Environnement et le même mode renvoie le Plan courant (et rouvre une Session si nécessaire) ; avec quoi que ce soit de différent, c'est refusé. Un identifiant est un Plan, une seule fois.
+  Engager à nouveau le même identifiant avec la même Procédure, les mêmes métadonnées, les mêmes entrées, le même Environnement et le même mode renvoie le Plan courant (et rouvre une Session si nécessaire) ; avec quoi que ce soit de différent, c'est refusé. Omettre les métadonnées lors d'un ré-engagement conserve celles qui sont enregistrées. Un identifiant est un Plan, une seule fois.
 </Callout>
 
 <Details title="Contrat d'engagement" expert>
-`plan.engage { contract: "trust.plan-engagement-request@1", procedure, procedureVersion, plan, environment, rootInputs, mode? }` → `{ status: "ENGAGED", revision, checkUris }`. Refus : `procedure-not-found`, `invalid-plan-engagement` (Environnement inconnu, entrées racines incorrectes — `Plan Inputs must be exactly: …`, mauvais types), `plan-conflict` (identifiant déjà engagé avec une autre Procédure ou un autre contexte). Déclarations : `plan.declarations.replace { plan, expectedRevision, declarations }` — n'accepte que les rôles `declared by agent`, refuse un `expectedRevision` périmé (`plan-conflict`), coordonne les rôles `for each` avec les valeurs de leur parent. L'outil MCP `trust_plan_engage` n'engage que des Plans en direct.
+`plan.engage { contract: "trust.plan-engagement-request@1", procedure, procedureVersion, plan, environment, metadata?: { title?, labels?, annotations? }, rootInputs, mode? }` → `{ status: "ENGAGED", metadata, revision, checkUris }`. Refus : `procedure-not-found`, `invalid-plan-engagement` (Environnement inconnu, métadonnées incorrectes, entrées racines incorrectes — `Plan Inputs must be exactly: …`, mauvais types), `plan-conflict` (identifiant déjà engagé avec une autre Procédure, d'autres métadonnées ou un autre contexte). Déclarations : `plan.declarations.replace { plan, expectedRevision, declarations }` — n'accepte que les rôles `declared by agent`, refuse un `expectedRevision` périmé (`plan-conflict`), coordonne les rôles `for each` avec les valeurs de leur parent. L'outil MCP `trust_plan_engage` n'engage que des Plans en direct.
 </Details>

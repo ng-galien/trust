@@ -75,8 +75,14 @@ test("the packaged TRUST Skill executes the git-status Check", async () => {
       procedureVersion: "2.0.0",
       plan: "runner-git-status",
       environment: "local",
+      metadata: {
+        title: "Inspect the runner fixture",
+        labels: ["acceptance", "git"],
+        annotations: { "coordination.origin": "runner-acceptance" },
+      },
       rootInputs: { repository: projectName },
     });
+    assert.match(engagement, /METADATA\nTitle: Inspect the runner fixture\nLabels: acceptance, git\nAnnotation coordination\.origin: runner-acceptance/);
     assert.match(engagement, /ACTIONABLE CHECKS\n- repository status/);
     const checkUris = uniqueUris(engagement);
     assert.equal(checkUris.length, 1);

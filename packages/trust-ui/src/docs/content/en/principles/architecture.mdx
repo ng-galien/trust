@@ -71,7 +71,7 @@ flowchart LR
 The selected adapter passes the exact Check URI to `createCheckRunner`. The common engine requests admission through RPC, executes Shell, file or HTTP locally with its own permissions, reports Facts through OTLP, finalizes through RPC and returns the action result, qualification and continuation. One invocation handles one Check. It does not choose another Check, loop or retry automatically, and it still requires the TRUST runtime.
 
 <Callout kind="rule" title="The two MCP servers have different jobs">
-  The runtime's HTTP MCP endpoint at <code>/mcp</code> lets the agent read and engage Plans, make declarations and escalate. The optional Runner MCP adapter is a local stdio server that adds only <code>trust_check_run</code>. It does not replace the runtime tools, and packaging the skill does not configure it in the agent host.
+  The runtime's HTTP MCP endpoint at <code>/mcp</code> lets an agent author and test Operations and Procedures, and read and engage Plans, make declarations and escalate. The optional Runner MCP adapter is a local stdio server that adds only <code>trust_check_run</code>. It does not replace the runtime tools, and packaging the skill does not configure it in the agent host.
 </Callout>
 
 ## Live Plans and dry-runs

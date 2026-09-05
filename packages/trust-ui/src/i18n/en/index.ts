@@ -1,4 +1,5 @@
 import { common } from "./common.js";
+import { extensions } from "./extensions.js";
 import { docs } from "./docs.js";
 import { environments } from "./environments.js";
 import { history } from "./history.js";
@@ -15,6 +16,7 @@ import { ui } from "./ui.js";
    plurals use i18next suffixes (`_one` / `_other`), interpolation uses `{{value}}`. */
 
 export const en = {
+  extensions,
   common,
   shell,
   ui,

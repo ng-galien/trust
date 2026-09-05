@@ -132,7 +132,7 @@ export class TrustRuntimeClient {
   plan = (plan: string) => this.call<PlanView>("plan.read", { plan });
   history = (params: { filter?: HistoryFilter; cursor?: string; limit?: number } = {}) =>
     this.call<{ snapshots: HistorySnapshot[]; nextCursor?: string }>("history.list", params as JsonObject);
-  engagePlan = (params: { procedure: string; procedureVersion: string; plan: string; environment: string; rootInputs: JsonObject; mode?: PlanMode }) =>
+  engagePlan = (params: { procedure: string; procedureVersion: string; plan: string; environment: string; metadata?: JsonObject; rootInputs: JsonObject; mode?: PlanMode }) =>
     this.call<PlanEngagement>("plan.engage", { contract: "trust.plan-engagement-request@1", ...params });
   replaceDeclarations = (plan: string, expectedRevision: number, declarations: JsonObject) =>
     this.call<DeclarationReplacement>("plan.declarations.replace", { contract: "trust.plan-declaration-replacement-request@1", plan, expectedRevision, declarations });

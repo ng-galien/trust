@@ -11,11 +11,18 @@ type StateFilter = "" | "running" | "escalated" | "complete" | "unavailable";
 
 export interface PlanRow {
   id: string;
+  title: string;
+  labels: string[];
+  annotations: Record<string, string>;
   procedure: string;
   procedureVersion: string;
   procedureTitle: string;
   environment: string;
   mode: PlanMode;
+  intentChaining: boolean;
+  intentChainState: PlanSummary["intentChainState"];
+  currentIntent: string | null;
+  currentIntentCheckUri: string | null;
   revision: number;
   createdAt: string;
   sessionState: PlanSummary["sessionState"];
@@ -30,13 +37,21 @@ export function toRows(plans: PlanSummary[], procedures: PublishedProcedure[]): 
   return plans.map((plan) => {
     const published = procedures.find(({ procedure }) => procedure.procedure === plan.procedure && procedure.version === plan.procedureVersion)
       ?? procedures.find(({ procedure }) => procedure.procedure === plan.procedure);
+    const procedureTitle = published?.procedure.title ?? plan.procedure;
     return {
       id: plan.plan,
+      title: plan.metadata.title ?? procedureTitle,
+      labels: plan.metadata.labels,
+      annotations: plan.metadata.annotations,
       procedure: plan.procedure,
       procedureVersion: plan.procedureVersion,
-      procedureTitle: published?.procedure.title ?? plan.procedure,
+      procedureTitle,
       environment: plan.environment,
       mode: plan.mode,
+      intentChaining: plan.intentChaining,
+      intentChainState: plan.intentChainState,
+      currentIntent: plan.currentIntent,
+      currentIntentCheckUri: plan.currentIntentCheckUri,
       revision: plan.revision,
       createdAt: plan.createdAt,
       sessionState: plan.sessionState,
@@ -106,7 +121,7 @@ export const emptyFilters: Pick<Filters, "q" | "procedures" | "environments" | "
 
 function matchesQuery(row: PlanRow, needle: string): boolean {
   if (!needle) return true;
-  return `${row.id} ${row.procedure} ${row.procedureTitle} ${row.environment} ${row.mode}`.toLowerCase().includes(needle);
+  return `${row.id} ${row.title} ${row.labels.join(" ")} ${Object.entries(row.annotations).flat().join(" ")} ${row.currentIntent ?? ""} ${row.procedure} ${row.procedureTitle} ${row.environment} ${row.mode}`.toLowerCase().includes(needle);
 }
 
 export function matchReason(row: PlanRow, q: string): string | undefined {
@@ -135,7 +150,7 @@ export function applyFilters(rows: PlanRow[], filters: Filters): PlanRow[] {
   const needle = filters.q.trim().toLowerCase();
   const filtered = applyFacets(rows, filters).filter((row) => matchesQuery(row, needle));
   return filtered.sort((a, b) => {
-    if (filters.sort === "name") return a.id.localeCompare(b.id);
+    if (filters.sort === "name") return a.title.localeCompare(b.title) || a.id.localeCompare(b.id);
     if (filters.sort === "progress") return b.progress - a.progress || a.id.localeCompare(b.id);
     return b.createdAt.localeCompare(a.createdAt);
   });

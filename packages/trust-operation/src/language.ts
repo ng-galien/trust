@@ -33,10 +33,11 @@ export const operationLanguage = {
     shell: ["exitCode", "stdout", "stderr"],
     "file-read": ["relativePath", "content"],
     http: ["status", "headers", "body"],
+    postgresql: ["result"],
   } as const,
   syntax: {
-    types: ["Environment", "Input", "Produced", "Shell", "File", "HTTP", "Operation", "Execution"] as const,
-    verbs: ["runs", "accepts", "sends", "appending", "with", "reads", "Produce"] as const,
+    types: ["Environment", "Input", "Produced", "Shell", "File", "HTTP", "PostgreSQL", "JSONB", "Operation", "Execution"] as const,
+    verbs: ["runs", "accepts", "sends", "executes", "appending", "with", "reads", "Produce"] as const,
   },
   template: `# language: en
 @trust-dsl:1 @operation:domain.action @version:1.0.0
@@ -175,6 +176,17 @@ export const operationStepGrammar: StepGrammar = {
         ),
       ),
     },
+    {
+      name: "postgresql-execute",
+      context: "scenario",
+      expression: stepSequence(
+        operationLiteral("PostgreSQL", "PostgreSQL statement"),
+        operationQuoted("step", "Step name"),
+        operationLiteral("executes SQL on Environment", "PostgreSQL connection"),
+        operationQuoted("environment", "Operation Environment"),
+        operationLiteral("with Input as JSONB parameter $1", "Parameterized Operation Input"),
+      ),
+    },
     { name: "produce", context: "scenario", expression: operationLiteral(operationLanguage.phrases.produce, "Produce expression") },
   ],
 };
@@ -202,6 +214,7 @@ export const operationAuthoringSnippets = [
   { label: "Shell step", insertText: `When Shell "\${1:step}" runs "\${2:command}" with cwd from Environment "\${3:workspaceRoot}"` },
   { label: "File step", insertText: `When File "\${1:step}" reads "\${2:path}" as \${3|${operationLanguage.formats.join(",")}|} from Environment "\${4:workspaceRoot}"` },
   { label: "HTTP step", insertText: `When HTTP "\${1:step}" sends "\${2|${operationLanguage.httpMethods.join(",")}|}" to Environment "\${3:serviceUrl}" and reads \${4|JSON,Text,no body|}` },
+  { label: "PostgreSQL step", insertText: `When PostgreSQL "\${1:step}" executes SQL on Environment "\${2:databaseUrl}" with Input as JSONB parameter $1\n  """\n  SELECT \${3:expression} AS result\n  """` },
   {
     label: operationLanguage.phrases.produce,
     insertText: `Then ${operationLanguage.phrases.produce}\n  """\n  { "\${1:field}": \${2:expression} }\n  """`,

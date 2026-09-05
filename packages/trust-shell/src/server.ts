@@ -10,7 +10,7 @@ import { setTimeout as delay } from "node:timers/promises";
 
 import type { TrustInstallation } from "./installation.js";
 
-const PROXY_PATHS = ["/health", "/rpc", "/mcp", "/otlp", "/events"];
+const PROXY_PATHS = ["/health", "/rpc", "/mcp", "/otlp", "/events", "/extensions"];
 
 export interface TrustServerOptions {
   readonly installation: TrustInstallation;
@@ -118,7 +118,10 @@ async function isTrustHealthResponse(response: Response): Promise<boolean> {
 function createWebServer(webDirectory: string, runtimeHost: string, runtimePort: number): Server {
   const server = createServer((request, response) => {
     const pathname = requestPath(request.url);
-    if (PROXY_PATHS.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`))) {
+    const extensionNavigation = request.method === "GET"
+      && (request.headers.accept ?? "").split(",").some(value => value.trim().split(";", 1)[0] === "text/html")
+      && /^\/extensions(?:\/[^/]+)?$/.test(pathname);
+    if (!extensionNavigation && PROXY_PATHS.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`))) {
       proxyHttp(request, response, runtimeHost, runtimePort);
       return;
     }
@@ -154,6 +157,7 @@ function proxyHttp(
     if (!response.headersSent) response.writeHead(502, { "content-type": "text/plain; charset=utf-8" });
     response.end(`TRUST runtime unavailable: ${error.message}\n`);
   });
+  response.once("close", () => upstream.destroy());
   request.pipe(upstream);
 }
 

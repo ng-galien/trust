@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import {
@@ -15,6 +16,7 @@ import { gzipSync } from "node:zlib";
 
 import { compileOperation } from "@trust/operation";
 import { CheckClient, CheckClientError, createCheckRunner, createRunnerLogging, OtlpFactExporter, runOperation, type FactExporter } from "@trust/runner";
+import { Client } from "pg";
 import { afterEach, describe, expect, test } from "vitest";
 
 const execute = promisify(execFile);
@@ -28,6 +30,7 @@ const receivedHttpRequests: Array<{
 }> = [];
 let otlpResponse = { status: 200, body: "{}" };
 let jiraWorkflowStatus = "To Do";
+const postgresqlAcceptanceUrl = process.env.TRUST_POSTGRESQL_ACCEPTANCE_URL;
 
 afterEach(async () => {
   await Promise.all([
@@ -42,6 +45,65 @@ afterEach(async () => {
 });
 
 describe("Operation runner", () => {
+  test.runIf(postgresqlAcceptanceUrl)("lets PostgreSQL enforce one atomic claim and returns its JSONB result", async () => {
+    const schema = `trust_connector_${randomUUID().replaceAll("-", "")}`;
+    const administration = new Client(postgresqlClientConfiguration(postgresqlAcceptanceUrl!));
+    await administration.connect();
+    try {
+      await administration.query(`CREATE SCHEMA ${schema}`);
+      await administration.query(`CREATE TABLE ${schema}.trust_connector_claims (resource text PRIMARY KEY, owner text NOT NULL)`);
+      const operation = fixtureOperation("postgresql.atomic-claim.feature");
+      const databaseUrl = new URL(postgresqlAcceptanceUrl!);
+      databaseUrl.searchParams.set("options", `-csearch_path=${schema}`);
+      const configuration = {
+        postgresql: {
+          processEnvironment: {
+            PGUSER: process.env.PGUSER,
+            PGPASSWORD: process.env.PGPASSWORD,
+            PGAPPNAME: "trust-runner-acceptance",
+          },
+        },
+      };
+
+      const claimed = await runOperation(
+        operation,
+        { resource: "plan-1", owner: "agent-1" },
+        { databaseUrl: databaseUrl.toString() },
+        undefined,
+        undefined,
+        configuration,
+      );
+      const busy = await runOperation(
+        operation,
+        { resource: "plan-1", owner: "agent-2" },
+        { databaseUrl: databaseUrl.toString() },
+        undefined,
+        undefined,
+        configuration,
+      );
+
+      expect(claimed).toMatchObject({
+        steps: { claim: { result: { resource: "plan-1", owner: "agent-1", state: "claimed" } } },
+        produced: { resource: "plan-1", owner: "agent-1", state: "claimed" },
+      });
+      expect(busy).toMatchObject({
+        steps: { claim: { result: { resource: "plan-1", owner: "agent-1", state: "busy" } } },
+        produced: { resource: "plan-1", owner: "agent-1", state: "busy" },
+      });
+    } finally {
+      await administration.query(`DROP SCHEMA IF EXISTS ${schema} CASCADE`);
+      await administration.end();
+    }
+  });
+
+  test("refuses a PostgreSQL password delegated through an Operation Environment", async () => {
+    await expect(runOperation(
+      fixtureOperation("postgresql.atomic-claim.feature"),
+      { resource: "plan-1", owner: "agent-1" },
+      { databaseUrl: "postgresql://agent:secret@127.0.0.1/coordination" },
+    )).rejects.toThrow("must not contain a password");
+  });
+
   test("keeps the opaque Check URI separate from rotating intent query parameters", async () => {
     const admissions: unknown[][] = [];
     const runner = createCheckRunner({
@@ -991,6 +1053,14 @@ async function temporaryDirectory(prefix: string): Promise<string> {
   const directory = await mkdtemp(join(tmpdir(), prefix));
   temporaryDirectories.push(directory);
   return directory;
+}
+
+function postgresqlClientConfiguration(connectionString: string) {
+  return {
+    connectionString,
+    ...(process.env.PGUSER === undefined ? {} : { user: process.env.PGUSER }),
+    ...(process.env.PGPASSWORD === undefined ? {} : { password: process.env.PGPASSWORD }),
+  };
 }
 
 async function startHttpServer(): Promise<string> {

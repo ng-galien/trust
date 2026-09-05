@@ -71,7 +71,7 @@ flowchart LR
 L'adaptateur choisi transmet l'URI exacte du Check à `createCheckRunner`. Le moteur commun demande l'admission par RPC, exécute localement l'action Shell, fichier ou HTTP avec ses propres permissions, rapporte les Facts par OTLP, finalise par RPC et renvoie le résultat de l'action, la qualification et la suite. Une invocation traite un seul Check. Elle ne choisit pas le Check suivant, ne boucle pas, ne rejoue pas automatiquement et requiert toujours le runtime TRUST.
 
 <Callout kind="rule" title="Les deux serveurs MCP n'ont pas le même rôle">
-  Le point d'entrée MCP HTTP du runtime, sur <code>/mcp</code>, permet à l'agent de lire et d'engager les Plans, de faire des déclarations et d'escalader. L'adaptateur MCP optionnel du Runner est un serveur stdio local qui ajoute uniquement <code>trust_check_run</code>. Il ne remplace pas les outils du runtime et l'empaquetage du skill ne le configure pas dans l'hôte de l'agent.
+  Le point d'entrée MCP HTTP du runtime, sur <code>/mcp</code>, permet à un agent d'écrire et de tester des Opérations et des Procédures, ainsi que de lire et d'engager les Plans, de faire des déclarations et d'escalader. L'adaptateur MCP optionnel du Runner est un serveur stdio local qui ajoute uniquement <code>trust_check_run</code>. Il ne remplace pas les outils du runtime et l'empaquetage du skill ne le configure pas dans l'hôte de l'agent.
 </Callout>
 
 ## Plans live et dry-runs

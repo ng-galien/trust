@@ -16,6 +16,7 @@ import { ProceduresHome } from "./resources/procedures/procedures-home.js";
 import { TrustRuntimeClient } from "./runtime.js";
 import { LoadingState } from "./ui/states.js";
 import { AppShell } from "./shell/app-shell.js";
+import { ExtensionsHome, ExtensionPage } from "./extensions/extensions.js";
 
 // The documentation (MDX pages, mermaid) is its own chunk, loaded on first visit.
 const DocsArea = lazy(() => import("./docs/docs-area.js").then((module) => ({ default: module.DocsArea })));
@@ -54,6 +55,8 @@ export function TrustApplication({ runtimeUrl }: { runtimeUrl: string }) {
               <Route path="/checklists" element={<Navigate to="/plans" replace />} />
               <Route path="/history" element={<HistoryHome />} />
               <Route path="/settings" element={<SettingsHome />} />
+              <Route path="/extensions" element={<ExtensionsHome />} />
+              <Route path="/extensions/:extension" element={<ExtensionPage />} />
               <Route path="/docs/*" element={<Suspense fallback={<LoadingState />}><DocsArea /></Suspense>} />
               <Route path="*" element={<Navigate to="/overview" replace />} />
             </Route>

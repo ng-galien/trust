@@ -10,6 +10,7 @@ export function AppShell() {
   const theme = useResolvedTheme();
   const location = useLocation();
   const isDocumentation = location.pathname === "/docs" || location.pathname.startsWith("/docs/");
+  const isExtension = location.pathname === "/extensions" || location.pathname.startsWith("/extensions/");
   usePlanEventsBridge();
   useEffect(() => {
     document.documentElement.classList.toggle("dark", theme === "dark");
@@ -17,11 +18,11 @@ export function AppShell() {
   }, [theme]);
 
   return (
-    <div className={`flex h-full flex-col overflow-hidden bg-bg text-text ${isDocumentation ? "min-w-0" : "min-w-[720px]"}`}>
+    <div className={`flex h-full flex-col overflow-hidden bg-bg text-text ${isDocumentation || isExtension ? "min-w-0" : "min-w-[720px]"} ${isExtension ? "extension-shell" : ""}`}>
       <Header />
       <div className="flex min-h-0 flex-1">
         <Sidebar />
-        <main className="relative min-w-0 flex-1 overflow-hidden">
+        <main className={`relative min-w-0 flex-1 ${isExtension ? "overflow-auto" : "overflow-hidden"}`}>
           <Outlet />
         </main>
       </div>

@@ -30,6 +30,7 @@ export async function runMcpStdio(options: McpStdioOptions = {}): Promise<void> 
     ),
     diagnostics: logging.diagnostics,
     shell: { additionalPath: configuration.additionalPath, processEnvironment: environment },
+    postgresql: { processEnvironment: environment },
   });
   const handle = createMcpHandler(runner);
   const lines = createInterface({

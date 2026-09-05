@@ -21,3 +21,5 @@ playwright-report/
 .DS_Store
 dist-docs/
 trust-docs.zip
+@mf-types/
+.mf/

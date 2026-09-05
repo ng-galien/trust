@@ -86,3 +86,7 @@ L'Opération compilée : identité, schémas de l'interface, étapes, projection
   <Step title="Enregistrer">Activé dès que la source compile. Écrit le fichier dans le catalogue ; le catalogue se recharge ; la page se rouvre sur l'Opération enregistrée.</Step>
   <Step title="Supprimer">Retire le fichier du catalogue. Refusé tant qu'une Procédure publiée utilise l'Opération ; les Procédures gardent leur copie embarquée dans tous les cas.</Step>
 </Steps>
+
+## Accès agent
+
+Le MCP du runtime expose le même cycle de vie des Opérations sous forme d'outils textuels : lister et lire le catalogue, compiler, enregistrer, supprimer, simuler, découvrir les Environnements compatibles, puis démarrer, lister, lire ou annuler un Trial. Une source brouillon peut être simulée ou exécutée sans être enregistrée. L'adaptateur MCP appelle les mêmes services de catalogue, de compilation, de projection et de Trial que l'interface ; il ne relaie pas les réponses RPC et n'expose pas leurs DTO.

@@ -86,3 +86,7 @@ The compiled Operation: identity, schemas of the interface, steps, projection, c
   <Step title="Save">Enabled once the source compiles. Writes the file in the catalog; the catalog reloads; the page reopens on the saved Operation.</Step>
   <Step title="Delete">Removes the file from the catalog. Refused while a published Procedure uses the Operation; Procedures keep their embedded copy in any case.</Step>
 </Steps>
+
+## Agent access
+
+The runtime MCP exposes the same Operation lifecycle as text-oriented tools: list and read the catalog, compile, save, remove, simulate, discover compatible Environments, then start, list, read or cancel a Trial. Draft source can be simulated or run without saving it. The MCP adapter calls the same catalog, compiler, projection and Trial services as the interface; it does not relay RPC responses or expose their DTOs.

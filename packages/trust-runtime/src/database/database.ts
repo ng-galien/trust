@@ -53,6 +53,7 @@ export interface PlanTable {
   current_intent: string | null;
   current_intent_check_uri: string | null;
   current_intent_attempt_key: string | null;
+  metadata_json: string;
   root_inputs_json: string;
   current_revision: number;
   created_at: string;

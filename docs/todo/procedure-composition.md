@@ -1,6 +1,13 @@
 # Procedure composition
 
-Status: proposal with unresolved product decisions.
+Status: historical proposal; its single-root-Plan execution model is superseded.
+
+The product owner selected explicit child Plans with independent lifecycle and
+intent chains, and replacement instances when an invocation is invalidated and
+must run again. See [Child Plan composition](child-plan-composition.md). The
+single-Plan, shared-Session and no-child-Plan statements below are not the current
+product direction. The interface, typing and identity questions remain useful
+design input, but this document is not an executable specification.
 
 This evolution makes a Procedure usable as a Requirement inside another Procedure. A composed
 Procedure occupies the same structural position as a Check, but it is never sent to the Runner. Its

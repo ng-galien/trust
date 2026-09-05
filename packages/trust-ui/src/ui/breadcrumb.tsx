@@ -32,11 +32,14 @@ export function Breadcrumb({ items, className }: { items: Crumb[]; className?: s
 }
 
 /** Header of a full page that is not a resource collection (Overview, Settings): crumbs · title · subtitle. */
-export function PageHeader({ crumbs, title, subtitle }: { crumbs: Crumb[]; title: string; subtitle?: string }) {
+export function PageHeader({ crumbs, title, subtitle, actions }: { crumbs: Crumb[]; title: string; subtitle?: string; actions?: ReactNode }) {
   return (
     <header className="shrink-0 border-b border-border bg-surface px-6 py-4">
-      <Breadcrumb items={crumbs} />
+      {crumbs.length > 0 ? <Breadcrumb items={crumbs} /> : null}
+      <div className="flex flex-wrap items-center justify-between gap-3">
       <h1 className="mt-1 text-heading font-semibold tracking-tight">{title}</h1>
+      {actions}
+      </div>
       {subtitle ? <p className="text-ui text-muted">{subtitle}</p> : null}
     </header>
   );

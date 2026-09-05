@@ -41,9 +41,10 @@ export class PlanStore {
         || existing.environment !== compiled.environment
         || existing.mode !== compiled.mode
         || existing.intentChaining !== compiled.intentChaining
+        || canonicalJson(existing.metadata) !== canonicalJson(compiled.metadata)
         || canonicalJson(existing.rootInputs) !== canonicalJson(compiled.rootInputs))
     ) {
-      throw new Error("a Plan cannot change its identity, environment, mode or root inputs");
+      throw new Error("a Plan cannot change its identity, environment, mode, metadata or root inputs");
     }
 
     for (const check of compiled.checks) {
@@ -65,6 +66,7 @@ export class PlanStore {
         current_intent: null,
         current_intent_check_uri: null,
         current_intent_attempt_key: null,
+        metadata_json: JSON.stringify(compiled.metadata),
         root_inputs_json: JSON.stringify(compiled.rootInputs),
         current_revision: compiled.revision,
         created_at: compiledAt,
@@ -382,6 +384,7 @@ function toPlan(row: PlanRow): Plan {
     ...(row.current_intent === null ? {} : { currentIntent: row.current_intent }),
     ...(row.current_intent_check_uri === null ? {} : { currentIntentCheckUri: row.current_intent_check_uri }),
     ...(row.current_intent_attempt_key === null ? {} : { currentIntentAttemptKey: row.current_intent_attempt_key }),
+    metadata: JSON.parse(row.metadata_json) as Plan["metadata"],
     rootInputs: JSON.parse(row.root_inputs_json) as Record<string, unknown>,
     currentRevision: row.current_revision,
     createdAt: row.created_at,
@@ -395,6 +398,7 @@ function toRevision(plan: Plan, row: RevisionRow, checkJson: readonly string[]):
     environment: plan.environment,
     mode: plan.mode,
     intentChaining: plan.intentChaining,
+    metadata: plan.metadata,
     rootInputs: plan.rootInputs,
     planSlug: plan.slug,
     revision: row.revision,

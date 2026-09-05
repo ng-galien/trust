@@ -1,0 +1,4 @@
+@media (max-width: 640px) {
+  .extension-shell > header > :not(a) { display: none; }
+  .extension-shell > div > aside { display: none; }
+}

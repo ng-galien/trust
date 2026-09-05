@@ -10,6 +10,8 @@ import { createRuntimeContainer } from "./runtime.js";
 import type { CompiledOperation } from "@trust/operation";
 
 export interface RuntimeServerOptions {
+  readonly extensionsFile?: string;
+  readonly extensionTimeoutMs?: number;
   readonly host: string;
   readonly port: number;
   readonly instance?: string;
@@ -55,6 +57,8 @@ const languageServerSocket = (webSocket: WebSocket): TrustLanguageServerSocket =
 });
 
 export const startRuntime = async ({
+  extensionsFile,
+  extensionTimeoutMs,
   host,
   port,
   instance,
@@ -81,6 +85,8 @@ export const startRuntime = async ({
   let container: Awaited<ReturnType<typeof createRuntimeContainer>>;
   try {
     container = await createRuntimeContainer({
+      ...(extensionsFile === undefined ? {} : { extensionsFile }),
+      ...(extensionTimeoutMs === undefined ? {} : { extensionTimeoutMs }),
       ...(databasePath ? { databasePath } : {}),
       ...(semanticAuthority ? { semanticAuthority } : {}),
       ...(operations ? { operations } : {}),

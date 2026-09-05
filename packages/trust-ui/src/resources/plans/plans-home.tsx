@@ -7,6 +7,7 @@ import { relativeTime } from "../../lib/format.js";
 import { useExpert } from "../../lib/preferences.js";
 import { usePlans, useProcedures } from "../../lib/runtime-context.js";
 import type { PlanMode } from "../../types.js";
+import { Badge } from "../../ui/badge.js";
 import { type FacetGroupSpec, FilterBox } from "../../ui/filter-box.js";
 import { facetHelpers } from "../shared/facets.js";
 import { CardGrid, ResourceCard } from "../shared/resource-card.js";
@@ -117,13 +118,14 @@ function CardsView({ rows, base, search, q }: { rows: PlanRow[]; base: string; s
         <ResourceCard
           key={row.id}
           to={`${base}/${encodeURIComponent(row.id)}${search}`}
-          marks={<><ModeBadge mode={row.mode} /><PlanStateBadges workState={row.workState} sessionState={row.sessionState} /></>}
-          title={row.id}
-          id={expert ? t("plans.home.card.id", { procedure: row.procedure, version: row.procedureVersion, revision: row.revision }) : row.procedure}
+          marks={<><ModeBadge mode={row.mode} /><PlanStateBadges workState={row.workState} sessionState={row.sessionState} />{row.labels.slice(0, 2).map((label) => <Badge key={label}>{label}</Badge>)}{row.labels.length > 2 ? <Badge>+{row.labels.length - 2}</Badge> : null}</>}
+          title={row.title}
+          id={expert ? `${row.id} · ${t("plans.home.card.id", { procedure: row.procedure, version: row.procedureVersion, revision: row.revision })}` : row.id}
           note={matchReason(row, q)}
           facts={[
             { label: t("plans.home.card.environment"), value: <span className="mono">{row.environment}</span> },
             { label: t("plans.home.card.progress"), value: <ProgressBar satisfied={row.satisfied} total={row.total} /> },
+            ...(row.intentChaining ? [{ label: t("plans.home.card.intent"), value: <span className="clamp-2">{row.currentIntent ?? t(`plans.intent.${intentState(row.intentChainState)}`)}</span> }] : []),
           ]}
           footerLeft={<Link to={`/procedures/${encodeURIComponent(row.procedure)}`} className="flex min-w-0 items-center gap-1 text-label text-accent hover:underline"><Workflow size={12} className="shrink-0" /><span className="truncate-1">{row.procedureTitle}</span></Link>}
           footerRight={<span className="shrink-0">{relativeTime(row.createdAt)}</span>}
@@ -139,9 +141,10 @@ function ListView({ rows, base, search, q }: { rows: PlanRow[]; base: string; se
   return (
     <ResourceTable
       columns={[
-        { key: "plan", label: t("plans.home.list.plan"), width: "28%" },
-        { key: "state", label: t("plans.home.list.state"), width: "12%" },
+        { key: "plan", label: t("plans.home.list.plan"), width: "23%" },
+        { key: "state", label: t("plans.home.list.state"), width: "10%" },
         { key: "procedure", label: t("plans.home.list.procedure") },
+        { key: "intent", label: t("plans.home.list.intent"), width: "20%" },
         { key: "environment", label: t("plans.home.list.environment"), width: "12%" },
         { key: "progress", label: t("plans.home.list.progress"), width: "14%" },
         { key: "engaged", label: t("plans.home.list.engaged"), width: "12%" },
@@ -149,13 +152,20 @@ function ListView({ rows, base, search, q }: { rows: PlanRow[]; base: string; se
       rows={rows}
       rowKey={(row) => row.id}
       renderCells={(row) => [
-        <TitleCell key="t" to={`${base}/${encodeURIComponent(row.id)}${search}`} title={row.id} id={expert ? t("plans.home.list.id", { revision: row.revision }) : ""} note={matchReason(row, q)} />,
+        <TitleCell key="t" to={`${base}/${encodeURIComponent(row.id)}${search}`} title={row.title} id={`${row.id}${expert ? ` · ${t("plans.home.list.id", { revision: row.revision })}` : ""}`} note={matchReason(row, q)} />,
         <span key="m" className="inline-flex flex-wrap items-center gap-1"><PlanStateBadges workState={row.workState} sessionState={row.sessionState} /></span>,
         <Link key="p" to={`/procedures/${encodeURIComponent(row.procedure)}`} className="text-body-lg text-accent hover:underline">{row.procedureTitle}{expert ? <span className="mono text-faint"> @{row.procedureVersion}</span> : null}</Link>,
+        <span key="i" className="clamp-2 text-body text-muted">{row.intentChaining ? row.currentIntent ?? t(`plans.intent.${intentState(row.intentChainState)}`) : "—"}</span>,
         <span key="e" className="mono text-body">{row.environment}</span>,
         <ProgressBar key="g" satisfied={row.satisfied} total={row.total} />,
         <span key="d" className="text-body text-muted">{relativeTime(row.createdAt)}</span>,
       ]}
     />
   );
+}
+
+function intentState(state: PlanRow["intentChainState"]): "notStarted" | "complete" | "none" {
+  if (state === "NOT_STARTED") return "notStarted";
+  if (state === "COMPLETE") return "complete";
+  return "none";
 }

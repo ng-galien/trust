@@ -50,6 +50,7 @@ try {
     databasePath,
   }, "TRUST runtime starting");
   runtime = await startRuntime({
+    ...(process.env.TRUST_EXTENSIONS_FILE ? { extensionsFile: process.env.TRUST_EXTENSIONS_FILE } : {}),
     host,
     port,
     ...(instance ? { instance } : {}),

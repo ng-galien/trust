@@ -8,6 +8,7 @@ export interface HttpAppDependencies {
   readonly otlpHttpHandler: Router;
   readonly diagnosticsHttpHandler: Router;
   readonly planEventsHttpHandler: Router;
+  readonly extensionsHttpHandler: Router;
 }
 
 export const createHttpApp = ({
@@ -17,6 +18,7 @@ export const createHttpApp = ({
   otlpHttpHandler,
   diagnosticsHttpHandler,
   planEventsHttpHandler,
+  extensionsHttpHandler,
 }: HttpAppDependencies): Express => {
   const app = express();
   app.disable("x-powered-by");
@@ -28,5 +30,6 @@ export const createHttpApp = ({
   app.use("/v1/traces", otlpHttpHandler);
   app.use("/otlp/diagnostics", diagnosticsHttpHandler);
   app.use("/events/plans", planEventsHttpHandler);
+  app.use("/extensions", extensionsHttpHandler);
   return app;
 };

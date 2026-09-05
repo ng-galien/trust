@@ -9,6 +9,7 @@ import type {
   Attempt,
   CheckSnapshot,
   Fact,
+  PlanMetadata,
   PlanMode,
   PlanEscalation,
   PlanRevision,
@@ -27,6 +28,7 @@ import { buildPlanRevision, validateAgentDeclarations } from "./build.js";
 import type { PlanEvents } from "./events.js";
 import type { EscalationStore } from "./escalation-store.js";
 import { completesPlanOnValidation, dependentCheckUris, isIntentValue, MAX_INTENT_LENGTH } from "./intent.js";
+import { normalizePlanMetadata } from "./metadata.js";
 
 export const DEFAULT_SESSION_DURATION_MS = 24 * 60 * 60 * 1_000;
 
@@ -66,6 +68,7 @@ export interface PlanEngagementInput {
   readonly procedureVersion: string;
   readonly plan: string;
   readonly environment: string;
+  readonly metadata?: RuntimeJsonObject | PlanMetadata;
   readonly rootInputs: RuntimeJsonObject;
   /** Defaults to "live". A dry-run Plan is driven by the operator: Facts come through the RPC boundary and no environment is resolved. */
   readonly mode?: PlanMode;
@@ -78,6 +81,7 @@ export interface PlanEngagementResult {
   readonly procedureVersion: string;
   readonly plan: string;
   readonly environment: string;
+  readonly metadata: PlanMetadata;
   readonly mode: PlanMode;
   readonly revision: number;
   readonly checkUris: readonly string[];
@@ -268,6 +272,7 @@ export class PlanRuntime {
         plan: input.plan,
         environment: input.environment,
         mode,
+        metadata: normalizePlanMetadata(input.metadata),
         rootInputs: input.rootInputs,
         revision: 1,
       });
@@ -293,11 +298,15 @@ export class PlanRuntime {
   }
 
   async engage(input: PlanEngagementInput): Promise<PlanEngagementResult> {
-    const revision = await this.#initialRevision(input);
     const existing = await this.#plans.findPlan(input.plan);
+    const revision = await this.#initialRevision({
+      ...input,
+      ...(input.metadata === undefined && existing !== undefined ? { metadata: existing.metadata } : {}),
+    });
     if (existing) {
       const current = await this.#plans.readRevision(input.plan, existing.currentRevision);
       if (!current || current.definitionDigest !== revision.definitionDigest
+        || canonicalJson(existing.metadata) !== canonicalJson(revision.metadata)
         || canonicalJson(existing.rootInputs) !== canonicalJson(revision.rootInputs)
         || existing.environment !== revision.environment
         || existing.mode !== revision.mode) {
@@ -327,6 +336,7 @@ export class PlanRuntime {
       plan: plan.slug,
       environment: plan.environment,
       rootInputs: plan.rootInputs,
+      metadata: plan.metadata,
       mode: plan.mode,
     });
     const now = this.#now();
@@ -591,6 +601,7 @@ export class PlanRuntime {
         plan: plan.slug,
         environment: plan.environment,
         mode: plan.mode,
+        metadata: plan.metadata,
         rootInputs: plan.rootInputs,
         declarations,
         revision: plan.currentRevision + 1,
@@ -742,6 +753,9 @@ export class PlanRuntime {
       if ("refusal" in resolved) return { contract: "trust.check-admission@1", ...resolved.refusal };
     }
     const attempt = creation.attempt;
+    if (creation.created && attempt.intent !== undefined) {
+      this.#events.publish({ type: "plan.state", at: this.#now().toISOString(), plan: attempt.planSlug, revision: attempt.planRevision });
+    }
     return {
       contract: "trust.check-admission@1",
       status: "ADMITTED",
@@ -846,7 +860,8 @@ export class PlanRuntime {
       status: "INTERRUPTED",
       attemptHandle,
     });
-    return this.#database.transaction().execute(async (transaction) => {
+    let releasedPlan: string | undefined;
+    const interruption = await this.#database.transaction().execute(async (transaction) => {
       const attempts = this.#attempts.using(transaction);
       const facts = this.#facts.using(transaction);
       const plans = this.#plans.using(transaction);
@@ -867,11 +882,14 @@ export class PlanRuntime {
         if (plan?.currentIntent === attempt.intent
           && plan.currentIntentAttemptKey === attempt.attemptKey) {
           await plans.releaseIntentAttempt(plan.slug, attempt.intent, attempt.attemptKey);
+          releasedPlan = plan.slug;
         }
       }
       await attempts.interrupt(attemptHandle, this.#now().toISOString());
       return result();
     });
+    if (releasedPlan !== undefined) this.#events.publish({ type: "plan.state", at: this.#now().toISOString(), plan: releasedPlan });
+    return interruption;
   }
 
   async #finalize(attempt: Attempt): Promise<AttemptFinalizationResult> {
@@ -975,6 +993,7 @@ export class PlanRuntime {
         plan: plan.slug,
         environment: plan.environment,
         mode: plan.mode,
+        metadata: plan.metadata,
         rootInputs: plan.rootInputs,
         declarations: current.agentDeclarations,
         revision: nextRevisionNumber,
@@ -1395,6 +1414,7 @@ function engagement(revision: number, planRevision: PlanRevision): PlanEngagemen
     procedureVersion: planRevision.procedureVersion,
     plan: planRevision.planSlug,
     environment: planRevision.environment,
+    metadata: planRevision.metadata,
     mode: planRevision.mode,
     revision,
     checkUris: planRevision.checks.map((check) => check.uri).sort(),

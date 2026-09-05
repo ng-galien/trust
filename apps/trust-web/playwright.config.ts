@@ -6,7 +6,7 @@ export default defineConfig({
   workers: 1,
   reporter: "line",
   projects: [
-    { name: "acceptance", testMatch: /\.acceptance\.spec\.ts$/ },
+    { name: "acceptance", testMatch: /\.acceptance\.spec\.ts$/, testIgnore: "extensions.acceptance.spec.ts" },
     // Documentation screenshots — `npm run docs:capture`; never part of the acceptance run.
     { name: "docs-capture", testMatch: /\.capture\.ts$/, timeout: 60_000 },
   ],

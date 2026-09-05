@@ -3,6 +3,7 @@ import express, {
   type RequestHandler,
   type Router,
 } from "express";
+import { ExtensionError, type ExtensionHost } from "../extensions/host.js";
 
 import {
   ReadError,
@@ -21,6 +22,14 @@ import {
   type PlanDeclarationReplacementResult,
   type PlanRuntime,
 } from "../plan/runtime.js";
+import {
+  AUTHORING_TOOL_NAMES,
+  authoringTools,
+  callAuthoringTool,
+  InvalidMcpAuthoringArguments,
+  isAuthoringToolName,
+  type McpAuthoringDependencies,
+} from "./mcp-authoring.js";
 
 export const MCP_JSON_LIMIT_BYTES = 1_048_576;
 
@@ -37,6 +46,7 @@ const READ_TOOL_NAMES = [
 ] as const;
 const TOOL_NAMES = [
   ...READ_TOOL_NAMES,
+  ...AUTHORING_TOOL_NAMES,
   "trust_plan_engage",
   "trust_plan_declarations_replace",
   "trust_check_escalate",
@@ -45,7 +55,8 @@ const TOOL_NAMES = [
 type ToolName = (typeof TOOL_NAMES)[number];
 type JsonRpcId = string | number;
 
-interface McpHttpDependencies {
+interface McpHttpDependencies extends McpAuthoringDependencies {
+  readonly extensionHost: ExtensionHost;
   readonly planReader: PlanReader;
   readonly planRuntime: PlanRuntime;
 }
@@ -80,9 +91,17 @@ export function createMcpHttpHandler(dependencies: McpHttpDependencies): Router 
     }).catch(() => response.status(500).json(failure(null, INVALID_REQUEST, "Internal error")));
   };
 
-  router.get("/", (_request, response) => {
-    response.set("allow", "POST");
-    response.status(405).end();
+  router.get("/", (request, response) => {
+    if (!request.accepts("text/event-stream")) { response.status(406).end(); return; }
+    if (!validProtocolVersion(request.get("mcp-protocol-version"))) { response.status(400).json(failure(null, INVALID_REQUEST, "MCP-Protocol-Version is required")); return; }
+    response.status(200).set({ "Content-Type": "text/event-stream", "Cache-Control": "no-cache", Connection: "keep-alive" });
+    response.flushHeaders();
+    response.write(": connected\n\n");
+    const changed = () => response.write(`event: message\ndata: ${JSON.stringify({ jsonrpc: "2.0", method: "notifications/tools/list_changed" })}\n\n`);
+    dependencies.extensionHost.events.on("tools-changed", changed);
+    const heartbeat = setInterval(() => response.write(": keep-alive\n\n"), 15_000);
+    heartbeat.unref();
+    response.once("close", () => { clearInterval(heartbeat); dependencies.extensionHost.events.off("tools-changed", changed); });
   });
   router.post(
     "/",
@@ -127,7 +146,7 @@ async function dispatch(
         }
         return success(id, {
           protocolVersion: requestedProtocolVersion,
-          capabilities: { tools: { listChanged: false } },
+          capabilities: { tools: { listChanged: true } },
           serverInfo: { name: "trust-runtime", version: "0.1.0" },
         });
       }
@@ -137,7 +156,7 @@ async function dispatch(
       if (!validToolsListParams(message.params)) {
         return failure(id, INVALID_PARAMS, "Invalid tools/list parameters");
       }
-      return success(id, { tools: tools() });
+      return success(id, { tools: [...tools(), ...dependencies.extensionHost.tools()] });
     case "tools/call":
       return callTool(id, message.params, dependencies);
     default:
@@ -150,8 +169,31 @@ async function callTool(
   value: unknown,
   dependencies: McpHttpDependencies,
 ): Promise<JsonRpcResponse> {
+  if (isRecord(value) && typeof value.name === "string") {
+    const extension = dependencies.extensionHost.tool(value.name);
+    if (extension) {
+      try {
+        const result = await extension.command(value.arguments);
+        return result.status >= 300 ? toolError(id, result.text) : textResult(id, result.text);
+      } catch (error) {
+        if (error instanceof ExtensionError) return toolError(id, `Extension command refused (${error.code}).`);
+        throw error;
+      }
+    }
+  }
   if (!isRecord(value) || !isToolName(value.name) || !isRecord(value.arguments)) {
     return failure(id, INVALID_PARAMS, "Unknown tool or invalid arguments");
+  }
+  if (isAuthoringToolName(value.name)) {
+    try {
+      const result = await callAuthoringTool(value.name, value.arguments, dependencies);
+      return result.isError ? toolError(id, result.text) : textResult(id, result.text);
+    } catch (error) {
+      if (error instanceof InvalidMcpAuthoringArguments) {
+        return failure(id, INVALID_PARAMS, error.message);
+      }
+      throw error;
+    }
   }
   if (value.name === "trust_plan_engage") {
     const input = exactPlanEngagement(value.arguments);
@@ -327,6 +369,23 @@ function renderPlan(view: PlanView): string {
     `State: ${view.workState}`,
     `Session: ${view.sessionState}`,
     `Progress: ${view.satisfiedChecks}/${view.checks.length} current Checks satisfied`,
+    ...(view.metadata.title === undefined && view.metadata.labels.length === 0 && Object.keys(view.metadata.annotations).length === 0
+      ? []
+      : [
+          "",
+          "METADATA",
+          `Title: ${view.metadata.title ?? "none"}`,
+          `Labels: ${view.metadata.labels.length === 0 ? "none" : view.metadata.labels.join(", ")}`,
+          ...Object.entries(view.metadata.annotations).map(([key, value]) => `Annotation ${key}: ${value}`),
+        ]),
+    ...(Object.keys(view.rootInputs).length === 0
+      ? []
+      : [
+          "",
+          "ENGAGEMENT CONTEXT",
+          "Immutable root business inputs recorded at Plan engagement; these are not re-observed Facts.",
+          ...Object.entries(view.rootInputs).map(([role, value]) => `- ${role} = ${JSON.stringify(value)}`),
+        ]),
     ...(view.intentChaining
       ? [
           "",
@@ -725,6 +784,7 @@ function tools(): readonly unknown[] {
   ];
   return [
     ...readTools,
+    ...authoringTools(),
     {
       name: "trust_plan_engage",
       title: "Engage a TRUST Plan",
@@ -736,6 +796,24 @@ function tools(): readonly unknown[] {
           procedureVersion: { type: "string", description: "Exact procedure version" },
           plan: { type: "string", description: "Business Plan identifier" },
           environment: { type: "string", description: "TRUST environment" },
+          metadata: {
+            type: "object",
+            description: "Optional immutable presentation and coordination metadata for this Plan",
+            properties: {
+              title: { type: "string", description: "Human-readable Plan title" },
+              labels: {
+                type: "array",
+                description: "Lowercase labels used to classify this Plan",
+                items: { type: "string" },
+              },
+              annotations: {
+                type: "object",
+                description: "Namespaced string references supplied by the orchestrator",
+                additionalProperties: { type: "string" },
+              },
+            },
+            additionalProperties: false,
+          },
           rootInputs: {
             type: "object",
             description: "Exact root business inputs compiled by the procedure",
@@ -851,15 +929,16 @@ function exactPlanDeclarationReplacement(
 
 function exactPlanEngagement(value: Record<string, unknown>): PlanEngagementInput | undefined {
   const keys = ["procedure", "procedureVersion", "plan", "environment", "rootInputs"];
-  const expected = new Set(keys);
+  const expected = new Set([...keys, "metadata"]);
   if (
-    Object.keys(value).length !== keys.length
+    (Object.keys(value).length !== keys.length && Object.keys(value).length !== keys.length + 1)
     || Object.keys(value).some((key) => !expected.has(key))
     || keys.some((key) => !Object.hasOwn(value, key))
     || !boundedString(value.procedure)
     || !boundedString(value.procedureVersion)
     || !boundedString(value.plan)
     || !boundedString(value.environment)
+    || (value.metadata !== undefined && !isRecord(value.metadata))
     || !isRecord(value.rootInputs)
   ) {
     return undefined;
@@ -870,6 +949,7 @@ function exactPlanEngagement(value: Record<string, unknown>): PlanEngagementInpu
     procedureVersion: value.procedureVersion,
     plan: value.plan,
     environment: value.environment,
+    ...(value.metadata === undefined ? {} : { metadata: value.metadata }),
     rootInputs: value.rootInputs,
   };
 }

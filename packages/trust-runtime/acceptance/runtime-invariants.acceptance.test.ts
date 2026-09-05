@@ -219,6 +219,13 @@ test("optional agent declarations may be absent and create Checks only when supp
 
 test("an intent-chained Plan initializes on first read, survives resumption and rotates after each validated Check", async () => {
   const runtime = await startRuntime("trust-intent-chaining-");
+  const assertIntentProjection = async (plan: string, currentIntent: string | null, nextIntent: string | null) => {
+    const detail = await rpc(runtime.endpoint, "plan.read", { plan }) as { currentIntent: string | null; nextIntent: string | null };
+    const list = await rpc(runtime.endpoint, "plan.list", {}) as { plans: readonly { plan: string; currentIntent: string | null; nextIntent: string | null }[] };
+    const summary = list.plans.find(value => value.plan === plan);
+    assert.ok(summary);
+    for (const view of [detail, summary]) assert.deepEqual({ currentIntent: view.currentIntent, nextIntent: view.nextIntent }, { currentIntent, nextIntent });
+  };
   try {
     await publish(runtime.endpoint, fixture("intent-chaining.feature"));
     const concurrencyEngagement = await rpc(runtime.endpoint, "plan.engage", {
@@ -267,6 +274,7 @@ test("an intent-chained Plan initializes on first read, survives resumption and 
       "intent-interrupted-attempt",
       { intent: interruptionIntent, nextIntent: "Continue after the interrupted Attempt" },
     );
+    await assertIntentProjection("intent-interruption", interruptionIntent, "Continue after the interrupted Attempt");
     const interruption = await rpc(runtime.endpoint, "check.attempt.interrupt", {
       contract: "trust.attempt-interruption-request@1",
       attemptHandle: interruptedAdmission.attemptHandle,
@@ -281,6 +289,7 @@ test("an intent-chained Plan initializes on first read, survives resumption and 
       checkUri: interruptedAdmission.checkUri,
     }) as { attempts: readonly { state: string }[] };
     assert.equal(interruptedCheck.attempts[0]?.state, "interrupted");
+    await assertIntentProjection("intent-interruption", interruptionIntent, null);
     const retryAdmission = await rpc(runtime.endpoint, "check.attempt.admit", {
       contract: "trust.check-admission-request@1",
       attemptKey: "intent-retry-after-interruption",
@@ -289,6 +298,7 @@ test("an intent-chained Plan initializes on first read, survives resumption and 
       nextIntent: "Continue after the retried Attempt",
     }) as { status: string };
     assert.equal(retryAdmission.status, "ADMITTED");
+    await assertIntentProjection("intent-interruption", interruptionIntent, "Continue after the retried Attempt");
 
     const sameCheckEngagement = await rpc(runtime.endpoint, "plan.engage", {
       contract: "trust.plan-engagement-request@1",
@@ -380,6 +390,7 @@ test("an intent-chained Plan initializes on first read, survives resumption and 
     assert.doesNotMatch(firstRead, /Final invocation URI:/);
     const repeatedRead = await mcpTool(runtime.endpoint, "trust_plan_read", { checkUri: engagement.checkUris[1] });
     assert.match(repeatedRead, new RegExp(`^Current intent: ${escapeRegExp(initialIntent)}$`, "m"));
+    await assertIntentProjection("intent-resumption", initialIntent, null);
 
     const missing = await rpc(runtime.endpoint, "check.attempt.admit", {
       contract: "trust.check-admission-request@1",
@@ -422,6 +433,7 @@ test("an intent-chained Plan initializes on first read, survives resumption and 
       intent: initialIntent,
       nextIntent: "Observe the remaining repository Check",
     });
+    await assertIntentProjection("intent-resumption", initialIntent, "Observe the remaining repository Check");
     await sendRunnerFacts(runtime.endpoint, notValidated, gitHeadFact(notValidated.operation.operation, "dirty"));
     const notValidatedFinalization = await rpc(runtime.endpoint, "check.attempt.finalize", {
       contract: "trust.attempt-finalization-request@1",
@@ -431,6 +443,7 @@ test("an intent-chained Plan initializes on first read, survives resumption and 
       next: { action: string; checks: readonly { name: string; successReason: string; checkUri: string }[] };
     };
     assert.equal(notValidatedFinalization.verdict, "NOT_VALIDATED");
+    await assertIntentProjection("intent-resumption", initialIntent, null);
     assert.equal(notValidatedFinalization.next.action, "RETRY_OR_ESCALATE");
     assert.equal(notValidatedFinalization.next.checks.length, 1);
     assert.ok(["working tree observation", "revision observation"].includes(notValidatedFinalization.next.checks[0]!.name));
@@ -467,6 +480,7 @@ test("an intent-chained Plan initializes on first read, survives resumption and 
       intent: initialIntent,
       nextIntent: "Observe the remaining repository Check",
     });
+    await assertIntentProjection("intent-resumption", initialIntent, "Observe the remaining repository Check");
     await sendRunnerFacts(runtime.endpoint, first, gitHeadFact(first.operation.operation));
     const firstFinalization = await rpc(runtime.endpoint, "check.attempt.finalize", {
       contract: "trust.attempt-finalization-request@1",
@@ -476,6 +490,7 @@ test("an intent-chained Plan initializes on first read, survives resumption and 
       next: { action: string; checks: readonly { name: string; successReason: string; checkUri: string }[] };
     };
     assert.equal(firstFinalization.verdict, "VALIDATED");
+    await assertIntentProjection("intent-resumption", "Observe the remaining repository Check", null);
     assert.equal(firstFinalization.next.action, "RUN_CHECKS");
     assert.equal(firstFinalization.next.checks.length, 1);
     assert.match(firstFinalization.next.checks[0]!.checkUri, /\?intent=Observe%20the%20remaining%20repository%20Check$/);
@@ -505,6 +520,7 @@ test("an intent-chained Plan initializes on first read, survives resumption and 
     const final = await admit(runtime.endpoint, engagement.checkUris[0]!, "intent-final", {
       intent: "Observe the remaining repository Check",
     });
+    await assertIntentProjection("intent-resumption", "Observe the remaining repository Check", null);
     await sendRunnerFacts(runtime.endpoint, final, gitHeadFact(final.operation.operation));
     const finalization = await rpc(runtime.endpoint, "check.attempt.finalize", {
       contract: "trust.attempt-finalization-request@1",
@@ -512,6 +528,7 @@ test("an intent-chained Plan initializes on first read, survives resumption and 
     }) as { verdict: string; next: { action: string } };
     assert.equal(finalization.verdict, "VALIDATED");
     assert.equal(finalization.next.action, "COMPLETE");
+    await assertIntentProjection("intent-resumption", null, null);
     const complete = await mcpTool(runtime.endpoint, "trust_plan_read", { checkUri: engagement.checkUris[0] });
     assert.match(complete, /State: COMPLETE/);
     assert.match(complete, /Current intent: none/);

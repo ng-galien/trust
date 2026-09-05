@@ -9,6 +9,7 @@ import { buildSemanticCheckUri } from "../check/uri.js";
 import type {
   CheckValues,
   PlanCheck,
+  PlanMetadata,
   PlanMode,
   PlanRevision,
   ProducedRoleValue,
@@ -29,6 +30,7 @@ export interface BuildPlanRevisionInput {
   readonly plan: string;
   readonly environment: string;
   readonly mode: PlanMode;
+  readonly metadata: PlanMetadata;
   readonly rootInputs: RuntimeJsonObject;
   readonly declarations?: RuntimeJsonObject;
   readonly revision: number;
@@ -188,6 +190,7 @@ export function buildPlanRevision(input: BuildPlanRevisionInput): PlanRevision {
     environment: input.environment,
     mode: input.mode,
     intentChaining: input.procedure.intentChaining,
+    metadata: input.metadata,
     rootInputs,
     agentDeclarations: declarations,
     planSlug: input.plan,

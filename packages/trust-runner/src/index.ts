@@ -14,6 +14,8 @@ export { createMcpHandler, MCP_PROTOCOL_VERSION, TRUST_CHECK_RUN_TOOL } from "./
 export { runOperation } from "./operation/run.js";
 export type { OperationResult, OperationRunnerConfiguration } from "./operation/run.js";
 export type { ShellRunnerConfiguration } from "./shell/run.js";
+export { PostgresqlError } from "./postgresql/run.js";
+export type { PostgresqlRunnerConfiguration } from "./postgresql/run.js";
 export { HttpStatusError } from "./http/run.js";
 export { OtlpFactExporter } from "./telemetry/otlp.js";
 export type { Fact, FactExporter, FactTrace } from "./telemetry/otlp.js";

@@ -32,11 +32,20 @@ spec:
           envFrom:
             - secretRef:
                 name: postgres-auth
+          volumeMounts:
+            - name: postgres-init
+              mountPath: /docker-entrypoint-initdb.d/001-coordination.sql
+              subPath: 001-coordination.sql
+              readOnly: true
           readinessProbe:
             exec:
               command: ["pg_isready", "-U", "flowlab"]
             initialDelaySeconds: 5
             periodSeconds: 5
+      volumes:
+        - name: postgres-init
+          configMap:
+            name: postgres-init
 ---
 apiVersion: v1
 kind: Service

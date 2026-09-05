@@ -1,7 +1,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { ChevronRight, CircleArrowUp, FileCode2, FlaskConical, History, ListChecks, LockKeyhole, Network, Play, RotateCcw, Server, Trash2, Workflow, XCircle } from "lucide-react";
 import type { TFunction } from "i18next";
-import { type ReactNode, useMemo, useState } from "react";
+import { Fragment, type ReactNode, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useLocation, useNavigate, useParams } from "react-router";
 
@@ -97,10 +97,11 @@ function PlanItem({ slug, planMode, base, onClose, listSearch }: { slug: string;
       onClose={onClose}
       crumbs={crumbs}
       labelledBy="plan-title"
+      accessibleTitle={slug}
       kicker={t("plans.overlay.kicker")}
-      badges={data ? <><ModeBadge mode={data.mode} /><PlanStateBadges workState={data.workState} sessionState={data.sessionState} />{currentEnvironment && data.environment !== currentEnvironment ? <span title={t("plans.overlay.otherEnvironmentHint", { environment: data.environment, current: currentEnvironment })}><Badge tone="warning" className="inline-flex items-center gap-1"><Server size={11} /> {t("plans.overlay.otherEnvironment", { environment: data.environment })}</Badge></span> : null}</> : null}
-      id={expert && data ? `${data.procedure}@${data.procedureVersion} · ${data.environment}` : ""}
-      title={slug}
+      badges={data ? <><ModeBadge mode={data.mode} /><PlanStateBadges workState={data.workState} sessionState={data.sessionState} />{data.metadata.labels.map((label) => <Badge key={label}>{label}</Badge>)}{currentEnvironment && data.environment !== currentEnvironment ? <span title={t("plans.overlay.otherEnvironmentHint", { environment: data.environment, current: currentEnvironment })}><Badge tone="warning" className="inline-flex items-center gap-1"><Server size={11} /> {t("plans.overlay.otherEnvironment", { environment: data.environment })}</Badge></span> : null}</> : null}
+      id={expert && data ? `${slug} · ${data.procedure}@${data.procedureVersion} · ${data.environment}` : data ? slug : ""}
+      title={data?.metadata.title ?? compiled?.title ?? slug}
       loading={plan.isLoading ? <LoadingState /> : notFound ? (
         <div className="p-8"><EmptyState title={t("plans.overlay.unknown", { slug })} body={plan.error?.message} action={<Button onClick={onClose}>{t("plans.overlay.backToPlans")}</Button>} /></div>
       ) : undefined}
@@ -230,6 +231,17 @@ function PlanSummaryStrip({ plan, compiled, onSelectCheck }: { plan: PlanView; c
           <span className="text-body text-muted">{expert ? t("plans.summary.revisionEngaged", { revision: plan.revision, when: relativeTime(plan.createdAt) }) : t("plans.summary.engaged", { when: relativeTime(plan.createdAt) })}</span>
         </div>
         <p className="mt-2 text-ui font-medium leading-relaxed">{compiled?.title ?? plan.procedure}</p>
+        {plan.intentChaining ? (
+          <div className="mt-2 rounded-(--radius-2) border border-border bg-surface-2 px-3 py-2">
+            <span className="kicker">{t("plans.summary.agentIntent")}</span>
+            <p className="mt-1 text-body-lg text-text">{plan.currentIntent ?? t(`plans.intent.${plan.intentChainState === "NOT_STARTED" ? "notStarted" : plan.intentChainState === "COMPLETE" ? "complete" : "none"}`)}</p>
+          </div>
+        ) : null}
+        {expert && Object.keys(plan.metadata.annotations).length > 0 ? (
+          <dl className="mt-2 grid grid-cols-[max-content_minmax(0,1fr)] gap-x-3 gap-y-1 text-label">
+            {Object.entries(plan.metadata.annotations).map(([key, value]) => <Fragment key={key}><dt className="mono text-faint">{key}</dt><dd className="min-w-0 break-words text-muted">{value}</dd></Fragment>)}
+          </dl>
+        ) : null}
         {compiled?.description ? (
           <div className="mt-1.5">
             <button type="button" aria-expanded={showDescription} onClick={() => setShowDescription((open) => !open)} className="-ml-1 inline-flex h-7 items-center gap-1 rounded-(--radius-1) px-1 text-body-lg font-medium text-muted hover:bg-surface-2 hover:text-text">

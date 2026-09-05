@@ -10,6 +10,28 @@ import { startPublicRuntime } from "./support/runtime-process.js";
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../..");
 const operationsDirectory = path.join(repositoryRoot, "assets/operations");
 
+test("intent admission and interruption publish committed Plan state changes", { timeout: 15_000 }, async () => {
+  const runtime = await startPublicRuntime("trust-intent-events-", { operationsDirectory, environments: { local: { workspaceRoot: repositoryRoot } } });
+  const events = await openPlanEvents(runtime.endpoint);
+  try {
+    const source = await readFile(path.join(repositoryRoot, "packages/trust-runtime/acceptance/fixtures/intent-chaining.feature"), "utf8");
+    await rpc(runtime.endpoint, "procedure.publish", { source, sourceName: "intent-chaining.feature" });
+    const engaged = await rpc(runtime.endpoint, "plan.engage", { contract: "trust.plan-engagement-request@1", procedure: "intent-chaining", procedureVersion: "1.0.0", plan: "intent-events", environment: "local", rootInputs: { repository: "trust" }, mode: "dry-run" }) as { checkUris: string[] };
+    const checkUri = engaged.checkUris[0]!;
+    await fetch(`${runtime.endpoint}/mcp`, { method: "POST", headers: { "content-type": "application/json", "mcp-protocol-version": "2025-03-26" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "trust_plan_read", arguments: { checkUri } } }) });
+    const initial = await rpc(runtime.endpoint, "plan.read", { plan: "intent-events" }) as { currentIntent: string };
+    const admission = await rpc(runtime.endpoint, "check.attempt.admit", { contract: "trust.check-admission-request@1", attemptKey: "intent-event-attempt", checkUri, intent: initial.currentIntent, nextIntent: "Observe the remaining Check" }) as { status: string; attemptHandle: string };
+    assert.equal(admission.status, "ADMITTED");
+    await events.takeUntil(event => event.type === "plan.state" && event.plan === "intent-events");
+    const pending = await rpc(runtime.endpoint, "plan.read", { plan: "intent-events" }) as { currentIntent: string; nextIntent: string | null };
+    assert.deepEqual({ currentIntent: pending.currentIntent, nextIntent: pending.nextIntent }, { currentIntent: initial.currentIntent, nextIntent: "Observe the remaining Check" });
+    await rpc(runtime.endpoint, "check.attempt.interrupt", { contract: "trust.attempt-interruption-request@1", attemptHandle: admission.attemptHandle });
+    await events.takeUntil(event => event.type === "plan.state" && event.plan === "intent-events");
+    const interrupted = await rpc(runtime.endpoint, "plan.read", { plan: "intent-events" }) as { currentIntent: string; nextIntent: string | null };
+    assert.deepEqual({ currentIntent: interrupted.currentIntent, nextIntent: interrupted.nextIntent }, { currentIntent: initial.currentIntent, nextIntent: null });
+  } finally { events.close(); await runtime.close(); }
+});
+
 test("the Operation catalog is writable and catalog summaries stay light", async () => {
   const directory = await mkdtemp(path.join(tmpdir(), "trust-operations-"));
   await cp(operationsDirectory, directory, { recursive: true });

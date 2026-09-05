@@ -19,7 +19,7 @@ test("the interface keeps Operations, Procedures, Plans and Checks connected", a
   await page.getByRole("tab", { name: "Operator" }).click();
 
   await page.goto("/plans/interface-acceptance");
-  await expect(page.locator("#plan-title")).toHaveText("interface-acceptance");
+  await expect(page.locator("#plan-title")).toHaveText("Establish whether a Git repository has local changes");
   await page.getByRole("button", { name: /repository status/ }).first().click();
   await expect(page).toHaveURL(/sel=check/);
   await expect(page.getByRole("region", { name: "Details of repository status" })).toBeVisible();
@@ -27,6 +27,40 @@ test("the interface keeps Operations, Procedures, Plans and Checks connected", a
   await page.getByRole("button", { name: "Use dark theme" }).click();
   await expect(page.locator("html")).toHaveClass(/dark/);
   await expect(page.getByRole("button", { name: "Use light theme" })).toBeVisible();
+});
+
+test("Plan cards use persisted metadata and show the current agent intent", async ({ page, request }) => {
+  const plan = "metadata-intent-acceptance";
+  const title = "Coordinate the PAY-42 delivery";
+  await runtimeRpc(request, "plan.engage", {
+    contract: "trust.plan-engagement-request@1",
+    procedure: "end-to-end-red-green-telemetry",
+    procedureVersion: "1.1.0",
+    plan,
+    environment: "local",
+    metadata: {
+      title,
+      labels: ["delivery", "payments"],
+      annotations: { "coordination.origin": "codex-acceptance" },
+    },
+    rootInputs: { "jira issue": "PAY-42" },
+  });
+  const view = await runtimeRpc<{ currentIntent: string }>(request, "plan.read", { plan });
+
+  await page.goto("/plans");
+  const card = page.locator('[data-doc="home.card"]').filter({ hasText: title });
+  await expect(card).toBeVisible();
+  await expect(card).toContainText("delivery");
+  await expect(card).toContainText("payments");
+  await expect(card).toContainText(view.currentIntent);
+
+  await card.click();
+  await expect(page.locator("#plan-title")).toHaveText(title);
+  const dialog = page.getByRole("dialog", { name: plan });
+  await expect(dialog.getByText(view.currentIntent, { exact: true })).toBeVisible();
+  await page.getByRole("tab", { name: "Expert" }).click();
+  await expect(page.getByText("coordination.origin", { exact: true })).toBeVisible();
+  await expect(page.getByText("codex-acceptance", { exact: true })).toBeVisible();
 });
 
 test("the procedure picker does not make the engagement form scroll", async ({ page }) => {

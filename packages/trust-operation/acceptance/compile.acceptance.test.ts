@@ -76,6 +76,47 @@ describe("Operation compiler", () => {
     });
   });
 
+  test("compiles one PostgreSQL statement with the complete Input bound as JSONB", () => {
+    const source = fixture("valid/postgresql.atomic-claim.feature");
+
+    const compiled = compileOperation({
+      source,
+      sourceName: "postgresql.atomic-claim.feature",
+    });
+
+    expect(compiled.steps).toEqual([{
+      name: "claim",
+      type: "postgresql",
+      postgresql: {
+        connection: { environment: "databaseUrl" },
+        statement: expect.stringContaining("INSERT INTO trust_connector_claims"),
+      },
+    }]);
+    expect(compiled.produce.expression).toContain("steps.claim.result.state");
+    expect(() => validateCompiledOperation(JSON.parse(JSON.stringify(compiled)))).not.toThrow();
+  });
+
+  test("requires a string Environment and an SQL DocString for PostgreSQL", () => {
+    const source = fixture("valid/postgresql.atomic-claim.feature");
+    const wrongEnvironment = analyzeOperation({
+      source: source.replace("| databaseUrl | string |", "| databaseUrl | url    |"),
+      sourceName: "postgresql-wrong-environment.feature",
+    });
+    const missingStatement = analyzeOperation({
+      source: source.replace(/\n      \"\"\"\n      WITH inserted AS \([\s\S]*?\n      \"\"\"/, ""),
+      sourceName: "postgresql-missing-statement.feature",
+    });
+
+    expect(wrongEnvironment.diagnostics).toEqual([expect.objectContaining({
+      code: "invalid-operation",
+      message: 'PostgreSQL "claim" requires Environment "databaseUrl" to be a string',
+    })]);
+    expect(missingStatement.diagnostics).toEqual([expect.objectContaining({
+      code: "unknown-step",
+      message: "PostgreSQL requires one SQL DocString and no table",
+    })]);
+  });
+
   test("analyzes invalid Gherkin at the parser error location", () => {
     const analysis = analyzeOperation({
       source: "Scenario: before feature\n",

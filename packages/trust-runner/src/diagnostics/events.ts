@@ -3,7 +3,7 @@ import type { JsonObject, JsonValue } from "../lib/json.js";
 /* Diagnostic events emitted while an Operation runs. They exist for humans validating an
    Operation (trial runs); they are never Facts and never reach a Plan. */
 
-export type StepKind = "shell" | "http" | "file-read";
+export type StepKind = "shell" | "http" | "file-read" | "postgresql";
 
 export interface OperationStartEvent {
   readonly type: "operation.start";
@@ -24,7 +24,7 @@ export interface StepStartEvent {
   readonly detail: JsonObject;
 }
 
-export type LogStream = "stdout" | "stderr" | "http.request" | "http.response" | "file" | "runner";
+export type LogStream = "stdout" | "stderr" | "http.request" | "http.response" | "file" | "postgresql" | "runner";
 
 export interface StepLogEvent {
   readonly type: "step.log";
@@ -80,7 +80,7 @@ export const nullSink: DiagnosticsSink = {
   async flush() {},
 };
 
-/** Per-step reporter handed to the shell / HTTP / file runners. */
+/** Per-step reporter handed to the Shell / HTTP / File / PostgreSQL runners. */
 export interface StepReporter {
   log(stream: LogStream, text: string): void;
 }

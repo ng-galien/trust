@@ -85,6 +85,12 @@ export interface PublishedProcedure {
 
 export type PlanMode = "live" | "dry-run";
 
+export interface PlanMetadata {
+  title?: string;
+  labels: string[];
+  annotations: Record<string, string>;
+}
+
 export interface PlanSummary {
   plan: string;
   procedure: string;
@@ -92,6 +98,11 @@ export interface PlanSummary {
   environment: string;
   /** dry-run: the operator plays the agent (Facts posted over RPC, no environment ever resolved). */
   mode: PlanMode;
+  intentChaining: boolean;
+  intentChainState: "DISABLED" | "NOT_STARTED" | "ACTIVE" | "COMPLETE";
+  currentIntent: string | null;
+  currentIntentCheckUri: string | null;
+  metadata: PlanMetadata;
   revision: number;
   createdAt: string;
   sessionState: "OPEN" | "UNAVAILABLE";
@@ -129,10 +140,6 @@ export interface DeclarationRole {
 }
 
 export interface PlanView extends PlanSummary {
-  intentChaining: boolean;
-  intentChainState: "DISABLED" | "NOT_STARTED" | "ACTIVE" | "COMPLETE";
-  currentIntent: string | null;
-  currentIntentCheckUri: string | null;
   rootInputs: JsonObject;
   declarations: JsonObject;
   declarationRoles: DeclarationRole[];
@@ -235,6 +242,7 @@ export interface PlanEngagement {
   procedureVersion: string;
   plan: string;
   environment: string;
+  metadata: PlanMetadata;
   mode: PlanMode;
   revision: number;
   checkUris: string[];

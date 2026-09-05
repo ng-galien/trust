@@ -95,6 +95,20 @@ test("trust server start serves the compiled UI and server status observes its p
     const page = await fetch(`http://127.0.0.1:${webPort}/docs`);
     assert.equal(page.status, 200);
     assert.match(await page.text(), /<title>TRUST<\/title>/);
+    const extensions = await fetch(`http://127.0.0.1:${webPort}/extensions`);
+    assert.equal(extensions.status, 200);
+    assert.deepEqual(await extensions.json(), { extensions: [] });
+    for (const route of ["/extensions", "/extensions/coordination"]) {
+      const navigation = await fetch(`http://127.0.0.1:${webPort}${route}`, { headers: { accept: "text/html" } });
+      assert.equal(navigation.status, 200);
+      assert.match(navigation.headers.get("content-type") ?? "", /text\/html/);
+      assert.match(await navigation.text(), /<title>TRUST<\/title>/);
+    }
+    for (const route of ["/extensions/coordination/api/missions", "/extensions/coordination/assets/remoteEntry.js", "/extensions/coordination/events", "/extensions/coordination/trust/plans"]) {
+      const backend = await fetch(`http://127.0.0.1:${webPort}${route}`, { headers: { accept: "text/html" } });
+      assert.equal(backend.status, 404);
+      assert.match(backend.headers.get("content-type") ?? "", /application\/json/);
+    }
 
     const status = await execute(process.execPath, [trustCli, "server", "status"], {
       cwd: repositoryRoot,

@@ -14,7 +14,7 @@ import { Overlay } from "../../ui/overlay.js";
    remembered as a preference across items and sessions. */
 
 /** Compact item header shared by every overlay: kicker · badges · id / title / actions. */
-export function OverlayHeader({ labelledBy, kicker, badges, id, title, actions }: { labelledBy: string; kicker: string; badges?: ReactNode; id: string; title: string; actions?: ReactNode }) {
+export function OverlayHeader({ labelledBy, accessibleTitle, kicker, badges, id, title, actions }: { labelledBy: string; accessibleTitle?: string | undefined; kicker: string; badges?: ReactNode; id: string; title: string; actions?: ReactNode }) {
   return (
     <header className="flex shrink-0 items-center justify-between gap-6 border-b border-border px-4 py-2" data-doc="overlay.header">
       <div className="min-w-0">
@@ -23,7 +23,7 @@ export function OverlayHeader({ labelledBy, kicker, badges, id, title, actions }
           {badges}
           <span className="mono truncate-1 text-muted">{id}</span>
         </div>
-        <h1 id={labelledBy} className="mt-0.5 truncate-1 text-title leading-tight font-semibold tracking-tight">{title}</h1>
+        <h1 id={labelledBy} aria-label={accessibleTitle} className="mt-0.5 truncate-1 text-title leading-tight font-semibold tracking-tight">{title}</h1>
       </div>
       {actions ? <div className="flex shrink-0 items-center gap-2" data-doc="overlay.actions">{actions}</div> : null}
     </header>
@@ -34,6 +34,7 @@ export function ResourceOverlay<T extends string>({
   onClose,
   crumbs,
   labelledBy,
+  accessibleTitle,
   kicker,
   badges,
   id,
@@ -51,6 +52,7 @@ export function ResourceOverlay<T extends string>({
   onClose: () => void;
   crumbs: Crumb[];
   labelledBy: string;
+  accessibleTitle?: string;
   kicker: string;
   badges?: ReactNode;
   id: string;
@@ -75,7 +77,7 @@ export function ResourceOverlay<T extends string>({
     <Overlay onClose={onClose} labelledBy={labelledBy} breadcrumb={<Breadcrumb items={crumbs} />}>
       {loading ?? (
         <>
-          <OverlayHeader labelledBy={labelledBy} kicker={kicker} badges={badges} id={id} title={title} actions={actions} />
+          <OverlayHeader labelledBy={labelledBy} accessibleTitle={accessibleTitle} kicker={kicker} badges={badges} id={id} title={title} actions={actions} />
           <div className={inspectorOpen ? "grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_var(--inspector-w)]" : "flex min-h-0 flex-1 flex-col"}>
             <section className={inspectorOpen ? "flex min-h-0 min-w-0 flex-col border-r border-border" : "flex min-h-0 min-w-0 flex-1 flex-col"}>
               <div className="flex shrink-0 items-center justify-between gap-4 border-b border-border px-3 py-1.5">

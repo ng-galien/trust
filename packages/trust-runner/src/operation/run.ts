@@ -10,12 +10,14 @@ import {
   type CompiledOperation,
   type Http,
   type OperationExecutionContext,
+  type Postgresql,
 } from "@trust/operation";
 
 import { type DiagnosticsSink, now, nullSink, type StepReporter, summarizeValue } from "../diagnostics/events.js";
 import { runFileRead } from "../file-read/run.js";
 import { runHttp } from "../http/run.js";
 import { isJsonObject, type JsonObject, type JsonValue } from "../lib/json.js";
+import { runPostgresql, type PostgresqlRunnerConfiguration } from "../postgresql/run.js";
 import { runShell } from "../shell/run.js";
 import type { ShellRunnerConfiguration } from "../shell/run.js";
 
@@ -26,6 +28,7 @@ export interface OperationResult {
 
 export interface OperationRunnerConfiguration {
   readonly shell?: ShellRunnerConfiguration;
+  readonly postgresql?: PostgresqlRunnerConfiguration;
 }
 
 export async function runOperation(
@@ -56,7 +59,9 @@ export async function runOperation(
           ? await runShell(step.shell, input, environment, execution, reporter, configuration.shell)
           : step.type === "file-read"
             ? await runFileRead(step.file, input, environment, reporter)
-            : await runHttp(step.http, input, environment, steps, execution, reporter);
+            : step.type === "http"
+              ? await runHttp(step.http, input, environment, steps, execution, reporter)
+              : await runPostgresql(step.postgresql, input, environment, reporter, configuration.postgresql);
         const converted = json(result, `Operation step "${step.name}" result`);
         steps[step.name] = converted;
         diagnostics.emit({ type: "step.end", at: now(), step: step.name, ok: true, durationMs: Date.now() - stepStartedAt, outcome: outcomeOf(step.type, converted) });
@@ -104,9 +109,23 @@ function describeStep(step: CompiledOperation["steps"][number], input: JsonObjec
       },
     };
   }
+  if (step.type === "postgresql") {
+    return describePostgresql(step.postgresql);
+  }
   return {
     summary: `read ${step.file.relativePath} (${step.file.format})`,
     detail: { relativePath: step.file.relativePath, root: describePath(step.file.root, input, environment), format: step.file.format },
+  };
+}
+
+function describePostgresql(postgresql: Postgresql): { summary: string; detail: JsonObject } {
+  return {
+    summary: `PostgreSQL Environment ${postgresql.connection.environment}`,
+    detail: {
+      environment: postgresql.connection.environment,
+      inputParameter: "$1::jsonb",
+      result: "one JSONB column named result",
+    },
   };
 }
 
@@ -131,6 +150,7 @@ function outcomeOf(kind: string, result: JsonValue): JsonObject {
   if (!isJsonObject(result)) return {};
   if (kind === "shell") return { exitCode: result.exitCode ?? null, stdoutBytes: typeof result.stdout === "string" ? result.stdout.length : 0, stderrBytes: typeof result.stderr === "string" ? result.stderr.length : 0 };
   if (kind === "http") return { status: result.status ?? null, bodyPreview: summarizeValue(result.body, 512) };
+  if (kind === "postgresql") return { resultPreview: summarizeValue(result.result, 512) };
   return { relativePath: result.relativePath ?? null, contentPreview: summarizeValue(result.content, 512) };
 }
 

@@ -1,5 +1,6 @@
 import type { FileRead } from "./file-read.js";
 import type { Http } from "./http.js";
+import type { Postgresql } from "./postgresql.js";
 import type { Shell } from "./shell.js";
 
 export type OperationValueType = "string" | "number" | "instant" | "reference";
@@ -78,7 +79,13 @@ export interface HttpStep {
   readonly http: Http;
 }
 
-export type OperationStep = ShellStep | FileReadStep | HttpStep;
+export interface PostgresqlStep {
+  readonly name: string;
+  readonly type: "postgresql";
+  readonly postgresql: Postgresql;
+}
+
+export type OperationStep = ShellStep | FileReadStep | HttpStep | PostgresqlStep;
 
 export interface CompiledOperation {
   readonly contract: "trust.compiled-operation@1";

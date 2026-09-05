@@ -687,6 +687,51 @@ function parseRun(
       continue;
     }
 
+    if (parsed?.type === "postgresql") {
+      const keyword = step.keyword.trim();
+      if (keyword !== "When" && keyword !== "And") {
+        fail(context, "unknown-step", "PostgreSQL must use When or And", step);
+      }
+      if (expression !== undefined) {
+        fail(context, "unknown-step", "PostgreSQL cannot run after Produce", step);
+      }
+      if (step.dataTable || !step.docString) {
+        fail(context, "unknown-step", "PostgreSQL requires one SQL DocString and no table", step);
+      }
+      const { name, environment: environmentName } = parsed;
+      if (names.has(name)) fail(context, "duplicate-step", `Step "${name}" is repeated`, step);
+      if (!Object.hasOwn(environment, environmentName)) {
+        fail(
+          context,
+          "unknown-environment",
+          `PostgreSQL "${name}" uses undeclared Environment "${environmentName}"`,
+          step,
+        );
+      }
+      if (environment[environmentName]?.type !== "string") {
+        fail(
+          context,
+          "invalid-operation",
+          `PostgreSQL "${name}" requires Environment "${environmentName}" to be a string`,
+          step,
+        );
+      }
+      const statement = step.docString.content.trim();
+      if (statement === "") {
+        fail(context, "invalid-operation", `PostgreSQL "${name}" statement cannot be empty`, step);
+      }
+      names.add(name);
+      compiled.push({
+        name,
+        type: "postgresql",
+        postgresql: {
+          connection: { environment: environmentName },
+          statement,
+        },
+      });
+      continue;
+    }
+
     if (parsed?.type === "http") {
       const keyword = step.keyword.trim();
       if (keyword !== "When" && keyword !== "And") {
@@ -841,6 +886,11 @@ type ParsedRunStepSentence =
       readonly environment: string;
       readonly appendInput?: string;
     }
+  | {
+      readonly type: "postgresql";
+      readonly name: string;
+      readonly environment: string;
+    }
   | ParsedHttpSentence
   | {
       readonly type: "http-statuses";
@@ -936,6 +986,11 @@ function parseRunStepSentence(source: string): ParsedRunStepSentence | undefined
     }
     return { type: "file-read", name, path, format, environment, ...(appendInput === undefined ? {} : { appendInput }) };
   }
+  if (parsed.production === "postgresql-execute") {
+    const environment = captureField(parsed, "environment");
+    if (!environment) return invalidParsedStep(`PostgreSQL "${name}" Environment must be a field name`, "postgresql", name);
+    return { type: "postgresql", name, environment };
+  }
   return parsed.production === "http-request" ? lowerHttpStep(parsed, name) : undefined;
 }
 
@@ -943,6 +998,7 @@ function stepTypeForProduction(production: string): OperationStepSource["type"] 
   if (production === "shell-run") return "shell";
   if (production === "file-read") return "file-read";
   if (production === "http-request") return "http";
+  if (production === "postgresql-execute") return "postgresql";
   return undefined;
 }
 
@@ -964,7 +1020,8 @@ function parseOperationStepPrefix(source: string): { readonly name: string; read
   const type = prefix.production === "shell-run" ? "shell"
     : prefix.production === "file-read" ? "file-read"
       : prefix.production === "http-request" ? "http"
-        : undefined;
+        : prefix.production === "postgresql-execute" ? "postgresql"
+          : undefined;
   return type ? { name, type } : undefined;
 }
 

@@ -1,4 +1,4 @@
-import { BookOpen, ChevronRight, Plus, Settings } from "lucide-react";
+import { BookOpen, ChevronRight, Plus, Settings, Blocks } from "lucide-react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { NavLink, useLocation, useNavigate } from "react-router";
@@ -7,6 +7,8 @@ import { cx } from "../lib/format.js";
 import { toggleAnchor, usePreference } from "../lib/preferences.js";
 import { Count } from "../ui/badge.js";
 import { Tooltip } from "../ui/controls.js";
+import { Popover } from "../ui/menu.js";
+import { useExtensions } from "../lib/extensions.js";
 import { AnchorExplorer, AnchorHeaderActions } from "./anchor-explorer.js";
 import { overviewAnchor, type ResourceAnchor, resourceAnchors, sections, useAnchorItems } from "./resources.js";
 
@@ -24,6 +26,7 @@ function ExtendedSidebar() {
     <aside aria-label={t("shell.nav.label")} className="flex h-full w-(--sidebar-w) shrink-0 flex-col overflow-hidden border-r border-border bg-surface" data-doc="shell.sidebar">
       <nav className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-2 pt-3 pb-2">
         <NavRow to={overviewAnchor.to} icon={<overviewAnchor.icon size={16} strokeWidth={1.8} />} label={t(overviewAnchor.label)} />
+        <ExtensionsNavigation />
         {sections.map((section) => (
           <div key={section.id} className="flex flex-col gap-0.5">
             <span className="kicker px-2 pt-4 pb-1">{t(section.label)}</span>
@@ -58,6 +61,30 @@ function NavRow({ to, icon, label }: { to: string; icon: ReactNode; label: strin
       {label}
     </NavLink>
   );
+}
+
+function ExtensionsNavigation({ compact = false }: { compact?: boolean }) {
+  const { t } = useTranslation();
+  const catalog = useExtensions();
+  const expanded = usePreference("expandedAnchors").includes("extensions");
+  const label = t("extensions.title");
+  const available = catalog.data?.extensions.filter(extension => extension.ui) ?? [];
+  const contents = (close?: () => void) => <div className="flex flex-col gap-0.5">
+    {catalog.isError ? <p role="alert" className="p-2 text-body text-danger">{t("extensions.failed")}</p> : catalog.isLoading ? <p role="status" className="p-2 text-body text-muted">{t("extensions.loading")}</p> : available.map(extension => <NavLink key={extension.id} to={`/extensions/${encodeURIComponent(extension.id)}`} onClick={close} className={({ isActive }) => cx("truncate rounded-(--radius-2) px-2 py-1.5 text-ui hover:bg-surface-2", isActive && "bg-surface-3 font-semibold")}>
+      {extension.title}
+    </NavLink>)}
+  </div>;
+  if (compact) return <Popover align="start" panelClassName="w-64 p-2" trigger={({ open, toggle }) => <button type="button" aria-label={label} aria-expanded={open} onClick={toggle} className="inline-flex h-8 w-8 items-center justify-center rounded-(--radius-2) text-muted hover:bg-surface-2"><Blocks size={17} strokeWidth={1.8} /></button>}>
+    {close => <><NavLink to="/extensions" onClick={close} className="mb-2 block border-b border-border px-2 pb-2 text-ui font-semibold">{label}</NavLink>{contents(close)}</>}
+  </Popover>;
+  return <div>
+    <div className="flex items-center">
+      <button type="button" aria-label={t(expanded ? "shell.nav.collapseAnchor" : "shell.nav.expandAnchor", { anchor: label })} aria-expanded={expanded} onClick={() => toggleAnchor("extensions")} className="inline-flex h-8 w-6 shrink-0 items-center justify-center text-muted"><ChevronRight size={13} className={cx("transition-transform", expanded && "rotate-90")} /></button>
+      <div className="min-w-0 flex-1"><NavRow to="/extensions" icon={<Blocks size={16} strokeWidth={1.8} />} label={label} /></div>
+      <Count value={available.length} />
+    </div>
+    {expanded && <div className="my-1 ml-[15px] border-l border-border pl-1.5">{contents()}</div>}
+  </div>;
 }
 
 function ExtendedAnchor({ anchor, expanded }: { anchor: ResourceAnchor; expanded: boolean }) {
@@ -153,6 +180,7 @@ function CompactSidebar() {
     <aside ref={railRef} aria-label={t("shell.nav.label")} className="relative flex h-full w-(--sidebar-w-compact) shrink-0 flex-col border-r border-border bg-surface" onPointerLeave={scheduleClose} onPointerEnter={cancelClose}>
       <nav className="flex min-h-0 flex-1 flex-col items-center gap-1 overflow-y-auto pt-3 pb-2">
         <RailLink to={overviewAnchor.to} label={t(overviewAnchor.label)} icon={<overviewAnchor.icon size={17} strokeWidth={1.8} />} onPointerEnter={() => setFlyout(null)} />
+        <div onPointerEnter={() => setFlyout(null)}><ExtensionsNavigation compact /></div>
         {sections.map((section) => (
           <div key={section.id} className="flex flex-col items-center gap-1">
             <span className="my-1.5 h-px w-5 bg-border" aria-hidden />

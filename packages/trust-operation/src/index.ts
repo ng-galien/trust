@@ -29,6 +29,7 @@ export type {
   HttpTextResult,
   HttpValueSource,
 } from "./http.js";
+export type { Postgresql, PostgresqlResult } from "./postgresql.js";
 export type { JsonValue } from "./json.js";
 export type {
   CompiledOperation,
@@ -36,6 +37,7 @@ export type {
   EnvironmentValueType,
   FileReadStep,
   HttpStep,
+  PostgresqlStep,
   InputField,
   ObjectSchema,
   OperationStep,

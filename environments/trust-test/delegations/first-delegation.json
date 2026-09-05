@@ -1,0 +1,28 @@
+{
+  "procedure": "agent-delegation",
+  "procedureVersion": "1.0.0",
+  "plan": "trust-dogfood-first-delegation",
+  "environment": "coordination",
+  "metadata": {
+    "title": "TRUST dogfood: first delegated operational review",
+    "labels": [
+      "dogfood",
+      "trust",
+      "delegation"
+    ],
+    "annotations": {
+      "coordination.mission": "trust-dogfood-first-delegation",
+      "coordination.agent": "/root/delegation_worker",
+      "coordination.project": "trust"
+    }
+  },
+  "rootInputs": {
+    "mission": "trust-dogfood-first-delegation",
+    "assignee": "/root/delegation_worker",
+    "project": "/Users/alexandreboyer/dev/projects/trust",
+    "instructions": "Read the actual TRUST checkout and the newly installed agent-delegation Procedure, coordination Operations, PostgreSQL mission schema, MCP helper and acceptance. Identify the three most concrete remaining obstacles to using this delegation cycle for the next real TRUST work session. Distinguish observed limitations from proposals. Give exact file paths and line references. Do not reimplement or modify anything. Return a compact English report with three prioritized findings and one recommended next mission.",
+    "expected": "An evidence-backed operational review of the delegation slice, with three findings and one bounded follow-up mission. A completed declaration means this report was produced, not that no limitation exists.",
+    "authorized": "Read this TRUST repository and the current mission through the public TRUST MCP and packaged runner. Use read-only commands for source inspection. Create only a local response JSON under .trust/dogfood, replace this Plan's response/outcome declarations through MCP, and execute this mission's claim and submit Checks through the runner.",
+    "forbidden": "Do not edit tracked project files, commit, push, deploy, modify SQL directly, launch another agent, access unrelated projects or secrets, execute another Plan, or execute the final observation Check reserved for the coordinator. If the review cannot be completed within this scope, submit a blocked response."
+  }
+}

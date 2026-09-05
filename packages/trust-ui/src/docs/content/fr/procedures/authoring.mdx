@@ -76,3 +76,7 @@ La révision compilée : rôles, Scénarios, Checks avec leurs liaisons et leurs
   <Step title="Dupliquer">Une nouvelle source pré-remplie avec la version publiée ; changez `@procedure` ou montez `@version` avant de publier.</Step>
   <Step title="Publier">Activé une fois que la source compile. Le runtime la compile contre le catalogue courant, embarque les Opérations et stocke la révision. La page se rouvre sur la Procédure publiée ; des Plans peuvent en être engagés.</Step>
 </Steps>
+
+## Accès agent
+
+Le MCP du runtime peut lister et lire les Procédures publiées, compiler un brouillon contre le catalogue d'Opérations courant et publier une version immuable. Ces outils utilisent la même autorité `Procedures` que l'interface. L'onglet **Simuler** reste une aide locale à la lecture : il parcourt les dépendances entre Scénarios sans créer d'état dans le runtime. Pour exercer les qualifications et les cascades, engagez la Procédure publiée comme Plan en dry-run.

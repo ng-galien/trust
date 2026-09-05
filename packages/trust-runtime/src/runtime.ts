@@ -38,8 +38,14 @@ import { createPlanEventsHttpHandler } from "./http/events.js";
 import { OperationCatalog } from "./operation/catalog.js";
 import { RegistrySourceStore } from "./registry/store.js";
 import { RegistryService } from "./registry/service.js";
+import { ExtensionHost } from "./extensions/host.js";
+import { createExtensionsHttpHandler } from "./http/extensions.js";
 
 export interface RuntimeComponents {
+  readonly extensionHost: ExtensionHost;
+  readonly extensionsHttpHandler: Router;
+  readonly extensionsFile: string | undefined;
+  readonly extensionTimeoutMs: number;
   readonly databasePath: string;
   readonly semanticAuthority: string;
   readonly database: Database;
@@ -80,6 +86,8 @@ export interface RuntimeComponents {
 }
 
 export interface RuntimeContainerOptions {
+  extensionsFile?: string;
+  extensionTimeoutMs?: number;
   databasePath?: string;
   database?: Database;
   semanticAuthority?: string;
@@ -101,6 +109,10 @@ export const createRuntimeContainer = async (
   });
 
   container.register({
+    extensionsFile: asValue(options.extensionsFile),
+    extensionTimeoutMs: asValue(options.extensionTimeoutMs ?? 10_000),
+    extensionHost: asClass(ExtensionHost).singleton().disposer(host => host.close()),
+    extensionsHttpHandler: asFunction(createExtensionsHttpHandler).singleton(),
     databasePath: asValue(options.databasePath ?? ".trust/trust.sqlite"),
     semanticAuthority: asValue(options.semanticAuthority ?? "localhost:4318"),
     operations: asValue(options.operations ?? []),
@@ -148,6 +160,7 @@ export const createRuntimeContainer = async (
     await container.resolve("operationCatalog").initialize();
     await container.resolve("credentialService").initialize();
     await container.resolve("environmentService").initialize();
+    await container.resolve("extensionHost").initialize();
     return container;
   } catch (error) {
     await container.dispose();

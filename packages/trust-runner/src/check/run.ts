@@ -1,5 +1,6 @@
 import type { JsonObject } from "../lib/json.js";
 import type { ShellRunnerConfiguration } from "../shell/run.js";
+import type { PostgresqlRunnerConfiguration } from "../postgresql/run.js";
 
 import { now, nullSink, type DiagnosticsSink } from "../diagnostics/events.js";
 import { runOperation } from "../operation/run.js";
@@ -48,6 +49,7 @@ export interface CheckRunnerOptions {
   readonly attemptKey?: () => string;
   readonly diagnostics?: DiagnosticsSink;
   readonly shell?: ShellRunnerConfiguration;
+  readonly postgresql?: PostgresqlRunnerConfiguration;
 }
 
 export function createCheckRunner(options: CheckRunnerOptions) {
@@ -92,7 +94,10 @@ export function createCheckRunner(options: CheckRunnerOptions) {
           admission.environment,
           diagnostics,
           { id: admission.executionId },
-          options.shell === undefined ? {} : { shell: options.shell },
+          {
+            ...(options.shell === undefined ? {} : { shell: options.shell }),
+            ...(options.postgresql === undefined ? {} : { postgresql: options.postgresql }),
+          },
         );
         actionOutcome = result.steps;
         phase = "fact export";

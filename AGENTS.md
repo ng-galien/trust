@@ -10,6 +10,14 @@ reusable Fact shape. The runner executes the command or HTTP definition returned
 TRUST resolves a semantic Check URI, validates the delegation context, qualifies verified Facts and returns the
 checklist verdict. An agent never infers whether its action advanced the Plan.
 
+## Delegating work
+
+To delegate work through the coordination extension, first read
+[the extension's delegation methodology](extensions/coordination/DELEGATION.md).
+It documents mission creation before host dispatch, worker claim and response,
+coordinator review, live visibility, and public MCP access when native tools are
+not loaded. This is an extension-specific workflow, not a generic engine rule.
+
 ## Active repository map
 
 ```text
@@ -64,8 +72,8 @@ environments/trust-test/  retained Kind environment: projects, cluster, manifest
 - TRUST owns URI and Session resolution, delegation grants, explicit environment selection, Fact validation, qualification,
   immutable snapshots and checklist deltas. A grant validates and correlates the requested Check,
   Operation, context and attempt; it is not proof that the external action occurred.
-- Plan engagement accepts only the procedure/version, Plan identifier, environment and the closed
-  set of compiled root Plan inputs. Fixed roles and future Check-produced roles are never repeated.
+- Plan engagement accepts only the procedure/version, Plan identifier, environment, immutable Plan
+  metadata (`title`, `labels`, `annotations`) and the closed set of compiled root Plan inputs. Fixed roles and future Check-produced roles are never repeated.
   Roles explicitly compiled as agent declarations are replaced after engagement only through the
   closed, revision-checked declaration operation; it cannot write roots, fixed roles or Check
   outputs. V1 has no auto-fill, generic context patch, rich engagement UI or organizational input policy.
