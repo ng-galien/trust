@@ -11,10 +11,7 @@ import { promisify } from "node:util";
 import { startPublicRuntime } from "./support/runtime-process.js";
 
 const execute = promisify(execFile);
-const repositoryRoot = path.resolve(
-  path.dirname(fileURLToPath(import.meta.url)),
-  "../../../..",
-);
+const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../..");
 
 test("the packaged TRUST Skill executes the git-status Check", async () => {
   const projectsRoot = await mkdtemp(path.join(tmpdir(), "trust-runner-git-"));
@@ -25,11 +22,11 @@ test("the packaged TRUST Skill executes the git-status Check", async () => {
   const skill = path.join(artifactRoot, "trust");
   const runnerBinRoot = await mkdtemp(path.join(tmpdir(), "trust-runner-bin-"));
   await symlink(await executableOnPath("git"), path.join(runnerBinRoot, "git"));
-  await execute(process.execPath, [
-    path.join(repositoryRoot, "packages/trust-runner/scripts/package-skill.ts"),
-    "--output",
-    skill,
-  ], { cwd: repositoryRoot });
+  await execute(
+    process.execPath,
+    [path.join(repositoryRoot, "packages/trust-runner/scripts/package-skill.ts"), "--output", skill],
+    { cwd: repositoryRoot },
+  );
   await Promise.all([
     access(path.join(skill, "SKILL.md")),
     access(path.join(skill, "agents/openai.yaml")),
@@ -38,25 +35,32 @@ test("the packaged TRUST Skill executes the git-status Check", async () => {
     access(path.join(skill, "scripts/mcp-stdio.js")),
   ]);
   await assert.rejects(
-    execute(process.execPath, [
-      path.join(skill, "scripts/run.js"),
-      "trust://local/example@1.0.0/plan/scenario/check/action",
-      "--path",
-      `${runnerBinRoot}${delimiter}.`,
-    ], { cwd: artifactRoot }),
+    execute(
+      process.execPath,
+      [
+        path.join(skill, "scripts/run.js"),
+        "trust://local/example@1.0.0/plan/scenario/check/action",
+        "--path",
+        `${runnerBinRoot}${delimiter}.`,
+      ],
+      { cwd: artifactRoot },
+    ),
     (error: unknown) => {
-      assert.match(String((error as Error & { stderr?: unknown }).stderr ?? ""), /--path requires one absolute directory/);
+      assert.match(
+        String((error as Error & { stderr?: unknown }).stderr ?? ""),
+        /--path requires one absolute directory/,
+      );
       return true;
     },
   );
   await execute("git", ["init", "-q"], { cwd: project });
   await writeFile(path.join(project, "tracked.txt"), "baseline\n", "utf8");
   await execute("git", ["add", "tracked.txt"], { cwd: project });
-  await execute("git", [
-    "-c", "user.name=TRUST Acceptance",
-    "-c", "user.email=trust@example.invalid",
-    "commit", "-qm", "baseline",
-  ], { cwd: project });
+  await execute(
+    "git",
+    ["-c", "user.name=TRUST Acceptance", "-c", "user.email=trust@example.invalid", "commit", "-qm", "baseline"],
+    { cwd: project },
+  );
   const revision = (await execute("git", ["rev-parse", "HEAD"], { cwd: project })).stdout.trim();
   await writeFile(path.join(project, "untracked.txt"), "dirty\n", "utf8");
 
@@ -82,7 +86,10 @@ test("the packaged TRUST Skill executes the git-status Check", async () => {
       },
       rootInputs: { repository: projectName },
     });
-    assert.match(engagement, /METADATA\nTitle: Inspect the runner fixture\nLabels: acceptance, git\nAnnotation coordination\.origin: runner-acceptance/);
+    assert.match(
+      engagement,
+      /METADATA\nTitle: Inspect the runner fixture\nLabels: acceptance, git\nAnnotation coordination\.origin: runner-acceptance/,
+    );
     assert.match(engagement, /ACTIONABLE CHECKS\n- repository status/);
     const checkUris = uniqueUris(engagement);
     assert.equal(checkUris.length, 1);
@@ -99,13 +106,7 @@ test("the packaged TRUST Skill executes the git-status Check", async () => {
 
     const result = await execute(
       process.execPath,
-      [
-        path.join(skill, "scripts/run.js"),
-        checkUris[0]!,
-        "--json",
-        "--path",
-        runnerBinRoot,
-      ],
+      [path.join(skill, "scripts/run.js"), checkUris[0]!, "--json", "--path", runnerBinRoot],
       {
         cwd: artifactRoot,
         env: {
@@ -194,21 +195,20 @@ test("the packaged TRUST Skill executes the git-status Check", async () => {
     assert.equal(negativeOutput.result.qualification.reasonCode, "qualification-not-satisfied");
     assert.deepEqual(negativeOutput.next, {
       action: "RETRY_OR_ESCALATE",
-      checks: [{
-        name: "repository status",
-        successReason: "the repository has local changes",
-        checkUri: negativeCheckUri,
-        actionScope: {
-          authorized: [
-            "Read the declared repository state.",
-            "Read Git metadata required to observe this Check.",
-          ],
-          forbidden: [
-            "Modify the repository or its environment to obtain the expected state.",
-            "Change repository files while observing repository status.",
-          ],
+      checks: [
+        {
+          name: "repository status",
+          successReason: "the repository has local changes",
+          checkUri: negativeCheckUri,
+          actionScope: {
+            authorized: ["Read the declared repository state.", "Read Git metadata required to observe this Check."],
+            forbidden: [
+              "Modify the repository or its environment to obtain the expected state.",
+              "Change repository files while observing repository status.",
+            ],
+          },
         },
-      }],
+      ],
     });
 
     const textEngagement = await mcpTool(runtime.endpoint, "trust_plan_engage", {
@@ -234,8 +234,14 @@ test("the packaged TRUST Skill executes the git-status Check", async () => {
       },
     );
     assert.match(textResult.stdout, /Next: RETRY_OR_ESCALATE/);
-    assert.match(textResult.stdout, /Authorized scope:\n  - Read the declared repository state\.\n  - Read Git metadata required to observe this Check\./);
-    assert.match(textResult.stdout, /Forbidden scope:\n  - Modify the repository or its environment to obtain the expected state\.\n  - Change repository files while observing repository status\./);
+    assert.match(
+      textResult.stdout,
+      /Authorized scope:\n {2}- Read the declared repository state\.\n {2}- Read Git metadata required to observe this Check\./,
+    );
+    assert.match(
+      textResult.stdout,
+      /Forbidden scope:\n {2}- Modify the repository or its environment to obtain the expected state\.\n {2}- Change repository files while observing repository status\./,
+    );
 
     await writeFile(path.join(project, "untracked.txt"), "dirty\n", "utf8");
     const mcpEngagement = await mcpTool(runtime.endpoint, "trust_plan_engage", {
@@ -311,7 +317,7 @@ async function rpc(endpoint: string, method: string, params: unknown): Promise<u
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ jsonrpc: "2.0", id: method, method, params }),
   });
-  const payload = await response.json() as {
+  const payload = (await response.json()) as {
     result?: unknown;
     error?: { message?: string };
   };
@@ -344,31 +350,42 @@ async function runMcpStdio(
   child.stderr.setEncoding("utf8");
   let stdout = "";
   let stderr = "";
-  child.stdout.on("data", (chunk: string) => { stdout += chunk; });
-  child.stderr.on("data", (chunk: string) => { stderr += chunk; });
-  child.stdin.end(`${[
-    {
-      jsonrpc: "2.0",
-      id: "initialize",
-      method: "initialize",
-      params: {
-        protocolVersion: "2025-11-25",
-        capabilities: {},
-        clientInfo: { name: "trust-acceptance", version: "1.0.0" },
+  child.stdout.on("data", (chunk: string) => {
+    stdout += chunk;
+  });
+  child.stderr.on("data", (chunk: string) => {
+    stderr += chunk;
+  });
+  child.stdin.end(
+    `${[
+      {
+        jsonrpc: "2.0",
+        id: "initialize",
+        method: "initialize",
+        params: {
+          protocolVersion: "2025-11-25",
+          capabilities: {},
+          clientInfo: { name: "trust-acceptance", version: "1.0.0" },
+        },
       },
-    },
-    { jsonrpc: "2.0", id: "tools", method: "tools/list", params: {} },
-    {
-      jsonrpc: "2.0",
-      id: "call",
-      method: "tools/call",
-      params: { name: "trust_check_run", arguments: { checkUri } },
-    },
-  ].map((message) => JSON.stringify(message)).join("\n")}\n`);
-  const [code, signal] = await once(child, "exit") as [number | null, NodeJS.Signals | null];
+      { jsonrpc: "2.0", id: "tools", method: "tools/list", params: {} },
+      {
+        jsonrpc: "2.0",
+        id: "call",
+        method: "tools/call",
+        params: { name: "trust_check_run", arguments: { checkUri } },
+      },
+    ]
+      .map((message) => JSON.stringify(message))
+      .join("\n")}\n`,
+  );
+  const [code, signal] = (await once(child, "exit")) as [number | null, NodeJS.Signals | null];
   assert.equal(code, 0, `MCP STDIO exited with signal ${String(signal)}: ${stderr}`);
   assert.equal(stderr, "");
-  const responses = stdout.trim().split("\n").map((line) => JSON.parse(line) as McpStdioResponse);
+  const responses = stdout
+    .trim()
+    .split("\n")
+    .map((line) => JSON.parse(line) as McpStdioResponse);
   assert.equal(responses.length, 3);
   return {
     initialize: responses[0]!,
@@ -377,11 +394,7 @@ async function runMcpStdio(
   };
 }
 
-async function mcpTool(
-  endpoint: string,
-  name: string,
-  arguments_: Readonly<Record<string, unknown>>,
-): Promise<string> {
+async function mcpTool(endpoint: string, name: string, arguments_: Readonly<Record<string, unknown>>): Promise<string> {
   const response = await fetch(`${endpoint}/mcp`, {
     method: "POST",
     headers: {
@@ -397,7 +410,7 @@ async function mcpTool(
     }),
   });
   assert.equal(response.status, 200);
-  const envelope = await response.json() as {
+  const envelope = (await response.json()) as {
     result?: { content?: readonly { type?: string; text?: string }[]; isError?: boolean };
     error?: unknown;
   };

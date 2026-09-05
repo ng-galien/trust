@@ -17,7 +17,7 @@ Feature: Read Git HEAD and working tree
 | Tag | Règle |
 | --- | --- |
 | `@operation:<domain>.<action>` | exactement un. Deux segments en minuscules séparés par un point ; chaque segment est alphanumérique avec tirets optionnels (`git.head-compare`, `docker.image-build`). Le domaine regroupe le catalogue ; l'action nomme ce qui est fait |
-| `@version:<major>.<minor>.<patch>` | exactement un, sémantique, numérique seulement (`1.0.0` ; pas `1.0`, pas `-rc1`) |
+| `@version:<major>.<minor>.<patch>` | exactement un, une version SemVer valide ; les préversions et métadonnées de construction suivent les règles SemVer |
 | `@trust-dsl:1` | exactement un, valeur `1` — la version du langage |
 | tout le reste | doit être un tag de classification `@x-` ; sinon `Tag "…" is outside the closed Operation grammar` |
 
@@ -36,12 +36,13 @@ L'écran du catalogue utilise `family` et `nature` pour ses facettes ; tout le r
 ## Versions
 
 - L'identité d'une entrée de catalogue est `name@version` (`git.head-read@1.0.0`). Le catalogue est un répertoire de fichiers `.feature`, une entrée par fichier ; le même `name@version` dans deux fichiers est refusé.
-- L'interface enregistre une Opération dans `<name>.feature`. Augmenter `@version` et enregistrer remplace ce fichier : le catalogue contient alors la nouvelle version. Deux versions d'une même Opération ne coexistent que sous forme de deux fichiers de noms différents.
-- Une Procédure nomme une Opération par nom **et** version, et embarque la forme compilée exacte avec laquelle elle a été publiée. Modifier ou retirer une Opération du catalogue ne touche pas une Procédure publiée. L'interface refuse de supprimer une Opération qu'une Procédure publiée utilise.
+- L'interface publie une nouvelle version d'Opération dans `<name>@<version>.feature`, sans remplacer les précédentes. Une identité/version ou un fichier existant ne peut pas être écrasé. Une version publiée ne peut pas être supprimée ; les modifications d'un brouillon peuvent être annulées.
+- Une Procédure référence une Opération ou une Procédure enfant avec `name@selector` : une version exacte ou une plage node-semver standard telle que `^1.2.3` ou `~1.2.3`. La version correspondante la plus élevée doit passer les contrôles de compatibilité ; TRUST ne se rabat pas silencieusement sur une version plus ancienne. Les étiquettes telles que `latest` ne sont pas prises en charge.
+- Un nouveau Plan résout et épingle toute la composition récursive. Les publications suivantes ne modifient ni ses Checks, ni ses enfants différés, ni sa reprise, ni les générations de remplacement de ses enfants. Le catalogue regroupe chaque identité une seule fois ; la fiche permet de choisir sa version exacte.
 - Les marques « exécutable » (✓ sur le catalogue, sur l'écran Environnement) sont calculées par entrée de catalogue contre les valeurs que chaque Environnement déclare.
 
 <Callout kind="rule">
-  Une révision de Procédure publiée est autonome : elle porte les Opérations compilées dont elle a besoin. Le catalogue est l'endroit où vous rédigez ; la Procédure est l'endroit où l'Opération vit une fois publiée.
+  Les versions publiées sont immuables. Une référence flottante peut sélectionner une version plus récente pour un nouveau Plan, mais la composition d'un Plan engagé reste fixe.
 </Callout>
 
 <Details title="Opération compilée et digest" expert>

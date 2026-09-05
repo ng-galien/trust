@@ -52,17 +52,19 @@ export function Select<T extends string>({
             open ? "border-border-focus" : "border-border",
           )}
         >
-          <span className={cx("min-w-0 flex-1 truncate-1", !current && "text-faint")}>{current?.label ?? placeholder ?? t("ui.select.placeholder")}</span>
+          <span className={cx("min-w-0 flex-1 truncate-1", !current && "text-faint")}>
+            {current?.label ?? placeholder ?? t("ui.select.placeholder")}
+          </span>
           <ChevronDown size={13} className={cx("shrink-0 text-muted transition-transform", open && "rotate-180")} />
         </button>
       )}
     >
       {(close) => (
-        <ul role="listbox" aria-label={ariaLabel} className="max-h-72 overflow-y-auto">
+        <div role="listbox" aria-label={ariaLabel} className="max-h-72 overflow-y-auto">
           {options.map((option) => {
             const active = option.value === value;
             return (
-              <li key={option.value}>
+              <div key={option.value} role="presentation">
                 <button
                   type="button"
                   role="option"
@@ -77,14 +79,16 @@ export function Select<T extends string>({
                     active ? "text-text" : "text-text",
                   )}
                 >
-                  <span className="inline-flex w-3.5 justify-center text-accent">{active ? <Check size={12} /> : null}</span>
+                  <span className="inline-flex w-3.5 justify-center text-accent">
+                    {active ? <Check size={12} /> : null}
+                  </span>
                   <span className="min-w-0 flex-1 truncate-1">{option.label}</span>
                   {option.meta ? <span className="text-caption text-faint">{option.meta}</span> : null}
                 </button>
-              </li>
+              </div>
             );
           })}
-        </ul>
+        </div>
       )}
     </Popover>
   );

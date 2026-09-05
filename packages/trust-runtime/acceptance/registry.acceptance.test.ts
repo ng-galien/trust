@@ -7,8 +7,8 @@ import { createServer, type Server } from "node:http";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
+import { promisify } from "node:util";
 
 import { startPublicRuntime } from "./support/runtime-process.js";
 
@@ -38,69 +38,127 @@ test("an HTTP registry refuses an invalid artifact before import and reports imp
     assert.equal(insecure.code, -32_050);
     assert.equal(insecure.data?.reason, "invalid-source");
 
-    const saved = await rpc(runtime.endpoint, "registry.source.save", {
+    const saved = (await rpc(runtime.endpoint, "registry.source.save", {
       name: "tenant-http",
       kind: "http",
       url: `${registry.endpoint}/registry/not-used.json`,
-    }) as { contract: string; source: { name: string; kind: string } };
+    })) as { contract: string; source: { name: string; kind: string } };
     assert.equal(saved.contract, "trust.registry-source@1");
     assert.deepEqual(saved.source.name, "tenant-http");
     assert.deepEqual(saved.source.kind, "http");
-    const updated = await rpc(runtime.endpoint, "registry.source.save", {
+    const updated = (await rpc(runtime.endpoint, "registry.source.save", {
       name: "tenant-http",
       kind: "http",
       url: `${registry.endpoint}/registry/index.json`,
-    }) as { source: { url: string } };
+    })) as { source: { url: string } };
     assert.equal(updated.source.url, `${registry.endpoint}/registry/index.json`);
 
     const rejected = await rpcFailure(runtime.endpoint, "registry.source.sync", { name: "tenant-http" });
     assert.equal(rejected.code, -32_050);
     assert.equal(rejected.data?.reason, "artifact-integrity-mismatch");
     assert.deepEqual(rejected.data?.summary, { imported: 0, unchanged: 0, failed: 1 });
-    assert.deepEqual(
-      (await rpc(runtime.endpoint, "operation.list", {}) as { operations: unknown[] }).operations,
-      [],
-    );
-    assert.deepEqual(
-      (await rpc(runtime.endpoint, "procedure.list", {}) as { procedures: unknown[] }).procedures,
-      [],
-    );
+    assert.deepEqual(((await rpc(runtime.endpoint, "operation.list", {})) as { operations: unknown[] }).operations, []);
+    assert.deepEqual(((await rpc(runtime.endpoint, "procedure.list", {})) as { procedures: unknown[] }).procedures, []);
 
     operationResponse = operation;
     expectedOperationName = "git.wrong-name";
     const wrongIdentity = await rpcFailure(runtime.endpoint, "registry.source.sync", { name: "tenant-http" });
     assert.equal(wrongIdentity.data?.reason, "artifact-identity-mismatch");
-    assert.deepEqual(
-      (await rpc(runtime.endpoint, "operation.list", {}) as { operations: unknown[] }).operations,
-      [],
-    );
+    assert.deepEqual(((await rpc(runtime.endpoint, "operation.list", {})) as { operations: unknown[] }).operations, []);
 
     expectedOperationName = "git.head-read";
-    const first = await rpc(runtime.endpoint, "registry.source.sync", { name: "tenant-http" }) as RegistrySync;
+    const first = (await rpc(runtime.endpoint, "registry.source.sync", { name: "tenant-http" })) as RegistrySync;
     assert.equal(first.contract, "trust.registry-sync@1");
     assert.deepEqual(first.summary, { imported: 2, unchanged: 0, failed: 0 });
-    assert.deepEqual(first.artifacts.map(({ kind, name, status }) => ({ kind, name, status })), [
-      { kind: "operation", name: "git.head-read", status: "imported" },
-      { kind: "procedure", name: "git-status", status: "imported" },
-    ]);
+    assert.deepEqual(
+      first.artifacts.map(({ kind, name, status }) => ({ kind, name, status })),
+      [
+        { kind: "operation", name: "git.head-read", status: "imported" },
+        { kind: "procedure", name: "git-status", status: "imported" },
+      ],
+    );
 
-    const replay = await rpc(runtime.endpoint, "registry.source.sync", { name: "tenant-http" }) as RegistrySync;
+    const replay = (await rpc(runtime.endpoint, "registry.source.sync", { name: "tenant-http" })) as RegistrySync;
     assert.deepEqual(replay.summary, { imported: 0, unchanged: 2, failed: 0 });
     assert.ok(replay.artifacts.every(({ status }) => status === "unchanged"));
     assert.equal(
-      (await rpc(runtime.endpoint, "operation.read", {
-        operation: "git.head-read",
-        version: "1.0.0",
-      }) as { operation: string }).operation,
+      (
+        (await rpc(runtime.endpoint, "operation.read", {
+          operation: "git.head-read",
+          version: "1.0.0",
+        })) as { operation: string }
+      ).operation,
       "git.head-read",
     );
     assert.equal(
-      (await rpc(runtime.endpoint, "procedure.read", {
-        procedure: "git-status",
-        version: "2.0.0",
-      }) as { procedure: { procedure: string } }).procedure.procedure,
+      (
+        (await rpc(runtime.endpoint, "procedure.read", {
+          procedure: "git-status",
+          version: "2.0.0",
+        })) as { procedure: { procedure: string } }
+      ).procedure.procedure,
       "git-status",
     );
+  } finally {
+    await runtime.close();
+    await registry.close();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("a changed existing Operation rejects the entire registry batch before new artifacts import", async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), "trust-registry-immutable-"));
+  const original = await readFile(path.join(repositoryRoot, "assets/operations/git.head-read.feature"), "utf8");
+  let entries = [{ name: "git.head-read", source: original }];
+  const registry = await serveRegistry(() =>
+    Object.fromEntries([
+      [
+        "/index.json",
+        JSON.stringify({
+          contract: "trust.registry-index@1",
+          artifacts: entries.map((entry) => ({
+            kind: "operation",
+            path: `${entry.name}.feature`,
+            name: entry.name,
+            version: "1.0.0",
+            sha256: sha256(entry.source),
+          })),
+        }),
+      ],
+      ...entries.map((entry) => [`/${entry.name}.feature`, entry.source]),
+    ]),
+  );
+  const runtime = await startPublicRuntime("trust-registry-immutable-runtime-", { operationsDirectory: directory });
+  try {
+    await rpc(runtime.endpoint, "registry.source.save", {
+      name: "immutable",
+      kind: "http",
+      url: `${registry.endpoint}/index.json`,
+    });
+    await rpc(runtime.endpoint, "registry.source.sync", { name: "immutable" });
+    entries = [
+      { name: "git.new-first", source: original.replace("@operation:git.head-read", "@operation:git.new-first") },
+      { name: "git.head-read", source: `${original}\n# same identity, changed source\n` },
+    ];
+    const refused = await rpcFailure(runtime.endpoint, "registry.source.sync", { name: "immutable" });
+    assert.equal(refused.data?.reason, "artifact-conflict");
+    assert.deepEqual(refused.data?.summary, { imported: 0, unchanged: 0, failed: 1 });
+    const catalog = (await rpc(runtime.endpoint, "operation.list", {})) as { operations: Array<{ operation: string }> };
+    assert.deepEqual(
+      catalog.operations.map((operation) => operation.operation),
+      ["git.head-read"],
+    );
+    assert.equal(
+      (
+        (await rpc(runtime.endpoint, "operation.read", { operation: "git.head-read", version: "1.0.0" })) as {
+          source: string;
+        }
+      ).source,
+      original,
+    );
+    entries = [{ name: "git.head-read", source: original }];
+    const replay = (await rpc(runtime.endpoint, "registry.source.sync", { name: "immutable" })) as RegistrySync;
+    assert.deepEqual(replay.summary, { imported: 0, unchanged: 1, failed: 0 });
   } finally {
     await runtime.close();
     await registry.close();
@@ -128,10 +186,16 @@ test("a named Git registry source clones one repository and survives a runtime r
   await execFileAsync("git", ["init", "--quiet", repository]);
   await execFileAsync("git", ["-C", repository, "add", "."]);
   await execFileAsync("git", [
-    "-C", repository,
-    "-c", "user.name=TRUST Acceptance",
-    "-c", "user.email=trust-acceptance@example.invalid",
-    "commit", "--quiet", "-m", "registry fixture",
+    "-C",
+    repository,
+    "-c",
+    "user.name=TRUST Acceptance",
+    "-c",
+    "user.email=trust-acceptance@example.invalid",
+    "commit",
+    "--quiet",
+    "-m",
+    "registry fixture",
   ]);
 
   const firstRuntime = await startPublicRuntime("trust-git-registry-first-", {
@@ -150,7 +214,9 @@ test("a named Git registry source clones one repository and survives a runtime r
       kind: "git",
       url: repository,
     });
-    const synchronized = await rpc(firstRuntime.endpoint, "registry.source.sync", { name: "tenant-git" }) as RegistrySync;
+    const synchronized = (await rpc(firstRuntime.endpoint, "registry.source.sync", {
+      name: "tenant-git",
+    })) as RegistrySync;
     assert.deepEqual(synchronized.summary, { imported: 2, unchanged: 0, failed: 0 });
   } finally {
     await firstRuntime.close();
@@ -161,19 +227,22 @@ test("a named Git registry source clones one repository and survives a runtime r
     operationsDirectory,
   });
   try {
-    const listed = await rpc(secondRuntime.endpoint, "registry.source.list", {}) as {
+    const listed = (await rpc(secondRuntime.endpoint, "registry.source.list", {})) as {
       contract: string;
       sources: readonly { name: string; kind: string; url: string }[];
     };
     assert.equal(listed.contract, "trust.registry-source-catalog@1");
-    assert.deepEqual(listed.sources.map(({ name, kind, url }) => ({ name, kind, url })), [
-      { name: "tenant-git", kind: "git", url: repository },
-    ]);
+    assert.deepEqual(
+      listed.sources.map(({ name, kind, url }) => ({ name, kind, url })),
+      [{ name: "tenant-git", kind: "git", url: repository }],
+    );
     assert.equal(
-      (await rpc(secondRuntime.endpoint, "procedure.read", {
-        procedure: "git-status",
-        version: "2.0.0",
-      }) as { procedure: { procedure: string } }).procedure.procedure,
+      (
+        (await rpc(secondRuntime.endpoint, "procedure.read", {
+          procedure: "git-status",
+          version: "2.0.0",
+        })) as { procedure: { procedure: string } }
+      ).procedure.procedure,
       "git-status",
     );
     assert.deepEqual(await rpc(secondRuntime.endpoint, "registry.source.remove", { name: "tenant-git" }), {
@@ -182,7 +251,7 @@ test("a named Git registry source clones one repository and survives a runtime r
       removed: true,
     });
     assert.deepEqual(
-      (await rpc(secondRuntime.endpoint, "registry.source.list", {}) as { sources: unknown[] }).sources,
+      ((await rpc(secondRuntime.endpoint, "registry.source.list", {})) as { sources: unknown[] }).sources,
       [],
     );
   } finally {
@@ -202,10 +271,16 @@ test("a Git registry cannot read its index through a symlink outside the checkou
   await execFileAsync("git", ["init", "--quiet", repository]);
   await execFileAsync("git", ["-C", repository, "add", "."]);
   await execFileAsync("git", [
-    "-C", repository,
-    "-c", "user.name=TRUST Acceptance",
-    "-c", "user.email=trust-acceptance@example.invalid",
-    "commit", "--quiet", "-m", "symlink registry fixture",
+    "-C",
+    repository,
+    "-c",
+    "user.name=TRUST Acceptance",
+    "-c",
+    "user.email=trust-acceptance@example.invalid",
+    "commit",
+    "--quiet",
+    "-m",
+    "symlink registry fixture",
   ]);
   const runtime = await startPublicRuntime("trust-git-registry-symlink-runtime-", { operationsDirectory });
   try {
@@ -270,7 +345,10 @@ async function serveRegistry(content: () => Readonly<Record<string, string>>): P
       response.end();
       return;
     }
-    response.setHeader("content-type", request.url?.endsWith(".json") ? "application/json" : "text/plain; charset=utf-8");
+    response.setHeader(
+      "content-type",
+      request.url?.endsWith(".json") ? "application/json" : "text/plain; charset=utf-8",
+    );
     response.end(body);
   });
   server.listen(0, "127.0.0.1");
@@ -284,7 +362,7 @@ async function serveRegistry(content: () => Readonly<Record<string, string>>): P
 }
 
 function closeServer(server: Server): Promise<void> {
-  return new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  return new Promise((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
 }
 
 async function rpc(endpoint: string, method: string, params: unknown): Promise<unknown> {
@@ -293,7 +371,11 @@ async function rpc(endpoint: string, method: string, params: unknown): Promise<u
   return envelope.result;
 }
 
-async function rpcFailure(endpoint: string, method: string, params: unknown): Promise<{
+async function rpcFailure(
+  endpoint: string,
+  method: string,
+  params: unknown,
+): Promise<{
   readonly code?: number;
   readonly data?: { readonly reason?: string; readonly summary?: unknown };
 }> {
@@ -302,7 +384,11 @@ async function rpcFailure(endpoint: string, method: string, params: unknown): Pr
   return envelope.error;
 }
 
-async function rpcEnvelope(endpoint: string, method: string, params: unknown): Promise<{
+async function rpcEnvelope(
+  endpoint: string,
+  method: string,
+  params: unknown,
+): Promise<{
   readonly result?: unknown;
   readonly error?: { readonly code?: number; readonly data?: { readonly reason?: string; readonly summary?: unknown } };
 }> {
@@ -314,6 +400,9 @@ async function rpcEnvelope(endpoint: string, method: string, params: unknown): P
   assert.equal(response.status, 200);
   return response.json() as Promise<{
     readonly result?: unknown;
-    readonly error?: { readonly code?: number; readonly data?: { readonly reason?: string; readonly summary?: unknown } };
+    readonly error?: {
+      readonly code?: number;
+      readonly data?: { readonly reason?: string; readonly summary?: unknown };
+    };
   }>;
 }

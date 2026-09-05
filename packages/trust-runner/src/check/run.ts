@@ -1,16 +1,11 @@
+import type { CheckContinuation, CheckFinalizationResult } from "@trust/extension-sdk";
+import { type DiagnosticsSink, now, nullSink } from "../diagnostics/events.js";
 import type { JsonObject } from "../lib/json.js";
-import type { ShellRunnerConfiguration } from "../shell/run.js";
-import type { PostgresqlRunnerConfiguration } from "../postgresql/run.js";
-
-import { now, nullSink, type DiagnosticsSink } from "../diagnostics/events.js";
 import { runOperation } from "../operation/run.js";
+import type { PostgresqlRunnerConfiguration } from "../postgresql/run.js";
+import type { ShellRunnerConfiguration } from "../shell/run.js";
 import type { FactExporter } from "../telemetry/otlp.js";
-import {
-  CheckClientError,
-  type CheckClient,
-  type CheckContinuation,
-  type CheckFinalization,
-} from "./client.js";
+import { type CheckClient, CheckClientError } from "./client.js";
 
 export type CheckResult =
   | {
@@ -63,7 +58,12 @@ export function createCheckRunner(options: CheckRunnerOptions) {
       let phase = "admission";
       let admittedAttemptHandle: string | undefined;
       let actionOutcome: JsonObject | undefined;
-      diagnostics.emit({ type: "runner.log", at: now(), level: "info", text: `Check ${invocation.checkUri}: requesting admission.` });
+      diagnostics.emit({
+        type: "runner.log",
+        at: now(),
+        level: "info",
+        text: `Check ${invocation.checkUri}: requesting admission.`,
+      });
       try {
         const admission = await options.checkClient.admit(
           attempt,
@@ -72,7 +72,12 @@ export function createCheckRunner(options: CheckRunnerOptions) {
           invocation.nextIntent,
         );
         if (admission.status === "REFUSED") {
-          diagnostics.emit({ type: "runner.log", at: now(), level: "warn", text: `Check ${invocation.checkUri}: admission refused (${admission.reasonCode}).` });
+          diagnostics.emit({
+            type: "runner.log",
+            at: now(),
+            level: "warn",
+            text: `Check ${invocation.checkUri}: admission refused (${admission.reasonCode}).`,
+          });
           return {
             checkUri: invocation.checkUri,
             result: {
@@ -107,46 +112,83 @@ export function createCheckRunner(options: CheckRunnerOptions) {
           attemptHandle: admission.attemptHandle,
           executionId: admission.executionId,
           checkUri: invocation.checkUri,
-          facts: [{
-            kind: admission.operation.operation,
-            observedAt,
-            values: result.produced,
-          }],
+          facts: [
+            {
+              kind: admission.operation.operation,
+              observedAt,
+              values: result.produced,
+            },
+          ],
           recordedAt: clock().toISOString(),
         });
         phase = "finalization";
         const finalization = await options.checkClient.finalize(admission.attemptHandle);
-        diagnostics.emit({ type: "runner.log", at: now(), level: "info", text: `Check ${invocation.checkUri}: completed with ${finalization.verdict}.` });
+        diagnostics.emit({
+          type: "runner.log",
+          at: now(),
+          level: "info",
+          text: `Check ${invocation.checkUri}: completed with ${finalization.verdict}.`,
+        });
         return completed(invocation.checkUri, result.steps, finalization);
       } catch (error) {
         const reason = error instanceof Error ? error.message : String(error);
-        diagnostics.emit({ type: "runner.log", at: now(), level: "error", text: `Check ${invocation.checkUri}: ${phase} failed: ${reason}` });
+        diagnostics.emit({
+          type: "runner.log",
+          at: now(),
+          level: "error",
+          text: `Check ${invocation.checkUri}: ${phase} failed: ${reason}`,
+        });
         if ((phase === "operation" || phase === "fact export") && admittedAttemptHandle !== undefined) {
           try {
             await options.checkClient.interrupt(admittedAttemptHandle);
-            diagnostics.emit({ type: "runner.log", at: now(), level: "info", text: `Check ${invocation.checkUri}: interrupted Attempt ${admittedAttemptHandle} before Facts were accepted.` });
+            diagnostics.emit({
+              type: "runner.log",
+              at: now(),
+              level: "info",
+              text: `Check ${invocation.checkUri}: interrupted Attempt ${admittedAttemptHandle} before Facts were accepted.`,
+            });
           } catch (interruptionError) {
-            if (phase === "fact export"
-              && interruptionError instanceof CheckClientError
-              && interruptionError.reason === "facts-present"
-              && actionOutcome !== undefined) {
-              diagnostics.emit({ type: "runner.log", at: now(), level: "info", text: `Check ${invocation.checkUri}: Facts were accepted despite the lost export response; finalizing Attempt ${admittedAttemptHandle}.` });
+            if (
+              phase === "fact export" &&
+              interruptionError instanceof CheckClientError &&
+              interruptionError.reason === "facts-present" &&
+              actionOutcome !== undefined
+            ) {
+              diagnostics.emit({
+                type: "runner.log",
+                at: now(),
+                level: "info",
+                text: `Check ${invocation.checkUri}: Facts were accepted despite the lost export response; finalizing Attempt ${admittedAttemptHandle}.`,
+              });
               try {
                 const finalization = await options.checkClient.finalize(admittedAttemptHandle);
-                diagnostics.emit({ type: "runner.log", at: now(), level: "info", text: `Check ${invocation.checkUri}: completed with ${finalization.verdict}.` });
+                diagnostics.emit({
+                  type: "runner.log",
+                  at: now(),
+                  level: "info",
+                  text: `Check ${invocation.checkUri}: completed with ${finalization.verdict}.`,
+                });
                 return completed(invocation.checkUri, actionOutcome, finalization);
               } catch (finalizationError) {
-                const finalizationReason = finalizationError instanceof Error
-                  ? finalizationError.message
-                  : String(finalizationError);
-                diagnostics.emit({ type: "runner.log", at: now(), level: "error", text: `Check ${invocation.checkUri}: recovery finalization failed: ${finalizationReason}` });
+                const finalizationReason =
+                  finalizationError instanceof Error ? finalizationError.message : String(finalizationError);
+                diagnostics.emit({
+                  type: "runner.log",
+                  at: now(),
+                  level: "error",
+                  text: `Check ${invocation.checkUri}: recovery finalization failed: ${finalizationReason}`,
+                });
                 throw finalizationError;
               }
             }
-            const interruptionReason = interruptionError instanceof Error
-              ? interruptionError.message
-              : String(interruptionError);
-            diagnostics.emit({ type: "runner.log", at: now(), level: "warn", text: `Check ${invocation.checkUri}: Attempt interruption failed: ${interruptionReason}` });
+            const interruptionReason =
+              interruptionError instanceof Error ? interruptionError.message : String(interruptionError);
+            diagnostics.emit({
+              type: "runner.log",
+              at: now(),
+              level: "warn",
+              text: `Check ${invocation.checkUri}: Attempt interruption failed: ${interruptionReason}`,
+            });
           }
         }
         throw error;
@@ -155,7 +197,7 @@ export function createCheckRunner(options: CheckRunnerOptions) {
   };
 }
 
-function completed(checkUri: string, actionOutcome: JsonObject, finalization: CheckFinalization): CheckResult {
+function completed(checkUri: string, actionOutcome: JsonObject, finalization: CheckFinalizationResult): CheckResult {
   return {
     checkUri,
     result: {
@@ -201,8 +243,12 @@ export function parseCheckInvocationUri(value: string): CheckInvocation {
   if (intent === "" || nextIntent === "") {
     throw new TypeError("Intent values cannot be empty.");
   }
-  if (intent === "{intent}" || intent === "{nextIntent}"
-    || nextIntent === "{intent}" || nextIntent === "{nextIntent}") {
+  if (
+    intent === "{intent}" ||
+    intent === "{nextIntent}" ||
+    nextIntent === "{intent}" ||
+    nextIntent === "{nextIntent}"
+  ) {
     throw new TypeError("Replace the intent URI template placeholders before running the Check.");
   }
   const semanticUri = `${uri.protocol}//${uri.host}${uri.pathname}`;

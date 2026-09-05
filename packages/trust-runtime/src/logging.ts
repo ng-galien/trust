@@ -23,27 +23,23 @@ export function createRuntimeLogging(options: RuntimeLoggingOptions = {}): Runti
   const destination = options.path
     ? pino.destination({ dest: options.path, mkdir: true, sync: true })
     : pino.destination({ dest: 2, sync: true });
-  const logger = pino({
-    level,
-    base: {
-      service: "trust-runtime",
-      pid: process.pid,
-      ...(options.instance ? { instance: options.instance } : {}),
+  const logger = pino(
+    {
+      level,
+      base: {
+        service: "trust-runtime",
+        pid: process.pid,
+        ...(options.instance ? { instance: options.instance } : {}),
+      },
+      timestamp: pino.stdTimeFunctions.isoTime,
+      serializers: { err: pino.stdSerializers.err },
+      redact: {
+        paths: ["authorization", "cookie", "password", "token", "headers.authorization", "headers.cookie"],
+        remove: true,
+      },
     },
-    timestamp: pino.stdTimeFunctions.isoTime,
-    serializers: { err: pino.stdSerializers.err },
-    redact: {
-      paths: [
-        "authorization",
-        "cookie",
-        "password",
-        "token",
-        "headers.authorization",
-        "headers.cookie",
-      ],
-      remove: true,
-    },
-  }, destination);
+    destination,
+  );
   let closed = false;
   return {
     logger,

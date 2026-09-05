@@ -1,27 +1,18 @@
-import express, {
-  type ErrorRequestHandler,
-  type RequestHandler,
-  type Router,
-} from "express";
+import type {
+  CheckEscalationInput,
+  CheckEscalationResult,
+  CheckView,
+  PlanDeclarationReplacementInput,
+  PlanDeclarationReplacementResult,
+  PlanEngagementInput,
+  PlanEngagementResult,
+  PlanView,
+  SessionView,
+} from "@trust/extension-sdk";
+import express, { type ErrorRequestHandler, type RequestHandler, type Router } from "express";
 import { ExtensionError, type ExtensionHost } from "../extensions/host.js";
-
-import {
-  ReadError,
-  type CheckView,
-  type PlanView,
-  type PlanReader,
-  type SessionView,
-} from "../plan/read.js";
-import {
-  PlanRuntimeError,
-  type CheckEscalationInput,
-  type CheckEscalationResult,
-  type PlanEngagementInput,
-  type PlanEngagementResult,
-  type PlanDeclarationReplacementInput,
-  type PlanDeclarationReplacementResult,
-  type PlanRuntime,
-} from "../plan/runtime.js";
+import { type PlanReader, ReadError } from "../plan/read.js";
+import { type PlanRuntime, PlanRuntimeError } from "../plan/runtime.js";
 import {
   AUTHORING_TOOL_NAMES,
   authoringTools,
@@ -38,12 +29,7 @@ const INVALID_REQUEST = -32_600;
 const METHOD_NOT_FOUND = -32_601;
 const INVALID_PARAMS = -32_602;
 
-const READ_TOOL_NAMES = [
-  "trust_check_read",
-  "trust_plan_read",
-  "trust_procedure_read",
-  "trust_session_read",
-] as const;
+const READ_TOOL_NAMES = ["trust_check_read", "trust_plan_read", "trust_procedure_read", "trust_session_read"] as const;
 const TOOL_NAMES = [
   ...READ_TOOL_NAMES,
   ...AUTHORING_TOOL_NAMES,
@@ -78,30 +64,42 @@ export function createMcpHttpHandler(dependencies: McpHttpDependencies): Router 
       response.status(406).end();
       return;
     }
-    void dispatch(
-      request.body,
-      request.get("mcp-protocol-version"),
-      dependencies,
-    ).then((result) => {
-      if (result === undefined) {
-        response.status(202).end();
-        return;
-      }
-      response.status(200).json(result);
-    }).catch(() => response.status(500).json(failure(null, INVALID_REQUEST, "Internal error")));
+    void dispatch(request.body, request.get("mcp-protocol-version"), dependencies)
+      .then((result) => {
+        if (result === undefined) {
+          response.status(202).end();
+          return;
+        }
+        response.status(200).json(result);
+      })
+      .catch(() => response.status(500).json(failure(null, INVALID_REQUEST, "Internal error")));
   };
 
   router.get("/", (request, response) => {
-    if (!request.accepts("text/event-stream")) { response.status(406).end(); return; }
-    if (!validProtocolVersion(request.get("mcp-protocol-version"))) { response.status(400).json(failure(null, INVALID_REQUEST, "MCP-Protocol-Version is required")); return; }
-    response.status(200).set({ "Content-Type": "text/event-stream", "Cache-Control": "no-cache", Connection: "keep-alive" });
+    if (!request.accepts("text/event-stream")) {
+      response.status(406).end();
+      return;
+    }
+    if (!validProtocolVersion(request.get("mcp-protocol-version"))) {
+      response.status(400).json(failure(null, INVALID_REQUEST, "MCP-Protocol-Version is required"));
+      return;
+    }
+    response
+      .status(200)
+      .set({ "Content-Type": "text/event-stream", "Cache-Control": "no-cache", Connection: "keep-alive" });
     response.flushHeaders();
     response.write(": connected\n\n");
-    const changed = () => response.write(`event: message\ndata: ${JSON.stringify({ jsonrpc: "2.0", method: "notifications/tools/list_changed" })}\n\n`);
+    const changed = () =>
+      response.write(
+        `event: message\ndata: ${JSON.stringify({ jsonrpc: "2.0", method: "notifications/tools/list_changed" })}\n\n`,
+      );
     dependencies.extensionHost.events.on("tools-changed", changed);
     const heartbeat = setInterval(() => response.write(": keep-alive\n\n"), 15_000);
     heartbeat.unref();
-    response.once("close", () => { clearInterval(heartbeat); dependencies.extensionHost.events.off("tools-changed", changed); });
+    response.once("close", () => {
+      clearInterval(heartbeat);
+      dependencies.extensionHost.events.off("tools-changed", changed);
+    });
   });
   router.post(
     "/",
@@ -130,26 +128,23 @@ async function dispatch(
   const id = requestId(message);
   const notification = !("id" in message);
   if (message.method !== "initialize" && !validProtocolVersion(protocolVersion)) {
-    return notification
-      ? undefined
-      : failure(id, INVALID_REQUEST, "MCP-Protocol-Version is required");
+    return notification ? undefined : failure(id, INVALID_REQUEST, "MCP-Protocol-Version is required");
   }
   if (notification) return undefined;
   if (id === null) return failure(null, INVALID_REQUEST, "Invalid Request");
 
   switch (message.method) {
-    case "initialize":
-      {
-        const requestedProtocolVersion = initializeProtocolVersion(message.params);
-        if (requestedProtocolVersion === undefined) {
-          return failure(id, INVALID_PARAMS, "Invalid initialize parameters");
-        }
-        return success(id, {
-          protocolVersion: requestedProtocolVersion,
-          capabilities: { tools: { listChanged: true } },
-          serverInfo: { name: "trust-runtime", version: "0.1.0" },
-        });
+    case "initialize": {
+      const requestedProtocolVersion = initializeProtocolVersion(message.params);
+      if (requestedProtocolVersion === undefined) {
+        return failure(id, INVALID_PARAMS, "Invalid initialize parameters");
       }
+      return success(id, {
+        protocolVersion: requestedProtocolVersion,
+        capabilities: { tools: { listChanged: true } },
+        serverInfo: { name: "trust-runtime", version: "0.1.0" },
+      });
+    }
     case "ping":
       return success(id, {});
     case "tools/list":
@@ -164,11 +159,7 @@ async function dispatch(
   }
 }
 
-async function callTool(
-  id: JsonRpcId,
-  value: unknown,
-  dependencies: McpHttpDependencies,
-): Promise<JsonRpcResponse> {
+async function callTool(id: JsonRpcId, value: unknown, dependencies: McpHttpDependencies): Promise<JsonRpcResponse> {
   if (isRecord(value) && typeof value.name === "string") {
     const extension = dependencies.extensionHost.tool(value.name);
     if (extension) {
@@ -195,6 +186,18 @@ async function callTool(
       throw error;
     }
   }
+  if (
+    value.name === "trust_plan_read" &&
+    Object.keys(value.arguments).length === 1 &&
+    boundedString(value.arguments.plan)
+  ) {
+    try {
+      return textResult(id, renderPlan(await dependencies.planReader.readPlanBySlug(value.arguments.plan, true)));
+    } catch (error) {
+      if (error instanceof ReadError) return toolError(id, `TRUST read failed: ${error.message}`);
+      throw error;
+    }
+  }
   if (value.name === "trust_plan_engage") {
     const input = exactPlanEngagement(value.arguments);
     if (input === undefined) {
@@ -202,10 +205,7 @@ async function callTool(
     }
     try {
       const result = await dependencies.planRuntime.engage(input);
-      return textResult(
-        id,
-        renderEngagement(result, await dependencies.planReader.readPlanBySlug(result.plan)),
-      );
+      return textResult(id, renderEngagement(result, await dependencies.planReader.readPlanBySlug(result.plan)));
     } catch (error) {
       if (error instanceof PlanRuntimeError) {
         return toolError(id, `TRUST Plan engagement refused: ${error.message}`);
@@ -222,10 +222,7 @@ async function callTool(
       const result = await dependencies.planRuntime.replaceDeclarations(input);
       return textResult(
         id,
-        renderDeclarationReplacement(
-          result,
-          await dependencies.planReader.readPlanBySlug(result.plan),
-        ),
+        renderDeclarationReplacement(result, await dependencies.planReader.readPlanBySlug(result.plan)),
       );
     } catch (error) {
       if (error instanceof PlanRuntimeError) {
@@ -259,8 +256,8 @@ async function callTool(
         const cursor = value.arguments.cursor;
         const limit = value.arguments.limit;
         if (
-          (cursor !== undefined && (typeof cursor !== "string" || cursor.length === 0))
-          || (limit !== undefined && !Number.isSafeInteger(limit))
+          (cursor !== undefined && (typeof cursor !== "string" || cursor.length === 0)) ||
+          (limit !== undefined && !Number.isSafeInteger(limit))
         ) {
           return failure(id, INVALID_PARAMS, "Procedure page arguments are invalid");
         }
@@ -283,9 +280,10 @@ async function callTool(
     }
   } catch (error) {
     if (error instanceof ReadError) {
-      const recovery = error.code === "invalid-procedure-page"
-        ? " Start procedure reading again without a cursor; then use only the exact next cursor returned in the text response for this Check."
-        : "";
+      const recovery =
+        error.code === "invalid-procedure-page"
+          ? " Start procedure reading again without a cursor; then use only the exact next cursor returned in the text response for this Check."
+          : "";
       return success(id, {
         content: [{ type: "text", text: `TRUST read failed: ${error.message}.${recovery}` }],
         isError: true,
@@ -306,34 +304,25 @@ function renderEngagement(result: PlanEngagementResult, view: PlanView): string 
 }
 
 function renderProcedurePage(page: { readonly source: string; readonly nextCursor?: string }): string {
-  const navigation = page.nextCursor === undefined
-    ? [
-        "Complete: yes",
-        "Next: use trust_plan_read to see the current work.",
-      ]
-    : [
-        "Complete: no",
-        `Next cursor: ${page.nextCursor}`,
-        "Next: call trust_procedure_read again with the same Check URI and this exact cursor.",
-      ];
+  const navigation =
+    page.nextCursor === undefined
+      ? ["Complete: yes", "Next: use trust_plan_read to see the current work."]
+      : [
+          "Complete: no",
+          `Next cursor: ${page.nextCursor}`,
+          "Next: call trust_procedure_read again with the same Check URI and this exact cursor.",
+        ];
   return `PROCEDURE SOURCE\n${page.source}\n\nREAD STATUS\n${navigation.join("\n")}\n`;
 }
 
-function renderDeclarationReplacement(
-  result: PlanDeclarationReplacementResult,
-  view: PlanView,
-): string {
+function renderDeclarationReplacement(result: PlanDeclarationReplacementResult, view: PlanView): string {
   return [
     "PLAN DECLARATIONS REPLACED",
     `Result: ${result.status}`,
     `Revision: ${result.revision}`,
     `Current Checks: ${result.checkUris.length}`,
-    ...(result.openedCheckUris.length === 0
-      ? []
-      : [`Opened Checks: ${result.openedCheckUris.length}`]),
-    ...(result.removedCheckUris.length === 0
-      ? []
-      : [`Removed Checks: ${result.removedCheckUris.length}`]),
+    ...(result.openedCheckUris.length === 0 ? [] : [`Opened Checks: ${result.openedCheckUris.length}`]),
+    ...(result.removedCheckUris.length === 0 ? [] : [`Removed Checks: ${result.removedCheckUris.length}`]),
     "",
     renderPlan(view),
   ].join("\n");
@@ -357,9 +346,7 @@ function renderEscalation(result: CheckEscalationResult): string {
 function renderPlan(view: PlanView): string {
   const actionable = view.checks.filter((check) => check.actionable);
   const blocked = view.checks.filter((check) => check.state === "OPEN" && !check.actionable);
-  const missingRoles = view.declarationRoles.filter(({ role }) => (
-    view.missingDeclarations.includes(role)
-  ));
+  const missingRoles = view.declarationRoles.filter(({ role }) => view.missingDeclarations.includes(role));
   const optionalRoles = view.declarationRoles.filter(({ optional }) => optional);
   const lines: string[] = [
     "PLAN",
@@ -369,7 +356,42 @@ function renderPlan(view: PlanView): string {
     `State: ${view.workState}`,
     `Session: ${view.sessionState}`,
     `Progress: ${view.satisfiedChecks}/${view.checks.length} current Checks satisfied`,
-    ...(view.metadata.title === undefined && view.metadata.labels.length === 0 && Object.keys(view.metadata.annotations).length === 0
+    ...(view.descendantEscalations.length
+      ? [
+          "",
+          "DESCENDANT ESCALATIONS",
+          ...view.descendantEscalations.flatMap((escalation) => [
+            `- ${escalation.title} (${escalation.plan}): ${escalation.blockingReason}`,
+            `  Escalation: ${escalation.escalationId}`,
+            `  Read origin with trust_plan_read: ${JSON.stringify({ plan: escalation.plan })}`,
+          ]),
+        ]
+      : []),
+    ...(view.parent
+      ? [
+          `Parent Plan: ${view.parent.plan}`,
+          `Invocation generation: ${view.parent.generation}${view.parent.current ? " (current)" : " (superseded)"}`,
+        ]
+      : []),
+    ...(view.invocations.length
+      ? [
+          "",
+          "PROCEDURE INVOCATIONS",
+          ...view.invocations.flatMap((invocation) => [
+            `- ${invocation.name}: ${invocation.state}; generation ${invocation.generation ?? "not started"}`,
+            ...(invocation.childPlan
+              ? [
+                  `  Child Plan: ${invocation.childPlan}`,
+                  `  Read with trust_plan_read: ${JSON.stringify({ plan: invocation.childPlan })}`,
+                ]
+              : []),
+            ...invocation.blockedBy.map((reason) => `  ${reason}`),
+          ]),
+        ]
+      : []),
+    ...(view.metadata.title === undefined &&
+    view.metadata.labels.length === 0 &&
+    Object.keys(view.metadata.annotations).length === 0
       ? []
       : [
           "",
@@ -419,11 +441,7 @@ function renderPlan(view: PlanView): string {
   }
 
   if (actionable.length > 0) {
-    lines.push(
-      "",
-      "ACTIONABLE CHECKS",
-      ...actionable.flatMap((check) => renderActionableCheck(check, view)),
-    );
+    lines.push("", "ACTIONABLE CHECKS", ...actionable.flatMap((check) => renderActionableCheck(check, view)));
   }
   if (missingRoles.length > 0) {
     lines.push(
@@ -450,18 +468,14 @@ function renderPlan(view: PlanView): string {
     );
   }
   if (blocked.length > 0) {
-    lines.push(
-      "",
-      "BLOCKED CHECKS",
-      ...blocked.flatMap((check) => renderBlockedCheck(check, view.checks)),
-    );
+    lines.push("", "BLOCKED CHECKS", ...blocked.flatMap((check) => renderBlockedCheck(check, view.checks)));
   }
   lines.push(
     "",
     "CURRENT CHECKLIST",
-    ...view.checks.map((check) => (
-      `- [${check.state}${check.actionable ? ", ACTIONABLE" : ""}] ${check.name} (${check.scenario})`
-    )),
+    ...view.checks.map(
+      (check) => `- [${check.state}${check.actionable ? ", ACTIONABLE" : ""}] ${check.name} (${check.scenario})`,
+    ),
   );
   if (view.latestQualification !== null) {
     lines.push(
@@ -572,7 +586,8 @@ function renderCheck(view: CheckView): string {
 
 function planNext(view: PlanView, actionableChecks: number): readonly string[] {
   if (view.checklistComplete) return ["The Plan is complete. Do not run another Check."];
-  if (view.workState === "ESCALATED") return ["The Procedure is stopped. Do not run another Check. Only an operator can resume the Plan."];
+  if (view.workState === "ESCALATED")
+    return ["The Procedure is stopped. Do not run another Check. Only an operator can resume the Plan."];
   if (view.sessionState !== "OPEN") {
     return ["The Session is unavailable. Do not run a Check until it is open."];
   }
@@ -603,17 +618,16 @@ function planNext(view: PlanView, actionableChecks: number): readonly string[] {
   return ["No Check is actionable now. Read BLOCKED CHECKS, resolve its prerequisites, then read the Plan again."];
 }
 
-function renderActionableCheck(
-  check: PlanView["checks"][number],
-  view: PlanView,
-): readonly string[] {
+function renderActionableCheck(check: PlanView["checks"][number], view: PlanView): readonly string[] {
   return [
     `- ${check.name} (${check.scenario})`,
     `  Check URI: ${check.checkUri}`,
     ...(view.intentChainState === "ACTIVE"
-      ? [check.completesPlan
-          ? `  Final invocation URI: ${check.checkUri}?intent={intent}`
-          : `  Continuing invocation URI: ${check.checkUri}?intent={intent}&nextIntent={nextIntent}`]
+      ? [
+          check.completesPlan
+            ? `  Final invocation URI: ${check.checkUri}?intent={intent}`
+            : `  Continuing invocation URI: ${check.checkUri}?intent={intent}&nextIntent={nextIntent}`,
+        ]
       : []),
     `  Operation: ${check.operation}`,
     "  Authorized scope:",
@@ -626,10 +640,7 @@ function renderActionableCheck(
   ];
 }
 
-function renderBlockedCheck(
-  check: PlanView["checks"][number],
-  checks: PlanView["checks"],
-): readonly string[] {
+function renderBlockedCheck(check: PlanView["checks"][number], checks: PlanView["checks"]): readonly string[] {
   return [
     `- ${check.name} (${check.scenario})`,
     `  Check URI: ${check.checkUri}`,
@@ -655,17 +666,16 @@ function renderBlocker(blocker: string, checks: PlanView["checks"] = []): string
   return blocker;
 }
 
-function renderDeclarationRole(
-  role: PlanView["declarationRoles"][number],
-): readonly string[] {
-  const parents = role.parents.map((parent) => (
-    `${parent.each ? "parent for each" : "parent"}: ${parent.role}`
-  ));
+function renderDeclarationRole(role: PlanView["declarationRoles"][number]): readonly string[] {
+  const parents = role.parents.map((parent) => `${parent.each ? "parent for each" : "parent"}: ${parent.role}`);
   const item = `<${role.type}>`;
   const correlatedParent = role.parents.find(({ each }) => each);
-  const shape = correlatedParent === undefined
-    ? role.cardinality === "many" ? `[${item}, ...]` : item
-    : `[{"value": ${item}, "parents": [{"role": "${correlatedParent.role}", "value": <matching ${correlatedParent.role}>}]}]`;
+  const shape =
+    correlatedParent === undefined
+      ? role.cardinality === "many"
+        ? `[${item}, ...]`
+        : item
+      : `[{"value": ${item}, "parents": [{"role": "${correlatedParent.role}", "value": <matching ${correlatedParent.role}>}]}]`;
   const coordinatedRule = role.cardinality === "many" ? "one or more entries" : "exactly one entry";
   return [
     `- ${role.role}: ${role.cardinality} ${role.type}${role.optional ? "; optional" : ""}${parents.length === 0 ? "" : `; ${parents.join("; ")}`}`,
@@ -679,9 +689,7 @@ function formatTarget(check: Pick<CheckView, "target">): string {
 
 function formatInputs(inputs: Readonly<Record<string, unknown>>): readonly string[] {
   const entries = Object.entries(inputs);
-  return entries.length === 0
-    ? ["- none"]
-    : entries.map(([name, value]) => `- ${name} = ${JSON.stringify(value)}`);
+  return entries.length === 0 ? ["- none"] : entries.map(([name, value]) => `- ${name} = ${JSON.stringify(value)}`);
 }
 
 function formatScope(values: readonly string[]): readonly string[] {
@@ -701,10 +709,7 @@ function renderChecklistDelta(delta: {
         ]),
     ...(delta.newlyOpened.length === 0
       ? []
-      : [
-          `Newly opened Checks: ${delta.newlyOpened.length}`,
-          ...delta.newlyOpened.map((checkUri) => `- ${checkUri}`),
-        ]),
+      : [`Newly opened Checks: ${delta.newlyOpened.length}`, ...delta.newlyOpened.map((checkUri) => `- ${checkUri}`)]),
   ];
 }
 
@@ -736,7 +741,8 @@ function tools(): readonly unknown[] {
     {
       name: "trust_check_read",
       title: "Read a TRUST Check",
-      description: "Read one Check before running it. Returns whether it is actionable, its exact Operation inputs, blockers, and accepted attempt history.",
+      description:
+        "Read one Check before running it. Returns whether it is actionable, its exact Operation inputs, blockers, and accepted attempt history.",
       inputSchema: {
         type: "object",
         properties: { checkUri },
@@ -747,18 +753,26 @@ function tools(): readonly unknown[] {
     {
       name: "trust_plan_read",
       title: "Read a TRUST Plan",
-      description: "Start here after receiving any Check URI. Returns Plan progress, the next actions, actionable Checks, missing declarations, and explained blockers.",
+      description:
+        "Read a Plan by its identifier or any Check URI. Returns Plan progress, child invocations, next actions, actionable Checks, missing declarations, and explained blockers. Invocation-only Plans are read by plan identifier.",
       inputSchema: {
         type: "object",
-        properties: { checkUri },
-        required: ["checkUri"],
+        properties: {
+          checkUri,
+          plan: {
+            type: "string",
+            description: "Business Plan identifier, including a generated child Plan identifier",
+          },
+        },
+        oneOf: [{ required: ["checkUri"] }, { required: ["plan"] }],
         additionalProperties: false,
       },
     },
     {
       name: "trust_procedure_read",
       title: "Read a TRUST procedure",
-      description: "Read the authoritative Gherkin procedure when the Plan summary is not enough. Read every contiguous page; the response gives the exact next cursor until Complete is yes.",
+      description:
+        "Read the authoritative Gherkin procedure when the Plan summary is not enough. Read every contiguous page; the response gives the exact next cursor until Complete is yes.",
       inputSchema: {
         type: "object",
         properties: {
@@ -849,7 +863,8 @@ function tools(): readonly unknown[] {
     {
       name: "trust_check_escalate",
       title: "Escalate a blocked TRUST Check",
-      description: "Declare the planned exit from a Procedure after the current Check's latest accepted Attempt is NOT_VALIDATED. Stops the Plan without changing Facts, qualification, or intent.",
+      description:
+        "Declare the planned exit from a Procedure after the current Check's latest accepted Attempt is NOT_VALIDATED. Stops the Plan without changing Facts, qualification, or intent.",
       inputSchema: {
         type: "object",
         properties: {
@@ -870,7 +885,8 @@ function tools(): readonly unknown[] {
             type: "string",
             minLength: 1,
             maxLength: 4096,
-            description: "Action that could continue the work but is deliberately not performed because the Procedure scope forbids it",
+            description:
+              "Action that could continue the work but is deliberately not performed because the Procedure scope forbids it",
           },
         },
         required: ["checkUri", "attemptHandle", "blockingReason", "forbiddenFurtherAction"],
@@ -884,13 +900,13 @@ function exactCheckEscalation(value: Record<string, unknown>): CheckEscalationIn
   const keys = ["checkUri", "attemptHandle", "blockingReason", "forbiddenFurtherAction"];
   const expected = new Set(keys);
   if (
-    Object.keys(value).length !== keys.length
-    || Object.keys(value).some((key) => !expected.has(key))
-    || keys.some((key) => !Object.hasOwn(value, key))
-    || !boundedString(value.checkUri, 2_048)
-    || !boundedString(value.attemptHandle, 256)
-    || !boundedTrimmedString(value.blockingReason, 4_096)
-    || !boundedTrimmedString(value.forbiddenFurtherAction, 4_096)
+    Object.keys(value).length !== keys.length ||
+    Object.keys(value).some((key) => !expected.has(key)) ||
+    keys.some((key) => !Object.hasOwn(value, key)) ||
+    !boundedString(value.checkUri, 2_048) ||
+    !boundedString(value.attemptHandle, 256) ||
+    !boundedTrimmedString(value.blockingReason, 4_096) ||
+    !boundedTrimmedString(value.forbiddenFurtherAction, 4_096)
   ) {
     return undefined;
   }
@@ -903,19 +919,17 @@ function exactCheckEscalation(value: Record<string, unknown>): CheckEscalationIn
   };
 }
 
-function exactPlanDeclarationReplacement(
-  value: Record<string, unknown>,
-): PlanDeclarationReplacementInput | undefined {
+function exactPlanDeclarationReplacement(value: Record<string, unknown>): PlanDeclarationReplacementInput | undefined {
   const keys = ["plan", "expectedRevision", "declarations"];
   const expected = new Set(keys);
   if (
-    Object.keys(value).length !== keys.length
-    || Object.keys(value).some((key) => !expected.has(key))
-    || keys.some((key) => !Object.hasOwn(value, key))
-    || !boundedString(value.plan)
-    || !Number.isSafeInteger(value.expectedRevision)
-    || Number(value.expectedRevision) < 1
-    || !isRecord(value.declarations)
+    Object.keys(value).length !== keys.length ||
+    Object.keys(value).some((key) => !expected.has(key)) ||
+    keys.some((key) => !Object.hasOwn(value, key)) ||
+    !boundedString(value.plan) ||
+    !Number.isSafeInteger(value.expectedRevision) ||
+    Number(value.expectedRevision) < 1 ||
+    !isRecord(value.declarations)
   ) {
     return undefined;
   }
@@ -931,15 +945,15 @@ function exactPlanEngagement(value: Record<string, unknown>): PlanEngagementInpu
   const keys = ["procedure", "procedureVersion", "plan", "environment", "rootInputs"];
   const expected = new Set([...keys, "metadata"]);
   if (
-    (Object.keys(value).length !== keys.length && Object.keys(value).length !== keys.length + 1)
-    || Object.keys(value).some((key) => !expected.has(key))
-    || keys.some((key) => !Object.hasOwn(value, key))
-    || !boundedString(value.procedure)
-    || !boundedString(value.procedureVersion)
-    || !boundedString(value.plan)
-    || !boundedString(value.environment)
-    || (value.metadata !== undefined && !isRecord(value.metadata))
-    || !isRecord(value.rootInputs)
+    (Object.keys(value).length !== keys.length && Object.keys(value).length !== keys.length + 1) ||
+    Object.keys(value).some((key) => !expected.has(key)) ||
+    keys.some((key) => !Object.hasOwn(value, key)) ||
+    !boundedString(value.procedure) ||
+    !boundedString(value.procedureVersion) ||
+    !boundedString(value.plan) ||
+    !boundedString(value.environment) ||
+    (value.metadata !== undefined && !isRecord(value.metadata)) ||
+    !isRecord(value.rootInputs)
   ) {
     return undefined;
   }
@@ -954,18 +968,13 @@ function exactPlanEngagement(value: Record<string, unknown>): PlanEngagementInpu
   };
 }
 
-function exactCheckUri(
-  value: Record<string, unknown>,
-  procedureTool: boolean,
-): string | undefined {
-  const allowed = procedureTool
-    ? new Set(["checkUri", "cursor", "limit"])
-    : new Set(["checkUri"]);
+function exactCheckUri(value: Record<string, unknown>, procedureTool: boolean): string | undefined {
+  const allowed = procedureTool ? new Set(["checkUri", "cursor", "limit"]) : new Set(["checkUri"]);
   if (
-    Object.keys(value).some((key) => !allowed.has(key))
-    || typeof value.checkUri !== "string"
-    || value.checkUri.length === 0
-    || value.checkUri.length > 2_048
+    Object.keys(value).some((key) => !allowed.has(key)) ||
+    typeof value.checkUri !== "string" ||
+    value.checkUri.length === 0 ||
+    value.checkUri.length > 2_048
   ) {
     return undefined;
   }
@@ -974,12 +983,12 @@ function exactCheckUri(
 
 function initializeProtocolVersion(value: unknown): string | undefined {
   if (
-    !isRecord(value)
-    || !validProtocolVersion(value.protocolVersion)
-    || !isRecord(value.capabilities)
-    || !isRecord(value.clientInfo)
-    || typeof value.clientInfo.name !== "string"
-    || typeof value.clientInfo.version !== "string"
+    !isRecord(value) ||
+    !validProtocolVersion(value.protocolVersion) ||
+    !isRecord(value.capabilities) ||
+    !isRecord(value.clientInfo) ||
+    typeof value.clientInfo.name !== "string" ||
+    typeof value.clientInfo.version !== "string"
   ) {
     return undefined;
   }
@@ -994,8 +1003,7 @@ function validToolsListParams(value: unknown): boolean {
   if (value === undefined) return true;
   if (!isRecord(value)) return false;
   const allowed = new Set(["_meta"]);
-  return Object.keys(value).every((key) => allowed.has(key))
-    && (value._meta === undefined || isRecord(value._meta));
+  return Object.keys(value).every((key) => allowed.has(key)) && (value._meta === undefined || isRecord(value._meta));
 }
 
 function acceptsJson(value: string | undefined): boolean {

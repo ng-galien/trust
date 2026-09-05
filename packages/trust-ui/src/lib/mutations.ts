@@ -30,7 +30,8 @@ export function useSaveOperation() {
   const runtime = useRuntime();
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ source, sourceName }: { source: string; sourceName: string }) => runtime.saveOperation(source, sourceName),
+    mutationFn: ({ source, sourceName }: { source: string; sourceName: string }) =>
+      runtime.saveOperation(source, sourceName),
     onSuccess: () => invalidateCatalog(queryClient),
   });
 }
@@ -39,7 +40,8 @@ export function useRemoveOperation() {
   const runtime = useRuntime();
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ operation, version }: { operation: string; version: string }) => runtime.removeOperation(operation, version),
+    mutationFn: ({ operation, version }: { operation: string; version: string }) =>
+      runtime.removeOperation(operation, version),
     onSuccess: () => invalidateCatalog(queryClient),
   });
 }
@@ -79,7 +81,8 @@ export function useResumePlan() {
   const runtime = useRuntime();
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ plan, escalationId, resumeReason }: { plan: string; escalationId: string; resumeReason: string }) => runtime.resumePlan(plan, escalationId, resumeReason),
+    mutationFn: ({ plan, escalationId, resumeReason }: { plan: string; escalationId: string; resumeReason: string }) =>
+      runtime.resumePlan(plan, escalationId, resumeReason),
     onSuccess: (_result, { plan }) => invalidatePlan(queryClient, plan),
   });
 }
@@ -88,7 +91,8 @@ export function useSaveEnvironment() {
   const runtime = useRuntime();
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ environment, values }: { environment: string; values: Record<string, string> }) => runtime.saveEnvironment(environment, values),
+    mutationFn: ({ environment, values }: { environment: string; values: Record<string, string> }) =>
+      runtime.saveEnvironment(environment, values),
     onSuccess: () => invalidateEnvironments(queryClient),
   });
 }
@@ -107,7 +111,8 @@ export function useSaveCredential() {
   const runtime = useRuntime();
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ environment, name, value }: { environment: string; name: string; value: string }) => runtime.saveCredential(environment, name, value),
+    mutationFn: ({ environment, name, value }: { environment: string; name: string; value: string }) =>
+      runtime.saveCredential(environment, name, value),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["credentials"] }),
   });
 }
@@ -116,12 +121,28 @@ export function useRemoveCredential() {
   const runtime = useRuntime();
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ environment, name }: { environment: string; name: string }) => runtime.removeCredential(environment, name),
+    mutationFn: ({ environment, name }: { environment: string; name: string }) =>
+      runtime.removeCredential(environment, name),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["credentials"] }),
   });
 }
 
 type Client = ReturnType<typeof useQueryClient>;
-const invalidateCatalog = (client: Client) => Promise.all([client.invalidateQueries({ queryKey: ["operations"] }), client.invalidateQueries({ queryKey: ["operation.environments"] }), client.invalidateQueries({ queryKey: ["environments"] })]);
-const invalidateEnvironments = (client: Client) => Promise.all([client.invalidateQueries({ queryKey: ["environments"] }), client.invalidateQueries({ queryKey: ["operation.environments"] }), client.invalidateQueries({ queryKey: ["credentials"] })]);
-const invalidatePlan = (client: Client, plan: string) => Promise.all([client.invalidateQueries({ queryKey: ["plans"] }), client.invalidateQueries({ queryKey: ["plan", plan] }), client.invalidateQueries({ queryKey: ["history"] })]);
+const invalidateCatalog = (client: Client) =>
+  Promise.all([
+    client.invalidateQueries({ queryKey: ["operations"] }),
+    client.invalidateQueries({ queryKey: ["operation.environments"] }),
+    client.invalidateQueries({ queryKey: ["environments"] }),
+  ]);
+const invalidateEnvironments = (client: Client) =>
+  Promise.all([
+    client.invalidateQueries({ queryKey: ["environments"] }),
+    client.invalidateQueries({ queryKey: ["operation.environments"] }),
+    client.invalidateQueries({ queryKey: ["credentials"] }),
+  ]);
+const invalidatePlan = (client: Client, plan: string) =>
+  Promise.all([
+    client.invalidateQueries({ queryKey: ["plans"] }),
+    client.invalidateQueries({ queryKey: ["plan", plan] }),
+    client.invalidateQueries({ queryKey: ["history"] }),
+  ]);

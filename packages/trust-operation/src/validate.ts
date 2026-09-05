@@ -3,9 +3,8 @@ import { isDeepStrictEqual } from "node:util";
 
 import Ajv2020Module, { type ErrorObject, type Options, type ValidateFunction } from "ajv/dist/2020.js";
 import addFormatsModule from "ajv-formats";
-
-import type { CompiledOperation, ObjectSchema } from "./operation.js";
 import { compileOperation } from "./compile.js";
+import type { CompiledOperation, ObjectSchema } from "./operation.js";
 
 export type OperationValues = "input" | "environment" | "produced";
 
@@ -53,9 +52,7 @@ ajv.addFormat("trust-url", {
   validate: (value: string) => {
     try {
       const url = new URL(value);
-      return (url.protocol === "http:" || url.protocol === "https:")
-        && url.username === ""
-        && url.password === "";
+      return (url.protocol === "http:" || url.protocol === "https:") && url.username === "" && url.password === "";
     } catch {
       return false;
     }

@@ -49,12 +49,14 @@
   --color-editor-keyword: #1e4fc2;
   --color-editor-keyword-control: #6b3fa0;
   --color-editor-string: #1f7a4a;
-  --color-editor-comment: #8a93a1;
+  --color-editor-comment: #667180;
   --color-editor-number: #a2620b;
   --color-editor-type: #0f766e;
   --color-editor-verb: #7c4a0f;
   --color-editor-table-header: #5b6472;
-  --color-editor-table-line: #c3c9d2;
+  --color-editor-table-line: #687587;
+  --color-editor-reference: #245b91;
+  --color-editor-property: #735526;
 
   /* Shape */
   --radius-1: 4px;
@@ -131,12 +133,14 @@ html.dark {
   --color-editor-keyword: #86adff;
   --color-editor-keyword-control: #c9a4ff;
   --color-editor-string: #7ad3a5;
-  --color-editor-comment: #6b7686;
+  --color-editor-comment: #8c96a6;
   --color-editor-number: #e2b13a;
   --color-editor-type: #5fd3c0;
   --color-editor-verb: #d9a066;
   --color-editor-table-header: #9aa4b2;
-  --color-editor-table-line: #364050;
+  --color-editor-table-line: #7d8a9e;
+  --color-editor-reference: #98bde3;
+  --color-editor-property: #d8bb8a;
 
   --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.4);
   --shadow-2: 0 6px 24px rgba(0, 0, 0, 0.45);

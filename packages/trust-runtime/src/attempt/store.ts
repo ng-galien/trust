@@ -18,29 +18,32 @@ export class AttemptStore {
   }
 
   async createOrFind(attempt: Attempt): Promise<AttemptCreation> {
-    const created = await this.dependencies.database.insertInto("attempts").values({
-      attempt_handle: attempt.handle,
-      attempt_key: attempt.attemptKey,
-      execution_id: attempt.executionId,
-      plan_slug: attempt.planSlug,
-      plan_revision: attempt.planRevision,
-      check_uri: attempt.checkUri,
-      compiled_digest: attempt.compiledCheckDigest,
-      session_id: attempt.sessionId,
-      operation: attempt.operation,
-      operation_digest: attempt.operationDigest,
-      action_input_json: JSON.stringify(attempt.actionInput),
-      environment: attempt.environment,
-      reobserve: attempt.reobserve ? 1 : 0,
-      intent: attempt.intent ?? null,
-      next_intent: attempt.nextIntent ?? null,
-      state: attempt.state,
-      admitted_at: attempt.admittedAt,
-      expires_at: attempt.expiresAt,
-      interrupted_at: attempt.interruptedAt ?? null,
-      finalized_at: attempt.finalizedAt ?? null,
-      finalization_json: attempt.finalization === undefined ? null : JSON.stringify(attempt.finalization),
-    })
+    const created = await this.dependencies.database
+      .insertInto("attempts")
+      .values({
+        invocation_digest: attempt.invocationDigest ?? null,
+        attempt_handle: attempt.handle,
+        attempt_key: attempt.attemptKey,
+        execution_id: attempt.executionId,
+        plan_slug: attempt.planSlug,
+        plan_revision: attempt.planRevision,
+        check_uri: attempt.checkUri,
+        compiled_digest: attempt.compiledCheckDigest,
+        session_id: attempt.sessionId,
+        operation: attempt.operation,
+        operation_digest: attempt.operationDigest,
+        action_input_json: JSON.stringify(attempt.actionInput),
+        environment: attempt.environment,
+        reobserve: attempt.reobserve ? 1 : 0,
+        intent: attempt.intent ?? null,
+        next_intent: attempt.nextIntent ?? null,
+        state: attempt.state,
+        admitted_at: attempt.admittedAt,
+        expires_at: attempt.expiresAt,
+        interrupted_at: attempt.interruptedAt ?? null,
+        finalized_at: attempt.finalizedAt ?? null,
+        finalization_json: attempt.finalization === undefined ? null : JSON.stringify(attempt.finalization),
+      })
       .onConflict((conflict) => conflict.column("attempt_key").doNothing())
       .returningAll()
       .executeTakeFirst();
@@ -146,6 +149,7 @@ export class AttemptStore {
 
 function toAttempt(row: AttemptRow): Attempt {
   return {
+    ...(row.invocation_digest === null ? {} : { invocationDigest: row.invocation_digest }),
     handle: row.attempt_handle,
     attemptKey: row.attempt_key,
     executionId: row.execution_id,

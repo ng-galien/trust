@@ -12,6 +12,16 @@
       "development": "./src/index.ts",
       "import": "./dist/index.js"
     },
+    "./match": {
+      "types": "./dist/match.d.ts",
+      "development": "./src/match.ts",
+      "import": "./dist/match.js"
+    },
+    "./version": {
+      "types": "./dist/version.d.ts",
+      "development": "./src/version.ts",
+      "import": "./dist/version.js"
+    },
     "./language": {
       "types": "./dist/language.d.ts",
       "development": "./src/language.ts",
@@ -33,10 +43,12 @@
     "@trust/gherkin": "file:../trust-gherkin",
     "ajv": "^8.20.0",
     "ajv-formats": "^3.0.1",
-    "jsonata": "^2.2.1"
+    "jsonata": "^2.2.1",
+    "semver": "^7.8.5"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
+    "@types/semver": "^7.8.0",
     "typescript": "^5.7.2",
     "vitest": "^4.1.10"
   }

@@ -2,19 +2,15 @@ import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { lstat, mkdtemp, readFile, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { basename, posix, resolve, sep } from "node:path";
+import { posix, resolve, sep } from "node:path";
 import { promisify } from "node:util";
 
-import { compileOperation, type CompiledOperation } from "@trust/operation";
+import { type CompiledOperation, compileOperation } from "@trust/operation";
 
 import type { OperationCatalog } from "../operation/catalog.js";
 import type { Procedures } from "../procedure/procedures.js";
 import type { Clock } from "../time.js";
-import type {
-  RegistrySource,
-  RegistrySourceInput,
-  RegistrySourceStore,
-} from "./store.js";
+import type { RegistrySource, RegistrySourceInput, RegistrySourceStore } from "./store.js";
 
 const execFileAsync = promisify(execFile);
 const INDEX_CONTRACT = "trust.registry-index@1" as const;
@@ -95,10 +91,7 @@ export class RegistryService {
 
   async save(input: RegistrySourceInput): Promise<RegistrySource> {
     const source = validateSource(input);
-    return this.dependencies.registrySourceStore.save(
-      source,
-      this.dependencies.clock.now().toISOString(),
-    );
+    return this.dependencies.registrySourceStore.save(source, this.dependencies.clock.now().toISOString());
   }
 
   async remove(name: string): Promise<boolean> {
@@ -112,7 +105,10 @@ export class RegistryService {
       () => this.#synchronize(name),
       () => this.#synchronize(name),
     );
-    this.#synchronizations = result.then(() => undefined, () => undefined);
+    this.#synchronizations = result.then(
+      () => undefined,
+      () => undefined,
+    );
     return result;
   }
 
@@ -125,6 +121,10 @@ export class RegistryService {
     const operations = loaded.artifacts.filter((artifact) => artifact.definition.kind === "operation");
     const procedures = loaded.artifacts.filter((artifact) => artifact.definition.kind === "procedure");
 
+    // Prevalidate against current disk state, not a runtime's startup cache.
+    // This is not a cross-process batch transaction: save also rechecks each
+    // identity and atomically refuses an occupied destination at publication.
+    await this.dependencies.operationCatalog.initialize();
     const compiledOperations = compileOperations(source.name, operations).map((entry) => {
       const existing = this.dependencies.operationCatalog.entry(entry.compiled.operation, entry.compiled.version);
       if (existing !== undefined && existing.sourceName !== entry.sourceName) {
@@ -134,38 +134,50 @@ export class RegistryService {
           entry.artifact.definition.path,
         );
       }
+      if (existing !== undefined && existing.operation.source !== entry.compiled.source) {
+        throw new RegistryError(
+          "artifact-conflict",
+          `Operation ${entry.compiled.operation}@${entry.compiled.version} is already published with another definition`,
+          entry.artifact.definition.path,
+        );
+      }
       return {
         ...entry,
-        status: existing !== undefined && existing.operation.source === entry.compiled.source
-          ? "unchanged" as const
-          : "imported" as const,
+        status:
+          existing !== undefined && existing.operation.source === entry.compiled.source
+            ? ("unchanged" as const)
+            : ("imported" as const),
       };
     });
     const futureOperations = mergedOperations(this.dependencies.operationCatalog.list(), compiledOperations);
-    const compiledProcedures = procedures.map((artifact) => {
-      try {
-        const compiled = this.dependencies.procedures.compile(
-          { source: artifact.source, sourceName: artifact.definition.path },
-          futureOperations,
-        );
-        assertIdentity(artifact.definition, compiled.procedure, compiled.version);
-        return { artifact, compiled, status: "imported" as "imported" | "unchanged" };
-      } catch (error) {
-        if (error instanceof RegistryError) throw error;
-        throw new RegistryError(
-          "import-rejected",
-          `Procedure artifact ${artifact.definition.path} is invalid: ${error instanceof Error ? error.message : String(error)}`,
-          artifact.definition.path,
-        );
-      }
-    });
+    const compiledProcedures = await Promise.all(
+      procedures.map(async (artifact) => {
+        try {
+          const compiled = await this.dependencies.procedures.compile(
+            { source: artifact.source, sourceName: artifact.definition.path },
+            futureOperations,
+          );
+          assertIdentity(artifact.definition, compiled.procedure, compiled.version);
+          return { artifact, compiled, status: "imported" as "imported" | "unchanged" };
+        } catch (error) {
+          if (error instanceof RegistryError) throw error;
+          throw new RegistryError(
+            "import-rejected",
+            `Procedure artifact ${artifact.definition.path} is invalid: ${error instanceof Error ? error.message : String(error)}`,
+            artifact.definition.path,
+          );
+        }
+      }),
+    );
 
     for (const entry of compiledProcedures) {
       const { artifact, compiled } = entry;
       const existing = await this.dependencies.procedures.find(compiled.procedure, compiled.version);
-      if (existing !== undefined
-        && (existing.procedure.definitionDigest !== compiled.definitionDigest
-          || existing.procedure.source !== compiled.source)) {
+      if (
+        existing !== undefined &&
+        (existing.procedure.definitionDigest !== compiled.definitionDigest ||
+          existing.procedure.source !== compiled.source)
+      ) {
         throw new RegistryError(
           "artifact-conflict",
           `Procedure ${compiled.procedure}@${compiled.version} is already published with another definition`,
@@ -176,8 +188,9 @@ export class RegistryService {
     }
 
     let imported = 0;
-    const unchanged = compiledOperations.filter(({ status }) => status === "unchanged").length
-      + compiledProcedures.filter(({ status }) => status === "unchanged").length;
+    const unchanged =
+      compiledOperations.filter(({ status }) => status === "unchanged").length +
+      compiledProcedures.filter(({ status }) => status === "unchanged").length;
     try {
       for (const { artifact, sourceName, status } of compiledOperations) {
         if (status === "unchanged") continue;
@@ -247,7 +260,10 @@ function validateSource(input: RegistrySourceInput): RegistrySourceInput {
       throw new RegistryError("invalid-source", "HTTP registry source URL must not contain credentials");
     }
     if (url.protocol !== "https:" && !(url.protocol === "http:" && isLoopback(url.hostname))) {
-      throw new RegistryError("invalid-source", "HTTP registry source URL must use HTTPS (HTTP is allowed only for loopback)");
+      throw new RegistryError(
+        "invalid-source",
+        "HTTP registry source URL must use HTTPS (HTTP is allowed only for loopback)",
+      );
     }
     return { name: input.name, kind: "http", url: url.toString() };
   }
@@ -255,8 +271,13 @@ function validateSource(input: RegistrySourceInput): RegistrySourceInput {
     throw new RegistryError("invalid-source", "Git registry source URL must not begin with an option prefix");
   }
   rejectEmbeddedGitCredentials(input.url);
-  if (input.reference !== undefined
-    && (input.reference.length === 0 || input.reference.length > 255 || input.reference.startsWith("-") || /[\0\r\n]/u.test(input.reference))) {
+  if (
+    input.reference !== undefined &&
+    (input.reference.length === 0 ||
+      input.reference.length > 255 ||
+      input.reference.startsWith("-") ||
+      /[\0\r\n]/u.test(input.reference))
+  ) {
     throw new RegistryError("invalid-source", "Git registry source reference is invalid");
   }
   return {
@@ -269,15 +290,22 @@ function validateSource(input: RegistrySourceInput): RegistrySourceInput {
 
 function validateName(name: string): void {
   if (!/^[a-z0-9](?:[a-z0-9._-]{0,62}[a-z0-9])?$/u.test(name)) {
-    throw new RegistryError("invalid-source", "Registry source name must use 1-64 lowercase letters, digits, dots, underscores or hyphens");
+    throw new RegistryError(
+      "invalid-source",
+      "Registry source name must use 1-64 lowercase letters, digits, dots, underscores or hyphens",
+    );
   }
 }
 
-async function loadRegistry(source: RegistrySource): Promise<{ readonly index: RegistryIndex; readonly artifacts: LoadedArtifact[] }> {
+async function loadRegistry(
+  source: RegistrySource,
+): Promise<{ readonly index: RegistryIndex; readonly artifacts: LoadedArtifact[] }> {
   return source.kind === "git" ? loadGitRegistry(source) : loadHttpRegistry(source);
 }
 
-async function loadGitRegistry(source: Extract<RegistrySource, { kind: "git" }>): Promise<{ readonly index: RegistryIndex; readonly artifacts: LoadedArtifact[] }> {
+async function loadGitRegistry(
+  source: Extract<RegistrySource, { kind: "git" }>,
+): Promise<{ readonly index: RegistryIndex; readonly artifacts: LoadedArtifact[] }> {
   const temporary = await mkdtemp(resolve(tmpdir(), "trust-registry-git-"));
   const checkout = resolve(temporary, "repository");
   try {
@@ -286,14 +314,16 @@ async function loadGitRegistry(source: Extract<RegistrySource, { kind: "git" }>)
     args.push("--", source.url, checkout);
     try {
       await execFileAsync("git", args, { timeout: 60_000, maxBuffer: 1_048_576 });
-    } catch (error) {
+    } catch {
       throw new RegistryError("source-unavailable", `Git registry source ${source.name} could not be retrieved`);
     }
     const index = parseIndex(await readBoundedCheckoutFile(checkout, INDEX_FILE, MAX_INDEX_BYTES, "index"));
-    const artifacts = await Promise.all(index.artifacts.map(async (definition) => ({
-      definition,
-      source: await readBoundedCheckoutFile(checkout, definition.path, MAX_ARTIFACT_BYTES, definition.path),
-    })));
+    const artifacts = await Promise.all(
+      index.artifacts.map(async (definition) => ({
+        definition,
+        source: await readBoundedCheckoutFile(checkout, definition.path, MAX_ARTIFACT_BYTES, definition.path),
+      })),
+    );
     verifyArtifacts(artifacts);
     return { index, artifacts };
   } finally {
@@ -308,8 +338,7 @@ function rejectEmbeddedGitCredentials(value: string): void {
   } catch {
     return;
   }
-  if ((url.protocol === "http:" || url.protocol === "https:")
-    && (url.username !== "" || url.password !== "")) {
+  if ((url.protocol === "http:" || url.protocol === "https:") && (url.username !== "" || url.password !== "")) {
     throw new RegistryError("invalid-source", "Git registry source URL must not contain HTTP credentials");
   }
   if (url.password !== "") {
@@ -329,12 +358,20 @@ async function readBoundedCheckoutFile(
     for (const segment of relativePath.split("/")) {
       current = resolve(current, segment);
       if ((await lstat(current)).isSymbolicLink()) {
-        throw new RegistryError("invalid-index", `Registry ${label} must not be a symbolic link`, label === "index" ? undefined : label);
+        throw new RegistryError(
+          "invalid-index",
+          `Registry ${label} must not be a symbolic link`,
+          label === "index" ? undefined : label,
+        );
       }
     }
     const [realCheckout, realCandidate] = await Promise.all([realpath(checkout), realpath(candidate)]);
     if (!realCandidate.startsWith(`${realCheckout}${sep}`)) {
-      throw new RegistryError("invalid-index", `Registry ${label} escapes the Git checkout`, label === "index" ? undefined : label);
+      throw new RegistryError(
+        "invalid-index",
+        `Registry ${label} escapes the Git checkout`,
+        label === "index" ? undefined : label,
+      );
     }
   } catch (error) {
     if (error instanceof RegistryError) throw error;
@@ -347,19 +384,27 @@ async function readBoundedCheckoutFile(
   return readBoundedFile(candidate, limit, label);
 }
 
-async function loadHttpRegistry(source: Extract<RegistrySource, { kind: "http" }>): Promise<{ readonly index: RegistryIndex; readonly artifacts: LoadedArtifact[] }> {
+async function loadHttpRegistry(
+  source: Extract<RegistrySource, { kind: "http" }>,
+): Promise<{ readonly index: RegistryIndex; readonly artifacts: LoadedArtifact[] }> {
   const indexUrl = new URL(source.url);
   const index = parseIndex(await fetchText(indexUrl, MAX_INDEX_BYTES, "index"));
-  const artifacts = await Promise.all(index.artifacts.map(async (definition) => {
-    const artifactUrl = new URL(definition.path, indexUrl);
-    if (artifactUrl.origin !== indexUrl.origin) {
-      throw new RegistryError("invalid-index", `Artifact ${definition.path} must stay on the registry index origin`, definition.path);
-    }
-    return {
-      definition,
-      source: await fetchText(artifactUrl, MAX_ARTIFACT_BYTES, definition.path),
-    };
-  }));
+  const artifacts = await Promise.all(
+    index.artifacts.map(async (definition) => {
+      const artifactUrl = new URL(definition.path, indexUrl);
+      if (artifactUrl.origin !== indexUrl.origin) {
+        throw new RegistryError(
+          "invalid-index",
+          `Artifact ${definition.path} must stay on the registry index origin`,
+          definition.path,
+        );
+      }
+      return {
+        definition,
+        source: await fetchText(artifactUrl, MAX_ARTIFACT_BYTES, definition.path),
+      };
+    }),
+  );
   verifyArtifacts(artifacts);
   return { index, artifacts };
 }
@@ -478,10 +523,12 @@ function parseIndex(source: string): RegistryIndex {
   } catch {
     throw new RegistryError("invalid-index", "Registry index is not valid JSON");
   }
-  if (!isRecord(value)
-    || !hasOnlyKeys(value, ["contract", "artifacts"])
-    || value.contract !== INDEX_CONTRACT
-    || !Array.isArray(value.artifacts)) {
+  if (
+    !isRecord(value) ||
+    !hasOnlyKeys(value, ["contract", "artifacts"]) ||
+    value.contract !== INDEX_CONTRACT ||
+    !Array.isArray(value.artifacts)
+  ) {
     throw new RegistryError("invalid-index", `Registry index must use contract ${INDEX_CONTRACT}`);
   }
   const artifacts = value.artifacts.map((artifact, index) => parseArtifact(artifact, index));
@@ -499,14 +546,16 @@ function parseIndex(source: string): RegistryIndex {
 }
 
 function parseArtifact(value: unknown, index: number): RegistryIndexArtifact {
-  if (!isRecord(value)
-    || !hasOnlyKeys(value, ["kind", "path", "name", "version", "sha256"])
-    || (value.kind !== "operation" && value.kind !== "procedure")
-    || !validArtifactPath(value.path)
-    || !nonEmptyString(value.name, 255)
-    || !nonEmptyString(value.version, 255)
-    || typeof value.sha256 !== "string"
-    || !/^[a-f0-9]{64}$/u.test(value.sha256)) {
+  if (
+    !isRecord(value) ||
+    !hasOnlyKeys(value, ["kind", "path", "name", "version", "sha256"]) ||
+    (value.kind !== "operation" && value.kind !== "procedure") ||
+    !validArtifactPath(value.path) ||
+    !nonEmptyString(value.name, 255) ||
+    !nonEmptyString(value.version, 255) ||
+    typeof value.sha256 !== "string" ||
+    !/^[a-f0-9]{64}$/u.test(value.sha256)
+  ) {
     throw new RegistryError("invalid-index", `Registry artifact ${index} is invalid`);
   }
   return {
@@ -531,7 +580,10 @@ function verifyArtifacts(artifacts: readonly LoadedArtifact[]): void {
   }
 }
 
-function compileOperations(sourceName: string, artifacts: readonly LoadedArtifact[]): Array<{
+function compileOperations(
+  sourceName: string,
+  artifacts: readonly LoadedArtifact[],
+): Array<{
   readonly artifact: LoadedArtifact;
   readonly sourceName: string;
   readonly compiled: CompiledOperation;
@@ -591,13 +643,15 @@ function safeCheckoutPath(checkout: string, path: string): string {
 }
 
 function validArtifactPath(value: unknown): value is string {
-  return typeof value === "string"
-    && value.length > 0
-    && value.length <= 1_024
-    && !value.startsWith("/")
-    && !value.includes("\\")
-    && posix.normalize(value) === value
-    && value.split("/").every((part) => part !== "." && part !== "..");
+  return (
+    typeof value === "string" &&
+    value.length > 0 &&
+    value.length <= 1_024 &&
+    !value.startsWith("/") &&
+    !value.includes("\\") &&
+    posix.normalize(value) === value &&
+    value.split("/").every((part) => part !== "." && part !== "..")
+  );
 }
 
 function nonEmptyString(value: unknown, maximum: number): value is string {

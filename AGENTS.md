@@ -23,6 +23,7 @@ not loaded. This is an extension-specific workflow, not a generic engine rule.
 ```text
 packages/trust-runtime/   shared runtime: domain, services, SQLite, RPC, MCP and OTLP
 packages/trust-operation/ Operation types shared by the runtime and runner
+packages/trust-extension-sdk/ standalone public runtime and extension contracts (no server implementation)
 packages/trust-procedure/ Procedure types and Gherkin compiler
 packages/trust-runner/    one generic Check runner
 packages/trust-shell/     common server shell, CLI and Runner deployment
@@ -33,6 +34,25 @@ environments/trust-test/  retained Kind environment: projects, cluster, manifest
 ```
 
 ## Non-negotiable design rules
+
+- Canonical language types belong to `trust-operation` and `trust-procedure`;
+  public runtime/extension contracts belong to `trust-extension-sdk`. The runtime,
+  runner, LSP, UI and extensions import their owners' types instead of declaring
+  independent copies. Intentional projections derive from those types. Internal
+  persistence models and UI-only state remain distinct from public contracts.
+- Total dispatch over a closed canonical union uses its shared exhaustive matcher
+  beside the type definition. Consumers must not use assertions or a last-variant
+  fallback to hide missing cases. Selecting a canonical variant, including a
+  variant predicate in a controlled consumer, uses the matcher. Ordinary value
+  guards and transport routing remain separate responsibilities.
+  TypeScript exhaustiveness does not replace validation at a JSON boundary.
+- Import canonical public contracts directly from their package, and matcher
+  values from its `/match` entrypoint. Canonical package facades are intentional;
+  consumer-level contract re-export barrels are not. Derived presentation types
+  remain valid and do not become a second contract authority.
+- Extensions compile against the standalone SDK without compiling the server.
+  The SDK must not import runtime, UI or LSP implementation; the existing extension
+  boundaries remain in force.
 
 - English is the only language for active code, runner instructions and metadata, CLI/MCP messages,
   technical documentation, and acceptance tests. Product terms and Action Contract identifiers
@@ -84,6 +104,14 @@ environments/trust-test/  retained Kind environment: projects, cluster, manifest
   its closed business inputs and creates the initial Checks. Attempt admission validates the current
   Check, Session, dependencies, Action Contract and Environment; registry synchronization and Runner
   deployment prepare those inputs but never participate in admission or qualification.
+- Operation and child Procedure references use quoted `name@selector`, with exact SemVer versions
+  or standard node-semver ranges, never a custom `latest` tag. Engagement resolves and pins the entire
+  recursive composition; later publications do not change existing Plans, delayed children, resumed
+  execution or replacement child generations. Select the highest matching version before compatibility
+  validation and refuse incompatibility rather than silently falling back.
+- Published Operation and Procedure versions are immutable and cannot be deleted, even when unused.
+  Source edits are unpublished drafts and must publish under a new version. Discarding a draft is not
+  deleting a published version. Catalog interfaces group one identity with its versions in the detail view.
 - Registry sources are named configuration stored by the runtime. An HTTP source points directly to a
   `trust.registry-index@1` index; a Git source clones one repository (optionally at one ref) and reads
   `trust-registry.json` at its root. Synchronization is explicit, verifies every artifact digest and
@@ -117,6 +145,14 @@ documentation also builds as one self-contained HTML file (`npm run build:docs` 
 `apps/trust-web`, entry `docs-site.html` → `@trust/ui/docs`, hash routing, opens from `file://`).
 
 ## Verification
+
+For the design decisions behind the executable rules and the distinction between
+project-wide policy and owner-local fragments, read
+[rule curation](docs/architecture/rule-curation.md). Start with the relevant
+`code-moniker rules learn` topic, then inspect the actual project rules with
+`code-moniker rules show . --profile canonical-contracts --details`.
+Use the complete `code-moniker check . --report` gate before handoff; a focused
+profile is an investigation aid, not a replacement for the other boundaries.
 
 Only acceptance tests at public boundaries are allowed. Do not add or run unit tests.
 

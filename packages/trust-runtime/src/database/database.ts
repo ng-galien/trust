@@ -60,6 +60,7 @@ export interface PlanTable {
 }
 
 export interface PlanRevisionTable {
+  resolved_procedure_json: string;
   id: Generated<number>;
   plan_slug: string;
   revision: number;
@@ -68,7 +69,19 @@ export interface PlanRevisionTable {
   declarations_json: string;
   role_values_json: string;
   check_values_json: string;
+  invocations_json: string;
   compiled_at: string;
+}
+
+export interface ChildGenerationTable {
+  parent_plan: string;
+  invocation_id: string;
+  generation: number;
+  child_plan: string;
+  input_digest: string;
+  observed_revision: number;
+  created_at: string;
+  superseded_at: string | null;
 }
 
 export interface CompiledCheckTable {
@@ -89,6 +102,7 @@ export interface SessionTable {
 }
 
 export interface AttemptTable {
+  invocation_digest: string | null;
   attempt_order: Generated<number>;
   attempt_handle: string;
   attempt_key: string;
@@ -180,6 +194,7 @@ export interface TrustDatabase {
   published_procedures: PublishedProcedureTable;
   plans: PlanTable;
   plan_revisions: PlanRevisionTable;
+  child_generations: ChildGenerationTable;
   compiled_checks: CompiledCheckTable;
   sessions: SessionTable;
   attempts: AttemptTable;

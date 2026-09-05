@@ -25,12 +25,14 @@ test("an embedded LSP exit notification does not terminate the public runtime", 
   context.after(() => socket.close());
   await socketEvent(socket, "open");
 
-  socket.send(JSON.stringify({
-    jsonrpc: "2.0",
-    id: 1,
-    method: "initialize",
-    params: { processId: null, rootUri: null, capabilities: {} },
-  }));
+  socket.send(
+    JSON.stringify({
+      jsonrpc: "2.0",
+      id: 1,
+      method: "initialize",
+      params: { processId: null, rootUri: null, capabilities: {} },
+    }),
+  );
   await response(socket, 1);
   socket.send(JSON.stringify({ jsonrpc: "2.0", method: "initialized", params: {} }));
   socket.send(JSON.stringify({ jsonrpc: "2.0", id: 2, method: "shutdown", params: null }));

@@ -29,7 +29,8 @@ export const environments: Translation<typeof en> = {
     unnamed: "sans nom",
     unknown: "L'Environment « {{name}} » est inconnu",
     deleteTitle: "Supprimer l'environnement {{name}} ?",
-    deleteBodyReferenced: "{{plans}} y font référence ; ils conservent le nom mais plus rien ne peut y être admis. Ses credentials sont aussi supprimés.",
+    deleteBodyReferenced:
+      "{{plans}} y font référence ; ils conservent le nom mais plus rien ne peut y être admis. Ses credentials sont aussi supprimés.",
     deleteBodyPlain: "Ses valeurs et credentials sont supprimés du runtime.",
     tabOverview: "Vue d'ensemble",
     plansOnIt: "Plans dessus",

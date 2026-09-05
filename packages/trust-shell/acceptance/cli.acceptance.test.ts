@@ -88,8 +88,12 @@ test("trust server start serves the compiled UI and server status observes its p
   let stderr = "";
   server.stdout.setEncoding("utf8");
   server.stderr.setEncoding("utf8");
-  server.stdout.on("data", (chunk: string) => { stdout += chunk; });
-  server.stderr.on("data", (chunk: string) => { stderr += chunk; });
+  server.stdout.on("data", (chunk: string) => {
+    stdout += chunk;
+  });
+  server.stderr.on("data", (chunk: string) => {
+    stderr += chunk;
+  });
   try {
     await waitFor(`http://127.0.0.1:${webPort}/health`, server, () => stderr);
     const page = await fetch(`http://127.0.0.1:${webPort}/docs`);
@@ -104,7 +108,12 @@ test("trust server start serves the compiled UI and server status observes its p
       assert.match(navigation.headers.get("content-type") ?? "", /text\/html/);
       assert.match(await navigation.text(), /<title>TRUST<\/title>/);
     }
-    for (const route of ["/extensions/coordination/api/missions", "/extensions/coordination/assets/remoteEntry.js", "/extensions/coordination/events", "/extensions/coordination/trust/plans"]) {
+    for (const route of [
+      "/extensions/coordination/api/missions",
+      "/extensions/coordination/assets/remoteEntry.js",
+      "/extensions/coordination/events",
+      "/extensions/coordination/trust/plans",
+    ]) {
       const backend = await fetch(`http://127.0.0.1:${webPort}${route}`, { headers: { accept: "text/html" } });
       assert.equal(backend.status, 404);
       assert.match(backend.headers.get("content-type") ?? "", /application\/json/);
@@ -131,8 +140,9 @@ test("trust registry commands persist and synchronize an HTTP registry through t
   const runtimePort = await availablePort();
   let webPort = await availablePort();
   while (webPort === runtimePort) webPort = await availablePort();
-  const operation = (await readFile(path.join(repositoryRoot, "assets/operations/git.head-read.feature"), "utf8"))
-    .replaceAll("git.head-read", "registry.git-head-read");
+  const operation = (
+    await readFile(path.join(repositoryRoot, "assets/operations/git.head-read.feature"), "utf8")
+  ).replaceAll("git.head-read", "registry.git-head-read");
   const procedure = (await readFile(path.join(repositoryRoot, "assets/procedures/00-git-status.feature"), "utf8"))
     .replace("@procedure:git-status", "@procedure:registry-git-status")
     .replace('Operation "git.head-read"', 'Operation "registry.git-head-read"');
@@ -156,13 +166,14 @@ test("trust registry commands persist and synchronize an HTTP registry through t
     ],
   });
   const registry = createHttpServer((request, response) => {
-    const body = request.url === "/trust-registry.json"
-      ? index
-      : request.url === "/operations/registry.git-head-read.feature"
-        ? operation
-        : request.url === "/procedures/registry-git-status.feature"
-          ? procedure
-          : undefined;
+    const body =
+      request.url === "/trust-registry.json"
+        ? index
+        : request.url === "/operations/registry.git-head-read.feature"
+          ? operation
+          : request.url === "/procedures/registry-git-status.feature"
+            ? procedure
+            : undefined;
     if (body === undefined) {
       response.statusCode = 404;
       response.end();
@@ -189,7 +200,9 @@ test("trust registry commands persist and synchronize an HTTP registry through t
   let server = startCliServer(environment);
   let stderr = "";
   server.stderr.setEncoding("utf8");
-  server.stderr.on("data", (chunk: string) => { stderr += chunk; });
+  server.stderr.on("data", (chunk: string) => {
+    stderr += chunk;
+  });
   try {
     await waitFor(`http://127.0.0.1:${webPort}/health`, server, () => stderr);
     const empty = await runCli(["registry", "list"], remoteEnvironment);
@@ -205,16 +218,19 @@ test("trust registry commands persist and synchronize an HTTP registry through t
     server = startCliServer(environment);
     stderr = "";
     server.stderr.setEncoding("utf8");
-    server.stderr.on("data", (chunk: string) => { stderr += chunk; });
+    server.stderr.on("data", (chunk: string) => {
+      stderr += chunk;
+    });
     await waitFor(`http://127.0.0.1:${webPort}/health`, server, () => stderr);
     const replayed = await runCli(["registry", "sync", "local"], remoteEnvironment);
     assert.equal(replayed.stdout, "Registry source local synchronized: 0 imported, 2 unchanged.\n");
     const removed = await runCli(["registry", "remove", "local"], remoteEnvironment);
     assert.equal(removed.stdout, "Registry source local removed.\n");
     const gitUrl = path.join(stateDirectory, "registry.git");
-    const gitAdded = await runCli([
-      "registry", "add", "git-release", "git", gitUrl, "--ref", "release",
-    ], remoteEnvironment);
+    const gitAdded = await runCli(
+      ["registry", "add", "git-release", "git", gitUrl, "--ref", "release"],
+      remoteEnvironment,
+    );
     assert.equal(gitAdded.stdout, "Registry source git-release saved.\n");
     const gitListed = await runCli(["registry", "list"], remoteEnvironment);
     assert.equal(gitListed.stdout, `git-release\tgit\t${gitUrl} (ref: release)\n`);
@@ -222,7 +238,7 @@ test("trust registry commands persist and synchronize an HTTP registry through t
     assert.equal(gitRemoved.stdout, "Registry source git-release removed.\n");
   } finally {
     await stopCliServer(server);
-    await new Promise<void>((resolve, reject) => registry.close((error) => error ? reject(error) : resolve()));
+    await new Promise<void>((resolve, reject) => registry.close((error) => (error ? reject(error) : resolve())));
     await rm(stateDirectory, { recursive: true, force: true });
   }
 });
@@ -231,9 +247,11 @@ test("trust server status does not reuse an unrelated healthy HTTP service", asy
   const webPort = await availablePort();
   const unrelated = createHttpServer((request, response) => {
     response.setHeader("content-type", request.url === "/health" ? "application/json" : "text/html");
-    response.end(request.url === "/health"
-      ? JSON.stringify({ status: "ok", service: "another-service" })
-      : "<title>Another service</title>");
+    response.end(
+      request.url === "/health"
+        ? JSON.stringify({ status: "ok", service: "another-service" })
+        : "<title>Another service</title>",
+    );
   });
   await new Promise<void>((resolve, reject) => {
     unrelated.once("error", reject);
@@ -249,7 +267,7 @@ test("trust server status does not reuse an unrelated healthy HTTP service", asy
       },
     );
   } finally {
-    await new Promise<void>((resolve, reject) => unrelated.close((error) => error ? reject(error) : resolve()));
+    await new Promise<void>((resolve, reject) => unrelated.close((error) => (error ? reject(error) : resolve())));
   }
 });
 
@@ -270,7 +288,7 @@ test("trust registry rejects a malformed JSON-RPC success response", async () =>
       /invalid JSON-RPC response/,
     );
   } finally {
-    await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+    await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
   }
 });
 
@@ -306,7 +324,7 @@ async function availablePort(): Promise<number> {
   assert.notEqual(address, null);
   assert.equal(typeof address, "object");
   const port = typeof address === "object" && address !== null ? address.port : 0;
-  await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
   return port;
 }
 

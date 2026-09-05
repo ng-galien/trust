@@ -33,14 +33,18 @@ export async function resolveEnvironmentDirectory(
 
   const segment = input[path.appendInput];
   if (typeof segment !== "string" || !PROJECT_SEGMENT.test(segment) || segment === "." || segment === "..") {
-    throw new DirectoryError(`${label}: Input "${path.appendInput}" must name one directory below Environment "${path.environment}".`);
+    throw new DirectoryError(
+      `${label}: Input "${path.appendInput}" must name one directory below Environment "${path.environment}".`,
+    );
   }
   const candidate = resolve(root, segment);
-  let metadata;
+  let metadata: Awaited<ReturnType<typeof lstat>>;
   try {
     metadata = await lstat(candidate);
   } catch (error) {
-    throw new DirectoryError(`${label}: "${segment}" does not exist below Environment "${path.environment}".`, { cause: error });
+    throw new DirectoryError(`${label}: "${segment}" does not exist below Environment "${path.environment}".`, {
+      cause: error,
+    });
   }
   if (metadata.isSymbolicLink()) throw new DirectoryError(`${label}: "${segment}" must not be a symbolic link.`);
   if (!metadata.isDirectory()) throw new DirectoryError(`${label}: "${segment}" must be a directory.`);

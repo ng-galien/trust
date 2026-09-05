@@ -3,6 +3,8 @@ import type { Translation } from "../types.js";
 
 export const common: Translation<typeof en> = {
   actions: {
+    retry: "Réessayer l’affichage",
+    backToOverview: "Retour à la vue d’ensemble",
     save: "Enregistrer",
     saving: "Enregistrement…",
     create: "Créer",
@@ -27,6 +29,9 @@ export const common: Translation<typeof en> = {
     daysAgo: "il y a {{count}} j",
   },
   states: {
+    pageFailed: "Cette page n’a pas pu être affichée",
+    pageFailedBody:
+      "L’affichage a échoué. La navigation reste disponible ; cette erreur ne constitue pas un résultat d’exécution.",
     loading: "Chargement…",
     empty: "Rien ici",
     unknown: "inconnu",

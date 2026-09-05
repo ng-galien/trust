@@ -1,7 +1,7 @@
+import type { IntentChainState, PlanMode } from "@trust/extension-sdk";
 import type { Selectable } from "kysely";
-
 import type { Database, PlanRevisionTable, PlanTable } from "../database/database.js";
-import type { IntentChainState, Plan, PlanCheck, PlanMode, PlanRevision } from "../model.js";
+import type { Plan, PlanCheck, PlanRevision } from "../model.js";
 
 type PlanRow = Selectable<PlanTable>;
 type RevisionRow = Selectable<PlanRevisionTable>;
@@ -35,14 +35,14 @@ export class PlanStore {
       .executeTakeFirst();
     const existing = existingRow ? toPlan(existingRow) : undefined;
     if (
-      existing
-      && (existing.procedure !== compiled.procedure
-        || existing.procedureVersion !== compiled.procedureVersion
-        || existing.environment !== compiled.environment
-        || existing.mode !== compiled.mode
-        || existing.intentChaining !== compiled.intentChaining
-        || canonicalJson(existing.metadata) !== canonicalJson(compiled.metadata)
-        || canonicalJson(existing.rootInputs) !== canonicalJson(compiled.rootInputs))
+      existing &&
+      (existing.procedure !== compiled.procedure ||
+        existing.procedureVersion !== compiled.procedureVersion ||
+        existing.environment !== compiled.environment ||
+        existing.mode !== compiled.mode ||
+        existing.intentChaining !== compiled.intentChaining ||
+        canonicalJson(existing.metadata) !== canonicalJson(compiled.metadata) ||
+        canonicalJson(existing.rootInputs) !== canonicalJson(compiled.rootInputs))
     ) {
       throw new Error("a Plan cannot change its identity, environment, mode, metadata or root inputs");
     }
@@ -55,45 +55,58 @@ export class PlanStore {
 
     if (!existing) {
       if (compiled.revision !== 1) throw new Error("a Plan must start at revision 1");
-      await database.insertInto("plans").values({
-        plan_slug: compiled.planSlug,
-        procedure_name: compiled.procedure,
-        procedure_version: compiled.procedureVersion,
-        environment: compiled.environment,
-        mode: compiled.mode,
-        intent_chaining: compiled.intentChaining ? 1 : 0,
-        intent_chain_state: compiled.intentChaining ? "NOT_STARTED" : "DISABLED",
-        current_intent: null,
-        current_intent_check_uri: null,
-        current_intent_attempt_key: null,
-        metadata_json: JSON.stringify(compiled.metadata),
-        root_inputs_json: JSON.stringify(compiled.rootInputs),
-        current_revision: compiled.revision,
-        created_at: compiledAt,
-      }).execute();
+      await database
+        .insertInto("plans")
+        .values({
+          plan_slug: compiled.planSlug,
+          procedure_name: compiled.procedure,
+          procedure_version: compiled.procedureVersion,
+          environment: compiled.environment,
+          mode: compiled.mode,
+          intent_chaining: compiled.intentChaining ? 1 : 0,
+          intent_chain_state: compiled.intentChaining ? "NOT_STARTED" : "DISABLED",
+          current_intent: null,
+          current_intent_check_uri: null,
+          current_intent_attempt_key: null,
+          metadata_json: JSON.stringify(compiled.metadata),
+          root_inputs_json: JSON.stringify(compiled.rootInputs),
+          current_revision: compiled.revision,
+          created_at: compiledAt,
+        })
+        .execute();
     } else if (compiled.revision !== existing.currentRevision + 1) {
       throw new Error("a Plan revision must advance monotonically by one");
     }
 
-    await database.insertInto("plan_revisions").values({
-      plan_slug: compiled.planSlug,
-      revision: compiled.revision,
-      definition_digest: compiled.definitionDigest,
-      source: compiled.source,
-      declarations_json: JSON.stringify(compiled.agentDeclarations),
-      role_values_json: JSON.stringify(compiled.roleValues),
-      check_values_json: JSON.stringify(compiled.checkValues),
-      compiled_at: compiledAt,
-    }).execute();
+    await database
+      .insertInto("plan_revisions")
+      .values({
+        resolved_procedure_json: JSON.stringify(compiled.resolvedProcedure),
+        plan_slug: compiled.planSlug,
+        revision: compiled.revision,
+        definition_digest: compiled.definitionDigest,
+        source: compiled.source,
+        declarations_json: JSON.stringify(compiled.agentDeclarations),
+        role_values_json: JSON.stringify(compiled.roleValues),
+        check_values_json: JSON.stringify(compiled.checkValues),
+        invocations_json: JSON.stringify(compiled.invocations),
+        compiled_at: compiledAt,
+      })
+      .execute();
 
     if (compiled.checks.length > 0) {
-      await database.insertInto("compiled_checks").values(compiled.checks.map((check) => ({
-        plan_slug: compiled.planSlug,
-        plan_revision: compiled.revision,
-        check_uri: check.uri,
-        compiled_digest: check.compiledCheckDigest,
-        check_json: JSON.stringify(check),
-      }))).execute();
+      await database
+        .insertInto("compiled_checks")
+        .values(
+          compiled.checks.map((check) => ({
+            plan_slug: compiled.planSlug,
+            plan_revision: compiled.revision,
+            check_uri: check.uri,
+            compiled_digest: check.compiledCheckDigest,
+            check_json: JSON.stringify(check),
+          })),
+        )
+        .execute();
     }
 
     if (existing) {
@@ -169,7 +182,7 @@ export class PlanStore {
       .updateTable("plans")
       .set({
         intent_chain_state: complete ? "COMPLETE" : "ACTIVE",
-        current_intent: complete ? null : nextIntent ?? null,
+        current_intent: complete ? null : (nextIntent ?? null),
         current_intent_check_uri: null,
         current_intent_attempt_key: null,
       })
@@ -267,7 +280,8 @@ export class PlanStore {
       .where("current_intent_check_uri", "is", null)
       .where("current_intent_attempt_key", "is", null)
       .executeTakeFirst();
-    if (result.numUpdatedRows !== 1n) throw new Error("the current Plan intent cannot complete while an Attempt is pending");
+    if (result.numUpdatedRows !== 1n)
+      throw new Error("the current Plan intent cannot complete while an Attempt is pending");
   }
 
   async listPlans(query: PlanListQuery): Promise<Plan[]> {
@@ -284,16 +298,17 @@ export class PlanStore {
       selection = selection.where("mode", "=", query.filter.mode);
     }
     if (query.after !== undefined) {
-      selection = selection.where((expression) => expression.or([
-        expression("created_at", "<", query.after!.createdAt),
-        expression.and([
-          expression("created_at", "=", query.after!.createdAt),
-          expression("plan_slug", ">", query.after!.plan),
+      selection = selection.where((expression) =>
+        expression.or([
+          expression("created_at", "<", query.after!.createdAt),
+          expression.and([
+            expression("created_at", "=", query.after!.createdAt),
+            expression("plan_slug", ">", query.after!.plan),
+          ]),
         ]),
-      ]));
+      );
     }
-    const rows = await selection
-      .execute();
+    const rows = await selection.execute();
     return rows.map(toPlan);
   }
 
@@ -316,7 +331,7 @@ export class PlanStore {
       .where("compiled_checks.check_uri", "=", checkUri)
       .whereRef("compiled_checks.plan_revision", "=", "plans.current_revision")
       .executeTakeFirst();
-    return row ? JSON.parse(row.check_json) as PlanCheck : undefined;
+    return row ? (JSON.parse(row.check_json) as PlanCheck) : undefined;
   }
 
   async listCurrentChecks(planSlug: string): Promise<PlanCheck[]> {
@@ -331,11 +346,7 @@ export class PlanStore {
     return rows.map((row) => JSON.parse(row.check_json) as PlanCheck);
   }
 
-  async findCheckAtRevision(
-    planSlug: string,
-    revision: number,
-    checkUri: string,
-  ): Promise<PlanCheck | undefined> {
+  async findCheckAtRevision(planSlug: string, revision: number, checkUri: string): Promise<PlanCheck | undefined> {
     const row = await this.dependencies.database
       .selectFrom("compiled_checks")
       .select("check_json")
@@ -343,16 +354,12 @@ export class PlanStore {
       .where("plan_revision", "=", revision)
       .where("check_uri", "=", checkUri)
       .executeTakeFirst();
-    return row ? JSON.parse(row.check_json) as PlanCheck : undefined;
+    return row ? (JSON.parse(row.check_json) as PlanCheck) : undefined;
   }
 
   async readRevision(planSlug: string, revision: number): Promise<PlanRevision | undefined> {
     const [planRow, row, checkRows] = await Promise.all([
-      this.dependencies.database
-        .selectFrom("plans")
-        .selectAll()
-        .where("plan_slug", "=", planSlug)
-        .executeTakeFirst(),
+      this.dependencies.database.selectFrom("plans").selectAll().where("plan_slug", "=", planSlug).executeTakeFirst(),
       this.dependencies.database
         .selectFrom("plan_revisions")
         .selectAll()
@@ -368,7 +375,11 @@ export class PlanStore {
         .execute(),
     ]);
     if (!planRow || !row) return undefined;
-    return toRevision(toPlan(planRow), row, checkRows.map(({ check_json }) => check_json));
+    return toRevision(
+      toPlan(planRow),
+      row,
+      checkRows.map(({ check_json }) => check_json),
+    );
   }
 }
 
@@ -393,6 +404,7 @@ function toPlan(row: PlanRow): Plan {
 
 function toRevision(plan: Plan, row: RevisionRow, checkJson: readonly string[]): PlanRevision {
   return {
+    resolvedProcedure: JSON.parse(row.resolved_procedure_json) as PlanRevision["resolvedProcedure"],
     procedure: plan.procedure,
     procedureVersion: plan.procedureVersion,
     environment: plan.environment,
@@ -407,6 +419,7 @@ function toRevision(plan: Plan, row: RevisionRow, checkJson: readonly string[]):
     agentDeclarations: JSON.parse(row.declarations_json) as PlanRevision["agentDeclarations"],
     roleValues: JSON.parse(row.role_values_json) as PlanRevision["roleValues"],
     checkValues: JSON.parse(row.check_values_json) as PlanRevision["checkValues"],
+    invocations: JSON.parse(row.invocations_json) as PlanRevision["invocations"],
     checks: checkJson.map((value) => JSON.parse(value) as PlanCheck),
   };
 }

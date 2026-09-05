@@ -6,9 +6,7 @@ export async function publicRpc(endpoint, method, params, credential, processCre
     "content-type": "application/json",
     accept: "application/json",
     ...(credential === undefined ? {} : { authorization: `Bearer ${credential}` }),
-    ...(processCredential === undefined
-      ? {}
-      : { "x-trust-process-authorization": `Bearer ${processCredential}` }),
+    ...(processCredential === undefined ? {} : { "x-trust-process-authorization": `Bearer ${processCredential}` }),
   };
   const response = await fetch(normalizeRpcEndpoint(endpoint), {
     method: "POST",
@@ -23,11 +21,11 @@ export async function publicRpc(endpoint, method, params, credential, processCre
   }
   const envelope = await response.json();
   if (
-    envelope === null
-    || typeof envelope !== "object"
-    || Array.isArray(envelope)
-    || envelope.jsonrpc !== "2.0"
-    || envelope.id !== id
+    envelope === null ||
+    typeof envelope !== "object" ||
+    Array.isArray(envelope) ||
+    envelope.jsonrpc !== "2.0" ||
+    envelope.id !== id
   ) {
     throw new TypeError(`TRUST RPC ${method} returned an invalid envelope`);
   }
@@ -52,11 +50,11 @@ export async function publicRpc(endpoint, method, params, credential, processCre
 function normalizeRpcEndpoint(value) {
   const endpoint = new URL(value);
   if (
-    (endpoint.protocol !== "http:" && endpoint.protocol !== "https:")
-    || endpoint.username !== ""
-    || endpoint.password !== ""
-    || endpoint.search !== ""
-    || endpoint.hash !== ""
+    (endpoint.protocol !== "http:" && endpoint.protocol !== "https:") ||
+    endpoint.username !== "" ||
+    endpoint.password !== "" ||
+    endpoint.search !== "" ||
+    endpoint.hash !== ""
   ) {
     throw new TypeError("TRUST RPC endpoint must be an absolute credential-free HTTP URL");
   }

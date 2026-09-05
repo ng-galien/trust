@@ -1,19 +1,20 @@
 import { useMutation } from "@tanstack/react-query";
+import type { AttemptFinalizationResult, PlanCheckView, PlanView, RuntimeJsonObject } from "@trust/extension-sdk";
+import type { CompiledOperation } from "@trust/operation";
+import type { CompiledProcedure, CompiledProcedureCheck } from "@trust/procedure";
 import { CheckCircle2, FlaskConical, PanelRightClose, Pause, Play, Send, XCircle } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
 import { Trans, useTranslation } from "react-i18next";
-
 import { plural } from "../../lib/format.js";
 import { mutationError, mutationErrorDetails } from "../../lib/mutations.js";
 import { useExpert } from "../../lib/preferences.js";
 import { useCheck } from "../../lib/runtime-context.js";
 import type { TrustRuntimeClient } from "../../runtime.js";
-import type { AttemptFinalization, CompiledOperation, CompiledProcedure, DeclarationRole, JsonObject, PlanCheck, PlanView, ProcedureCheck } from "../../types.js";
 import { Badge, StatusBadge } from "../../ui/badge.js";
 import { Button, IconButton } from "../../ui/button.js";
 import { TextInput } from "../../ui/controls.js";
-import { blankObject, ListEditor, SchemaForm } from "../../ui/schema.js";
 import { Expert } from "../../ui/expert.js";
+import { blankObject, ListEditor, SchemaForm } from "../../ui/schema.js";
 import { ErrorBox } from "../../ui/states.js";
 import { CheckLine } from "./plan-checklist.js";
 
@@ -23,7 +24,23 @@ import { CheckLine } from "./plan-checklist.js";
       Operation would produce, submit as the agent would:
       admission → Facts → finalization. TRUST qualifies and cascades for real. */
 
-export function PlanCockpit({ plan, compiled, onChanged, runtime, selected: selection, onSelect, onClose }: { plan: PlanView; compiled: CompiledProcedure | undefined; onChanged: () => Promise<unknown>; runtime: TrustRuntimeClient; selected: string | undefined; onSelect: (id: string | undefined) => void; onClose: () => void }) {
+export function PlanCockpit({
+  plan,
+  compiled,
+  onChanged,
+  runtime,
+  selected: selection,
+  onSelect,
+  onClose,
+}: {
+  plan: PlanView;
+  compiled: CompiledProcedure | undefined;
+  onChanged: () => Promise<unknown>;
+  runtime: TrustRuntimeClient;
+  selected: string | undefined;
+  onSelect: (id: string | undefined) => void;
+  onClose: () => void;
+}) {
   const { t } = useTranslation();
   const actionable = plan.checks.filter((check) => check.actionable);
   const done = plan.checks.filter((check) => check.state === "SATISFIED");
@@ -36,7 +53,8 @@ export function PlanCockpit({ plan, compiled, onChanged, runtime, selected: sele
   const wanted = selection?.startsWith("check:") ? selection.slice("check:".length) : undefined;
   // A satisfied Check can be picked from the Done list to be observed again (dry-runs may re-observe).
   const wantedCheck = plan.checks.find((check) => check.checkUri === wanted || check.name === wanted);
-  const selected = wantedCheck && (wantedCheck.actionable || wantedCheck.state === "SATISFIED") ? wantedCheck : actionable[0];
+  const selected =
+    wantedCheck && (wantedCheck.actionable || wantedCheck.state === "SATISFIED") ? wantedCheck : actionable[0];
   const reobserve = selected?.state === "SATISFIED";
 
   return (
@@ -44,41 +62,143 @@ export function PlanCockpit({ plan, compiled, onChanged, runtime, selected: sele
       <div className="flex items-center gap-2 border-b border-border px-3 py-2">
         <FlaskConical size={13} className="text-graph-data" />
         <span className="kicker">{t("plans.cockpit.title")}</span>
-        <IconButton size="sm" label={t("plans.cockpit.hide")} className="ml-auto" onClick={onClose}><PanelRightClose size={14} /></IconButton>
+        <IconButton size="sm" label={t("plans.cockpit.hide")} className="ml-auto" onClick={onClose}>
+          <PanelRightClose size={14} />
+        </IconButton>
       </div>
       {plan.sessionState === "UNAVAILABLE" ? <ErrorBox message={t("plans.cockpit.noSession")} className="m-3" /> : null}
       {plan.declarationRoles.length ? (
-        <Step number={1} title={t("plans.cockpit.declareStep")} state={plan.missingDeclarations.length ? "todo" : "done"} meta={plan.missingDeclarations.length ? t("plans.cockpit.missing", { count: plan.missingDeclarations.length }) : t("plans.cockpit.complete")} open={showDeclarations} onToggle={() => setShowDeclarations((open) => !open)}>
+        <Step
+          number={1}
+          title={t("plans.cockpit.declareStep")}
+          state={plan.missingDeclarations.length ? "todo" : "done"}
+          meta={
+            plan.missingDeclarations.length
+              ? t("plans.cockpit.missing", { count: plan.missingDeclarations.length })
+              : t("plans.cockpit.complete")
+          }
+          open={showDeclarations}
+          onToggle={() => setShowDeclarations((open) => !open)}
+        >
           <Declarations plan={plan} onChanged={onChanged} runtime={runtime} />
         </Step>
       ) : null}
-      <Step number={plan.declarationRoles.length ? 2 : 1} title={t("plans.cockpit.runStep")} state={plan.workState === "COMPLETE" ? "done" : actionable.length ? "todo" : "waiting"} meta={t("plans.cockpit.runMeta", { done: done.length, actionable: actionable.length, waiting: waiting.length })} open onToggle={undefined}>
+      <Step
+        number={plan.declarationRoles.length ? 2 : 1}
+        title={t("plans.cockpit.runStep")}
+        state={plan.workState === "COMPLETE" ? "done" : actionable.length ? "todo" : "waiting"}
+        meta={t("plans.cockpit.runMeta", { done: done.length, actionable: actionable.length, waiting: waiting.length })}
+        open
+        onToggle={undefined}
+      >
         <ul className="border-t border-border">
           <li>
-            <button type="button" className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-label text-muted hover:bg-surface-2" onClick={() => setShowDone((open) => !open)}>
-              <CheckCircle2 size={12} className="text-success" /> {t("plans.cockpit.done")} <span className="text-faint">{done.length}</span><span className="ml-auto text-faint">{showDone ? t("plans.cockpit.hideList") : t("plans.cockpit.showList")}</span>
+            <button
+              type="button"
+              className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-label text-muted hover:bg-surface-2"
+              onClick={() => setShowDone((open) => !open)}
+            >
+              <CheckCircle2 size={12} className="text-success" /> {t("plans.cockpit.done")}{" "}
+              <span className="text-faint">{done.length}</span>
+              <span className="ml-auto text-faint">
+                {showDone ? t("plans.cockpit.hideList") : t("plans.cockpit.showList")}
+              </span>
             </button>
-            {showDone ? <ul>{done.map((check) => <li key={check.checkUri} className="border-t border-border"><CheckLine check={check} compact selected={check.checkUri === selected?.checkUri} onClick={() => onSelect(`check:${check.checkUri}`)} /></li>)}</ul> : null}
+            {showDone ? (
+              <ul>
+                {done.map((check) => (
+                  <li key={check.checkUri} className="border-t border-border">
+                    <CheckLine
+                      check={check}
+                      compact
+                      selected={check.checkUri === selected?.checkUri}
+                      onClick={() => onSelect(`check:${check.checkUri}`)}
+                    />
+                  </li>
+                ))}
+              </ul>
+            ) : null}
           </li>
           <li className="border-t border-border bg-accent-soft/40" data-doc="cockpit.todo">
-            <div className="flex items-center gap-2 px-3 py-1.5 text-label font-medium"><Play size={12} className="fill-current text-accent" /> {t("plans.cockpit.toDoNow")} <span className="text-faint">{actionable.length}</span><span className="ml-auto text-caption font-normal text-faint">{t("plans.cockpit.pickOne")}</span></div>
-            {actionable.length === 0 ? <p className="px-3 pb-2 text-body text-muted">{plan.missingDeclarations.length ? t("plans.cockpit.declareFirst") : plan.workState === "COMPLETE" ? t("plans.cockpit.rehearsalComplete") : t("plans.cockpit.nothingActionable")}</p> : null}
-            <ul>{actionable.map((check) => <li key={check.checkUri} className="border-t border-border"><CheckLine check={check} compact selected={check.checkUri === selected?.checkUri} onClick={() => onSelect(`check:${check.checkUri}`)} /></li>)}</ul>
+            <div className="flex items-center gap-2 px-3 py-1.5 text-label font-medium">
+              <Play size={12} className="fill-current text-accent" /> {t("plans.cockpit.toDoNow")}{" "}
+              <span className="text-faint">{actionable.length}</span>
+              <span className="ml-auto text-caption font-normal text-faint">{t("plans.cockpit.pickOne")}</span>
+            </div>
+            {actionable.length === 0 ? (
+              <p className="px-3 pb-2 text-body text-muted">
+                {plan.missingDeclarations.length
+                  ? t("plans.cockpit.declareFirst")
+                  : plan.workState === "COMPLETE"
+                    ? t("plans.cockpit.rehearsalComplete")
+                    : t("plans.cockpit.nothingActionable")}
+              </p>
+            ) : null}
+            <ul>
+              {actionable.map((check) => (
+                <li key={check.checkUri} className="border-t border-border">
+                  <CheckLine
+                    check={check}
+                    compact
+                    selected={check.checkUri === selected?.checkUri}
+                    onClick={() => onSelect(`check:${check.checkUri}`)}
+                  />
+                </li>
+              ))}
+            </ul>
           </li>
           {waiting.length ? (
             <li className="border-t border-border">
-              <button type="button" className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-label text-muted hover:bg-surface-2" onClick={() => setShowWaiting((open) => !open)}>
-                <Pause size={12} className="fill-current" /> {t("plans.cockpit.waiting")} <span className="text-faint">{waiting.length}</span><span className="ml-auto text-faint">{showWaiting ? t("plans.cockpit.hideList") : t("plans.cockpit.showList")}</span>
+              <button
+                type="button"
+                className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-label text-muted hover:bg-surface-2"
+                onClick={() => setShowWaiting((open) => !open)}
+              >
+                <Pause size={12} className="fill-current" /> {t("plans.cockpit.waiting")}{" "}
+                <span className="text-faint">{waiting.length}</span>
+                <span className="ml-auto text-faint">
+                  {showWaiting ? t("plans.cockpit.hideList") : t("plans.cockpit.showList")}
+                </span>
               </button>
-              {showWaiting ? <ul>{waiting.map((check) => <li key={check.checkUri} className="border-t border-border"><CheckLine check={check} compact onClick={() => onSelect(`check:${check.checkUri}`)} /></li>)}</ul> : null}
+              {showWaiting ? (
+                <ul>
+                  {waiting.map((check) => (
+                    <li key={check.checkUri} className="border-t border-border">
+                      <CheckLine check={check} compact onClick={() => onSelect(`check:${check.checkUri}`)} />
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
             </li>
           ) : null}
         </ul>
       </Step>
       <div className="flex flex-col gap-3 p-3">
-        {selected ? <div className="flex items-center gap-2"><StepNumber number={plan.declarationRoles.length ? 3 : 2} state="todo" /><span className="text-body font-medium">{reobserve ? t("plans.cockpit.reobserveSelected") : t("plans.cockpit.rehearseSelected")}</span></div> : null}
-        {last ? <div data-doc="cockpit.outcome"><OutcomeBanner check={last.check} outcome={last.outcome} /></div> : null}
-        {selected ? <CheckWorkbench key={`${selected.checkUri}@${plan.revision}`} plan={plan} check={selected} compiled={compiled} onChanged={onChanged} runtime={runtime} reobserve={reobserve} onOutcome={(outcome) => setLast({ check: selected.name, outcome })} /> : null}
+        {selected ? (
+          <div className="flex items-center gap-2">
+            <StepNumber number={plan.declarationRoles.length ? 3 : 2} state="todo" />
+            <span className="text-body font-medium">
+              {reobserve ? t("plans.cockpit.reobserveSelected") : t("plans.cockpit.rehearseSelected")}
+            </span>
+          </div>
+        ) : null}
+        {last ? (
+          <div data-doc="cockpit.outcome">
+            <OutcomeBanner check={last.check} outcome={last.outcome} />
+          </div>
+        ) : null}
+        {selected ? (
+          <CheckWorkbench
+            key={`${selected.checkUri}@${plan.revision}`}
+            plan={plan}
+            check={selected}
+            compiled={compiled}
+            onChanged={onChanged}
+            runtime={runtime}
+            reobserve={reobserve}
+            onOutcome={(outcome) => setLast({ check: selected.name, outcome })}
+          />
+        ) : null}
       </div>
     </div>
   );
@@ -88,24 +208,55 @@ export function PlanCockpit({ plan, compiled, onChanged, runtime, selected: sele
 
 function StepNumber({ number, state }: { number: number; state: "done" | "todo" | "waiting" }) {
   return (
-    <span className={`inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-caption font-semibold ${state === "done" ? "bg-success text-accent-contrast" : state === "todo" ? "bg-accent text-accent-contrast" : "bg-surface-3 text-muted"}`}>
+    <span
+      className={`inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-caption font-semibold ${state === "done" ? "bg-success text-accent-contrast" : state === "todo" ? "bg-accent text-accent-contrast" : "bg-surface-3 text-muted"}`}
+    >
       {state === "done" ? <CheckCircle2 size={12} /> : number}
     </span>
   );
 }
 
-function Step({ number, title, state, meta, open, onToggle, children }: { number: number; title: string; state: "done" | "todo" | "waiting"; meta: string; open: boolean; onToggle: (() => void) | undefined; children: React.ReactNode }) {
+function Step({
+  number,
+  title,
+  state,
+  meta,
+  open,
+  onToggle,
+  children,
+}: {
+  number: number;
+  title: string;
+  state: "done" | "todo" | "waiting";
+  meta: string;
+  open: boolean;
+  onToggle: (() => void) | undefined;
+  children: React.ReactNode;
+}) {
   const { t } = useTranslation();
   const header = (
     <>
       <StepNumber number={number} state={state} />
       <span className="text-body font-medium">{title}</span>
-      <span className="ml-auto text-caption text-faint">{meta}{onToggle ? ` · ${open ? t("plans.cockpit.hideList") : t("plans.cockpit.showList")}` : ""}</span>
+      <span className="ml-auto text-caption text-faint">
+        {meta}
+        {onToggle ? ` · ${open ? t("plans.cockpit.hideList") : t("plans.cockpit.showList")}` : ""}
+      </span>
     </>
   );
   return (
     <section className="border-b border-border">
-      {onToggle ? <button type="button" className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-surface-2" onClick={onToggle}>{header}</button> : <div className="flex items-center gap-2 px-3 py-2">{header}</div>}
+      {onToggle ? (
+        <button
+          type="button"
+          className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-surface-2"
+          onClick={onToggle}
+        >
+          {header}
+        </button>
+      ) : (
+        <div className="flex items-center gap-2 px-3 py-2">{header}</div>
+      )}
       {open ? children : null}
     </section>
   );
@@ -113,62 +264,139 @@ function Step({ number, title, state, meta, open, onToggle, children }: { number
 
 /* ---------- declarations ---------- */
 
-function Declarations({ plan, onChanged, runtime }: { plan: PlanView; onChanged: () => Promise<unknown>; runtime: TrustRuntimeClient }) {
+function Declarations({
+  plan,
+  onChanged,
+  runtime,
+}: {
+  plan: PlanView;
+  onChanged: () => Promise<unknown>;
+  runtime: TrustRuntimeClient;
+}) {
   const { t } = useTranslation();
-  const [draft, setDraft] = useState<JsonObject>(plan.declarations);
-  const [dirty, setDirty] = useState(false);
-  useEffect(() => { if (!dirty) setDraft(plan.declarations); }, [plan.declarations, plan.revision, dirty]);
+  const [draftValues, setDraft] = useState<RuntimeJsonObject | null>(null);
+  const [draftPlan, setDraftPlan] = useState(plan.plan);
+  if (draftPlan !== plan.plan) {
+    setDraftPlan(plan.plan);
+    setDraft(null);
+  }
+  const dirty = draftPlan === plan.plan && draftValues !== null;
+  const draft = dirty ? draftValues : plan.declarations;
   const apply = useMutation({
     mutationFn: () => runtime.replaceDeclarations(plan.plan, plan.revision, compact(draft)),
-    onSuccess: async () => { setDirty(false); await onChanged(); },
+    onSuccess: async () => {
+      setDraft(null);
+      await onChanged();
+    },
   });
   const error = mutationError(apply.error);
   const errorDetails = mutationErrorDetails(apply.error);
-  const set = (role: string, value: unknown) => { setDraft((current) => ({ ...current, [role]: value })); setDirty(true); };
+  const set = (role: string, value: unknown) => {
+    setDraft((current) => ({ ...(current ?? plan.declarations), [role]: value }));
+  };
   if (plan.declarationRoles.length === 0) return null;
   return (
     <section className="border-t border-border bg-bg">
       <div className="flex flex-col gap-3 p-3">
         {plan.declarationRoles.map((role) => (
-          <DeclarationField key={role.role} role={role} value={draft[role.role]} plan={plan} missing={plan.missingDeclarations.includes(role.role)} onChange={(value) => set(role.role, value)} />
+          <DeclarationField
+            key={role.role}
+            role={role}
+            value={draft[role.role]}
+            plan={plan}
+            missing={plan.missingDeclarations.includes(role.role)}
+            onChange={(value) => set(role.role, value)}
+          />
         ))}
         {error ? <ErrorBox message={error} details={errorDetails} /> : null}
         <div className="flex items-center gap-2">
-          <Button size="sm" variant="primary" icon={<Send size={12} />} disabled={!dirty || apply.isPending} onClick={() => apply.mutate()}>{apply.isPending ? t("plans.declarations.applying") : t("plans.declarations.apply")}</Button>
-          <Expert><span className="text-caption text-faint">{t("plans.declarations.replacesSnapshot", { revision: plan.revision })} <span className="mono">trust_plan_declarations_replace</span></span></Expert>
+          <Button
+            size="sm"
+            variant="primary"
+            icon={<Send size={12} />}
+            disabled={!dirty || apply.isPending}
+            onClick={() => apply.mutate()}
+          >
+            {apply.isPending ? t("plans.declarations.applying") : t("plans.declarations.apply")}
+          </Button>
+          <Expert>
+            <span className="text-caption text-faint">
+              {t("plans.declarations.replacesSnapshot", { revision: plan.revision })}{" "}
+              <span className="mono">trust_plan_declarations_replace</span>
+            </span>
+          </Expert>
         </div>
       </div>
     </section>
   );
 }
 
-function DeclarationField({ role, value, plan, missing, onChange }: { role: DeclarationRole; value: unknown; plan: PlanView; missing: boolean; onChange: (value: unknown) => void }) {
+function DeclarationField({
+  role,
+  value,
+  plan,
+  missing,
+  onChange,
+}: {
+  role: PlanView["declarationRoles"][number];
+  value: unknown;
+  plan: PlanView;
+  missing: boolean;
+  onChange: (value: unknown) => void;
+}) {
   const { t } = useTranslation();
   const eachParent = role.parents.find((parent) => parent.each);
   const scalarSpec = role.type === "number" ? { type: "number" } : { type: "string", minLength: 1 };
   const label = (
     <div className="flex items-baseline gap-2">
       <span className="mono text-body-lg font-medium">{role.role}</span>
-      <span className="text-caption text-faint">{role.cardinality} {role.type}{role.optional ? ` · ${t("plans.declarations.optional")}` : ""}{role.parents.length ? ` · ${t("plans.declarations.forParents", { parents: role.parents.map((parent) => (parent.each ? t("plans.declarations.eachParent", { role: parent.role }) : parent.role)).join(", ") })}` : ""}</span>
+      <span className="text-caption text-faint">
+        {role.cardinality} {role.type}
+        {role.optional ? ` · ${t("plans.declarations.optional")}` : ""}
+        {role.parents.length
+          ? ` · ${t("plans.declarations.forParents", { parents: role.parents.map((parent) => (parent.each ? t("plans.declarations.eachParent", { role: parent.role }) : parent.role)).join(", ") })}`
+          : ""}
+      </span>
       {missing ? <Badge tone="warning">{t("plans.declarations.missing")}</Badge> : null}
     </div>
   );
   if (eachParent) {
     // One value per current parent value: [{ value, parents: [{ role, value }] }]
     const parentValues = knownValues(plan, eachParent.role);
-    const entries = Array.isArray(value) ? value as Array<{ value: unknown; parents: Array<{ role: string; value: unknown }> }> : [];
-    const valueFor = (parent: unknown) => entries.find((entry) => JSON.stringify(entry.parents?.[0]?.value) === JSON.stringify(parent))?.value;
+    const entries = Array.isArray(value)
+      ? (value as Array<{ value: unknown; parents: Array<{ role: string; value: unknown }> }>)
+      : [];
+    const valueFor = (parent: unknown) =>
+      entries.find((entry) => JSON.stringify(entry.parents?.[0]?.value) === JSON.stringify(parent))?.value;
     const setFor = (parent: unknown, next: unknown) => {
       const others = entries.filter((entry) => JSON.stringify(entry.parents?.[0]?.value) !== JSON.stringify(parent));
-      onChange(next === "" || next === undefined ? others : [...others, { value: next, parents: [{ role: eachParent.role, value: parent }] }]);
+      onChange(
+        next === "" || next === undefined
+          ? others
+          : [...others, { value: next, parents: [{ role: eachParent.role, value: parent }] }],
+      );
     };
     return (
       <div className="flex flex-col gap-1">
         {label}
-        {parentValues.length === 0 ? <p className="text-label text-faint"><Trans i18nKey="plans.declarations.declareParentFirst" values={{ role: eachParent.role }} components={{ mono: <span className="mono" /> }} /></p> : (
+        {parentValues.length === 0 ? (
+          <p className="text-label text-faint">
+            <Trans
+              i18nKey="plans.declarations.declareParentFirst"
+              values={{ role: eachParent.role }}
+              components={{ mono: <span className="mono" /> }}
+            />
+          </p>
+        ) : (
           <div className="grid grid-cols-[max-content_minmax(0,1fr)] items-center gap-x-3 gap-y-1">
             {parentValues.map((parent) => (
-              <ScalarInput key={JSON.stringify(parent)} prefix={<span className="mono text-label text-muted">{String(parent)}</span>} type={role.type} value={valueFor(parent)} onChange={(next) => setFor(parent, next)} />
+              <ScalarInput
+                key={JSON.stringify(parent)}
+                prefix={<span className="mono text-label text-muted">{String(parent)}</span>}
+                type={role.type}
+                value={valueFor(parent)}
+                onChange={(next) => setFor(parent, next)}
+              />
             ))}
           </div>
         )}
@@ -176,21 +404,57 @@ function DeclarationField({ role, value, plan, missing, onChange }: { role: Decl
     );
   }
   if (role.cardinality === "many") {
-    return <div className="flex flex-col gap-1">{label}<ListEditor id={`decl-${role.role}`} spec={scalarSpec} value={Array.isArray(value) ? value : []} onChange={(next) => onChange(next.length ? next : undefined)} /></div>;
+    return (
+      <div className="flex flex-col gap-1">
+        {label}
+        <ListEditor
+          id={`decl-${role.role}`}
+          spec={scalarSpec}
+          value={Array.isArray(value) ? value : []}
+          onChange={(next) => onChange(next.length ? next : undefined)}
+        />
+      </div>
+    );
   }
-  return <div className="flex flex-col gap-1">{label}<ScalarInput type={role.type} value={value} onChange={onChange} /></div>;
+  return (
+    <div className="flex flex-col gap-1">
+      {label}
+      <ScalarInput type={role.type} value={value} onChange={onChange} />
+    </div>
+  );
 }
 
-function ScalarInput({ type, value, onChange, prefix }: { type: string; value: unknown; onChange: (value: unknown) => void; prefix?: React.ReactNode }) {
+function ScalarInput({
+  type,
+  value,
+  onChange,
+  prefix,
+}: {
+  type: string;
+  value: unknown;
+  onChange: (value: unknown) => void;
+  prefix?: React.ReactNode;
+}) {
   const input = (
     <TextInput
       className="h-7 w-full text-body"
       type={type === "number" ? "number" : "text"}
       value={value === undefined ? "" : String(value)}
-      onChange={(event) => onChange(event.target.value === "" ? undefined : type === "number" ? Number(event.target.value) : event.target.value)}
+      onChange={(event) =>
+        onChange(
+          event.target.value === "" ? undefined : type === "number" ? Number(event.target.value) : event.target.value,
+        )
+      }
     />
   );
-  return prefix ? <>{prefix}{input}</> : input;
+  return prefix ? (
+    <>
+      {prefix}
+      {input}
+    </>
+  ) : (
+    input
+  );
 }
 
 /** Values a parent role currently has: root input, declaration (plain or coordinated). Produced roles are not declarable against. */
@@ -198,43 +462,85 @@ function knownValues(plan: PlanView, role: string): unknown[] {
   const fromRoot = plan.rootInputs[role];
   if (fromRoot !== undefined) return Array.isArray(fromRoot) ? fromRoot : [fromRoot];
   const declared = plan.declarations[role];
-  if (Array.isArray(declared)) return declared.map((entry) => (entry !== null && typeof entry === "object" && "value" in (entry as object) ? (entry as { value: unknown }).value : entry));
+  if (Array.isArray(declared))
+    return declared.map((entry) =>
+      entry !== null && typeof entry === "object" && "value" in (entry as object)
+        ? (entry as { value: unknown }).value
+        : entry,
+    );
   return declared === undefined ? [] : [declared];
 }
 
-function compact(declarations: JsonObject): JsonObject {
-  return Object.fromEntries(Object.entries(declarations).filter(([, value]) => value !== undefined && value !== "" && !(Array.isArray(value) && value.length === 0)));
+function compact(declarations: RuntimeJsonObject): RuntimeJsonObject {
+  return Object.fromEntries(
+    Object.entries(declarations).filter(
+      ([, value]) => value !== undefined && value !== "" && !(Array.isArray(value) && value.length === 0),
+    ),
+  );
 }
 
 /* ---------- one Check ---------- */
 
-type Outcome = AttemptFinalization | { refused: string };
+type Outcome = AttemptFinalizationResult | { refused: string };
 
 function OutcomeBanner({ check, outcome }: { check: string; outcome: Outcome }) {
   const { t } = useTranslation();
-  if ("refused" in outcome) return <ErrorBox message={t("plans.outcome.refused", { check, reason: outcome.refused })} />;
+  if ("refused" in outcome)
+    return <ErrorBox message={t("plans.outcome.refused", { check, reason: outcome.refused })} />;
   return (
-    <div className={`rounded-(--radius-2) border p-2 text-body ${outcome.verdict === "VALIDATED" ? "border-success/40 bg-success-soft" : "border-danger/40 bg-danger-soft"}`}>
+    <div
+      className={`rounded-(--radius-2) border p-2 text-body ${outcome.verdict === "VALIDATED" ? "border-success/40 bg-success-soft" : "border-danger/40 bg-danger-soft"}`}
+    >
       <div className="flex flex-wrap items-center gap-2">
-        {outcome.verdict === "VALIDATED" ? <CheckCircle2 size={14} className="text-success" /> : <XCircle size={14} className="text-danger" />}
+        {outcome.verdict === "VALIDATED" ? (
+          <CheckCircle2 size={14} className="text-success" />
+        ) : (
+          <XCircle size={14} className="text-danger" />
+        )}
         <span className="mono font-medium">{check}</span>
         <StatusBadge state={outcome.verdict} />
         <span>{outcome.reason}</span>
-        <Expert><span className="text-faint">({outcome.reasonCode})</span></Expert>
+        <Expert>
+          <span className="text-faint">({outcome.reasonCode})</span>
+        </Expert>
       </div>
       <p className="mt-1 text-label text-muted">
-        {outcome.checklistDelta.newlySatisfied.length ? t("plans.outcome.newlySatisfied", { checks: plural(outcome.checklistDelta.newlySatisfied.length, "check") }) : t("plans.outcome.nothingSatisfied")}
-        {outcome.checklistDelta.newlyOpened.length ? ` · ${t("plans.outcome.reopenedBelow", { checks: plural(outcome.checklistDelta.newlyOpened.length, "check") })}` : ""}
-        {outcome.checklistDelta.unchanged.length ? ` · ${t("plans.outcome.unchanged", { checks: plural(outcome.checklistDelta.unchanged.length, "check") })}` : ""}
+        {outcome.checklistDelta.newlySatisfied.length
+          ? t("plans.outcome.newlySatisfied", { checks: plural(outcome.checklistDelta.newlySatisfied.length, "check") })
+          : t("plans.outcome.nothingSatisfied")}
+        {outcome.checklistDelta.newlyOpened.length
+          ? ` · ${t("plans.outcome.reopenedBelow", { checks: plural(outcome.checklistDelta.newlyOpened.length, "check") })}`
+          : ""}
+        {outcome.checklistDelta.unchanged.length
+          ? ` · ${t("plans.outcome.unchanged", { checks: plural(outcome.checklistDelta.unchanged.length, "check") })}`
+          : ""}
       </p>
     </div>
   );
 }
 
-function CheckWorkbench({ plan, check, compiled, onChanged, runtime, reobserve = false, onOutcome }: { plan: PlanView; check: PlanCheck; compiled: CompiledProcedure | undefined; onChanged: () => Promise<unknown>; runtime: TrustRuntimeClient; reobserve?: boolean; onOutcome: (outcome: Outcome) => void }) {
+function CheckWorkbench({
+  plan,
+  check,
+  compiled,
+  onChanged,
+  runtime,
+  reobserve = false,
+  onOutcome,
+}: {
+  plan: PlanView;
+  check: PlanCheckView;
+  compiled: CompiledProcedure | undefined;
+  onChanged: () => Promise<unknown>;
+  runtime: TrustRuntimeClient;
+  reobserve?: boolean;
+  onOutcome: (outcome: Outcome) => void;
+}) {
   const { t } = useTranslation();
-  const definition: CompiledOperation | undefined = compiled?.operations.find((entry) => entry.operation === check.operation)?.definition;
-  const compiledCheck: ProcedureCheck | undefined = compiled?.checks.find((entry) => entry.name === check.name);
+  const definition: CompiledOperation | undefined = compiled?.operations.find(
+    (entry) => entry.operation === check.operation,
+  )?.definition;
+  const compiledCheck: CompiledProcedureCheck | undefined = compiled?.checks.find((entry) => entry.name === check.name);
   const schema = definition?.produced;
   // What this Check already observed (a reopened Check should be re-run with the values it established, unless you decide otherwise).
   const history = useCheck(check.checkUri);
@@ -247,12 +553,23 @@ function CheckWorkbench({ plan, check, compiled, onChanged, runtime, reobserve =
     }
     return undefined;
   }, [history.data]);
-  const [values, setValues] = useState<JsonObject>(() => (schema ? blankObject(schema) : {}));
+  const [values, setValues] = useState<RuntimeJsonObject>(() => (schema ? blankObject(schema) : {}));
   const [seeded, setSeeded] = useState(false);
-  useEffect(() => { if (previous && !seeded) { setValues(previous); setSeeded(true); } }, [previous, seeded]);
+  useEffect(() => {
+    if (previous && !seeded) {
+      setValues(previous);
+      setSeeded(true);
+    }
+  }, [previous, seeded]);
   const [valid, setValid] = useState(false);
   const [nextIntent, setNextIntent] = useState("");
-  useEffect(() => { setNextIntent(""); }, [plan.currentIntent, check.checkUri]);
+  const nextIntentId = useId();
+  const intentIdentity = JSON.stringify([plan.currentIntent, check.checkUri]);
+  const [intentOwner, setIntentOwner] = useState(intentIdentity);
+  if (intentOwner !== intentIdentity) {
+    setIntentOwner(intentIdentity);
+    setNextIntent("");
+  }
   const intentReady = !plan.intentChaining || check.completesPlan || nextIntent.trim().length > 0;
 
   const submit = useMutation({
@@ -263,10 +580,22 @@ function CheckWorkbench({ plan, check, compiled, onChanged, runtime, reobserve =
         ...(plan.intentChaining && !check.completesPlan ? { nextIntent: nextIntent.trim() } : {}),
       });
       if (admission.status !== "ADMITTED") return { refused: `${admission.reasonCode}: ${admission.reason}` };
-      await runtime.postFacts({ attemptKey: admission.attemptKey, attemptHandle: admission.attemptHandle, executionId: admission.executionId, checkUri: admission.checkUri, operation: admission.operation.operation }, values);
+      await runtime.postFacts(
+        {
+          attemptKey: admission.attemptKey,
+          attemptHandle: admission.attemptHandle,
+          executionId: admission.executionId,
+          checkUri: admission.checkUri,
+          operation: admission.operation.operation,
+        },
+        values,
+      );
       return runtime.finalizeAttempt(admission.attemptHandle);
     },
-    onSuccess: async (outcome) => { onOutcome(outcome); await onChanged(); },
+    onSuccess: async (outcome) => {
+      onOutcome(outcome);
+      await onChanged();
+    },
   });
   const error = mutationError(submit.error);
   const errorDetails = mutationErrorDetails(submit.error);
@@ -275,17 +604,58 @@ function CheckWorkbench({ plan, check, compiled, onChanged, runtime, reobserve =
   return (
     <div className="flex flex-col gap-3">
       <section className="rounded-(--radius-3) border border-border bg-bg p-3">
-        <div className="flex items-baseline gap-2"><span className="kicker">{t("plans.workbench.next")}</span><strong className="mono text-ui">{check.name}</strong>{expert ? <span className="text-caption text-muted">{check.scenario}</span> : null}</div>
+        <div className="flex items-baseline gap-2">
+          <span className="kicker">{t("plans.workbench.next")}</span>
+          <strong className="mono text-ui">{check.name}</strong>
+          {expert ? <span className="text-caption text-muted">{check.scenario}</span> : null}
+        </div>
         {expert ? (
           <>
-            <p className="mt-1 text-body text-muted">{t("plans.workbench.runs")} <span className="mono text-accent">{check.operation}</span> {t("plans.workbench.on")} <span className="mono text-text">{check.target.role}</span> = <span className="mono text-text">{JSON.stringify(check.target.value)}</span></p>
-            {Object.keys(check.inputs).length ? <p className="mt-1 text-label text-muted">{t("plans.workbench.inputs")} {Object.entries(check.inputs).map(([key, value], index) => <span key={key}>{index ? " · " : ""}<span className="mono">{key}</span> = <span className="mono text-text">{JSON.stringify(value)}</span></span>)}</p> : null}
-            {compiledCheck?.successReason ? <p className="mt-1 text-body">{t("plans.workbench.mustEstablish")} <em>“{compiledCheck.successReason}”</em></p> : null}
+            <p className="mt-1 text-body text-muted">
+              {t("plans.workbench.runs")} <span className="mono text-accent">{check.operation}</span>{" "}
+              {t("plans.workbench.on")} <span className="mono text-text">{check.target.role}</span> ={" "}
+              <span className="mono text-text">{JSON.stringify(check.target.value)}</span>
+            </p>
+            {Object.keys(check.inputs).length ? (
+              <p className="mt-1 text-label text-muted">
+                {t("plans.workbench.inputs")}{" "}
+                {Object.entries(check.inputs).map(([key, value], index) => (
+                  <span key={key}>
+                    {index ? " · " : ""}
+                    <span className="mono">{key}</span> ={" "}
+                    <span className="mono text-text">{JSON.stringify(value)}</span>
+                  </span>
+                ))}
+              </p>
+            ) : null}
+            {compiledCheck?.successReason ? (
+              <p className="mt-1 text-body">
+                {t("plans.workbench.mustEstablish")} <em>“{compiledCheck.successReason}”</em>
+              </p>
+            ) : null}
             <div className="mt-2 grid gap-2 sm:grid-cols-2">
-              <div><span className="kicker">{t("plans.workbench.authorizedScope")}</span><ul className="mt-1 list-disc pl-4 text-label text-muted">{check.actionScope.authorized.map((item) => <li key={item}>{item}</li>)}</ul></div>
-              <div><span className="kicker">{t("plans.workbench.forbiddenScope")}</span><ul className="mt-1 list-disc pl-4 text-label text-muted">{check.actionScope.forbidden.map((item) => <li key={item}>{item}</li>)}</ul></div>
+              <div>
+                <span className="kicker">{t("plans.workbench.authorizedScope")}</span>
+                <ul className="mt-1 list-disc pl-4 text-label text-muted">
+                  {check.actionScope.authorized.map((item) => (
+                    <li key={item}>{item}</li>
+                  ))}
+                </ul>
+              </div>
+              <div>
+                <span className="kicker">{t("plans.workbench.forbiddenScope")}</span>
+                <ul className="mt-1 list-disc pl-4 text-label text-muted">
+                  {check.actionScope.forbidden.map((item) => (
+                    <li key={item}>{item}</li>
+                  ))}
+                </ul>
+              </div>
             </div>
-            {compiledCheck ? <pre className="mono mt-2 overflow-x-auto whitespace-pre-wrap rounded-(--radius-1) bg-surface-2 p-2 text-label text-text"><code>{compiledCheck.qualification.source}</code></pre> : null}
+            {compiledCheck ? (
+              <pre className="mono mt-2 overflow-x-auto whitespace-pre-wrap rounded-(--radius-1) bg-surface-2 p-2 text-label text-text">
+                <code>{compiledCheck.qualification.source}</code>
+              </pre>
+            ) : null}
           </>
         ) : null}
       </section>
@@ -300,16 +670,41 @@ function CheckWorkbench({ plan, check, compiled, onChanged, runtime, reobserve =
             {check.completesPlan ? (
               <p className="mt-2 text-label text-muted">{t("plans.workbench.finalIntent")}</p>
             ) : (
-              <label className="mt-2 block text-label text-muted">
+              <label htmlFor={nextIntentId} className="mt-2 block text-label text-muted">
                 {t("plans.workbench.nextIntent")}
-                <TextInput className="mt-1 h-7 w-full text-body" value={nextIntent} onChange={(event) => setNextIntent(event.target.value)} placeholder={t("plans.workbench.nextIntentPlaceholder")} />
+                <TextInput
+                  id={nextIntentId}
+                  className="mt-1 h-7 w-full text-body"
+                  value={nextIntent}
+                  onChange={(event) => setNextIntent(event.target.value)}
+                  placeholder={t("plans.workbench.nextIntentPlaceholder")}
+                />
               </label>
             )}
           </div>
         ) : null}
-        {schema ? <SchemaForm idPrefix={`facts-${check.name}`} schema={schema} value={values} onChange={setValues} onValidity={setValid} showSummary={false} /> : <p className="text-body text-faint">{t("plans.workbench.needsProcedure")}</p>}
+        {schema ? (
+          <SchemaForm
+            idPrefix={`facts-${check.name}`}
+            schema={schema}
+            value={values}
+            onChange={setValues}
+            onValidity={setValid}
+            showSummary={false}
+          />
+        ) : (
+          <p className="text-body text-faint">{t("plans.workbench.needsProcedure")}</p>
+        )}
         <div className="mt-3">
-          <Button data-doc="cockpit.submit" variant="primary" icon={<FlaskConical size={13} />} disabled={!valid || !intentReady || submit.isPending || plan.sessionState === "UNAVAILABLE"} onClick={() => submit.mutate()}>{submit.isPending ? t("plans.workbench.submitting") : t("plans.workbench.submit")}</Button>
+          <Button
+            data-doc="cockpit.submit"
+            variant="primary"
+            icon={<FlaskConical size={13} />}
+            disabled={!valid || !intentReady || submit.isPending || plan.sessionState === "UNAVAILABLE"}
+            onClick={() => submit.mutate()}
+          >
+            {submit.isPending ? t("plans.workbench.submitting") : t("plans.workbench.submit")}
+          </Button>
         </div>
         {error ? <ErrorBox message={error} details={errorDetails} className="mt-2" /> : null}
       </section>

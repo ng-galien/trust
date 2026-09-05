@@ -15,5 +15,19 @@ export function SectionIcon({ name }: { name: string }) {
     validated: "M20 12a8 8 0 1 1-4-7 M8 11l4 4 9-11",
     blocked: "M8 4v16 M16 4v16",
   };
-  return <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d={paths[name] ?? paths.instructions} /></svg>;
+  return (
+    <svg
+      aria-hidden="true"
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d={paths[name] ?? paths.instructions} />
+    </svg>
+  );
 }

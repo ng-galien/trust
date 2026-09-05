@@ -57,10 +57,7 @@ export async function packageRunnerSkill(
   }
 }
 
-export async function deployRunner(
-  installation: TrustInstallation,
-  destination: string,
-): Promise<string> {
+export async function deployRunner(installation: TrustInstallation, destination: string): Promise<string> {
   const target = validateDestination(installation, destination);
   const parent = path.dirname(target);
   await mkdir(parent, { recursive: true });
@@ -92,7 +89,7 @@ export async function deployRunner(
     return target;
   } finally {
     await rm(staging, { recursive: true, force: true });
-    if (displaced && !await pathExists(target) && await pathExists(backup)) {
+    if (displaced && !(await pathExists(target)) && (await pathExists(backup))) {
       await rename(backup, target);
       displaced = false;
     }
@@ -109,10 +106,7 @@ export function validateDestination(installation: TrustInstallation, destination
     installation.runnerPackageRoot,
     installation.runnerSkillSource,
   ]);
-  if (
-    forbidden.has(resolved)
-    || protectedRoots.some((protectedRoot) => isSameOrAncestor(resolved, protectedRoot))
-  ) {
+  if (forbidden.has(resolved) || protectedRoots.some((protectedRoot) => isSameOrAncestor(resolved, protectedRoot))) {
     throw new TypeError(`Runner destination is unsafe: ${resolved}`);
   }
   return resolved;
@@ -134,10 +128,12 @@ async function assertReplaceableDirectory(destination: string): Promise<void> {
 }
 
 async function assertRunnerPackage(destination: string): Promise<void> {
-  await Promise.all(REQUIRED_FILES.map(async (relative) => {
-    const content = await readFile(path.join(destination, relative));
-    if (content.byteLength === 0) throw new Error(`Packaged Runner file is empty: ${relative}`);
-  }));
+  await Promise.all(
+    REQUIRED_FILES.map(async (relative) => {
+      const content = await readFile(path.join(destination, relative));
+      if (content.byteLength === 0) throw new Error(`Packaged Runner file is empty: ${relative}`);
+    }),
+  );
 }
 
 async function pathExists(value: string): Promise<boolean> {

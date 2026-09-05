@@ -1,25 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-export type PlanEventType = "plan.engaged" | "plan.revision" | "plan.state" | "plan.removed" | "session.changed" | "runtime.changed";
-
-export interface PlanEvent {
-  readonly sequence: number;
-  readonly id: string;
-  readonly type: PlanEventType;
-  readonly at: string;
-  readonly plan?: string;
-  readonly resync?: true;
-  readonly revision?: number;
-  readonly cause?: "declarations" | "verdict";
-  readonly workState?: "IN_PROGRESS" | "ESCALATED" | "COMPLETE";
-  readonly checklistDelta?: {
-    readonly newlySatisfied: readonly string[];
-    readonly newlyOpened: readonly string[];
-    readonly unchanged: readonly string[];
-  };
-  readonly removedCheckUris?: readonly string[];
-  readonly session?: { readonly id: string; readonly state: "open" | "closed" | "expired" };
-}
+import type { PlanEvent } from "@trust/extension-sdk";
 
 type NewPlanEvent = Omit<PlanEvent, "id" | "sequence">;
 
@@ -47,7 +28,12 @@ export class PlanEvents {
     const generation = separator < 0 ? "" : lastEventId.slice(0, separator);
     const sequence = separator < 0 ? Number.NaN : Number(lastEventId.slice(separator + 1));
     const firstSequence = this.#events[0]?.sequence ?? this.#sequence + 1;
-    if (generation !== this.#generation || !Number.isSafeInteger(sequence) || sequence < firstSequence - 1 || sequence > this.#sequence) {
+    if (
+      generation !== this.#generation ||
+      !Number.isSafeInteger(sequence) ||
+      sequence < firstSequence - 1 ||
+      sequence > this.#sequence
+    ) {
       return { events: [], resync: true };
     }
     return { events: this.#events.filter((event) => event.sequence > sequence), resync: false };

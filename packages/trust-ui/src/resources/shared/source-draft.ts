@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router";
 
 import type { EditorMarker } from "../../gherkin-editor.js";
@@ -13,10 +13,20 @@ import { stripEphemeral } from "./overlay-state.js";
 
 type DraftStatus = "COMPILING" | "INVALID" | "DRAFT" | "CURRENT";
 
-export function useSourceDraft<Compiled>({ mode, id, catalogSource, seedSource, template, compile, compileKey }: {
+export function useSourceDraft<Compiled>({
+  mode,
+  id,
+  version,
+  catalogSource,
+  seedSource,
+  template,
+  compile,
+  compileKey,
+}: {
   mode: "item" | "new";
   /** Item identifier from the route (undefined for a new item). */
   id: string | undefined;
+  version?: string | null;
   /** Source held by the runtime for this item, when known. */
   catalogSource: string | undefined;
   /** Source of the item named by `?from=`, when duplicating. */
@@ -32,11 +42,15 @@ export function useSourceDraft<Compiled>({ mode, id, catalogSource, seedSource, 
   const seed = from ? seedSource(from) : undefined;
   const baseSource = mode === "new" ? (seed ?? template) : (catalogSource ?? "");
 
-  const [draft, setDraft] = useState<string | null>(null);
+  const fromVersion = search.get("fromVersion");
+  const identity = JSON.stringify([mode, id, from, version, fromVersion]);
+  const [draftState, setDraftState] = useState<{ identity: string; value: string | null }>({ identity, value: null });
+  if (draftState.identity !== identity) setDraftState({ identity, value: null });
+  const draft = draftState.identity === identity ? draftState.value : null;
+  const setDraft = (value: string | null) => setDraftState({ identity, value });
   const source = draft ?? baseSource;
   const dirty = draft !== null && draft !== baseSource;
   const authoring = dirty || mode === "new";
-  useEffect(() => setDraft(null), [id, from]);
 
   const listSearch = useMemo(() => stripEphemeral(location.search), [location.search]);
 
@@ -48,22 +62,47 @@ export function useSourceDraft<Compiled>({ mode, id, catalogSource, seedSource, 
     retry: false,
     staleTime: Number.POSITIVE_INFINITY,
   });
-  const compileError = compilation.error instanceof RuntimeError ? compilation.error : compilation.error ? new RuntimeError(compilation.error.message, 0) : null;
+  const compileError = !authoring
+    ? null
+    : compilation.error instanceof RuntimeError
+      ? compilation.error
+      : compilation.error
+        ? new RuntimeError(compilation.error.message, 0)
+        : null;
   const markers: EditorMarker[] = useMemo(
-    () => (compileError?.location ? [{ message: compileError.detail, line: compileError.location.line, column: compileError.location.column }] : []),
+    () =>
+      compileError?.location
+        ? [{ message: compileError.detail, line: compileError.location.line, column: compileError.location.column }]
+        : [],
     [compileError],
   );
-  const status: DraftStatus = compilation.isFetching && authoring ? "COMPILING" : compileError ? "INVALID" : authoring ? "DRAFT" : "CURRENT";
-  const compiling = compilation.isFetching && authoring;
+  const status: DraftStatus =
+    compilation.isFetching && authoring ? "COMPILING" : compileError ? "INVALID" : authoring ? "DRAFT" : "CURRENT";
+  const compiling = authoring && (compilation.isFetching || source !== debounced);
 
   /** After a save/publish: forget the draft and land on the item, keeping the list filters and the current tab. */
-  const settle = (path: string, tab: string | undefined) => {
+  const settle = (path: string, tab: string | undefined, exactVersion?: string) => {
     setDraft(null);
     const next = new URLSearchParams(listSearch);
     if (tab) next.set("tab", tab);
+    if (exactVersion) next.set("version", exactVersion);
     const query = next.toString();
     navigate(`${path}${query ? `?${query}` : ""}`, { replace: true });
   };
 
-  return { from, seed, source, setDraft, dirty, authoring, listSearch, compiled: authoring ? compilation.data : undefined, compileError, compiling, markers, status, settle };
+  return {
+    from,
+    seed,
+    source,
+    setDraft,
+    dirty,
+    authoring,
+    listSearch,
+    compiled: authoring ? compilation.data : undefined,
+    compileError,
+    compiling,
+    markers,
+    status,
+    settle,
+  };
 }

@@ -13,25 +13,28 @@ export function JsonViewer({ value, fontSize = 12 }: { value: unknown; fontSize?
   const documentUri = useRef(`inmemory://trust/json/${crypto.randomUUID()}.json`);
   const [editorReady, setEditorReady] = useState(false);
   const text = typeof value === "string" ? value : JSON.stringify(value, null, 2);
-  const options = useMemo<monaco.editor.IStandaloneEditorConstructionOptions>(() => ({
-    readOnly: true,
-    domReadOnly: true,
-    minimap: { enabled: false },
-    fontFamily: "JetBrains Mono Variable, ui-monospace, monospace",
-    fontSize,
-    lineHeight: Math.round(fontSize * 1.65),
-    padding: { top: 12, bottom: 12 },
-    scrollBeyondLastLine: false,
-    wordWrap: "off",
-    folding: true,
-    showFoldingControls: "always",
-    renderLineHighlight: "none",
-    lineNumbers: "on",
-    automaticLayout: true,
-    contextmenu: false,
-    occurrencesHighlight: "off",
-    stickyScroll: { enabled: true },
-  }), [fontSize]);
+  const options = useMemo<monaco.editor.IStandaloneEditorConstructionOptions>(
+    () => ({
+      readOnly: true,
+      domReadOnly: true,
+      minimap: { enabled: false },
+      fontFamily: "JetBrains Mono Variable, ui-monospace, monospace",
+      fontSize,
+      lineHeight: Math.round(fontSize * 1.65),
+      padding: { top: 12, bottom: 12 },
+      scrollBeyondLastLine: false,
+      wordWrap: "off",
+      folding: true,
+      showFoldingControls: "always",
+      renderLineHighlight: "none",
+      lineNumbers: "on",
+      automaticLayout: true,
+      contextmenu: false,
+      occurrencesHighlight: "off",
+      stickyScroll: { enabled: true },
+    }),
+    [fontSize],
+  );
 
   useEffect(() => {
     if (!editorReady) return;
@@ -41,7 +44,9 @@ export function JsonViewer({ value, fontSize = 12 }: { value: unknown; fontSize?
 
   return (
     <div className="relative h-full">
-      {!editorReady ? <div className="absolute inset-0 p-4 text-body text-muted">{t("ui.jsonViewer.loading")}</div> : null}
+      {!editorReady ? (
+        <div className="absolute inset-0 p-4 text-body text-muted">{t("ui.jsonViewer.loading")}</div>
+      ) : null}
       <TrustMonacoEditor
         className="h-full"
         value={text}

@@ -38,7 +38,7 @@ Feature: Release one aircraft to service after a maintenance visit
 
   @scenario:airworthiness
   Scenario: Confirm the aircraft is in maintenance with no overdue directive
-    Then Check "aircraft status" runs Operation "aviation.aircraft-status-read"
+    Then Check "aircraft status" runs Operation "aviation.aircraft-status-read@*"
         on "aircraft" as Input "aircraft"
         and must establish "the aircraft is in maintenance with no overdue airworthiness directive"
       """js
@@ -55,7 +55,7 @@ Feature: Release one aircraft to service after a maintenance visit
   @scenario:work-orders
   Scenario: Confirm every work order of the visit is closed
     Given scenario "airworthiness" is validated
-    Then Check "visit closure" runs Operation "aviation.visit-read"
+    Then Check "visit closure" runs Operation "aviation.visit-read@*"
         on "maintenance visit" as Input "visit"
         using "aircraft" as Input "aircraft"
         and must establish "the maintenance visit has no open work order"
@@ -63,7 +63,7 @@ Feature: Release one aircraft to service after a maintenance visit
       fact.openWorkOrderCount === 0 ||
       fail("the visit still has an open work order")
       """
-    And Check "work order" runs Operation "aviation.work-order-read"
+    And Check "work order" runs Operation "aviation.work-order-read@*"
         on each "work order" as Input "workOrder"
         and must establish "every declared work order is closed on this visit"
       """js
@@ -80,7 +80,7 @@ Feature: Release one aircraft to service after a maintenance visit
   @scenario:part-certificates
   Scenario: Confirm one valid release certificate per fitted part
     Given scenario "work-orders" is validated
-    Then Check "part certificate" runs Operation "aviation.part-certificate-read"
+    Then Check "part certificate" runs Operation "aviation.part-certificate-read@*"
         on each "fitted part" as Input "part"
         and materializes "certificate release time" from field "releasedAt"
         and must establish "every fitted part carries a valid release certificate for its serial"
@@ -98,7 +98,7 @@ Feature: Release one aircraft to service after a maintenance visit
   @scenario:part-fitment
   Scenario: Confirm every part was fitted after its certificate release
     Given scenario "part-certificates" is validated
-    Then Check "fitment" runs Operation "aviation.part-fitment-read"
+    Then Check "fitment" runs Operation "aviation.part-fitment-read@*"
         on each "fitted part" as Input "part"
         and must establish "every part fitment is recorded after its certificate release"
       """js
@@ -119,7 +119,7 @@ Feature: Release one aircraft to service after a maintenance visit
   @scenario:duplicate-inspection
   Scenario: Confirm the independent duplicate inspection of every flight-control task
     Given scenario "work-orders" is validated
-    Then Check "independent inspection" runs Operation "aviation.inspection-read"
+    Then Check "independent inspection" runs Operation "aviation.inspection-read@*"
         on each "duplicate inspection task" as Input "task"
         and must establish "every flight-control task passed an independent duplicate inspection"
       """js
@@ -136,7 +136,7 @@ Feature: Release one aircraft to service after a maintenance visit
   @scenario:signing-engineer
   Scenario: Confirm the signing engineer licence covers the aircraft type
     Given scenario "airworthiness" is validated
-    Then Check "licence" runs Operation "aviation.licence-read"
+    Then Check "licence" runs Operation "aviation.licence-read@*"
         on "signing engineer" as Input "engineer"
         using "aircraft" as Input "aircraft"
         and materializes "licence expiry" from field "expiresAt"
@@ -157,7 +157,7 @@ Feature: Release one aircraft to service after a maintenance visit
     Given scenario "part-fitment" is validated
     And scenario "duplicate-inspection" is validated
     And scenario "signing-engineer" is validated
-    Then Check "crs" runs Operation "aviation.release-record"
+    Then Check "crs" runs Operation "aviation.release-record@*"
         on "maintenance visit" as Input "visit"
         using "aircraft" as Input "aircraft"
         using "signing engineer" as Input "engineer"
@@ -184,7 +184,7 @@ Feature: Release one aircraft to service after a maintenance visit
   @scenario:back-in-service
   Scenario: Confirm the aircraft is serviceable after the release certificate
     Given scenario "release-certificate" is validated
-    Then Check "serviceability" runs Operation "aviation.aircraft-status-read"
+    Then Check "serviceability" runs Operation "aviation.aircraft-status-read@*"
         on "aircraft" as Input "aircraft"
         and must establish "the aircraft returned to service after its release certificate"
       """js

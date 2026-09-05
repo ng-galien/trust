@@ -15,7 +15,7 @@ Feature: Confirm the TRUST runner observes a controlled signal
 
   @scenario:smoke-signal
   Scenario: Observe the controlled smoke signal
-    Then Check "smoke signal" runs Operation "file.smoke-signal-read"
+    Then Check "smoke signal" runs Operation "file.smoke-signal-read@*"
         on "expected signal" as Input "expectedSignal"
         and must establish "the smoke signal is ready"
       """js

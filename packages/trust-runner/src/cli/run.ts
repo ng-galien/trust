@@ -1,5 +1,5 @@
 import { CheckClient } from "../check/client.js";
-import { createCheckRunner, type CheckResult } from "../check/run.js";
+import { type CheckResult, createCheckRunner } from "../check/run.js";
 import { createRunnerLogging } from "../diagnostics/pino.js";
 import { OtlpFactExporter } from "../telemetry/otlp.js";
 import { readRunnerConfiguration } from "./configuration.js";
@@ -18,7 +18,7 @@ export async function runCli(options: RunnerCliOptions = {}): Promise<number> {
   const stderr = options.stderr ?? ((text) => process.stderr.write(text));
   const json = remove(argv, "--json");
   const logging = createRunnerLogging(environment);
-  let configuration;
+  let configuration: ReturnType<typeof readRunnerConfiguration>;
   try {
     configuration = readRunnerConfiguration(argv);
   } catch (error) {
@@ -66,19 +66,20 @@ function report(result: CheckResult): string {
       "",
     ].join("\n");
   }
-  const next = result.next.action === "RUN_CHECKS" || result.next.action === "RETRY_OR_ESCALATE"
-    ? [
-        `Next: ${result.next.action}`,
-        ...result.next.checks.flatMap((check) => [
-          `- ${check.name}: ${check.successReason}`,
-          `  Check: ${check.checkUri}`,
-          "  Authorized scope:",
-          ...check.actionScope.authorized.map((item) => `  - ${item}`),
-          "  Forbidden scope:",
-          ...check.actionScope.forbidden.map((item) => `  - ${item}`),
-        ]),
-      ]
-    : [`Next: ${result.next.action}`];
+  const next =
+    result.next.action === "RUN_CHECKS" || result.next.action === "RETRY_OR_ESCALATE"
+      ? [
+          `Next: ${result.next.action}`,
+          ...result.next.checks.flatMap((check) => [
+            `- ${check.name}: ${check.successReason}`,
+            `  Check: ${check.checkUri}`,
+            "  Authorized scope:",
+            ...check.actionScope.authorized.map((item) => `  - ${item}`),
+            "  Forbidden scope:",
+            ...check.actionScope.forbidden.map((item) => `  - ${item}`),
+          ]),
+        ]
+      : [`Next: ${result.next.action}`];
   return [
     "Status: COMPLETED",
     `Check: ${result.checkUri}`,

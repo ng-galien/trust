@@ -138,7 +138,10 @@ export function searchPages(query: string, language: Language, limit = 8): Array
     const excerpt = at >= 0 ? excerptAround(page.searchText, at, needle.length) : page.summary;
     scored.push({ page, score, excerpt });
   }
-  return scored.sort((a, b) => b.score - a.score).slice(0, limit).map(({ page, excerpt }) => ({ page, excerpt }));
+  return scored
+    .sort((a, b) => b.score - a.score)
+    .slice(0, limit)
+    .map(({ page, excerpt }) => ({ page, excerpt }));
 }
 
 function excerptAround(text: string, at: number, length: number): string {

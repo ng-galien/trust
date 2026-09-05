@@ -6,6 +6,14 @@ repeats the Operation's Input, Environment, execution steps or produced-field co
 
 The closed language is specified in [GRAMMAR.md](GRAMMAR.md).
 
+## Retained scenarios
+
+- [Dragon Heist](dragon-heist/README.md): the selected tabletop demonstration,
+  with a dedicated game extension and reusable nested Procedures.
+- [Relay dice game](relay-game/README.md): a short multi-agent game with four
+  nested Plan levels, a parallel branch and browser-driven escalation resolution.
+  Scenario specification only; executable artifacts are not yet published.
+
 ## Current corpus
 
 The catalog deliberately exercises different sizes and domains:
@@ -32,6 +40,8 @@ aviation, food or software-specific keyword.
 
 ## Compilation boundary
 
-`compileProcedure` receives one Procedure source and a catalog of compiled Operations. It resolves
-every referenced Operation, validates every Input binding and typed qualification, then embeds
-only the exact Operations used by the Procedure. The compiled revision is autonomous.
+`compileProcedure` receives one Procedure source and catalogs of compiled Operations and exact child
+Procedure versions. It resolves referenced dependencies, validates Input bindings and typed Check
+qualification, then embeds the used Operation and child definitions. Child Invocations remain
+separate from Checks. Runtime compilation supplies only published child versions; the foundation
+limits and Invocation syntax are specified in [GRAMMAR.md](GRAMMAR.md).

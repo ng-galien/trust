@@ -1,30 +1,16 @@
-import type { PlanView } from "./read.js";
-
-export interface NextCheck {
-  readonly name: string;
-  readonly successReason: string;
-  readonly checkUri: string;
-  readonly actionScope: {
-    readonly authorized: readonly string[];
-    readonly forbidden: readonly string[];
-  };
-}
-
-export type CheckContinuation =
-  | { readonly action: "RUN_CHECKS"; readonly checks: readonly NextCheck[] }
-  | { readonly action: "RETRY_OR_ESCALATE"; readonly checks: readonly NextCheck[] }
-  | { readonly action: "COMPLETE" }
-  | { readonly action: "READ_PLAN" };
+import type { CheckContinuation, NextCheck, PlanView } from "@trust/extension-sdk";
 
 export function checkContinuation(
   view: PlanView,
   completed?: { readonly checkUri: string; readonly verdict: "VALIDATED" | "NOT_VALIDATED" },
 ): CheckContinuation {
   if (view.checklistComplete) return { action: "COMPLETE" };
-  if (view.workState !== "IN_PROGRESS"
-    || view.sessionState !== "OPEN"
-    || view.intentChainState === "NOT_STARTED"
-    || view.missingDeclarations.length > 0) {
+  if (
+    view.workState !== "IN_PROGRESS" ||
+    view.sessionState !== "OPEN" ||
+    view.intentChainState === "NOT_STARTED" ||
+    view.missingDeclarations.length > 0
+  ) {
     return { action: "READ_PLAN" };
   }
   const actionable = view.checks.filter((check) => check.actionable);

@@ -15,7 +15,7 @@ Feature: Prepare and release one aircraft for departure
 
   @scenario:flight-plan
   Scenario: Read the flight fuel requirement
-    Then Check "flight plan" runs Operation "aviation.flight-read" on "flight" as Input "flight" and must establish "the flight fuel requirement is available"
+    Then Check "flight plan" runs Operation "aviation.flight-read@*" on "flight" as Input "flight" and must establish "the flight fuel requirement is available"
       """js
       (
         fact.destination.length > 0 ||
@@ -29,7 +29,7 @@ Feature: Prepare and release one aircraft for departure
 
   @scenario:aircraft
   Scenario: Read the aircraft fuel state
-    Then Check "aircraft" runs Operation "aviation.aircraft-read" on "aircraft" as Input "aircraft" and must establish "the aircraft is released and its fuel state is available"
+    Then Check "aircraft" runs Operation "aviation.aircraft-read@*" on "aircraft" as Input "aircraft" and must establish "the aircraft is released and its fuel state is available"
       """js
       (
         fact.maintenanceStatus === "released" ||
@@ -49,7 +49,7 @@ Feature: Prepare and release one aircraft for departure
   Scenario: Provision the required departure fuel
     Given scenario "flight-plan" is validated
     And scenario "aircraft" is validated
-    Then Check "fuel provision" runs Operation "aviation.aircraft-fuel-provision" on "aircraft" as Input "aircraft" using "flight" as Input "flight" using "fuel target" as Input "targetFuelLiters" and must establish "the aircraft has enough fuel for the flight and its reserve"
+    Then Check "fuel provision" runs Operation "aviation.aircraft-fuel-provision@*" on "aircraft" as Input "aircraft" using "flight" as Input "flight" using "fuel target" as Input "targetFuelLiters" and must establish "the aircraft has enough fuel for the flight and its reserve"
       """js
       (
         context["fuel target"] >= Math.ceil(
@@ -72,7 +72,7 @@ Feature: Prepare and release one aircraft for departure
   @scenario:weather
   Scenario: Accept the flight weather
     Given scenario "fuel" is validated
-    Then Check "weather" runs Operation "aviation.weather-read" on "flight" as Input "flight" and must establish "the flight weather is accepted"
+    Then Check "weather" runs Operation "aviation.weather-read@*" on "flight" as Input "flight" and must establish "the flight weather is accepted"
       """js
       fact.weatherStatus === "accepted" ||
       fail("the flight weather is rejected")
@@ -81,7 +81,7 @@ Feature: Prepare and release one aircraft for departure
   @scenario:cabin
   Scenario: Confirm cabin readiness
     Given scenario "weather" is validated
-    Then Check "cabin" runs Operation "aviation.cabin-read" on "flight" as Input "flight" and must establish "the cabin is ready for departure"
+    Then Check "cabin" runs Operation "aviation.cabin-read@*" on "flight" as Input "flight" and must establish "the cabin is ready for departure"
       """js
       fact.cabinStatus === "ready" ||
       fail("the cabin is not ready")
@@ -90,7 +90,7 @@ Feature: Prepare and release one aircraft for departure
   @scenario:release
   Scenario: Release the flight for departure
     Given scenario "cabin" is validated
-    Then Check "departure release" runs Operation "aviation.departure-release" on "flight" as Input "flight" using "aircraft" as Input "aircraft" and must establish "the flight is released for departure"
+    Then Check "departure release" runs Operation "aviation.departure-release@*" on "flight" as Input "flight" using "aircraft" as Input "aircraft" and must establish "the flight is released for departure"
       """js
       fact.releaseStatus === "released" ||
       fail("the flight departure was rejected")

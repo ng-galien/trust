@@ -1,8 +1,7 @@
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
+import type { HistoryListInput } from "@trust/extension-sdk";
 import { createContext, useContext } from "react";
-
 import { TrustRuntimeClient } from "../runtime.js";
-import type { HistoryFilter } from "../types.js";
 import { useLiveMode } from "./plan-events.js";
 
 export const RuntimeContext = createContext<TrustRuntimeClient | null>(null);
@@ -40,12 +39,23 @@ export function usePlans() {
 
 export function usePlan(slug: string) {
   const runtime = useRuntime();
-  return useQuery({ queryKey: ["plan", slug], queryFn: () => runtime.plan(slug), enabled: slug !== "", refetchInterval: useFallbackPolling(), retry: false });
+  return useQuery({
+    queryKey: ["plan", slug],
+    queryFn: () => runtime.plan(slug),
+    enabled: slug !== "",
+    refetchInterval: useFallbackPolling(),
+    retry: false,
+  });
 }
 
 export function useCheck(checkUri: string) {
   const runtime = useRuntime();
-  return useQuery({ queryKey: ["check", checkUri], queryFn: () => runtime.check(checkUri), enabled: checkUri !== "", refetchInterval: useFallbackPolling() });
+  return useQuery({
+    queryKey: ["check", checkUri],
+    queryFn: () => runtime.check(checkUri),
+    enabled: checkUri !== "",
+    refetchInterval: useFallbackPolling(),
+  });
 }
 
 export function useEnvironments() {
@@ -55,7 +65,11 @@ export function useEnvironments() {
 
 export function useCredentials(environment?: string) {
   const runtime = useRuntime();
-  return useQuery({ queryKey: ["credentials", environment ?? ""], queryFn: () => runtime.credentials(environment), staleTime: 30_000 });
+  return useQuery({
+    queryKey: ["credentials", environment ?? ""],
+    queryFn: () => runtime.credentials(environment),
+    staleTime: 30_000,
+  });
 }
 
 export function useOperationEnvironments() {
@@ -64,7 +78,7 @@ export function useOperationEnvironments() {
 }
 
 /** Verdict snapshots, newest first, one server page at a time (`history.list`); filters are applied by the runtime. */
-export function useHistory(filter: HistoryFilter = {}, limit = 50) {
+export function useHistory(filter: NonNullable<HistoryListInput["filter"]> = {}, limit = 50) {
   const runtime = useRuntime();
   const polling = useFallbackPolling(5_000);
   const query = useInfiniteQuery({

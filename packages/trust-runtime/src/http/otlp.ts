@@ -1,14 +1,6 @@
-import express, {
-  type ErrorRequestHandler,
-  type RequestHandler,
-  type Router,
-} from "express";
-
-import {
-  PlanRuntimeError,
-  type FactBatchInput,
-  type PlanRuntime,
-} from "../plan/runtime.js";
+import type { FactBatchInput } from "@trust/extension-sdk";
+import express, { type ErrorRequestHandler, type RequestHandler, type Router } from "express";
+import { type PlanRuntime, PlanRuntimeError } from "../plan/runtime.js";
 
 export const OTLP_JSON_LIMIT_BYTES = 1_048_576;
 
@@ -89,46 +81,45 @@ function parseCheckFactTrace(value: unknown): FactBatchInput {
   };
 }
 
-function parseFactEvents(
-  value: unknown,
-  eventName: "trust.runner.fact",
-): readonly Readonly<Record<string, unknown>>[] {
+function parseFactEvents(value: unknown, eventName: "trust.runner.fact"): readonly Readonly<Record<string, unknown>>[] {
   if (!Array.isArray(value)) {
     throw new InvalidFactTrace("OTLP Fact batch events must be an array");
   }
-  const indexed = value.map((candidate) => {
-    const event = record(candidate, "Fact event");
-    if (event.name !== eventName) {
-      throw new InvalidFactTrace("OTLP event is not a TRUST Fact");
-    }
-    const values = otlpAttributeValues(event.attributes, "Fact event attributes");
-    const index = values.get("trust.fact.index");
-    const fact: Record<string, unknown> = {};
-    for (const [key, item] of values) {
-      if (key === "trust.fact.index") continue;
-      if (!key.startsWith("trust.fact.")) {
-        throw new InvalidFactTrace(`Fact event attribute ${key} is invalid`);
+  const indexed = value
+    .map((candidate) => {
+      const event = record(candidate, "Fact event");
+      if (event.name !== eventName) {
+        throw new InvalidFactTrace("OTLP event is not a TRUST Fact");
       }
-      const attributeName = key.slice("trust.fact.".length);
-      const field = attributeName === "observed_at" ? "observedAt" : attributeName;
-      if (!/^[A-Za-z][A-Za-z0-9]*$/.test(field) || Object.hasOwn(fact, field)) {
-        throw new InvalidFactTrace(`Fact event attribute ${key} is invalid or repeated`);
+      const values = otlpAttributeValues(event.attributes, "Fact event attributes");
+      const index = values.get("trust.fact.index");
+      const fact: Record<string, unknown> = {};
+      for (const [key, item] of values) {
+        if (key === "trust.fact.index") continue;
+        if (!key.startsWith("trust.fact.")) {
+          throw new InvalidFactTrace(`Fact event attribute ${key} is invalid`);
+        }
+        const attributeName = key.slice("trust.fact.".length);
+        const field = attributeName === "observed_at" ? "observedAt" : attributeName;
+        if (!/^[A-Za-z][A-Za-z0-9]*$/.test(field) || Object.hasOwn(fact, field)) {
+          throw new InvalidFactTrace(`Fact event attribute ${key} is invalid or repeated`);
+        }
+        fact[field] = item;
       }
-      fact[field] = item;
-    }
-    if (
-      !Number.isSafeInteger(index)
-      || (index as number) < 0
-      || typeof fact.kind !== "string"
-      || fact.kind.length === 0
-      || typeof fact.observedAt !== "string"
-      || fact.observedAt.length === 0
-      || !isRecord(fact.values)
-    ) {
-      throw new InvalidFactTrace("Fact event attributes are invalid");
-    }
-    return { index: index as number, fact };
-  }).sort((left, right) => left.index - right.index);
+      if (
+        !Number.isSafeInteger(index) ||
+        (index as number) < 0 ||
+        typeof fact.kind !== "string" ||
+        fact.kind.length === 0 ||
+        typeof fact.observedAt !== "string" ||
+        fact.observedAt.length === 0 ||
+        !isRecord(fact.values)
+      ) {
+        throw new InvalidFactTrace("Fact event attributes are invalid");
+      }
+      return { index: index as number, fact };
+    })
+    .sort((left, right) => left.index - right.index);
   if (indexed.some((entry, index) => entry.index !== index)) {
     throw new InvalidFactTrace("Fact event indexes must be contiguous from zero");
   }
@@ -151,10 +142,7 @@ type OtlpAttributeValue =
   | readonly OtlpAttributeValue[]
   | { readonly [key: string]: OtlpAttributeValue };
 
-function otlpAttributeValues(
-  value: unknown,
-  label: string,
-): ReadonlyMap<string, OtlpAttributeValue> {
+function otlpAttributeValues(value: unknown, label: string): ReadonlyMap<string, OtlpAttributeValue> {
   if (!Array.isArray(value)) throw new InvalidFactTrace(`${label} must be an array`);
   const result = new Map<string, OtlpAttributeValue>();
   for (const candidate of value) {
@@ -170,14 +158,9 @@ function otlpAttributeValues(
 }
 
 function otlpValue(value: Record<string, unknown>, label: string): OtlpAttributeValue {
-  const variants = [
-    "stringValue",
-    "intValue",
-    "doubleValue",
-    "boolValue",
-    "arrayValue",
-    "kvlistValue",
-  ].filter((name) => Object.hasOwn(value, name));
+  const variants = ["stringValue", "intValue", "doubleValue", "boolValue", "arrayValue", "kvlistValue"].filter((name) =>
+    Object.hasOwn(value, name),
+  );
   if (variants.length !== 1) {
     throw new InvalidFactTrace(`${label} contains an unsupported value`);
   }

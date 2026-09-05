@@ -1,7 +1,7 @@
 import { common } from "./common.js";
-import { extensions } from "./extensions.js";
 import { docs } from "./docs.js";
 import { environments } from "./environments.js";
+import { extensions } from "./extensions.js";
 import { history } from "./history.js";
 import { operations } from "./operations.js";
 import { overview } from "./overview.js";

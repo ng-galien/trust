@@ -23,7 +23,13 @@ interface Capture {
 const images = import.meta.glob<string>("../captures/*.png", { eager: true, query: "?url", import: "default" });
 const sidecars = import.meta.glob<Capture>("../captures/*.json", { eager: true, import: "default" });
 
-function pick<T>(records: Record<string, T>, id: string, theme: string, language: string, extension: string): T | undefined {
+function pick<T>(
+  records: Record<string, T>,
+  id: string,
+  theme: string,
+  language: string,
+  extension: string,
+): T | undefined {
   const candidates = [`${id}.${theme}.${language}`, `${id}.${theme}.en`, `${id}.light.${language}`, `${id}.light.en`];
   for (const name of candidates) {
     const hit = records[`../captures/${name}.${extension}`];
@@ -32,7 +38,19 @@ function pick<T>(records: Record<string, T>, id: string, theme: string, language
   return undefined;
 }
 
-export function Screenshot({ id, legend, caption, alt, className }: { id: string; legend?: Record<string, ReactNode>; caption?: ReactNode; alt?: string; className?: string }) {
+export function Screenshot({
+  id,
+  legend,
+  caption,
+  alt,
+  className,
+}: {
+  id: string;
+  legend?: Record<string, ReactNode>;
+  caption?: ReactNode;
+  alt?: string;
+  className?: string;
+}) {
   const { t } = useTranslation();
   const theme = useResolvedTheme();
   const language = usePreference("language") as Language;
@@ -41,28 +59,60 @@ export function Screenshot({ id, legend, caption, alt, className }: { id: string
   const src = pick(images, id, theme, language, "png");
   const capture = pick(sidecars, id, theme, language, "json");
   const keys = Object.keys(legend ?? {});
-  const numbered = keys.map((key, index) => ({ key, n: index + 1, box: capture?.callouts.find((callout) => callout.key === key) }));
+  const numbered = keys.map((key, index) => ({
+    key,
+    n: index + 1,
+    box: capture?.callouts.find((callout) => callout.key === key),
+  }));
 
   const picture = src ? (
     <>
-      <img src={src} alt={alt ?? (typeof caption === "string" ? caption : id)} width={capture?.width} height={capture?.height} className="block h-auto w-full" />
-      {numbered.map(({ key, n, box }) => box ? (
-        <span
-          key={key}
-          className={cx("docs-callout-box", active === key && "docs-callout-box-active")}
-          style={{ left: `${box.x}%`, top: `${box.y}%`, width: `${box.w}%`, height: `${box.h}%` }}
-          onMouseEnter={() => setActive(key)}
-          onMouseLeave={() => setActive(null)}
-        >
-          <span className="docs-mark docs-mark-float" aria-label={t("docs.screenshot.callout", { n: String(n) })}>{n}</span>
-        </span>
-      ) : null)}
+      <img
+        src={src}
+        alt={alt ?? (typeof caption === "string" ? caption : id)}
+        width={capture?.width}
+        height={capture?.height}
+        className="block h-auto w-full"
+      />
+      {numbered.map(({ key, n, box }) =>
+        box ? (
+          <button
+            type="button"
+            aria-label={t("docs.screenshot.callout", { n: String(n) })}
+            key={key}
+            className={cx("docs-callout-box", active === key && "docs-callout-box-active")}
+            style={{ left: `${box.x}%`, top: `${box.y}%`, width: `${box.w}%`, height: `${box.h}%` }}
+            onMouseEnter={() => setActive(key)}
+            onMouseLeave={() => setActive(null)}
+            onFocus={() => setActive(key)}
+            onBlur={() => setActive(null)}
+            onClick={() => setZoomed(true)}
+          >
+            <span className="docs-mark docs-mark-float" aria-hidden="true">
+              {n}
+            </span>
+          </button>
+        ) : null,
+      )}
     </>
   ) : null;
 
   return (
     <figure className={cx("docs-screenshot my-5", className)}>
-      <div className={cx("group/visual relative overflow-hidden rounded-(--radius-3) border border-border bg-surface-2 shadow-(--shadow-1)", src && "cursor-zoom-in")} onClick={() => src && setZoomed(true)}>
+      <div
+        className={cx(
+          "group/visual relative overflow-hidden rounded-(--radius-3) border border-border bg-surface-2 shadow-(--shadow-1)",
+          src && "cursor-zoom-in",
+        )}
+      >
+        {src ? (
+          <button
+            type="button"
+            className="absolute inset-0 cursor-zoom-in"
+            aria-label={alt ?? (typeof caption === "string" ? caption : id)}
+            onClick={() => setZoomed(true)}
+          />
+        ) : null}
         {src ? <VisualExpandButton onClick={() => setZoomed(true)} /> : null}
         {picture ?? (
           <div className="flex min-h-40 flex-col items-center justify-center gap-2 p-6 text-center text-body text-muted">
@@ -71,19 +121,47 @@ export function Screenshot({ id, legend, caption, alt, className }: { id: string
           </div>
         )}
       </div>
-      {(caption || capture) ? (
+      {caption || capture ? (
         <figcaption className="mt-2 flex items-baseline gap-2 text-body-lg text-muted">
           <span className="min-w-0 flex-1">{caption}</span>
-          {capture ? <span className="shrink-0 text-caption text-faint">{t("docs.screenshot.mode", { mode: t(`docs.screenshot.${capture.density}`) })}</span> : null}
+          {capture ? (
+            <span className="shrink-0 text-caption text-faint">
+              {t("docs.screenshot.mode", { mode: t(`docs.screenshot.${capture.density}`) })}
+            </span>
+          ) : null}
         </figcaption>
       ) : null}
       {legend && keys.length ? (
-        <div onMouseLeave={() => setActive(null)}>
-          <Legend items={keys.map((key) => <span key={key} onMouseEnter={() => setActive(key)} className={cx("block rounded-(--radius-1) px-1 -mx-1", active === key && "bg-accent-soft")}>{legend[key]}</span>)} />
+        <div>
+          <Legend
+            items={Object.fromEntries(
+              keys.map((key) => [
+                key,
+                <button
+                  key={key}
+                  type="button"
+                  onMouseEnter={() => setActive(key)}
+                  onMouseLeave={() => setActive(null)}
+                  onFocus={() => setActive(key)}
+                  onBlur={() => setActive(null)}
+                  onClick={() => setActive(key)}
+                  className={cx("block rounded-(--radius-1) px-1 -mx-1 text-left", active === key && "bg-accent-soft")}
+                >
+                  {legend[key]}
+                </button>,
+              ]),
+            )}
+          />
         </div>
       ) : null}
-      <VisualDialog open={zoomed} onClose={() => setZoomed(false)} label={typeof caption === "string" ? caption : t("docs.visual.screenshot")}>
-        <div className="relative overflow-hidden [&>img]:max-h-[86vh] [&>img]:w-auto [&>img]:max-w-[92vw]">{picture}</div>
+      <VisualDialog
+        open={zoomed}
+        onClose={() => setZoomed(false)}
+        label={typeof caption === "string" ? caption : t("docs.visual.screenshot")}
+      >
+        <div className="relative overflow-hidden [&>img]:max-h-[86vh] [&>img]:w-auto [&>img]:max-w-[92vw]">
+          {picture}
+        </div>
       </VisualDialog>
     </figure>
   );

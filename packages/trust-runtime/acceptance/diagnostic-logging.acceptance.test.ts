@@ -9,30 +9,23 @@ import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 
 const execute = promisify(execFile);
-const repositoryRoot = path.resolve(
-  path.dirname(fileURLToPath(import.meta.url)),
-  "../../../..",
-);
+const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../..");
 
 test("the runtime keeps request query values out of diagnostics and bounds repeated failures", async () => {
   const directory = await mkdtemp(path.join(tmpdir(), "trust-runtime-http-log-"));
   const logPath = path.join(directory, "runtime.log");
-  const runtime = spawn(
-    process.execPath,
-    [path.join(repositoryRoot, "packages/trust-runtime/dist/src/index.js")],
-    {
-      cwd: repositoryRoot,
-      env: {
-        ...process.env,
-        TRUST_HOST: "127.0.0.1",
-        TRUST_PORT: "0",
-        TRUST_DATABASE_PATH: path.join(directory, "runtime.sqlite"),
-        TRUST_OPERATIONS_DIRECTORY: path.join(repositoryRoot, "assets/operations"),
-        TRUST_RUNTIME_LOG_PATH: logPath,
-      },
-      stdio: "pipe",
+  const runtime = spawn(process.execPath, [path.join(repositoryRoot, "packages/trust-runtime/dist/src/index.js")], {
+    cwd: repositoryRoot,
+    env: {
+      ...process.env,
+      TRUST_HOST: "127.0.0.1",
+      TRUST_PORT: "0",
+      TRUST_DATABASE_PATH: path.join(directory, "runtime.sqlite"),
+      TRUST_OPERATIONS_DIRECTORY: path.join(repositoryRoot, "assets/operations"),
+      TRUST_RUNTIME_LOG_PATH: logPath,
     },
-  );
+    stdio: "pipe",
+  });
   runtime.stdout.setEncoding("utf8");
   runtime.stderr.setEncoding("utf8");
   try {
@@ -41,14 +34,14 @@ test("the runtime keeps request query values out of diagnostics and bounds repea
     assert.equal((await fetch(`${endpoint}/missing?token=${secret}`)).status, 404);
     assert.equal((await fetch(`${endpoint}/missing?token=${secret}`)).status, 404);
     runtime.kill("SIGTERM");
-    const [code] = await once(runtime, "exit") as [number | null, NodeJS.Signals | null];
+    const [code] = (await once(runtime, "exit")) as [number | null, NodeJS.Signals | null];
     assert.equal(code, 0);
 
     const text = await readFile(logPath, "utf8");
     assert.equal(text.includes(secret), false);
-    const failures = (await logRecords(logPath)).filter(({ event, path: requestPath }) => (
-      event === "http.request.completed" && requestPath === "/missing"
-    ));
+    const failures = (await logRecords(logPath)).filter(
+      ({ event, path: requestPath }) => event === "http.request.completed" && requestPath === "/missing",
+    );
     assert.equal(failures.length, 1);
     assert.equal(failures[0]?.level, 40);
   } finally {
@@ -76,31 +69,31 @@ test("the runtime persists the stack of an uncaught process crash without hiding
     ].join("\n"),
     "utf8",
   );
-  const runtime = spawn(
-    process.execPath,
-    [path.join(repositoryRoot, "packages/trust-runtime/dist/src/index.js")],
-    {
-      cwd: repositoryRoot,
-      env: {
-        ...process.env,
-        NODE_OPTIONS: [process.env.NODE_OPTIONS, `--require=${crashHook}`].filter(Boolean).join(" "),
-        TRUST_HOST: "127.0.0.1",
-        TRUST_PORT: "0",
-        TRUST_DATABASE_PATH: path.join(directory, "runtime.sqlite"),
-        TRUST_OPERATIONS_DIRECTORY: path.join(repositoryRoot, "assets/operations"),
-        TRUST_RUNTIME_LOG_PATH: logPath,
-      },
-      stdio: "pipe",
+  const runtime = spawn(process.execPath, [path.join(repositoryRoot, "packages/trust-runtime/dist/src/index.js")], {
+    cwd: repositoryRoot,
+    env: {
+      ...process.env,
+      NODE_OPTIONS: [process.env.NODE_OPTIONS, `--require=${crashHook}`].filter(Boolean).join(" "),
+      TRUST_HOST: "127.0.0.1",
+      TRUST_PORT: "0",
+      TRUST_DATABASE_PATH: path.join(directory, "runtime.sqlite"),
+      TRUST_OPERATIONS_DIRECTORY: path.join(repositoryRoot, "assets/operations"),
+      TRUST_RUNTIME_LOG_PATH: logPath,
     },
-  );
+    stdio: "pipe",
+  });
   runtime.stdout.setEncoding("utf8");
   runtime.stderr.setEncoding("utf8");
   let stdout = "";
   let stderr = "";
-  runtime.stdout.on("data", (chunk: string) => { stdout += chunk; });
-  runtime.stderr.on("data", (chunk: string) => { stderr += chunk; });
+  runtime.stdout.on("data", (chunk: string) => {
+    stdout += chunk;
+  });
+  runtime.stderr.on("data", (chunk: string) => {
+    stderr += chunk;
+  });
   try {
-    const [code, signal] = await once(runtime, "exit") as [number | null, NodeJS.Signals | null];
+    const [code, signal] = (await once(runtime, "exit")) as [number | null, NodeJS.Signals | null];
     assert.notEqual(code, 0, `runtime unexpectedly succeeded with signal ${String(signal)}`);
     assert.match(stdout, /TRUST runtime listening on 127\.0\.0\.1:\d+/);
     assert.match(stderr, /controlled runtime crash/);
@@ -122,11 +115,11 @@ test("the packaged runner persists a TRUST connection failure with its stack", a
   const skill = path.join(directory, "trust-skill");
   const logPath = path.join(directory, "runner.log");
   try {
-    await execute(process.execPath, [
-      path.join(repositoryRoot, "packages/trust-runner/scripts/package-skill.ts"),
-      "--output",
-      skill,
-    ], { cwd: repositoryRoot });
+    await execute(
+      process.execPath,
+      [path.join(repositoryRoot, "packages/trust-runner/scripts/package-skill.ts"), "--output", skill],
+      { cwd: repositoryRoot },
+    );
     await assert.rejects(
       execute(
         process.execPath,
@@ -212,8 +205,13 @@ function listeningEndpoint(runtime: ReturnType<typeof spawn>): Promise<string> {
       cleanup();
       resolve(`http://${match[1]}:${match[2]}`);
     };
-    const onStderr = (chunk: Buffer | string): void => { stderr += chunk.toString(); };
-    const onError = (error: Error): void => { cleanup(); reject(error); };
+    const onStderr = (chunk: Buffer | string): void => {
+      stderr += chunk.toString();
+    };
+    const onError = (error: Error): void => {
+      cleanup();
+      reject(error);
+    };
     const onExit = (code: number | null, signal: NodeJS.Signals | null): void => {
       cleanup();
       reject(new Error(`runtime stopped before listening (code=${String(code)}, signal=${String(signal)}): ${stderr}`));

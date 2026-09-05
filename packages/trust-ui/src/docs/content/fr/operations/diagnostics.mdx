@@ -23,7 +23,7 @@ Le compilateur renvoie soit une Opération compilée, soit **un diagnostic** : u
 
 ### Identité et tags
 - `Operation "…" must use the canonical <domain>.<action> form` — deux segments en minuscules séparés par un point, tirets autorisés.
-- `Operation version "…" must be semantic` — `x.y.z`, chiffres seulement.
+- `Operation version "…" must be semantic` — une version SemVer exacte valide.
 - `TRUST DSL version "…" is unsupported; expected "1"` · `Operation must declare exactly one Operation tag` / `… version tag` / `… TRUST DSL version tag`.
 - `Classification tag "…" must use the @x-<key>:<value> form (lower-case key, value without spaces or colons)`.
 - `Tag "…" is outside the closed Operation grammar` — tout tag qui n'est ni l'un des trois tags d'identité ni un tag `@x-`.

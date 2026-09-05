@@ -1,11 +1,7 @@
+import type { PlanMode } from "@trust/extension-sdk";
 import type { Selectable } from "kysely";
-
-import type {
-  ActiveCheckQualificationTable,
-  CheckSnapshotTable,
-  Database,
-} from "../database/database.js";
-import type { ActiveCheckQualification, CheckSnapshot, PlanCheck, PlanMode } from "../model.js";
+import type { ActiveCheckQualificationTable, CheckSnapshotTable, Database } from "../database/database.js";
+import type { ActiveCheckQualification, CheckSnapshot, PlanCheck } from "../model.js";
 
 type SnapshotRow = Selectable<CheckSnapshotTable>;
 type ActiveQualificationRow = Selectable<ActiveCheckQualificationTable>;
@@ -38,32 +34,31 @@ export class SnapshotStore {
   }
 
   async append(snapshot: CheckSnapshot): Promise<void> {
-    const existing = await this.findEquivalent(
-      snapshot.checkUri,
-      snapshot.compiledCheckDigest,
-      snapshot.factIds,
-    );
+    const existing = await this.findEquivalent(snapshot.checkUri, snapshot.compiledCheckDigest, snapshot.factIds);
     if (existing) {
       if (!sameQualification(existing, snapshot)) {
         throw new Error(`Check Snapshot collision: ${snapshot.id}`);
       }
       return;
     }
-    await this.dependencies.database.insertInto("check_snapshots").values({
-      snapshot_id: snapshot.id,
-      attempt_handle: snapshot.attemptHandle,
-      plan_slug: snapshot.planSlug,
-      plan_revision: snapshot.planRevision,
-      check_uri: snapshot.checkUri,
-      compiled_digest: snapshot.compiledCheckDigest,
-      state: snapshot.state,
-      verdict: snapshot.verdict,
-      reason_code: snapshot.reasonCode,
-      reason: snapshot.reason,
-      fact_ids_json: JSON.stringify(snapshot.factIds),
-      checklist_delta_json: JSON.stringify(snapshot.checklistDelta),
-      calculated_at: snapshot.calculatedAt,
-    }).execute();
+    await this.dependencies.database
+      .insertInto("check_snapshots")
+      .values({
+        snapshot_id: snapshot.id,
+        attempt_handle: snapshot.attemptHandle,
+        plan_slug: snapshot.planSlug,
+        plan_revision: snapshot.planRevision,
+        check_uri: snapshot.checkUri,
+        compiled_digest: snapshot.compiledCheckDigest,
+        state: snapshot.state,
+        verdict: snapshot.verdict,
+        reason_code: snapshot.reasonCode,
+        reason: snapshot.reason,
+        fact_ids_json: JSON.stringify(snapshot.factIds),
+        checklist_delta_json: JSON.stringify(snapshot.checklistDelta),
+        calculated_at: snapshot.calculatedAt,
+      })
+      .execute();
   }
 
   async findEquivalent(
@@ -107,16 +102,14 @@ export class SnapshotStore {
     let selection = this.dependencies.database
       .selectFrom("check_snapshots")
       .innerJoin("plans", "plans.plan_slug", "check_snapshots.plan_slug")
-      .innerJoin("compiled_checks", (join) => join
-        .onRef("compiled_checks.plan_slug", "=", "check_snapshots.plan_slug")
-        .onRef("compiled_checks.plan_revision", "=", "check_snapshots.plan_revision")
-        .onRef("compiled_checks.check_uri", "=", "check_snapshots.check_uri"))
+      .innerJoin("compiled_checks", (join) =>
+        join
+          .onRef("compiled_checks.plan_slug", "=", "check_snapshots.plan_slug")
+          .onRef("compiled_checks.plan_revision", "=", "check_snapshots.plan_revision")
+          .onRef("compiled_checks.check_uri", "=", "check_snapshots.check_uri"),
+      )
       .selectAll("check_snapshots")
-      .select([
-        "plans.procedure_name",
-        "plans.mode",
-        "compiled_checks.check_json",
-      ])
+      .select(["plans.procedure_name", "plans.mode", "compiled_checks.check_json"])
       .orderBy("check_snapshots.calculated_at", "desc")
       .orderBy("check_snapshots.snapshot_id", "desc")
       .limit(query.limit);
@@ -139,13 +132,15 @@ export class SnapshotStore {
       selection = selection.where("check_snapshots.calculated_at", "<=", query.filter.until);
     }
     if (query.after !== undefined) {
-      selection = selection.where((expression) => expression.or([
-        expression("check_snapshots.calculated_at", "<", query.after!.calculatedAt),
-        expression.and([
-          expression("check_snapshots.calculated_at", "=", query.after!.calculatedAt),
-          expression("check_snapshots.snapshot_id", "<", query.after!.snapshotId),
+      selection = selection.where((expression) =>
+        expression.or([
+          expression("check_snapshots.calculated_at", "<", query.after!.calculatedAt),
+          expression.and([
+            expression("check_snapshots.calculated_at", "=", query.after!.calculatedAt),
+            expression("check_snapshots.snapshot_id", "<", query.after!.snapshotId),
+          ]),
         ]),
-      ]));
+      );
     }
     const rows = await selection.execute();
     return rows.map((row) => ({
@@ -167,16 +162,19 @@ export class SnapshotStore {
       }
     }
     if (qualifications.length === 0) return;
-    await this.dependencies.database.insertInto("active_check_qualifications").values(
-      qualifications.map((qualification) => ({
-        plan_slug: qualification.planSlug,
-        plan_revision: qualification.planRevision,
-        check_uri: qualification.checkUri,
-        compiled_digest: qualification.compiledCheckDigest,
-        snapshot_id: qualification.snapshotId,
-        activation_digest: qualification.activationDigest,
-      })),
-    ).execute();
+    await this.dependencies.database
+      .insertInto("active_check_qualifications")
+      .values(
+        qualifications.map((qualification) => ({
+          plan_slug: qualification.planSlug,
+          plan_revision: qualification.planRevision,
+          check_uri: qualification.checkUri,
+          compiled_digest: qualification.compiledCheckDigest,
+          snapshot_id: qualification.snapshotId,
+          activation_digest: qualification.activationDigest,
+        })),
+      )
+      .execute();
   }
 
   async listActive(planSlug: string, planRevision: number): Promise<ActiveCheckQualification[]> {
@@ -192,16 +190,18 @@ export class SnapshotStore {
 }
 
 function sameQualification(left: CheckSnapshot, right: CheckSnapshot): boolean {
-  return left.planSlug === right.planSlug
-    && left.planRevision === right.planRevision
-    && left.checkUri === right.checkUri
-    && left.compiledCheckDigest === right.compiledCheckDigest
-    && left.state === right.state
-    && left.verdict === right.verdict
-    && left.reasonCode === right.reasonCode
-    && left.reason === right.reason
-    && JSON.stringify(left.factIds) === JSON.stringify(right.factIds)
-    && JSON.stringify(left.checklistDelta) === JSON.stringify(right.checklistDelta);
+  return (
+    left.planSlug === right.planSlug &&
+    left.planRevision === right.planRevision &&
+    left.checkUri === right.checkUri &&
+    left.compiledCheckDigest === right.compiledCheckDigest &&
+    left.state === right.state &&
+    left.verdict === right.verdict &&
+    left.reasonCode === right.reasonCode &&
+    left.reason === right.reason &&
+    JSON.stringify(left.factIds) === JSON.stringify(right.factIds) &&
+    JSON.stringify(left.checklistDelta) === JSON.stringify(right.checklistDelta)
+  );
 }
 
 function toSnapshot(row: SnapshotRow): CheckSnapshot {

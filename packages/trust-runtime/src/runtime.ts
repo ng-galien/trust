@@ -1,45 +1,38 @@
-import {
-  asClass,
-  asFunction,
-  asValue,
-  createContainer,
-  InjectionMode,
-  type AwilixContainer,
-} from "awilix";
-import type { Express, Router } from "express";
 import type { CompiledOperation } from "@trust/operation";
-import { PlanReader } from "./plan/read.js";
-import { Health } from "./health.js";
-import { DEFAULT_SESSION_DURATION_MS, PlanRuntime } from "./plan/runtime.js";
-import { Procedures } from "./procedure/procedures.js";
-import { SnapshotStore } from "./snapshot/store.js";
+import { type AwilixContainer, asClass, asFunction, asValue, createContainer, InjectionMode } from "awilix";
+import type { Express, Router } from "express";
 import { AttemptStore } from "./attempt/store.js";
-import { FactStore } from "./fact/store.js";
-import { PlanStore } from "./plan/store.js";
-import { ProcedureStore } from "./procedure/store.js";
-import { SessionStore } from "./session/store.js";
-import { SystemClock, type Clock } from "./time.js";
-import { createHttpApp } from "./http/app.js";
-import { createMcpHttpHandler } from "./http/mcp.js";
-import { createDiagnosticsHttpHandler } from "./http/diagnostics.js";
-import { createOtlpHttpHandler } from "./http/otlp.js";
-import { createRpcHttpHandler } from "./http/rpc.js";
-import { TrialRegistry } from "./trial/registry.js";
-import { DEFAULT_TRIAL_TIMEOUT_MS, defaultRunnerTrialScript, TrialService } from "./trial/service.js";
+import { CredentialService } from "./credential/service.js";
+import { CredentialStore } from "./credential/store.js";
 import type { Database } from "./database/database.js";
 import { createSqliteDatabase } from "./database/sqlite.js";
-import { EnvironmentStore } from "./environment/store.js";
 import { EnvironmentService } from "./environment/service.js";
-import { CredentialStore } from "./credential/store.js";
-import { CredentialService } from "./credential/service.js";
-import { PlanEvents } from "./plan/events.js";
-import { EscalationStore } from "./plan/escalation-store.js";
-import { createPlanEventsHttpHandler } from "./http/events.js";
-import { OperationCatalog } from "./operation/catalog.js";
-import { RegistrySourceStore } from "./registry/store.js";
-import { RegistryService } from "./registry/service.js";
+import { EnvironmentStore } from "./environment/store.js";
 import { ExtensionHost } from "./extensions/host.js";
+import { FactStore } from "./fact/store.js";
+import { Health } from "./health.js";
+import { createHttpApp } from "./http/app.js";
+import { createDiagnosticsHttpHandler } from "./http/diagnostics.js";
+import { createPlanEventsHttpHandler } from "./http/events.js";
 import { createExtensionsHttpHandler } from "./http/extensions.js";
+import { createMcpHttpHandler } from "./http/mcp.js";
+import { createOtlpHttpHandler } from "./http/otlp.js";
+import { createRpcHttpHandler } from "./http/rpc.js";
+import { OperationCatalog } from "./operation/catalog.js";
+import { EscalationStore } from "./plan/escalation-store.js";
+import { PlanEvents } from "./plan/events.js";
+import { PlanReader } from "./plan/read.js";
+import { DEFAULT_SESSION_DURATION_MS, PlanRuntime } from "./plan/runtime.js";
+import { PlanStore } from "./plan/store.js";
+import { Procedures } from "./procedure/procedures.js";
+import { ProcedureStore } from "./procedure/store.js";
+import { RegistryService } from "./registry/service.js";
+import { RegistrySourceStore } from "./registry/store.js";
+import { SessionStore } from "./session/store.js";
+import { SnapshotStore } from "./snapshot/store.js";
+import { type Clock, SystemClock } from "./time.js";
+import { TrialRegistry } from "./trial/registry.js";
+import { DEFAULT_TRIAL_TIMEOUT_MS, defaultRunnerTrialScript, TrialService } from "./trial/service.js";
 
 export interface RuntimeComponents {
   readonly extensionHost: ExtensionHost;
@@ -111,7 +104,9 @@ export const createRuntimeContainer = async (
   container.register({
     extensionsFile: asValue(options.extensionsFile),
     extensionTimeoutMs: asValue(options.extensionTimeoutMs ?? 10_000),
-    extensionHost: asClass(ExtensionHost).singleton().disposer(host => host.close()),
+    extensionHost: asClass(ExtensionHost)
+      .singleton()
+      .disposer((host) => host.close()),
     extensionsHttpHandler: asFunction(createExtensionsHttpHandler).singleton(),
     databasePath: asValue(options.databasePath ?? ".trust/trust.sqlite"),
     semanticAuthority: asValue(options.semanticAuthority ?? "localhost:4318"),
@@ -121,11 +116,12 @@ export const createRuntimeContainer = async (
     registrySourceStore: asClass(RegistrySourceStore).singleton(),
     registryService: asClass(RegistryService).singleton(),
     sessionDurationMs: asValue(options.sessionDurationMs ?? DEFAULT_SESSION_DURATION_MS),
-    database: options.database === undefined
-      ? asFunction(createSqliteDatabase)
-          .singleton()
-          .disposer((database) => database.destroy())
-      : asValue(options.database),
+    database:
+      options.database === undefined
+        ? asFunction(createSqliteDatabase)
+            .singleton()
+            .disposer((database) => database.destroy())
+        : asValue(options.database),
     clock: asClass(SystemClock).singleton(),
     health: asClass(Health).singleton(),
     planStore: asClass(PlanStore).singleton(),

@@ -1,7 +1,7 @@
 import { createHash, randomBytes } from "node:crypto";
-
+import type { JsonValue } from "@trust/operation";
 import { httpUrl } from "../http/request.js";
-import type { JsonObject, JsonValue } from "../lib/json.js";
+import type { JsonObject } from "../lib/json.js";
 import type { DiagnosticEvent, DiagnosticsSink } from "./events.js";
 
 /* Diagnostics leave the runner as standard OTLP/JSON:
@@ -51,21 +51,43 @@ export class OtlpDiagnosticsSink implements DiagnosticsSink {
       this.#operationStart = event.at;
       this.#operation = { name: event.operation, version: event.version };
     } else if (event.type === "step.start") {
-      this.#steps.set(event.step, { spanId: randomBytes(8).toString("hex"), start: event.at, kind: event.kind, detail: event.detail });
+      this.#steps.set(event.step, {
+        spanId: randomBytes(8).toString("hex"),
+        start: event.at,
+        kind: event.kind,
+        detail: event.detail,
+      });
     } else if (event.type === "step.end") {
       const step = this.#steps.get(event.step);
-      if (step) this.#post(this.#tracesUrl, this.#span(`step ${event.step}`, step.spanId, this.#operationSpanId, step.start, event.at, event.ok, {
-        "trust.step.name": event.step,
-        "trust.step.kind": step.kind,
-        ...flatten("trust.step", step.detail),
-        ...flatten("trust.step.outcome", event.outcome),
-        ...(event.error ? { "error.message": event.error } : {}),
-      }));
+      if (step)
+        this.#post(
+          this.#tracesUrl,
+          this.#span(`step ${event.step}`, step.spanId, this.#operationSpanId, step.start, event.at, event.ok, {
+            "trust.step.name": event.step,
+            "trust.step.kind": step.kind,
+            ...flatten("trust.step", step.detail),
+            ...flatten("trust.step.outcome", event.outcome),
+            ...(event.error ? { "error.message": event.error } : {}),
+          }),
+        );
     } else if (event.type === "operation.end" && this.#operationStart) {
-      this.#post(this.#tracesUrl, this.#span(`operation ${this.#operation?.name ?? ""}`, this.#operationSpanId, undefined, this.#operationStart, event.at, event.ok, {
-        ...(this.#operation ? { "trust.operation": this.#operation.name, "trust.operation.version": this.#operation.version } : {}),
-        ...(event.error ? { "error.message": event.error } : {}),
-      }));
+      this.#post(
+        this.#tracesUrl,
+        this.#span(
+          `operation ${this.#operation?.name ?? ""}`,
+          this.#operationSpanId,
+          undefined,
+          this.#operationStart,
+          event.at,
+          event.ok,
+          {
+            ...(this.#operation
+              ? { "trust.operation": this.#operation.name, "trust.operation.version": this.#operation.version }
+              : {}),
+            ...(event.error ? { "error.message": event.error } : {}),
+          },
+        ),
+      );
     }
   }
 
@@ -101,47 +123,79 @@ export class OtlpDiagnosticsSink implements DiagnosticsSink {
   #logRecord(event: DiagnosticEvent): JsonObject {
     const { type, at, ...rest } = event;
     return {
-      resourceLogs: [{
-        resource: this.#resource(),
-        scopeLogs: [{
-          scope: { name: "@trust/runner/diagnostics" },
-          logRecords: [{
-            timeUnixNano: nanos(at),
-            severityNumber: type === "runner.log" && event.level === "error" ? 17 : type === "runner.log" && event.level === "warn" ? 13 : 9,
-            severityText: type === "runner.log" ? event.level.toUpperCase() : "INFO",
-            body: { stringValue: JSON.stringify(rest) },
-            attributes: [
-              attribute("event.name", `trust.trial.${type}`),
-              ...("step" in rest && typeof rest.step === "string" ? [attribute("trust.step.name", rest.step)] : []),
-              ...("stream" in rest && typeof rest.stream === "string" ? [attribute("trust.log.stream", rest.stream)] : []),
-            ],
-            traceId: this.#traceId,
-            spanId: "step" in rest && typeof rest.step === "string" ? (this.#steps.get(rest.step)?.spanId ?? this.#operationSpanId) : this.#operationSpanId,
-          }],
-        }],
-      }],
+      resourceLogs: [
+        {
+          resource: this.#resource(),
+          scopeLogs: [
+            {
+              scope: { name: "@trust/runner/diagnostics" },
+              logRecords: [
+                {
+                  timeUnixNano: nanos(at),
+                  severityNumber:
+                    type === "runner.log" && event.level === "error"
+                      ? 17
+                      : type === "runner.log" && event.level === "warn"
+                        ? 13
+                        : 9,
+                  severityText: type === "runner.log" ? event.level.toUpperCase() : "INFO",
+                  body: { stringValue: JSON.stringify(rest) },
+                  attributes: [
+                    attribute("event.name", `trust.trial.${type}`),
+                    ...("step" in rest && typeof rest.step === "string"
+                      ? [attribute("trust.step.name", rest.step)]
+                      : []),
+                    ...("stream" in rest && typeof rest.stream === "string"
+                      ? [attribute("trust.log.stream", rest.stream)]
+                      : []),
+                  ],
+                  traceId: this.#traceId,
+                  spanId:
+                    "step" in rest && typeof rest.step === "string"
+                      ? (this.#steps.get(rest.step)?.spanId ?? this.#operationSpanId)
+                      : this.#operationSpanId,
+                },
+              ],
+            },
+          ],
+        },
+      ],
     };
   }
 
-  #span(name: string, spanId: string, parentSpanId: string | undefined, start: string, end: string, ok: boolean, attributes: Record<string, JsonValue>): JsonObject {
+  #span(
+    name: string,
+    spanId: string,
+    parentSpanId: string | undefined,
+    start: string,
+    end: string,
+    ok: boolean,
+    attributes: Record<string, JsonValue>,
+  ): JsonObject {
     return {
-      resourceSpans: [{
-        resource: this.#resource(),
-        scopeSpans: [{
-          scope: { name: "@trust/runner/diagnostics" },
-          spans: [{
-            traceId: this.#traceId,
-            spanId,
-            ...(parentSpanId ? { parentSpanId } : {}),
-            name,
-            kind: 1,
-            startTimeUnixNano: nanos(start),
-            endTimeUnixNano: nanos(end),
-            attributes: Object.entries(attributes).map(([key, value]) => attribute(key, value)),
-            status: { code: ok ? 1 : 2 },
-          }],
-        }],
-      }],
+      resourceSpans: [
+        {
+          resource: this.#resource(),
+          scopeSpans: [
+            {
+              scope: { name: "@trust/runner/diagnostics" },
+              spans: [
+                {
+                  traceId: this.#traceId,
+                  spanId,
+                  ...(parentSpanId ? { parentSpanId } : {}),
+                  name,
+                  kind: 1,
+                  startTimeUnixNano: nanos(start),
+                  endTimeUnixNano: nanos(end),
+                  attributes: Object.entries(attributes).map(([key, value]) => attribute(key, value)),
+                  status: { code: ok ? 1 : 2 },
+                },
+              ],
+            },
+          ],
+        },
+      ],
     };
   }
 }
@@ -166,7 +220,8 @@ function anyValue(value: JsonValue): JsonObject {
 function flatten(prefix: string, object: JsonObject): Record<string, JsonValue> {
   const out: Record<string, JsonValue> = {};
   for (const [key, value] of Object.entries(object)) {
-    if (value !== null && typeof value === "object" && !Array.isArray(value)) Object.assign(out, flatten(`${prefix}.${key}`, value));
+    if (value !== null && typeof value === "object" && !Array.isArray(value))
+      Object.assign(out, flatten(`${prefix}.${key}`, value));
     else out[`${prefix}.${key}`] = value;
   }
   return out;

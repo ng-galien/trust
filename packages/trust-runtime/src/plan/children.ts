@@ -1,0 +1,398 @@
+import { createHash, randomUUID } from "node:crypto";
+import type { DescendantEscalation, InvocationView } from "@trust/extension-sdk";
+import type { ChildGenerationTable, Database } from "../database/database.js";
+import type { PlanCheck, PlanRevision } from "../model.js";
+import { SnapshotStore } from "../snapshot/store.js";
+import { buildPlanRevision } from "./build.js";
+import { PlanStore } from "./store.js";
+
+export interface CompositionState {
+  complete: boolean;
+  blockers: string[];
+  ownEscalation: DescendantEscalation | null;
+  descendantEscalations: DescendantEscalation[];
+  invocations: InvocationView[];
+  scenarios: Set<string>;
+  parent: import("@trust/extension-sdk").PlanParentView | null;
+}
+
+export async function ancestorBlocker(database: Database, plan: string): Promise<string | undefined> {
+  const seen = new Set<string>();
+  let current = plan;
+  while (!seen.has(current)) {
+    seen.add(current);
+    const relation = await database
+      .selectFrom("child_generations")
+      .selectAll()
+      .where("child_plan", "=", current)
+      .executeTakeFirst();
+    if (!relation) return undefined;
+    if (relation.superseded_at !== null) return "The child invocation generation is superseded";
+    current = relation.parent_plan;
+    const escalation = await database
+      .selectFrom("plan_escalations")
+      .select("escalation_id")
+      .where("plan_slug", "=", current)
+      .where("resumed_at", "is", null)
+      .executeTakeFirst();
+    if (escalation) return "An ancestor Plan is escalated";
+  }
+  throw new Error("Cyclic child Plan relation");
+}
+
+export async function invocationDependencyDigest(database: Database, check: PlanCheck): Promise<string | undefined> {
+  const plans = new PlanStore({ database });
+  const plan = (await plans.findPlan(check.planSlug))!;
+  const revision = (await plans.readRevision(plan.slug, plan.currentRevision))!;
+  const dependencies = revision.invocations.filter((value) =>
+    check.scenarioDependencies.includes(value.definition.scenario),
+  );
+  if (!dependencies.length) return undefined;
+  const signature = await Promise.all(
+    dependencies.map(async (dependency) => {
+      const relation = await database
+        .selectFrom("child_generations")
+        .selectAll()
+        .where("parent_plan", "=", plan.slug)
+        .where("invocation_id", "=", dependency.id)
+        .where("superseded_at", "is", null)
+        .executeTakeFirst();
+      return {
+        id: dependency.id,
+        child: relation?.child_plan,
+        generation: relation?.generation,
+        revision: relation ? (await plans.findPlan(relation.child_plan))?.currentRevision : undefined,
+      };
+    }),
+  );
+  return hash(signature);
+}
+
+export async function readComposition(database: Database, slug: string): Promise<CompositionState> {
+  const plans = new PlanStore({ database });
+  const plan = await plans.findPlan(slug);
+  if (!plan) throw new Error("Unknown composed Plan");
+  const revision = (await plans.readRevision(slug, plan.currentRevision))!;
+  const procedure = revision.resolvedProcedure;
+  const active = await new SnapshotStore({ database }).listActive(slug, plan.currentRevision);
+  const activeUris = new Set(active.map((value) => value.checkUri));
+  const relations = await database
+    .selectFrom("child_generations")
+    .selectAll()
+    .where("parent_plan", "=", slug)
+    .orderBy("generation")
+    .execute();
+  const parent = await database
+    .selectFrom("child_generations")
+    .selectAll()
+    .where("child_plan", "=", slug)
+    .executeTakeFirst();
+  const invocations: InvocationView[] = [];
+  const descendantEscalations = new Map<string, DescendantEscalation>();
+  for (const invocation of revision.invocations) {
+    const history = relations.filter((value) => value.invocation_id === invocation.id);
+    const current = history.find((value) => value.superseded_at === null);
+    const childState = current ? await readComposition(database, current.child_plan) : undefined;
+    const childComplete = childState?.complete === true;
+    if (current && childState) {
+      for (const escalation of [
+        ...(childState.ownEscalation ? [childState.ownEscalation] : []),
+        ...childState.descendantEscalations,
+      ]) {
+        descendantEscalations.set(escalation.escalationId, {
+          ...escalation,
+          path: [
+            {
+              parentPlan: slug,
+              invocationId: invocation.id,
+              generation: current.generation,
+              childPlan: current.child_plan,
+            },
+            ...escalation.path,
+          ],
+        });
+      }
+    }
+    invocations.push({
+      id: invocation.id,
+      name: invocation.definition.name,
+      scenario: invocation.definition.scenario,
+      state: !current ? "WAITING" : childComplete ? "SATISFIED" : "RUNNING",
+      blockedBy: childState?.blockers ?? [],
+      childPlan: current?.child_plan ?? null,
+      generation: current?.generation ?? null,
+      history: history.map((value) => ({
+        generation: value.generation,
+        childPlan: value.child_plan,
+        supersededAt: value.superseded_at,
+      })),
+    });
+  }
+  const scenarios = new Set<string>();
+  for (const scenario of procedure.scenarios) {
+    const checks = revision.checks.filter((value) => value.scenario === scenario.slug);
+    const children = invocations.filter((value) => value.scenario === scenario.slug);
+    if (
+      scenario.checks.every((name) => checks.some((value) => value.check.name === name)) &&
+      checks.every((value) => activeUris.has(value.uri)) &&
+      scenario.invocations.every((name) => children.some((value) => value.name === name)) &&
+      children.every((value) => value.state === "SATISFIED")
+    )
+      scenarios.add(scenario.slug);
+  }
+  for (const invocation of invocations) {
+    const definition = revision.invocations.find((value) => value.id === invocation.id)!;
+    invocation.blockedBy.push(
+      ...definition.scenarioDependencies
+        .filter((value) => !scenarios.has(value))
+        .map((value) => `Scenario ${value} is not satisfied`),
+    );
+  }
+  const missingDeclarations = procedure.roles.some(
+    (role) =>
+      role.source.kind === "agent-declaration" &&
+      role.source.optional !== true &&
+      !Object.hasOwn(revision.agentDeclarations, role.name),
+  );
+  const escalated = await database
+    .selectFrom("plan_escalations")
+    .selectAll()
+    .where("plan_slug", "=", slug)
+    .where("resumed_at", "is", null)
+    .executeTakeFirst();
+  return {
+    ownEscalation: escalated
+      ? {
+          plan: slug,
+          mode: plan.mode,
+          title: plan.metadata.title ?? slug,
+          escalationId: escalated.escalation_id,
+          checkUri: escalated.check_uri,
+          blockingReason: escalated.blocking_reason,
+          forbiddenFurtherAction: escalated.forbidden_further_action,
+          escalatedAt: escalated.escalated_at,
+          path: [],
+        }
+      : null,
+    descendantEscalations: [...descendantEscalations.values()],
+    blockers: [
+      ...(escalated ? [`Plan ${slug} is escalated: ${escalated.blocking_reason}`] : []),
+      ...invocations.flatMap((value) => value.blockedBy),
+    ],
+    complete:
+      !missingDeclarations &&
+      !escalated &&
+      active.length === revision.checks.length &&
+      procedure.invocations.every((value) => invocations.some((invocation) => invocation.name === value.name)) &&
+      invocations.every((value) => value.state === "SATISFIED"),
+    invocations,
+    scenarios,
+    parent: parent
+      ? {
+          plan: parent.parent_plan,
+          invocationId: parent.invocation_id,
+          generation: parent.generation,
+          current: parent.superseded_at === null,
+        }
+      : null,
+  };
+}
+
+/** Must run inside the same write transaction as the triggering parent or child change. */
+export async function synchronizeChildren(input: {
+  database: Database;
+  authority: string;
+  plan: string;
+  at: string;
+  create(revision: PlanRevision): Promise<void>;
+}): Promise<Set<string>> {
+  const { database } = input;
+  const plans = new PlanStore({ database });
+  const snapshots = new SnapshotStore({ database });
+  let root = input.plan;
+  while (true) {
+    const parent = await database
+      .selectFrom("child_generations")
+      .selectAll()
+      .where("child_plan", "=", root)
+      .executeTakeFirst();
+    if (!parent || parent.superseded_at !== null) break;
+    root = parent.parent_plan;
+  }
+  const changed = new Set<string>();
+  const visit = async (slug: string): Promise<void> => {
+    if (await ancestorBlocker(database, slug)) return;
+    const plan = (await plans.findPlan(slug))!;
+    const revision = (await plans.readRevision(slug, plan.currentRevision))!;
+    const procedure = revision.resolvedProcedure;
+    const active = await snapshots.listActive(slug, plan.currentRevision);
+    const activeMap = new Map(active.map((value) => [value.checkUri, value]));
+    const changedScenarios = new Set<string>();
+    // Visit prerequisite scenarios first, including invocation-only scenarios.
+    const ordered: string[] = [];
+    const order = (name: string) => {
+      if (ordered.includes(name)) return;
+      for (const dependency of procedure.scenarios.find((value) => value.slug === name)!.dependencies)
+        order(dependency);
+      ordered.push(name);
+    };
+    for (const scenario of procedure.scenarios) order(scenario.slug);
+    const relations = await database
+      .selectFrom("child_generations")
+      .selectAll()
+      .where("parent_plan", "=", slug)
+      .execute();
+    for (const relation of relations.filter(
+      (value) =>
+        value.superseded_at === null &&
+        !revision.invocations.some((invocation) => invocation.id === value.invocation_id),
+    )) {
+      await supersede(relation);
+      changed.add(slug);
+    }
+    for (const scenario of ordered) {
+      for (const invocation of revision.invocations.filter((value) => value.definition.scenario === scenario)) {
+        const state = await readComposition(database, slug);
+        const eligible = invocation.scenarioDependencies.every((value) => state.scenarios.has(value));
+        const history = await database
+          .selectFrom("child_generations")
+          .selectAll()
+          .where("parent_plan", "=", slug)
+          .where("invocation_id", "=", invocation.id)
+          .orderBy("generation", "desc")
+          .execute();
+        let current = history.find((value) => value.superseded_at === null);
+        const signature = hash({
+          definition: invocation.definition.procedureDigest,
+          inputs: invocation.rootInputs,
+          checks: revision.checks
+            .filter((value) => invocation.scenarioDependencies.includes(value.scenario))
+            .map((value) => activeMap.get(value.uri)?.activationDigest),
+          children: await Promise.all(
+            state.invocations
+              .filter((value) => invocation.scenarioDependencies.includes(value.scenario))
+              .map(async (value) => ({
+                id: value.id,
+                generation: value.generation,
+                revision: value.childPlan ? (await plans.findPlan(value.childPlan))?.currentRevision : null,
+              })),
+          ),
+        });
+        if (current && (!eligible || current.input_digest !== signature)) {
+          await supersede(current);
+          current = undefined;
+          changed.add(slug);
+        }
+        if (eligible && !current) {
+          const childPlan = `child-${randomUUID()}`;
+          const child = invocation.definition.childDefinition;
+          const initial = buildPlanRevision({
+            authority: input.authority,
+            procedure: child,
+            plan: childPlan,
+            environment: plan.environment,
+            mode: plan.mode,
+            metadata: { title: invocation.definition.name, labels: [], annotations: {} },
+            rootInputs: invocation.rootInputs,
+            revision: 1,
+          });
+          await input.create(initial);
+          current = {
+            parent_plan: slug,
+            invocation_id: invocation.id,
+            generation: (history[0]?.generation ?? 0) + 1,
+            child_plan: childPlan,
+            input_digest: signature,
+            observed_revision: 1,
+            created_at: input.at,
+            superseded_at: null,
+          };
+          await database.insertInto("child_generations").values(current).execute();
+          changed.add(slug);
+          changed.add(childPlan);
+        }
+        if (current) {
+          await visit(current.child_plan);
+          const childRevision = (await plans.findPlan(current.child_plan))!.currentRevision;
+          if (childRevision !== current.observed_revision) {
+            changedScenarios.add(invocation.definition.scenario);
+            await database
+              .updateTable("child_generations")
+              .set({ observed_revision: childRevision })
+              .where("child_plan", "=", current.child_plan)
+              .execute();
+            changed.add(slug);
+          }
+        }
+      }
+    }
+    const state = await readComposition(database, slug);
+    const invalid = new Set(
+      revision.checks
+        .filter((check) =>
+          check.scenarioDependencies.some(
+            (scenario) => !state.scenarios.has(scenario) || changedScenarios.has(scenario),
+          ),
+        )
+        .map((value) => value.uri),
+    );
+    const withdrawn = active.filter((value) => invalid.has(value.checkUri));
+    if (withdrawn.length || changedScenarios.size) {
+      const next = buildPlanRevision({
+        authority: input.authority,
+        procedure,
+        plan: slug,
+        environment: plan.environment,
+        mode: plan.mode,
+        metadata: plan.metadata,
+        rootInputs: plan.rootInputs,
+        declarations: revision.agentDeclarations,
+        roleValues: revision.roleValues.filter((value) => !invalid.has(value.providerCheckUri)),
+        checkValues: revision.checkValues.filter((value) => !invalid.has(value.providerCheckUri)),
+        revision: plan.currentRevision + 1,
+        pruneUnavailableRoleValues: true,
+      });
+      await plans.saveRevision(next, input.at);
+      await snapshots.saveActiveForRevision(
+        slug,
+        next.revision,
+        active
+          .filter(
+            (value) =>
+              !invalid.has(value.checkUri) &&
+              next.checks.some(
+                (check) => check.uri === value.checkUri && check.compiledCheckDigest === value.compiledCheckDigest,
+              ),
+          )
+          .map((value) => ({ ...value, planRevision: next.revision })),
+      );
+      if (plan.intentChainState === "COMPLETE") await plans.restartIntent(slug);
+      changed.add(slug);
+      await visit(slug);
+    } else if (
+      state.complete &&
+      plan.intentChaining &&
+      plan.intentChainState !== "COMPLETE" &&
+      plan.currentIntentAttemptKey === undefined
+    ) {
+      await plans.completeIntentWithoutAttempt(slug);
+      changed.add(slug);
+    }
+  };
+  async function supersede(relation: ChildGenerationTable) {
+    await database
+      .updateTable("child_generations")
+      .set({ superseded_at: input.at })
+      .where("parent_plan", "=", relation.parent_plan)
+      .where("invocation_id", "=", relation.invocation_id)
+      .where("generation", "=", relation.generation)
+      .where("superseded_at", "is", null)
+      .execute();
+  }
+  await visit(root);
+  return changed;
+}
+
+function hash(value: unknown): string {
+  return createHash("sha256").update(JSON.stringify(value)).digest("hex");
+}

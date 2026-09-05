@@ -2,11 +2,10 @@ import { CircleHelp, Moon, PanelLeftClose, PanelLeftOpen, Search, Server, Sun } 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useLocation, useNavigate } from "react-router";
-
-import { cx } from "../lib/format.js";
-import { type Density, updatePreferences, usePreference, useResolvedTheme } from "../lib/preferences.js";
 import { useCurrentEnvironment } from "../lib/environment.js";
+import { cx } from "../lib/format.js";
 import { useLiveMode } from "../lib/plan-events.js";
+import { type Density, updatePreferences, usePreference, useResolvedTheme } from "../lib/preferences.js";
 import { useHealth } from "../lib/runtime-context.js";
 import { IconButton } from "../ui/button.js";
 import { Kbd, SegmentedControl } from "../ui/controls.js";
@@ -33,7 +32,9 @@ export function Header() {
         {compact ? <PanelLeftOpen size={17} strokeWidth={1.8} /> : <PanelLeftClose size={17} strokeWidth={1.8} />}
       </IconButton>
       <a href="/overview" className="flex w-40 shrink-0 items-center gap-2.5" aria-label={t("shell.nav.home")}>
-        <span className="grid h-6 w-6 place-items-center rounded-(--radius-1) bg-surface-inverse text-body font-bold text-inverse">T</span>
+        <span className="grid h-6 w-6 place-items-center rounded-(--radius-1) bg-surface-inverse text-body font-bold text-inverse">
+          T
+        </span>
         <span className="text-ui font-bold tracking-[0.18em]">TRUST</span>
       </a>
       <GlobalSearch />
@@ -41,9 +42,16 @@ export function Header() {
         <EnvironmentSwitcher />
         <DensitySwitch />
         <button
+          type="button"
           onClick={() => void health.refetch()}
           className="flex items-center gap-2 rounded-(--radius-2) px-2 py-1 text-body font-medium text-muted hover:bg-surface-2 hover:text-text"
-          title={status === "healthy" ? (live ? t("shell.runtime.liveHint") : t("shell.runtime.pollingHint")) : t("shell.runtime.refresh")}
+          title={
+            status === "healthy"
+              ? live
+                ? t("shell.runtime.liveHint")
+                : t("shell.runtime.pollingHint")
+              : t("shell.runtime.refresh")
+          }
         >
           <span
             className={cx(
@@ -51,10 +59,19 @@ export function Header() {
               status === "healthy" ? "bg-success" : status === "checking" ? "animate-pulse bg-warning" : "bg-danger",
             )}
           />
-          {status === "healthy" ? (live ? t("shell.runtime.live") : t("shell.runtime.healthy")) : status === "checking" ? t("shell.runtime.checking") : t("shell.runtime.unavailable")}
+          {status === "healthy"
+            ? live
+              ? t("shell.runtime.live")
+              : t("shell.runtime.healthy")
+            : status === "checking"
+              ? t("shell.runtime.checking")
+              : t("shell.runtime.unavailable")}
         </button>
         <HelpLink />
-        <IconButton label={theme === "dark" ? t("shell.theme.useLight") : t("shell.theme.useDark")} onClick={() => updatePreferences({ theme: theme === "dark" ? "light" : "dark" })}>
+        <IconButton
+          label={theme === "dark" ? t("shell.theme.useLight") : t("shell.theme.useDark")}
+          onClick={() => updatePreferences({ theme: theme === "dark" ? "light" : "dark" })}
+        >
           {theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}
         </IconButton>
       </div>
@@ -80,7 +97,12 @@ function HelpLink() {
   if (pathname.startsWith("/docs")) return null;
   const page = helpPages.find(([prefix]) => pathname === prefix || pathname.startsWith(`${prefix}/`))?.[1] ?? "";
   return (
-    <Link to={`/docs/${page}`} aria-label={t("shell.help")} title={t("shell.help")} className="inline-flex h-8 w-8 items-center justify-center rounded-(--radius-2) text-muted hover:bg-surface-2 hover:text-text">
+    <Link
+      to={`/docs/${page}`}
+      aria-label={t("shell.help")}
+      title={t("shell.help")}
+      className="inline-flex h-8 w-8 items-center justify-center rounded-(--radius-2) text-muted hover:bg-surface-2 hover:text-text"
+    >
       <CircleHelp size={16} />
     </Link>
   );
@@ -91,16 +113,18 @@ function DensitySwitch() {
   const { t } = useTranslation();
   const density = usePreference("density");
   return (
-    <span data-doc="shell.density"><SegmentedControl<Density>
-      ariaLabel={t("shell.density.label")}
-      size="sm"
-      value={density}
-      onChange={(next) => updatePreferences({ density: next })}
-      options={[
-        { value: "operator", label: t("shell.density.operator"), title: t("shell.density.operatorHint") },
-        { value: "expert", label: t("shell.density.expert"), title: t("shell.density.expertHint") },
-      ]}
-    /></span>
+    <span data-doc="shell.density">
+      <SegmentedControl<Density>
+        ariaLabel={t("shell.density.label")}
+        size="sm"
+        value={density}
+        onChange={(next) => updatePreferences({ density: next })}
+        options={[
+          { value: "operator", label: t("shell.density.operator"), title: t("shell.density.operatorHint") },
+          { value: "expert", label: t("shell.density.expert"), title: t("shell.density.expertHint") },
+        ]}
+      />
+    </span>
   );
 }
 
@@ -120,7 +144,11 @@ function EnvironmentSwitcher() {
         onChange={(name) => (name === "__manage" ? navigate("/environments") : current.select(name))}
         placeholder={current.loading ? t("common.actions.loading") : t("shell.environment.none")}
         options={[
-          ...current.environments.map((entry) => ({ value: entry.name, label: <span className="mono">{entry.name}</span>, meta: t("common.count.value", { count: Object.keys(entry.values).length }) })),
+          ...current.environments.map((entry) => ({
+            value: entry.name,
+            label: <span className="mono">{entry.name}</span>,
+            meta: t("common.count.value", { count: Object.keys(entry.values).length }),
+          })),
           { value: "__manage", label: t("shell.environment.manage") },
         ]}
       />
@@ -165,9 +193,18 @@ function GlobalSearch() {
     if (!needle) return [];
     const match = (label: string) => label.toLowerCase().includes(needle);
     return [
-      { anchor: resourceAnchors.find((anchor) => anchor.id === "operations")!, items: operations.items.filter((item) => match(item.label)).slice(0, 5) },
-      { anchor: resourceAnchors.find((anchor) => anchor.id === "procedures")!, items: procedures.items.filter((item) => match(item.label)).slice(0, 5) },
-      { anchor: resourceAnchors.find((anchor) => anchor.id === "plans")!, items: plans.items.filter((item) => match(item.label)).slice(0, 5) },
+      {
+        anchor: resourceAnchors.find((anchor) => anchor.id === "operations")!,
+        items: operations.items.filter((item) => match(item.label)).slice(0, 5),
+      },
+      {
+        anchor: resourceAnchors.find((anchor) => anchor.id === "procedures")!,
+        items: procedures.items.filter((item) => match(item.label)).slice(0, 5),
+      },
+      {
+        anchor: resourceAnchors.find((anchor) => anchor.id === "plans")!,
+        items: plans.items.filter((item) => match(item.label)).slice(0, 5),
+      },
     ].filter((group) => group.items.length > 0);
   }, [query, operations.items, procedures.items, plans.items]);
 
@@ -180,17 +217,30 @@ function GlobalSearch() {
         <input
           ref={input}
           value={query}
-          onChange={(event) => { setQuery(event.target.value); setOpen(true); }}
+          onChange={(event) => {
+            setQuery(event.target.value);
+            setOpen(true);
+          }}
           onFocus={() => setOpen(true)}
           onKeyDown={(event) => {
-            if (event.key === "Enter" && first) { navigate(first.to); setOpen(false); setQuery(""); }
-            if (event.key === "Escape") { setOpen(false); input.current?.blur(); }
+            if (event.key === "Enter" && first) {
+              navigate(first.to);
+              setOpen(false);
+              setQuery("");
+            }
+            if (event.key === "Escape") {
+              setOpen(false);
+              input.current?.blur();
+            }
           }}
           placeholder={t("shell.search.placeholder")}
           aria-label={t("shell.search.label")}
           className="h-8 w-full rounded-(--radius-2) border border-border bg-bg pl-8 pr-14 text-ui text-text placeholder:text-faint focus:border-border-focus focus:bg-surface"
         />
-        <span className="pointer-events-none absolute right-2 flex items-center gap-0.5"><Kbd>⌘</Kbd><Kbd>K</Kbd></span>
+        <span className="pointer-events-none absolute right-2 flex items-center gap-0.5">
+          <Kbd>⌘</Kbd>
+          <Kbd>K</Kbd>
+        </span>
       </label>
       {open && groups.length > 0 ? (
         <div className="absolute top-full left-0 z-50 mt-1 w-full rounded-(--radius-2) border border-border bg-surface p-1 shadow-(--shadow-2)">
@@ -199,8 +249,13 @@ function GlobalSearch() {
               <span className="kicker block px-2 pb-1">{t(anchor.label)}</span>
               {items.map((item) => (
                 <button
+                  type="button"
                   key={item.id}
-                  onClick={() => { navigate(item.to); setOpen(false); setQuery(""); }}
+                  onClick={() => {
+                    navigate(item.to);
+                    setOpen(false);
+                    setQuery("");
+                  }}
                   className="flex w-full items-center gap-2 rounded-(--radius-1) px-2 py-1.5 text-left text-body-lg hover:bg-surface-2"
                 >
                   <anchor.icon size={14} className="text-muted" />

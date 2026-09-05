@@ -1,7 +1,5 @@
 import type { JsonValue } from "@trust/operation";
 
-export type { JsonValue } from "@trust/operation";
-
 export type JsonObject = { [key: string]: JsonValue };
 
 export const isJsonObject = (value: unknown): value is JsonObject =>

@@ -6,7 +6,7 @@ import { useLocation, useSearchParams } from "react-router";
    These keys are ephemeral — never persisted with the collection filters, never kept
    in the links that go back to the collection. */
 
-export const EPHEMERAL_PARAMS = ["tab", "sel", "from"] as const;
+export const EPHEMERAL_PARAMS = ["tab", "sel", "from", "fromVersion", "version"] as const;
 
 /** Search string without the overlay-only keys — what the collection behind the overlay uses. */
 export function stripEphemeral(search: string): string {

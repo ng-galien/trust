@@ -50,7 +50,8 @@ export const shell: Translation<typeof en> = {
   },
   items: {
     operationUsedByProcedure: "Utilisée par une procédure publiée",
-    removeOperationBody: "Le fichier source est retiré du catalogue du runtime. Les procédures qui utilisent déjà cette opération conservent leur copie publiée.",
+    removeOperationBody:
+      "Le fichier source est retiré du catalogue du runtime. Les procédures qui utilisent déjà cette opération conservent leur copie publiée.",
     removeEnvironmentBody: "L'environnement, ses valeurs et ses identifiants sont retirés du runtime.",
     removeDryRunBody: "La répétition, ses révisions et ses verdicts sont effacés.",
   },

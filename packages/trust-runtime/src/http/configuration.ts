@@ -47,7 +47,10 @@ export async function executeConfigurationRpc(
   switch (method) {
     case OPERATION_ENVIRONMENTS_METHOD: {
       if (params !== undefined && !(isRecord(params) && Object.keys(params).length === 0)) invalid();
-      return { contract: "trust.operation-environments@1", operations: dependencies.trialService.catalogEnvironments() };
+      return {
+        contract: "trust.operation-environments@1",
+        operations: dependencies.trialService.catalogEnvironments(),
+      };
     }
     case ENVIRONMENT_LIST_METHOD: {
       if (params === undefined || (isRecord(params) && Object.keys(params).length === 0)) {
@@ -64,8 +67,11 @@ export async function executeConfigurationRpc(
           environments: dependencies.trialService.environmentsFor({ source: params.source as string }),
         };
       }
-      if (!hasOnlyKeys(params, ["operation", "version"])
-        || (params.version !== undefined && (typeof params.version !== "string" || params.version.length === 0))) invalid();
+      if (
+        !hasOnlyKeys(params, ["operation", "version"]) ||
+        (params.version !== undefined && (typeof params.version !== "string" || params.version.length === 0))
+      )
+        invalid();
       return {
         contract: "trust.environment-catalog@1",
         environments: dependencies.trialService.environmentsFor({
@@ -76,22 +82,20 @@ export async function executeConfigurationRpc(
     }
     case ENVIRONMENT_SAVE_METHOD: {
       if (
-        !isRecord(params)
-        || !hasOnlyKeys(params, ["environment", "values"])
-        || typeof params.environment !== "string"
-        || !stringValues(params.values)
-      ) invalid();
+        !isRecord(params) ||
+        !hasOnlyKeys(params, ["environment", "values"]) ||
+        typeof params.environment !== "string" ||
+        !stringValues(params.values)
+      )
+        invalid();
       return {
         contract: "trust.environment@1",
         environment: await dependencies.environmentService.save(params.environment, params.values),
       };
     }
     case ENVIRONMENT_REMOVE_METHOD: {
-      if (
-        !isRecord(params)
-        || !hasOnlyKeys(params, ["environment"])
-        || typeof params.environment !== "string"
-      ) invalid();
+      if (!isRecord(params) || !hasOnlyKeys(params, ["environment"]) || typeof params.environment !== "string")
+        invalid();
       return {
         contract: "trust.environment-removal@1",
         environment: params.environment,
@@ -101,10 +105,11 @@ export async function executeConfigurationRpc(
     case CREDENTIAL_LIST_METHOD: {
       if (params !== undefined && !isRecord(params)) invalid();
       if (
-        isRecord(params)
-        && (!hasOnlyKeys(params, ["environment"])
-          || (params.environment !== undefined && typeof params.environment !== "string"))
-      ) invalid();
+        isRecord(params) &&
+        (!hasOnlyKeys(params, ["environment"]) ||
+          (params.environment !== undefined && typeof params.environment !== "string"))
+      )
+        invalid();
       return {
         contract: "trust.credential-catalog@1",
         credentials: await dependencies.credentialService.list(
@@ -114,12 +119,13 @@ export async function executeConfigurationRpc(
     }
     case CREDENTIAL_SAVE_METHOD: {
       if (
-        !isRecord(params)
-        || !hasOnlyKeys(params, ["environment", "name", "value"])
-        || typeof params.environment !== "string"
-        || typeof params.name !== "string"
-        || typeof params.value !== "string"
-      ) invalid();
+        !isRecord(params) ||
+        !hasOnlyKeys(params, ["environment", "name", "value"]) ||
+        typeof params.environment !== "string" ||
+        typeof params.name !== "string" ||
+        typeof params.value !== "string"
+      )
+        invalid();
       return {
         contract: "trust.credential@1",
         credential: await dependencies.credentialService.save(params.environment, params.name, params.value),
@@ -127,11 +133,12 @@ export async function executeConfigurationRpc(
     }
     case CREDENTIAL_REMOVE_METHOD: {
       if (
-        !isRecord(params)
-        || !hasOnlyKeys(params, ["environment", "name"])
-        || typeof params.environment !== "string"
-        || typeof params.name !== "string"
-      ) invalid();
+        !isRecord(params) ||
+        !hasOnlyKeys(params, ["environment", "name"]) ||
+        typeof params.environment !== "string" ||
+        typeof params.name !== "string"
+      )
+        invalid();
       return {
         contract: "trust.credential-removal@1",
         environment: params.environment,

@@ -15,6 +15,8 @@
     "start": "node dist/src/index.js"
   },
   "dependencies": {
+    "@trust/extension-sdk": "file:../trust-extension-sdk",
+    "@trust/gherkin": "file:../trust-gherkin",
     "@trust/language-server": "file:../trust-language-server",
     "@trust/operation": "file:../trust-operation",
     "@trust/procedure": "file:../trust-procedure",

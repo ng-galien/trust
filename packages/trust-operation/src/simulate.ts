@@ -2,11 +2,7 @@ import { compileOperation, type OperationCompilationInput } from "./compile.js";
 import { evaluateOperationProjection, operationProjectionContext } from "./evaluate.js";
 import type { JsonValue } from "./json.js";
 import type { CompiledOperation } from "./operation.js";
-import {
-  validateOperationEnvironment,
-  validateOperationInput,
-  validateOperationProduced,
-} from "./validate.js";
+import { validateOperationEnvironment, validateOperationInput, validateOperationProduced } from "./validate.js";
 
 export interface OperationSimulationInput extends OperationCompilationInput {
   readonly input: unknown;
@@ -24,9 +20,7 @@ export interface OperationSimulationResult {
   readonly produced: Readonly<Record<string, JsonValue>>;
 }
 
-export async function simulateOperation(
-  input: OperationSimulationInput,
-): Promise<OperationSimulationResult> {
+export async function simulateOperation(input: OperationSimulationInput): Promise<OperationSimulationResult> {
   const operation = compileOperation(input);
   validateOperationInput(operation, input.input);
   validateOperationEnvironment(operation, input.environment);
@@ -36,9 +30,7 @@ export async function simulateOperation(
   const expectedSteps = operation.steps.map((step) => step.name).sort();
   const actualSteps = Object.keys(steps).sort();
   if (JSON.stringify(actualSteps) !== JSON.stringify(expectedSteps)) {
-    throw new TypeError(
-      `Operation simulation step results must contain exactly: ${expectedSteps.join(", ")}`,
-    );
+    throw new TypeError(`Operation simulation step results must contain exactly: ${expectedSteps.join(", ")}`);
   }
   const producedValue = await evaluateOperationProjection(
     operation.produce.expression,

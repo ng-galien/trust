@@ -1,13 +1,9 @@
 import { createServer, type Server } from "node:http";
-import { WebSocketServer, type RawData, type WebSocket } from "ws";
-import type { Logger } from "pino";
-
-import {
-  startTrustWebSocketLanguageServer,
-  type TrustLanguageServerSocket,
-} from "@trust/language-server";
-import { createRuntimeContainer } from "./runtime.js";
+import { startTrustWebSocketLanguageServer, type TrustLanguageServerSocket } from "@trust/language-server";
 import type { CompiledOperation } from "@trust/operation";
+import type { Logger } from "pino";
+import { type RawData, type WebSocket, WebSocketServer } from "ws";
+import { createRuntimeContainer } from "./runtime.js";
 
 export interface RuntimeServerOptions {
   readonly extensionsFile?: string;
@@ -130,10 +126,13 @@ export const startRuntime = async ({
     });
     response.once("close", () => {
       if (!response.writableFinished) {
-        requestLogger?.warn({
-          event: "http.request.interrupted",
-          durationMs: Date.now() - startedAt,
-        }, "HTTP connection closed before the response completed");
+        requestLogger?.warn(
+          {
+            event: "http.request.interrupted",
+            durationMs: Date.now() - startedAt,
+          },
+          "HTTP connection closed before the response completed",
+        );
       }
     });
     if (instance) response.setHeader("x-trust-runtime-instance", instance);
@@ -145,6 +144,8 @@ export const startRuntime = async ({
     }
   });
   const languageServer = new WebSocketServer({ server, path: "/lsp" });
+  const languageOperations = container.resolve("operationCatalog");
+  const languageProcedures = container.resolve("procedures");
   languageServer.on("connection", (webSocket) => {
     logger?.info({ event: "lsp.connection.opened", component: "lsp" }, "LSP connection opened");
     webSocket.on("error", (error) => {
@@ -154,7 +155,8 @@ export const startRuntime = async ({
       logger?.info({ event: "lsp.connection.closed", component: "lsp", code }, "LSP connection closed");
     });
     startTrustWebSocketLanguageServer(languageServerSocket(webSocket), {
-      operations: () => container.resolve("operationCatalog").list(),
+      operations: () => languageOperations.list(),
+      procedures: async () => (await languageProcedures.list()).map((published) => published.procedure),
     });
   });
 
@@ -163,7 +165,9 @@ export const startRuntime = async ({
     port: address.port,
     close: async () => {
       for (const client of languageServer.clients) client.close();
-      await new Promise<void>((resolve, reject) => languageServer.close((error) => error ? reject(error) : resolve()));
+      await new Promise<void>((resolve, reject) =>
+        languageServer.close((error) => (error ? reject(error) : resolve())),
+      );
       await close(server);
       await container.dispose();
     },

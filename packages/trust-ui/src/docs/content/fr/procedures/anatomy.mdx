@@ -26,7 +26,7 @@ Feature: Fix one Jira defect in one Maven project
 
   @scenario:issue
   Scenario: Read the Jira defect
-    Then Check "issue" runs Operation "jira.issue-read" on "jira issue" as Input "issue" and must establish "the Jira issue is ready for correction"
+    Then Check "issue" runs Operation "jira.issue-read@*" on "jira issue" as Input "issue" and must establish "the Jira issue is ready for correction"
       """js
       (
         fact.issueType === "defect" ||
@@ -41,7 +41,7 @@ Feature: Fix one Jira defect in one Maven project
   @scenario:baseline
   Scenario: Establish the project baseline
     Given scenario "issue" is validated
-    Then Check "baseline" runs Operation "git.head-read" on "project" as Input "project" and materializes "baseline revision" from field "headRevision" and must establish "the project baseline is clean"
+    Then Check "baseline" runs Operation "git.head-read@*" on "project" as Input "project" and materializes "baseline revision" from field "headRevision" and must establish "the project baseline is clean"
       """js
       fact.workingTree === "clean" ||
       fail("the project has uncommitted changes")
@@ -50,7 +50,7 @@ Feature: Fix one Jira defect in one Maven project
   @scenario:fix
   Scenario: Establish the committed fix
     Given scenario "baseline" is validated
-    Then Check "fix" runs Operation "git.head-compare" on "project" as Input "project" using "baseline revision" as Input "baseRevision" and materializes "fix revision" from field "headRevision" and must establish "the fix is committed after the baseline"
+    Then Check "fix" runs Operation "git.head-compare@*" on "project" as Input "project" using "baseline revision" as Input "baseRevision" and materializes "fix revision" from field "headRevision" and must establish "the fix is committed after the baseline"
       """js
       (
         fact.comparedBaseRevision === context["baseline revision"] ||
@@ -69,7 +69,7 @@ Feature: Fix one Jira defect in one Maven project
   @scenario:verification
   Scenario: Verify the committed fix
     Given scenario "fix" is validated
-    Then Check "Maven verification" runs Operation "maven.project-verify" on "project" as Input "project" using "fix revision" as Input "revision" and must establish "the committed fix passes Maven verification"
+    Then Check "Maven verification" runs Operation "maven.project-verify@*" on "project" as Input "project" using "fix revision" as Input "revision" and must establish "the committed fix passes Maven verification"
       """js
       (
         fact.verifiedRevision === context["fix revision"] ||
@@ -82,21 +82,21 @@ Feature: Fix one Jira defect in one Maven project
       """
 ```
 
-<Legend items={[
-  <>**Tags de Procédure.** Exactement un <code>@procedure:</code> (un slug en minuscules), un <code>@version:</code> sémantique, et <code>@trust-dsl:1</code>. Le tag optionnel <code>@intent-chaining</code> fait porter à chaque Plan engagé une intention d'agent tournante.</>,
-  <>**Titre et description.** Le titre est copié tel quel ; le texte libre en dessous est la description affichée sur la page de la Procédure et sur ses Plans.</>,
-  <>**Contexte du Plan.** Exactement un <code>Background: Plan context</code> ; il commence par la DataTable obligatoire du périmètre de la Procédure, puis déclare les rôles typés. Voir [Contexte du Plan](/docs/procedures/context).</>,
-  <>**Périmètre de la Procédure.** Sa première DataTable obligatoire déclare les limites en prose de tous les Checks et peut en ajouter pour un Check nommé. Les deux sont montrées à l'agent.</>,
-  <>**Entrée de Plan.** Un rôle sans autre source est donné à l'engagement : <code>one reference "jira issue"</code>.</>,
-  <>**Rôle rattaché à un parent.** <code>for "project"</code> rattache le rôle à un rôle parent ; ici une révision appartient à un projet. Rien ne déclare encore sa source : il est matérialisé par un Check plus bas.</>,
-  <>**Tag de Scénario.** Exactement un <code>@scenario:&lt;slug&gt;</code> par Scénario, unique dans la Procédure.</>,
-  <>**Phrase de Check.** <code>Then Check "&lt;name&gt;" runs Operation "&lt;domain.action&gt;" on "&lt;role&gt;" as Input "&lt;input&gt;" … and must establish "&lt;success reason&gt;"</code>. <code>on</code> nomme la cible et lie un Input. Voir [Scénarios et Checks](/docs/procedures/scenarios-and-checks).</>,
-  <>**Qualification.** Un DocString <code>js</code> attaché au Check ; chaque garde est une condition typée suivie de <code>|| fail(reason)</code>. Voir [Qualifications](/docs/procedures/expectations).</>,
-  <>**Raison d'échec.** Une expression textuelle évaluée et renvoyée uniquement lorsque sa garde est fausse.</>,
-  <>**Prérequis.** <code>Given scenario "issue" is validated</code> : les Checks de ce Scénario ne sont actionnables qu'une fois ce Scénario satisfait.</>,
-  <>**Matérialisation.** <code>and materializes "baseline revision" from field "headRevision"</code> : la valeur d'un champ produit devient la valeur d'un rôle de contexte, pour les Checks suivants.</>,
-  <>**Using.** <code>using "baseline revision" as Input "baseRevision"</code> lie un Input supplémentaire ; chaque Input requis de l'Opération est lié exactement une fois.</>,
-]} />
+<Legend items={{
+  "Tags de Procédure.": <>**Tags de Procédure.** Exactement un <code>@procedure:</code> (un slug en minuscules), un <code>@version:</code> sémantique, et <code>@trust-dsl:1</code>. Le tag optionnel <code>@intent-chaining</code> fait porter à chaque Plan engagé une intention d'agent tournante.</>,
+  "Titre et description.": <>**Titre et description.** Le titre est copié tel quel ; le texte libre en dessous est la description affichée sur la page de la Procédure et sur ses Plans.</>,
+  "Contexte du Plan.": <>**Contexte du Plan.** Exactement un <code>Background: Plan context</code> ; il commence par la DataTable obligatoire du périmètre de la Procédure, puis déclare les rôles typés. Voir [Contexte du Plan](/docs/procedures/context).</>,
+  "Périmètre de la Procédure.": <>**Périmètre de la Procédure.** Sa première DataTable obligatoire déclare les limites en prose de tous les Checks et peut en ajouter pour un Check nommé. Les deux sont montrées à l'agent.</>,
+  "Entrée de Plan.": <>**Entrée de Plan.** Un rôle sans autre source est donné à l'engagement : <code>one reference "jira issue"</code>.</>,
+  "Rôle rattaché à un parent.": <>**Rôle rattaché à un parent.** <code>for "project"</code> rattache le rôle à un rôle parent ; ici une révision appartient à un projet. Rien ne déclare encore sa source : il est matérialisé par un Check plus bas.</>,
+  "Tag de Scénario.": <>**Tag de Scénario.** Exactement un <code>@scenario:&lt;slug&gt;</code> par Scénario, unique dans la Procédure.</>,
+  "Phrase de Check.": <>**Phrase de Check.** <code>Then Check "&lt;name&gt;" runs Operation "&lt;domain.action&gt;@*" on "&lt;role&gt;" as Input "&lt;input&gt;" … and must establish "&lt;success reason&gt;"</code>. <code>on</code> nomme la cible et lie un Input. Voir [Scénarios et Checks](/docs/procedures/scenarios-and-checks).</>,
+  "Qualification.": <>**Qualification.** Un DocString <code>js</code> attaché au Check ; chaque garde est une condition typée suivie de <code>|| fail(reason)</code>. Voir [Qualifications](/docs/procedures/expectations).</>,
+  "Raison d'échec.": <>**Raison d'échec.** Une expression textuelle évaluée et renvoyée uniquement lorsque sa garde est fausse.</>,
+  "Prérequis.": <>**Prérequis.** <code>Given scenario "issue" is validated</code> : les Checks de ce Scénario ne sont actionnables qu'une fois ce Scénario satisfait.</>,
+  "Matérialisation.": <>**Matérialisation.** <code>and materializes "baseline revision" from field "headRevision"</code> : la valeur d'un champ produit devient la valeur d'un rôle de contexte, pour les Checks suivants.</>,
+  "Using.": <>**Using.** <code>using "baseline revision" as Input "baseRevision"</code> lie un Input supplémentaire ; chaque Input requis de l'Opération est lié exactement une fois.</>,
+}} />
 
 ## La forme du document
 
@@ -114,7 +114,7 @@ Feature: <title>
   @scenario:<slug>                                      one per Scenario, unique
   Scenario: <title>
     [Given|And scenario "<slug>" is validated]          prerequisites first
-    Then|And Check "<name>" runs Operation "<domain.action>"
+    Then|And Check "<name>" runs Operation "<domain.action>@*"
         on [each|all] "<role>" as Input "<input>"
         [using [all] "<role>" as Input "<input>"]…
         [and materializes "<role>" from field "<field>"]…

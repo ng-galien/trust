@@ -1,9 +1,10 @@
-import type { JsonObject, JsonValue } from "../lib/json.js";
+import type { JsonValue, OperationStep } from "@trust/operation";
+import type { JsonObject } from "../lib/json.js";
 
 /* Diagnostic events emitted while an Operation runs. They exist for humans validating an
    Operation (trial runs); they are never Facts and never reach a Plan. */
 
-export type StepKind = "shell" | "http" | "file-read" | "postgresql";
+export type StepKind = OperationStep["type"];
 
 export interface OperationStartEvent {
   readonly type: "operation.start";

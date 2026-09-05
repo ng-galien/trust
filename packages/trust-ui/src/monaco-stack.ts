@@ -3,7 +3,11 @@ import EditorWorker from "@codingame/monaco-vscode-editor-api/esm/vs/editor/edit
 import JsonWorker from "@codingame/monaco-vscode-standalone-json-language-features/worker?worker";
 
 import { LanguageClientManager } from "monaco-languageclient/lcwrapper";
-import { getEnhancedMonacoEnvironment, MonacoVscodeApiWrapper, type MonacoVscodeApiConfig } from "monaco-languageclient/vscodeApiWrapper";
+import {
+  getEnhancedMonacoEnvironment,
+  type MonacoVscodeApiConfig,
+  MonacoVscodeApiWrapper,
+} from "monaco-languageclient/vscodeApiWrapper";
 
 export type TrustLanguageServerStatus = "connecting" | "ready" | "unavailable";
 
@@ -11,7 +15,8 @@ const vscodeApiConfig: MonacoVscodeApiConfig = {
   $type: "classic",
   viewsConfig: { $type: "EditorService" },
   monacoWorkerFactory: () => {
-    getEnhancedMonacoEnvironment().getWorker = (_workerId, label) => label === "json" ? new JsonWorker() : new EditorWorker();
+    getEnhancedMonacoEnvironment().getWorker = (_workerId, label) =>
+      label === "json" ? new JsonWorker() : new EditorWorker();
   },
   advanced: { enforceSemanticHighlighting: true, loadExtensionServices: false },
 };

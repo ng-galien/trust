@@ -15,7 +15,7 @@ test("the public runtime exposes the resources required by the TRUST interface",
     environments: { local: { workspaceRoot: repositoryRoot } },
   });
   try {
-    const operations = await rpc(runtime.endpoint, "operation.list", {}) as {
+    const operations = (await rpc(runtime.endpoint, "operation.list", {})) as {
       contract: string;
       operations: Array<{ operation: string; source: string }>;
     };
@@ -23,14 +23,14 @@ test("the public runtime exposes the resources required by the TRUST interface",
     const gitHead = operations.operations.find(({ operation }) => operation === "git.head-read");
     assert.ok(gitHead);
 
-    const compiledOperation = await rpc(runtime.endpoint, "operation.compile", {
+    const compiledOperation = (await rpc(runtime.endpoint, "operation.compile", {
       source: gitHead.source,
       sourceName: "git.head-read.feature",
-    }) as { operation: string };
+    })) as { operation: string };
     assert.equal(compiledOperation.operation, "git.head-read");
     assert.deepEqual(compiledOperation, gitHead);
 
-    const simulation = await rpc(runtime.endpoint, "operation.simulate", {
+    const simulation = (await rpc(runtime.endpoint, "operation.simulate", {
       source: gitHead.source,
       sourceName: "git.head-read.feature",
       input: { project: "trust" },
@@ -39,7 +39,7 @@ test("the public runtime exposes the resources required by the TRUST interface",
         head: { stdout: "revision-1\n" },
         status: { stdout: " M package.json\n" },
       },
-    }) as { contract: string; produced: Record<string, unknown> };
+    })) as { contract: string; produced: Record<string, unknown> };
     assert.equal(simulation.contract, "trust.operation-simulation@1");
     assert.deepEqual(simulation.produced, {
       headRevision: "revision-1",
@@ -49,14 +49,14 @@ test("the public runtime exposes the resources required by the TRUST interface",
     const procedureFile = path.join(repositoryRoot, "assets/procedures/00-git-status.feature");
     const source = await readFile(procedureFile, "utf8");
     await rpc(runtime.endpoint, "procedure.publish", { source, sourceName: procedureFile });
-    const procedures = await rpc(runtime.endpoint, "procedure.list", {}) as {
+    const procedures = (await rpc(runtime.endpoint, "procedure.list", {})) as {
       contract: string;
       procedures: Array<{ procedure: { procedure: string; version: string } }>;
     };
     assert.equal(procedures.contract, "trust.procedure-catalog@1");
     assert.equal(procedures.procedures[0]?.procedure.procedure, "git-status");
 
-    const engagement = await rpc(runtime.endpoint, "plan.engage", {
+    const engagement = (await rpc(runtime.endpoint, "plan.engage", {
       contract: "trust.plan-engagement-request@1",
       procedure: "git-status",
       procedureVersion: "2.0.0",
@@ -68,7 +68,7 @@ test("the public runtime exposes the resources required by the TRUST interface",
         annotations: { "coordination.origin": "runtime-acceptance" },
       },
       rootInputs: { repository: "trust" },
-    }) as { checkUris: string[]; metadata: { title: string; labels: string[]; annotations: Record<string, string> } };
+    })) as { checkUris: string[]; metadata: { title: string; labels: string[]; annotations: Record<string, string> } };
     assert.equal(engagement.checkUris.length, 1);
     assert.deepEqual(engagement.metadata, {
       title: "Inspect TRUST before release",
@@ -76,21 +76,34 @@ test("the public runtime exposes the resources required by the TRUST interface",
       annotations: { "coordination.origin": "runtime-acceptance" },
     });
 
-    const plans = await rpc(runtime.endpoint, "plan.list", {}) as {
+    const plans = (await rpc(runtime.endpoint, "plan.list", {})) as {
       contract: string;
-      plans: Array<{ plan: string; checkCount: number; metadata: unknown; intentChaining: boolean; intentChainState: string; currentIntent: string | null }>;
+      plans: Array<{
+        plan: string;
+        checkCount: number;
+        metadata: unknown;
+        intentChaining: boolean;
+        intentChainState: string;
+        currentIntent: string | null;
+      }>;
     };
     assert.equal(plans.contract, "trust.plan-catalog@1");
-    assert.deepEqual(plans.plans.map(({ plan }) => plan), ["ui-resource-plan"]);
+    assert.deepEqual(
+      plans.plans.map(({ plan }) => plan),
+      ["ui-resource-plan"],
+    );
     assert.equal(plans.plans[0]?.checkCount, 1);
     assert.deepEqual(plans.plans[0]?.metadata, engagement.metadata);
-    assert.deepEqual({
-      intentChaining: plans.plans[0]?.intentChaining,
-      intentChainState: plans.plans[0]?.intentChainState,
-      currentIntent: plans.plans[0]?.currentIntent,
-    }, { intentChaining: false, intentChainState: "DISABLED", currentIntent: null });
+    assert.deepEqual(
+      {
+        intentChaining: plans.plans[0]?.intentChaining,
+        intentChainState: plans.plans[0]?.intentChainState,
+        currentIntent: plans.plans[0]?.currentIntent,
+      },
+      { intentChaining: false, intentChainState: "DISABLED", currentIntent: null },
+    );
 
-    const plan = await rpc(runtime.endpoint, "plan.read", { plan: "ui-resource-plan" }) as {
+    const plan = (await rpc(runtime.endpoint, "plan.read", { plan: "ui-resource-plan" })) as {
       contract: string;
       revisions: unknown[];
       sessions: unknown[];
@@ -103,17 +116,17 @@ test("the public runtime exposes the resources required by the TRUST interface",
     assert.equal(plan.checks[0]?.checkUri, engagement.checkUris[0]);
     assert.deepEqual(plan.metadata, engagement.metadata);
 
-    const session = await rpc(runtime.endpoint, "session.read", { plan: "ui-resource-plan" }) as {
+    const session = (await rpc(runtime.endpoint, "session.read", { plan: "ui-resource-plan" })) as {
       contract: string;
       sessions: unknown[];
     };
     assert.equal(session.contract, "trust.session-view@1");
     assert.equal(session.sessions.length, 1);
 
-    const check = await rpc(runtime.endpoint, "check.read", {
+    const check = (await rpc(runtime.endpoint, "check.read", {
       contract: "trust.check-read-request@1",
       checkUri: engagement.checkUris[0],
-    }) as { contract: string; attempts: unknown[]; history: unknown[]; context: Record<string, unknown> };
+    })) as { contract: string; attempts: unknown[]; history: unknown[]; context: Record<string, unknown> };
     assert.equal(check.contract, "trust.check-view@1");
     assert.deepEqual(check.attempts, []);
     assert.deepEqual(check.history, []);
@@ -148,9 +161,13 @@ test("Plan metadata is validated, immutable and preserved by re-engagement and r
       rootInputs: { repository: "trust" },
       mode: "dry-run",
     };
-    const engaged = await rpc(runtime.endpoint, "plan.engage", input) as { metadata: unknown };
+    const engaged = (await rpc(runtime.endpoint, "plan.engage", input)) as { metadata: unknown };
 
-    const repeated = await rpc(runtime.endpoint, "plan.engage", (({ metadata: _metadata, ...rest }) => rest)(input)) as { metadata: unknown };
+    const repeated = (await rpc(
+      runtime.endpoint,
+      "plan.engage",
+      (({ metadata: _metadata, ...rest }) => rest)(input),
+    )) as { metadata: unknown };
     assert.deepEqual(repeated.metadata, engaged.metadata);
 
     const changed = await rpcEnvelope(runtime.endpoint, "plan.engage", {
@@ -166,9 +183,9 @@ test("Plan metadata is validated, immutable and preserved by re-engagement and r
     });
     assert.equal(invalid.error?.data?.reason, "invalid-plan-engagement");
 
-    const reset = await rpc(runtime.endpoint, "plan.reset", { plan: input.plan }) as { metadata: unknown };
+    const reset = (await rpc(runtime.endpoint, "plan.reset", { plan: input.plan })) as { metadata: unknown };
     assert.deepEqual(reset.metadata, engaged.metadata);
-    const view = await rpc(runtime.endpoint, "plan.read", { plan: input.plan }) as { metadata: unknown };
+    const view = (await rpc(runtime.endpoint, "plan.read", { plan: input.plan })) as { metadata: unknown };
     assert.deepEqual(view.metadata, engaged.metadata);
   } finally {
     await runtime.close();
@@ -181,7 +198,11 @@ async function rpc(endpoint: string, method: string, params: unknown): Promise<u
   return envelope.result;
 }
 
-async function rpcEnvelope(endpoint: string, method: string, params: unknown): Promise<{
+async function rpcEnvelope(
+  endpoint: string,
+  method: string,
+  params: unknown,
+): Promise<{
   result?: unknown;
   error?: { code: number; message: string; data?: { reason?: string } };
 }> {

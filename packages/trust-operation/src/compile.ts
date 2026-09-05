@@ -1,37 +1,26 @@
-import {
-  type GherkinDocument,
-  type Step,
-  type Tag,
-} from "@cucumber/messages";
+import type { GherkinDocument, Step, Tag } from "@cucumber/messages";
 import {
   documentRange,
   GherkinSyntaxError,
   hasGherkinTag,
+  type Located,
   normalizeGherkinSource,
   parseGherkin,
   parseStepGrammar,
   parseStepGrammarPrefix,
-  stepGrammarFailure,
-  sourceLineRange,
-  sourceValueRange,
   SentenceCursor,
-  tokenizeSentence,
-  type Located,
   type SentenceToken,
   type StepGrammarCapture,
   type StepGrammarMatch,
+  sourceLineRange,
+  sourceValueRange,
+  stepGrammarFailure,
+  tokenizeSentence,
 } from "@trust/gherkin";
 import jsonata from "jsonata";
-
-import type {
-  HttpBody,
-  HttpHeader,
-  HttpMethod,
-  HttpPathSegment,
-  HttpQueryParameter,
-  HttpValueSource,
-} from "./http.js";
+import type { HttpBody, HttpHeader, HttpMethod, HttpPathSegment, HttpQueryParameter, HttpValueSource } from "./http.js";
 import { operationLanguage, operationStepGrammar } from "./language.js";
+import { matchHttpValueSource } from "./match.js";
 import type {
   CompiledOperation,
   EnvironmentField,
@@ -64,7 +53,6 @@ const CLASSIFICATION = /^@x-([a-z][a-z0-9]*(?:-[a-z0-9]+)*):([^\s:]+)$/;
 const OPERATION_NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*\.[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const FIELD_NAME = /^[a-z][A-Za-z0-9]*$/;
 const HTTP_HEADER_NAME = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/;
-const SEMANTIC_VERSION = /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)$/;
 const SECRET_LIKE = /(?:^|[^a-z0-9])(?:sk-[a-z0-9_-]{8,}|gh[pousr]_[a-z0-9]{8,}|bearer\s+[a-z0-9._-]{8,})/i;
 const ENUM_DOMAIN = /^enum "[^"]+"(?:, "[^"]+")*$/;
 const ENUM_VALUE = /"([^"]+)"/g;
@@ -96,8 +84,7 @@ export interface OperationCompilationInput {
 export function isOperationSource(source: string): boolean {
   const normalized = normalizeGherkinSource(source);
   try {
-    return parseGherkin(normalized).feature?.tags
-      .some((tag) => tag.name.startsWith(OPERATION_TAG)) ?? false;
+    return parseGherkin(normalized).feature?.tags.some((tag) => tag.name.startsWith(OPERATION_TAG)) ?? false;
   } catch (error) {
     if (error instanceof GherkinSyntaxError) return hasGherkinTag(source, OPERATION_TAG);
     throw error;
@@ -128,12 +115,14 @@ export function analyzeOperation(input: OperationCompilationInput): OperationAna
   } catch (error) {
     if (!(error instanceof OperationCompilationError)) throw error;
     return {
-      diagnostics: [{
-        code: error.code,
-        message: error.message,
-        sourceName,
-        range: sourceLineRange(source, error.location),
-      }],
+      diagnostics: [
+        {
+          code: error.code,
+          message: error.message,
+          sourceName,
+          range: sourceLineRange(source, error.location),
+        },
+      ],
     };
   }
   try {
@@ -142,19 +131,19 @@ export function analyzeOperation(input: OperationCompilationInput): OperationAna
     if (!(error instanceof OperationCompilationError)) throw error;
     return {
       ...(parsed.document ? { document: parsed.document } : {}),
-      diagnostics: [{
-        code: error.code,
-        message: error.message,
-        sourceName,
-        range: sourceLineRange(source, error.location),
-      }],
+      diagnostics: [
+        {
+          code: error.code,
+          message: error.message,
+          sourceName,
+          range: sourceLineRange(source, error.location),
+        },
+      ],
     };
   }
 }
 
-function compileOperationDocument(
-  input: OperationCompilationInput,
-): {
+function compileOperationDocument(input: OperationCompilationInput): {
   readonly document: OperationDocument;
   readonly diagnostics: readonly [];
   readonly compiled: CompiledOperation;
@@ -185,9 +174,7 @@ function parseOperationSource(input: OperationCompilationInput): ParsedOperation
   };
 }
 
-function compileParsedOperation(
-  parsed: ParsedOperationSource,
-): {
+function compileParsedOperation(parsed: ParsedOperationSource): {
   readonly document: OperationDocument;
   readonly diagnostics: readonly [];
   readonly compiled: CompiledOperation;
@@ -214,7 +201,7 @@ function compileParsedOperation(
     );
   }
   const version = readUniqueTag(feature.tags, VERSION_TAG, "version", context, feature);
-  if (!SEMANTIC_VERSION.test(version)) {
+  if (!isExactVersion(version)) {
     fail(context, "invalid-identifier", `Operation version "${version}" must be semantic`, feature);
   }
   const trustDsl = readUniqueTag(feature.tags, TRUST_DSL_TAG, "TRUST DSL version", context, feature);
@@ -229,13 +216,13 @@ function compileParsedOperation(
   assertOnlyTags(feature.tags, [OPERATION_TAG, VERSION_TAG, TRUST_DSL_TAG, CLASSIFICATION_TAG], context, feature);
   const classification = readClassification(feature.tags, context, feature);
 
-  const backgrounds = feature.children.flatMap((child) => child.background ? [child.background] : []);
+  const backgrounds = feature.children.flatMap((child) => (child.background ? [child.background] : []));
   if (backgrounds.length !== 1 || !backgrounds[0]) {
     fail(context, "invalid-operation", "Operation must declare exactly one Background", feature);
   }
   const operationInterface = parseInterface(backgrounds[0].steps, context);
 
-  const scenarios = feature.children.flatMap((child) => child.scenario ? [child.scenario] : []);
+  const scenarios = feature.children.flatMap((child) => (child.scenario ? [child.scenario] : []));
   if (scenarios.length !== 1 || !scenarios[0] || scenarios[0].name !== "Run") {
     fail(context, "invalid-operation", "Operation must declare exactly one Scenario named Run", feature);
   }
@@ -245,12 +232,7 @@ function compileParsedOperation(
   if (scenarios[0].tags.length !== 0) {
     fail(context, "invalid-operation", "Operation Scenario tags are outside the closed grammar", scenarios[0]);
   }
-  const run = parseRun(
-    scenarios[0].steps,
-    operationInterface.input,
-    operationInterface.environment,
-    context,
-  );
+  const run = parseRun(scenarios[0].steps, operationInterface.input, operationInterface.environment, context);
   validateProduce(
     run.expression,
     run.steps,
@@ -284,10 +266,7 @@ function compileParsedOperation(
   };
 }
 
-function readOperationDocument(
-  gherkin: GherkinDocument,
-  context: CompileContext,
-): OperationDocument | undefined {
+function readOperationDocument(gherkin: GherkinDocument, context: CompileContext): OperationDocument | undefined {
   const feature = gherkin.feature;
   if (!feature) return undefined;
 
@@ -298,7 +277,7 @@ function readOperationDocument(
   const produced: OperationProducedSource[] = [];
   const steps: OperationStepSource[] = [];
 
-  for (const background of feature.children.flatMap((child) => child.background ? [child.background] : [])) {
+  for (const background of feature.children.flatMap((child) => (child.background ? [child.background] : []))) {
     for (const step of background.steps) {
       const rows = step.dataTable?.rows.slice(1) ?? [];
       const production = parseOperationStep(step.text, "background")?.production;
@@ -357,11 +336,11 @@ function readOperationDocument(
     }
   }
 
-  for (const scenario of feature.children.flatMap((child) => child.scenario ? [child.scenario] : [])) {
+  for (const scenario of feature.children.flatMap((child) => (child.scenario ? [child.scenario] : []))) {
     for (const step of scenario.steps) {
       const parsed = parseRunStepSentence(step.text);
       const partial = parsed ? undefined : parseOperationStepPrefix(step.text);
-      const type = parsed?.type === "invalid" ? parsed.stepType : parsed?.type ?? partial?.type;
+      const type = parsed?.type === "invalid" ? parsed.stepType : (parsed?.type ?? partial?.type);
       const name = parsed && "name" in parsed ? parsed.name : partial?.name;
       if (!name || !type || type === "shell-exits" || type === "http-statuses" || type === "produce") continue;
       steps.push({
@@ -391,10 +370,7 @@ function readOperationDocument(
   };
 }
 
-function readSourceDomain(
-  value: string,
-  type: OperationValueType,
-): OperationValueDomain | undefined {
+function readSourceDomain(value: string, type: OperationValueType): OperationValueDomain | undefined {
   if (value === "any") return { kind: "any" };
   if (type !== "string" || !ENUM_DOMAIN.test(value)) return undefined;
   return {
@@ -419,7 +395,10 @@ function tagValueRange(source: string, tag: Tag, prefix: string): SourceRange {
   return sourceValueRange(source, tag, tag.name.slice(prefix.length), prefix.length);
 }
 
-function parseInterface(steps: readonly Step[], context: CompileContext): {
+function parseInterface(
+  steps: readonly Step[],
+  context: CompileContext,
+): {
   readonly input: Readonly<Record<string, InputField>>;
   readonly environment: Readonly<Record<string, EnvironmentField>>;
   readonly producedFields: Readonly<Record<string, ProducedField>>;
@@ -537,14 +516,10 @@ function parseRun(
       const { name, executable, environment: environmentName, appendInput } = parsed;
       if (names.has(name)) fail(context, "duplicate-step", `Step "${name}" is repeated`, step);
       if (!Object.hasOwn(environment, environmentName)) {
-        fail(
-          context,
-          "unknown-environment",
-          `Shell "${name}" uses undeclared Environment "${environmentName}"`,
-          step,
-        );
+        fail(context, "unknown-environment", `Shell "${name}" uses undeclared Environment "${environmentName}"`, step);
       }
-      if (appendInput !== undefined) assertStringInput(`Shell "${name}"`, "directory", appendInput, input, context, step);
+      if (appendInput !== undefined)
+        assertStringInput(`Shell "${name}"`, "directory", appendInput, input, context, step);
       if (environment[environmentName]?.type !== "directory") {
         fail(
           context,
@@ -557,10 +532,20 @@ function parseRun(
       if (!table) fail(context, "invalid-operation", `Shell "${name}" requires an argument table`, step);
       const headers = table.rows[0]?.cells.map((cell) => cell.value.trim()) ?? [];
       if (headers.length !== 1 && headers.length !== 2) {
-        fail(context, "invalid-operation", `Shell "${name}" argument table must use argument or argument | source`, step);
+        fail(
+          context,
+          "invalid-operation",
+          `Shell "${name}" argument table must use argument or argument | source`,
+          step,
+        );
       }
       if (headers[0] !== "argument" || (headers.length === 2 && headers[1] !== "source")) {
-        fail(context, "invalid-operation", `Shell "${name}" argument table must use argument or argument | source`, step);
+        fail(
+          context,
+          "invalid-operation",
+          `Shell "${name}" argument table must use argument or argument | source`,
+          step,
+        );
       }
       const arguments_ = table.rows.slice(1).map((row) => {
         if (row.cells.length !== headers.length) {
@@ -571,14 +556,24 @@ function parseRun(
         if (source === "literal") return { kind: "literal" as const, value };
         const parsedSource = parseArgumentSource(source);
         if (!parsedSource) {
-          fail(context, "invalid-operation", `Shell "${name}" argument source "${source}" must be literal, Input "<name>", literal + Input "<name>", Execution "id" or literal + Execution "id"`, row);
+          fail(
+            context,
+            "invalid-operation",
+            `Shell "${name}" argument source "${source}" must be literal, Input "<name>", literal + Input "<name>", Execution "id" or literal + Execution "id"`,
+            row,
+          );
         }
         if (parsedSource.kind === "input") {
           assertStringInput(`Shell "${name}"`, "argument", parsedSource.input, input, context, row);
         }
         if (value === "") {
           if (parsedSource.prefixed) {
-            fail(context, "invalid-operation", `Shell "${name}" prefixed argument requires a non-empty argument cell`, row);
+            fail(
+              context,
+              "invalid-operation",
+              `Shell "${name}" prefixed argument requires a non-empty argument cell`,
+              row,
+            );
           }
         }
         if (parsedSource.kind === "input") {
@@ -657,14 +652,10 @@ function parseRun(
       const { name, path, format, environment: environmentName, appendInput } = parsed;
       if (names.has(name)) fail(context, "duplicate-step", `Step "${name}" is repeated`, step);
       if (!Object.hasOwn(environment, environmentName)) {
-        fail(
-          context,
-          "unknown-environment",
-          `File "${name}" uses undeclared Environment "${environmentName}"`,
-          step,
-        );
+        fail(context, "unknown-environment", `File "${name}" uses undeclared Environment "${environmentName}"`, step);
       }
-      if (appendInput !== undefined) assertStringInput(`File "${name}"`, "directory", appendInput, input, context, step);
+      if (appendInput !== undefined)
+        assertStringInput(`File "${name}"`, "directory", appendInput, input, context, step);
       if (environment[environmentName]?.type !== "directory") {
         fail(
           context,
@@ -749,12 +740,7 @@ function parseRun(
       const { name, method, environment: environmentName, format, path, query, headers } = parsed;
       if (names.has(name)) fail(context, "duplicate-step", `Step "${name}" is repeated`, step);
       if (!Object.hasOwn(environment, environmentName)) {
-        fail(
-          context,
-          "unknown-environment",
-          `HTTP "${name}" uses undeclared Environment "${environmentName}"`,
-          step,
-        );
+        fail(context, "unknown-environment", `HTTP "${name}" uses undeclared Environment "${environmentName}"`, step);
       }
       if (environment[environmentName]?.type !== "url") {
         fail(
@@ -781,11 +767,13 @@ function parseRun(
       }
       let body: HttpBody | undefined;
       if (parsed.body?.source === "input") {
-        if (Object.keys(input).length === 0) fail(context, "invalid-operation", `HTTP "${name}" cannot send an empty Input body`, step);
+        if (Object.keys(input).length === 0)
+          fail(context, "invalid-operation", `HTTP "${name}" cannot send an empty Input body`, step);
         body = { format: "json", source: "input" };
       } else if (parsed.body?.source === "jsonata") {
         const bodyExpression = step.docString?.content.trim() ?? "";
-        if (bodyExpression === "") fail(context, "invalid-operation", `HTTP "${name}" JSONata body cannot be empty`, step);
+        if (bodyExpression === "")
+          fail(context, "invalid-operation", `HTTP "${name}" JSONata body cannot be empty`, step);
         validateJsonataExpression(`HTTP "${name}" JSONata body`, bodyExpression, compiled, input, environment, context);
         body = { format: "json", source: "jsonata", expression: bodyExpression };
       } else if (parsed.body?.source !== undefined) {
@@ -819,9 +807,16 @@ function parseRun(
       }
       const previous = index > 0 ? parseRunStepSentence(steps[index - 1]!.text) : undefined;
       if (previous?.type !== "http" || previous.name !== parsed.name) {
-        fail(context, "invalid-operation", `HTTP "${parsed.name}" accepted statuses must immediately follow that HTTP step`, step);
+        fail(
+          context,
+          "invalid-operation",
+          `HTTP "${parsed.name}" accepted statuses must immediately follow that HTTP step`,
+          step,
+        );
       }
-      const compiledIndex = compiled.findIndex((candidate) => candidate.type === "http" && candidate.name === parsed.name);
+      const compiledIndex = compiled.findIndex(
+        (candidate) => candidate.type === "http" && candidate.name === parsed.name,
+      );
       const existing = compiled[compiledIndex];
       if (!existing || existing.type !== "http") {
         fail(context, "invalid-operation", `HTTP "${parsed.name}" is unknown`, step);
@@ -830,12 +825,22 @@ function parseRun(
         const raw = row.cells[0]?.value.trim() ?? "";
         const status = Number(raw);
         if (!Number.isInteger(status) || (status !== 101 && (status < 200 || status > 599))) {
-          fail(context, "invalid-operation", `HTTP status "${raw}" must be terminal: 101 or an integer from 200 to 599`, row);
+          fail(
+            context,
+            "invalid-operation",
+            `HTTP status "${raw}" must be terminal: 101 or an integer from 200 to 599`,
+            row,
+          );
         }
         return status;
       });
       if (statuses.length === 0 || new Set(statuses).size !== statuses.length) {
-        fail(context, "invalid-operation", `HTTP "${parsed.name}" accepted statuses must be non-empty and unique`, step);
+        fail(
+          context,
+          "invalid-operation",
+          `HTTP "${parsed.name}" accepted statuses must be non-empty and unique`,
+          step,
+        );
       }
       compiled[compiledIndex] = { ...existing, http: { ...existing.http, acceptedStatuses: statuses } };
       continue;
@@ -984,11 +989,19 @@ function parseRunStepSentence(source: string): ParsedRunStepSentence | undefined
     if (parsed.captures.some(({ slot }) => slot === "append-input") && !appendInput) {
       return invalidParsedStep(`File "${name}" appended Input must be a field name`, "file-read", name);
     }
-    return { type: "file-read", name, path, format, environment, ...(appendInput === undefined ? {} : { appendInput }) };
+    return {
+      type: "file-read",
+      name,
+      path,
+      format,
+      environment,
+      ...(appendInput === undefined ? {} : { appendInput }),
+    };
   }
   if (parsed.production === "postgresql-execute") {
     const environment = captureField(parsed, "environment");
-    if (!environment) return invalidParsedStep(`PostgreSQL "${name}" Environment must be a field name`, "postgresql", name);
+    if (!environment)
+      return invalidParsedStep(`PostgreSQL "${name}" Environment must be a field name`, "postgresql", name);
     return { type: "postgresql", name, environment };
   }
   return parsed.production === "http-request" ? lowerHttpStep(parsed, name) : undefined;
@@ -1002,8 +1015,17 @@ function stepTypeForProduction(production: string): OperationStepSource["type"] 
   return undefined;
 }
 
-function invalidParsedStep(reason: string, stepType?: OperationStepSource["type"], name?: string): Extract<ParsedRunStepSentence, { readonly type: "invalid" }> {
-  return { type: "invalid", reason, ...(stepType === undefined ? {} : { stepType }), ...(name === undefined ? {} : { name }) };
+function invalidParsedStep(
+  reason: string,
+  stepType?: OperationStepSource["type"],
+  name?: string,
+): Extract<ParsedRunStepSentence, { readonly type: "invalid" }> {
+  return {
+    type: "invalid",
+    reason,
+    ...(stepType === undefined ? {} : { stepType }),
+    ...(name === undefined ? {} : { name }),
+  };
 }
 
 function parseOperationStep(source: string, context: "background" | "scenario"): StepGrammarMatch | undefined {
@@ -1011,17 +1033,24 @@ function parseOperationStep(source: string, context: "background" | "scenario"):
   return tokens ? parseStepGrammar(operationStepGrammar, tokens, context) : undefined;
 }
 
-function parseOperationStepPrefix(source: string): { readonly name: string; readonly type: OperationStepSource["type"] } | undefined {
+function parseOperationStepPrefix(
+  source: string,
+): { readonly name: string; readonly type: OperationStepSource["type"] } | undefined {
   const tokens = tryTokenize(source);
   if (!tokens) return undefined;
   const prefix = parseStepGrammarPrefix(operationStepGrammar, tokens, "scenario");
   const name = prefix?.captures.find(({ slot }) => slot === "step")?.value;
   if (!prefix || !name) return undefined;
-  const type = prefix.production === "shell-run" ? "shell"
-    : prefix.production === "file-read" ? "file-read"
-      : prefix.production === "http-request" ? "http"
-        : prefix.production === "postgresql-execute" ? "postgresql"
-          : undefined;
+  const type =
+    prefix.production === "shell-run"
+      ? "shell"
+      : prefix.production === "file-read"
+        ? "file-read"
+        : prefix.production === "http-request"
+          ? "http"
+          : prefix.production === "postgresql-execute"
+            ? "postgresql"
+            : undefined;
   return type ? { name, type } : undefined;
 }
 
@@ -1029,7 +1058,8 @@ function operationStepGrammarDiagnostic(source: string, context: "background" | 
   const tokens = tryTokenize(source);
   if (!tokens) return `Invalid Operation step "${source}"`;
   const failure = stepGrammarFailure(operationStepGrammar, tokens, context);
-  if (failure?.expectedEnd) return `Operation Step Grammar expected the end of the sentence before "${failure.found?.value ?? ""}"`;
+  if (failure?.expectedEnd)
+    return `Operation Step Grammar expected the end of the sentence before "${failure.found?.value ?? ""}"`;
   if (!failure || failure.expectations.length === 0) return `Unknown Operation step "${source}"`;
   const expected = failure.expectations.flatMap((expectation) => {
     if (expectation.kind === "literal") return [expectation.value];
@@ -1040,13 +1070,16 @@ function operationStepGrammarDiagnostic(source: string, context: "background" | 
   return `Operation Step Grammar expected ${[...new Set(expected)].join(" or ")}${found}`;
 }
 
-function lowerHttpStep(parsed: StepGrammarMatch, name: string): ParsedHttpSentence | Extract<ParsedRunStepSentence, { readonly type: "invalid" }> {
+function lowerHttpStep(
+  parsed: StepGrammarMatch,
+  name: string,
+): ParsedHttpSentence | Extract<ParsedRunStepSentence, { readonly type: "invalid" }> {
   const method = captureValue(parsed, "http-method") as HttpMethod | undefined;
   const environment = captureField(parsed, "environment");
   const responseFormat = captureValue(parsed, "response-format");
   const format = parsed.captures.some(({ slot }) => slot === "response-no-body")
     ? "none"
-    : responseFormat?.toLowerCase() as "text" | "json" | undefined;
+    : (responseFormat?.toLowerCase() as "text" | "json" | undefined);
   if (!method) return invalidParsedStep(`HTTP "${name}" method is invalid`, "http", name);
   if (!environment) return invalidParsedStep(`HTTP "${name}" Environment must be a field name`, "http", name);
   if (!format) return invalidParsedStep(`HTTP "${name}" response format is invalid`, "http", name);
@@ -1057,18 +1090,26 @@ function lowerHttpStep(parsed: StepGrammarMatch, name: string): ParsedHttpSenten
   for (let index = 0; index < parsed.captures.length; index += 1) {
     const capture = parsed.captures[index]!;
     if (capture.slot === "path-input") {
-      if (!FIELD_NAME.test(capture.value)) return invalidParsedStep(`HTTP "${name}" appended Input must be a field name`, "http", name);
+      if (!FIELD_NAME.test(capture.value))
+        return invalidParsedStep(`HTTP "${name}" appended Input must be a field name`, "http", name);
       path.push({ kind: "input", input: capture.value });
     }
     if (capture.slot === "path-literal") {
-      if (capture.value === "") return invalidParsedStep(`HTTP "${name}" appending literal expects a non-empty "<segment>"`, "http", name);
+      if (capture.value === "")
+        return invalidParsedStep(`HTTP "${name}" appending literal expects a non-empty "<segment>"`, "http", name);
       path.push({ kind: "literal", value: capture.value });
     }
     if (capture.slot === "query-name" || capture.slot === "header-name") {
-      if (capture.value === "") return invalidParsedStep(`HTTP "${name}" ${capture.slot} cannot be empty`, "http", name);
+      if (capture.value === "")
+        return invalidParsedStep(`HTTP "${name}" ${capture.slot} cannot be empty`, "http", name);
       const prefix = capture.slot === "query-name" ? "query" : "header";
       const source = httpValueSource(parsed.captures[index + 1], prefix);
-      if (!source) return invalidParsedStep(`HTTP "${name}" ${prefix} "${capture.value}" has an invalid value source`, "http", name);
+      if (!source)
+        return invalidParsedStep(
+          `HTTP "${name}" ${prefix} "${capture.value}" has an invalid value source`,
+          "http",
+          name,
+        );
       if (prefix === "query") query.push({ name: capture.value, source });
       else headers.push({ name: capture.value.toLowerCase(), source });
     }
@@ -1076,12 +1117,25 @@ function lowerHttpStep(parsed: StepGrammarMatch, name: string): ParsedHttpSenten
   if (parsed.captures.some(({ slot }) => slot === "body-whole-input")) body = { source: "input" };
   else if (parsed.captures.some(({ slot }) => slot === "body-jsonata")) body = { source: "jsonata" };
   else {
-    const sourceCapture = parsed.captures.find(({ slot }) => slot === "body-input" || slot === "body-environment" || slot === "body-literal");
+    const sourceCapture = parsed.captures.find(
+      ({ slot }) => slot === "body-input" || slot === "body-environment" || slot === "body-literal",
+    );
     const source = httpValueSource(sourceCapture, "body");
-    if (sourceCapture && !source) return invalidParsedStep(`HTTP "${name}" Text body has an invalid value source`, "http", name);
+    if (sourceCapture && !source)
+      return invalidParsedStep(`HTTP "${name}" Text body has an invalid value source`, "http", name);
     if (source) body = { source };
   }
-  return { type: "http", name, method, environment, format, path, query, headers, ...(body === undefined ? {} : { body }) };
+  return {
+    type: "http",
+    name,
+    method,
+    environment,
+    format,
+    path,
+    query,
+    headers,
+    ...(body === undefined ? {} : { body }),
+  };
 }
 
 function httpValueSource(capture: StepGrammarCapture | undefined, prefix: string): HttpValueSource | undefined {
@@ -1103,11 +1157,7 @@ function captureField(parsed: StepGrammarMatch, slot: string): string | undefine
   return value !== undefined && FIELD_NAME.test(value) ? value : undefined;
 }
 
-function parseCardinality(
-  value: string,
-  context: CompileContext,
-  located: Located,
-): "one" | "many" {
+function parseCardinality(value: string, context: CompileContext, located: Located): "one" | "many" {
   if (!isCardinality(value)) {
     fail(context, "invalid-operation", `Cardinality "${value}" must be one or many`, located);
   }
@@ -1145,9 +1195,7 @@ function compileInputSchema(input: Readonly<Record<string, InputField>>): Object
   );
 }
 
-function compileEnvironmentSchema(
-  environment: Readonly<Record<string, EnvironmentField>>,
-): ObjectSchema {
+function compileEnvironmentSchema(environment: Readonly<Record<string, EnvironmentField>>): ObjectSchema {
   return objectSchema(
     Object.fromEntries(
       Object.entries(environment).map(([name, field]) => [
@@ -1162,16 +1210,12 @@ function compileEnvironmentSchema(
   );
 }
 
-function compileProducedSchema(
-  producedFields: Readonly<Record<string, ProducedField>>,
-): ObjectSchema {
+function compileProducedSchema(producedFields: Readonly<Record<string, ProducedField>>): ObjectSchema {
   return objectSchema(
     Object.fromEntries(
       Object.entries(producedFields).map(([name, field]) => {
         const base = valueSchema(field.type);
-        const constrained = field.domain.kind === "enum"
-          ? { ...base, enum: field.domain.values }
-          : base;
+        const constrained = field.domain.kind === "enum" ? { ...base, enum: field.domain.values } : base;
         return [name, cardinalitySchema(constrained, field.cardinality)];
       }),
     ),
@@ -1239,15 +1283,11 @@ function validateProduce(
 
   const expectedFields = Object.keys(producedFields);
   if (
-    new Set(actualFields).size !== actualFields.length
-    || actualFields.length !== expectedFields.length
-    || actualFields.some((field) => !Object.hasOwn(producedFields, field))
+    new Set(actualFields).size !== actualFields.length ||
+    actualFields.length !== expectedFields.length ||
+    actualFields.some((field) => !Object.hasOwn(producedFields, field))
   ) {
-    fail(
-      context,
-      "invalid-operation",
-      `Produce fields must be exactly: ${expectedFields.join(", ")}`,
-    );
+    fail(context, "invalid-operation", `Produce fields must be exactly: ${expectedFields.join(", ")}`);
   }
 
   validateJsonataPaths("Produce", ast, steps, input, environment, context);
@@ -1265,7 +1305,11 @@ function validateJsonataExpression(
   try {
     ast = jsonata(expression).ast();
   } catch (error) {
-    fail(context, "invalid-operation", `${label} is invalid: ${error instanceof Error ? error.message : String(error)}`);
+    fail(
+      context,
+      "invalid-operation",
+      `${label} is invalid: ${error instanceof Error ? error.message : String(error)}`,
+    );
   }
   assertClosedJsonata(ast, context, label);
   validateJsonataPaths(label, ast, steps, input, environment, context);
@@ -1280,9 +1324,7 @@ function validateJsonataPaths(
   context: CompileContext,
 ): void {
   visitJsonata(ast, (path) => {
-    const names = path
-      .map((part) => record(part)?.value)
-      .filter((value): value is string => typeof value === "string");
+    const names = path.map((part) => record(part)?.value).filter((value): value is string => typeof value === "string");
     const [root, field, result] = names;
 
     if (root === STEPS_ROOT) {
@@ -1372,7 +1414,9 @@ function assertClosedJsonata(value: unknown, context: CompileContext, label: str
     fail(context, "invalid-operation", `${label} allows only fixed JSONata filter path stages`);
   }
   if (type === "path" && Array.isArray(node.steps)) {
-    node.steps.forEach((step, index) => assertClosedJsonata(step, context, label, index === 0));
+    node.steps.forEach((step, index) => {
+      assertClosedJsonata(step, context, label, index === 0);
+    });
     for (const [key, child] of Object.entries(node)) {
       if (key !== "steps") assertClosedJsonata(child, context, label);
     }
@@ -1384,22 +1428,18 @@ function assertClosedJsonata(value: unknown, context: CompileContext, label: str
 function assertRelativeFilePath(path: string, context: CompileContext, located: Located): void {
   const segments = path.split("/");
   if (
-    path === ""
-    || path.includes("\0")
-    || path.includes("\\")
-    || path.startsWith("/")
-    || /^[A-Za-z]:\//.test(path)
-    || segments.some((segment) => segment === "" || segment === "." || segment === "..")
+    path === "" ||
+    path.includes("\0") ||
+    path.includes("\\") ||
+    path.startsWith("/") ||
+    /^[A-Za-z]:\//.test(path) ||
+    segments.some((segment) => segment === "" || segment === "." || segment === "..")
   ) {
     fail(context, "invalid-operation", `File path "${path}" must be a canonical relative path`, located);
   }
 }
 
-function visitJsonata(
-  value: unknown,
-  visitPath: (path: readonly unknown[]) => void,
-  relative = false,
-): void {
+function visitJsonata(value: unknown, visitPath: (path: readonly unknown[]) => void, relative = false): void {
   if (Array.isArray(value)) {
     for (const item of value) visitJsonata(item, visitPath, relative);
     return;
@@ -1430,7 +1470,7 @@ function visitJsonata(
 
 function record(value: unknown): Record<string, unknown> | undefined {
   return value !== null && typeof value === "object" && !Array.isArray(value)
-    ? value as Record<string, unknown>
+    ? (value as Record<string, unknown>)
     : undefined;
 }
 
@@ -1456,7 +1496,9 @@ function assertFieldName(name: string, label: string, context: CompileContext, l
 function readDescription(raw: string | undefined): string | undefined {
   if (raw === undefined) return undefined;
   const lines = raw.replace(/\r\n?/g, "\n").split("\n");
-  const indent = Math.min(...lines.filter((line) => line.trim() !== "").map((line) => line.length - line.trimStart().length));
+  const indent = Math.min(
+    ...lines.filter((line) => line.trim() !== "").map((line) => line.length - line.trimStart().length),
+  );
   const text = lines
     .map((line) => (line.trim() === "" ? "" : line.slice(Number.isFinite(indent) ? indent : 0).trimEnd()))
     .join("\n")
@@ -1494,18 +1536,29 @@ function assertHttpValueSource(
   context: CompileContext,
   located: Located,
 ): void {
-  if (source.kind === "literal") return;
-  if (source.kind === "input") {
-    assertStringInput(label, noun, source.input, input, context, located);
-    return;
-  }
-  const field = Object.hasOwn(environment, source.environment) ? environment[source.environment] : undefined;
-  if (!field) {
-    fail(context, "invalid-operation", `${label} ${noun} references unknown Environment "${source.environment}"`, located);
-  }
-  if (field.type !== "string") {
-    fail(context, "invalid-operation", `${label} ${noun} Environment "${source.environment}" must be a string`, located);
-  }
+  matchHttpValueSource<void>(source, {
+    literal: () => undefined,
+    input: (value) => assertStringInput(label, noun, value.input, input, context, located),
+    environment: (value) => {
+      const field = Object.hasOwn(environment, value.environment) ? environment[value.environment] : undefined;
+      if (!field) {
+        fail(
+          context,
+          "invalid-operation",
+          `${label} ${noun} references unknown Environment "${value.environment}"`,
+          located,
+        );
+      }
+      if (field.type !== "string") {
+        fail(
+          context,
+          "invalid-operation",
+          `${label} ${noun} Environment "${value.environment}" must be a string`,
+          located,
+        );
+      }
+    },
+  });
 }
 
 function requireTable(step: Step, header: readonly string[], context: CompileContext) {
@@ -1577,12 +1630,7 @@ function assertNoSecretLikeValue(source: string, context: CompileContext): void 
   }
 }
 
-function fail(
-  context: CompileContext,
-  code: OperationCompilationErrorCode,
-  message: string,
-  located?: Located,
-): never {
+function fail(context: CompileContext, code: OperationCompilationErrorCode, message: string, located?: Located): never {
   const location = located?.location;
   throw new OperationCompilationError(
     code,
@@ -1591,3 +1639,5 @@ function fail(
     location ? { line: location.line, column: location.column ?? 1 } : undefined,
   );
 }
+
+import { isExactVersion } from "./version.js";

@@ -37,9 +37,9 @@ export async function runTrustCli(arguments_: readonly string[]): Promise<void> 
       process.env.TRUST_HOST ?? "127.0.0.1",
       environmentPort("TRUST_WEB_PORT", 4173),
     );
-    process.stdout.write(status.running
-      ? `TRUST server: running at ${status.url}\n`
-      : `TRUST server: stopped (${status.url})\n`);
+    process.stdout.write(
+      status.running ? `TRUST server: running at ${status.url}\n` : `TRUST server: stopped (${status.url})\n`,
+    );
     if (!status.running) process.exitCode = 1;
     return;
   }
@@ -61,15 +61,13 @@ export async function runTrustCli(arguments_: readonly string[]): Promise<void> 
 async function runRegistryCommand(arguments_: readonly string[]): Promise<void> {
   const options = { url: trustServerUrl() };
   if (arguments_[0] === "list" && arguments_.length === 1) {
-    const result = await callTrustRpc(options, "registry.source.list", {}) as RegistryCatalog;
+    const result = (await callTrustRpc(options, "registry.source.list", {})) as RegistryCatalog;
     if (result.sources.length === 0) {
       process.stdout.write("No registry sources configured.\n");
       return;
     }
     for (const source of result.sources) {
-      const reference = source.kind === "git" && source.reference !== undefined
-        ? ` (ref: ${source.reference})`
-        : "";
+      const reference = source.kind === "git" && source.reference !== undefined ? ` (ref: ${source.reference})` : "";
       process.stdout.write(`${source.name}\t${source.kind}\t${source.url}${reference}\n`);
     }
     return;
@@ -80,28 +78,30 @@ async function runRegistryCommand(arguments_: readonly string[]): Promise<void> 
     if (arguments_.length === 6 && (kind !== "git" || flag !== "--ref" || reference === undefined)) {
       throw registryUsage();
     }
-    const result = await callTrustRpc(options, "registry.source.save", {
+    const result = (await callTrustRpc(options, "registry.source.save", {
       name,
       kind,
       url,
       ...(reference === undefined ? {} : { reference }),
-    }) as { readonly source: RegistrySource };
+    })) as { readonly source: RegistrySource };
     process.stdout.write(`Registry source ${result.source.name} saved.\n`);
     return;
   }
   if (arguments_[0] === "remove" && arguments_.length === 2) {
-    const result = await callTrustRpc(options, "registry.source.remove", {
+    const result = (await callTrustRpc(options, "registry.source.remove", {
       name: arguments_[1],
-    }) as { readonly name: string; readonly removed: boolean };
-    process.stdout.write(result.removed
-      ? `Registry source ${result.name} removed.\n`
-      : `Registry source ${result.name} was not configured.\n`);
+    })) as { readonly name: string; readonly removed: boolean };
+    process.stdout.write(
+      result.removed
+        ? `Registry source ${result.name} removed.\n`
+        : `Registry source ${result.name} was not configured.\n`,
+    );
     return;
   }
   if (arguments_[0] === "sync" && arguments_.length === 2) {
-    const result = await callTrustRpc(options, "registry.source.sync", {
+    const result = (await callTrustRpc(options, "registry.source.sync", {
       name: arguments_[1],
-    }) as RegistrySync;
+    })) as RegistrySync;
     process.stdout.write(
       `Registry source ${result.source.name} synchronized: ${result.summary.imported} imported, ${result.summary.unchanged} unchanged.\n`,
     );
@@ -111,8 +111,10 @@ async function runRegistryCommand(arguments_: readonly string[]): Promise<void> 
 }
 
 function trustServerUrl(): string {
-  return process.env.TRUST_URL
-    ?? `http://${process.env.TRUST_HOST ?? "127.0.0.1"}:${environmentPort("TRUST_WEB_PORT", 4173)}`;
+  return (
+    process.env.TRUST_URL ??
+    `http://${process.env.TRUST_HOST ?? "127.0.0.1"}:${environmentPort("TRUST_WEB_PORT", 4173)}`
+  );
 }
 
 function registryUsage(): TypeError {

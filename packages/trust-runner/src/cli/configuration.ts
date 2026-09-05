@@ -8,7 +8,7 @@ export interface RunnerInvocationConfiguration {
     invocation (CLI) or nothing (MCP stdio). */
 export function readRunnerConfiguration(argv: string[]): RunnerInvocationConfiguration {
   const additionalPath: string[] = [];
-  for (let index = 0; index < argv.length;) {
+  for (let index = 0; index < argv.length; ) {
     if (argv[index] !== "--path") {
       index += 1;
       continue;

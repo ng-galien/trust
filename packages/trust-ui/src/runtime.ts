@@ -1,25 +1,24 @@
 import type {
-  AttemptFinalization,
-  CheckAdmission,
+  AttemptFinalizationResult,
+  CheckAttemptAdmissionResult,
   CheckView,
-  CompiledOperation,
-  CompiledProcedure,
   CredentialReference,
-  DeclarationReplacement,
   EnvironmentEntry,
-  HistoryFilter,
-  HistorySnapshot,
-  JsonObject,
+  HistoryListInput,
+  HistoryView,
   OperationEnvironments,
-  OperationSimulation,
-  PlanEngagement,
+  PlanDeclarationReplacementResult,
+  PlanEngagementResult,
   PlanMode,
-  PlanSummary,
+  PlanSummaryView,
   PlanView,
   PublishedProcedure,
+  RuntimeJsonObject,
+  TrialRecord,
   TrialSummary,
-  TrialView,
-} from "./types.js";
+} from "@trust/extension-sdk";
+import type { CompiledOperation, OperationSimulationResult } from "@trust/operation";
+import type { CompiledProcedure } from "@trust/procedure";
 
 interface RpcResponse<T> {
   jsonrpc: "2.0";
@@ -28,11 +27,19 @@ interface RpcResponse<T> {
   error?: { code: number; message: string; data?: unknown };
 }
 
-export interface RuntimeErrorLocation { line: number; column: number }
+export interface RuntimeErrorLocation {
+  line: number;
+  column: number;
+}
 
 /** RPC error with the runtime's structured `data` (compilation errors carry a source location). */
 export class RuntimeError extends Error {
-  constructor(message: string, readonly code: number, readonly data?: unknown, readonly method?: string) {
+  constructor(
+    message: string,
+    readonly code: number,
+    readonly data?: unknown,
+    readonly method?: string,
+  ) {
     super(message);
     this.name = "RuntimeError";
   }
@@ -76,7 +83,7 @@ export class TrustRuntimeClient {
     return base.toString();
   };
 
-  async call<T>(method: string, params: JsonObject = {}): Promise<T> {
+  async call<T>(method: string, params: RuntimeJsonObject = {}): Promise<T> {
     const response = await fetch(`${this.baseUrl}/rpc`, {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -95,29 +102,40 @@ export class TrustRuntimeClient {
     return response.json() as Promise<{ status: string }>;
   };
 
-  operations = async () => (await this.call<{
-    contract: "trust.operation-catalog@1";
-    operations: CompiledOperation[];
-  }>("operation.list")).operations;
+  operations = async () =>
+    (
+      await this.call<{
+        contract: "trust.operation-catalog@1";
+        operations: CompiledOperation[];
+      }>("operation.list")
+    ).operations;
   compileOperation = (source: string, sourceName = "editor.feature") =>
     this.call<CompiledOperation>("operation.compile", { source, sourceName });
-  /** Writes the source into the runtime catalog directory (`<operation>.feature` by convention) and recompiles it. */
+  /** Writes a new immutable source file into the runtime catalog directory and recompiles it. */
   saveOperation = (source: string, sourceName: string) =>
     this.call<{ operation: CompiledOperation; sourceName: string }>("operation.save", { source, sourceName });
   removeOperation = (operation: string, version: string) =>
     this.call<{ operation: string; version: string; removed: true }>("operation.remove", { operation, version });
-  simulateOperation = (source: string, input: JsonObject, environment: JsonObject, steps: JsonObject) =>
-    this.call<OperationSimulation>("operation.simulate", {
+  simulateOperation = (
+    source: string,
+    input: RuntimeJsonObject,
+    environment: RuntimeJsonObject,
+    steps: RuntimeJsonObject,
+  ) =>
+    this.call<OperationSimulationResult>("operation.simulate", {
       source,
       sourceName: "editor.feature",
       input,
       environment,
       steps,
     });
-  procedures = async () => (await this.call<{
-    contract: "trust.procedure-catalog@1";
-    procedures: PublishedProcedure[];
-  }>("procedure.list")).procedures;
+  procedures = async () =>
+    (
+      await this.call<{
+        contract: "trust.procedure-catalog@1";
+        procedures: PublishedProcedure[];
+      }>("procedure.list")
+    ).procedures;
   compileProcedure = (source: string, sourceName = "editor.feature") =>
     this.call<CompiledProcedure>("procedure.compile", { source, sourceName });
   publishProcedure = (source: string) =>
@@ -125,32 +143,51 @@ export class TrustRuntimeClient {
       source,
       sourceName: "editor.feature",
     });
-  plans = async () => (await this.call<{
-    contract: "trust.plan-catalog@1";
-    plans: PlanSummary[];
-  }>("plan.list")).plans;
+  plans = async () =>
+    (
+      await this.call<{
+        contract: "trust.plan-catalog@1";
+        plans: PlanSummaryView[];
+      }>("plan.list")
+    ).plans;
   plan = (plan: string) => this.call<PlanView>("plan.read", { plan });
-  history = (params: { filter?: HistoryFilter; cursor?: string; limit?: number } = {}) =>
-    this.call<{ snapshots: HistorySnapshot[]; nextCursor?: string }>("history.list", params as JsonObject);
-  engagePlan = (params: { procedure: string; procedureVersion: string; plan: string; environment: string; metadata?: JsonObject; rootInputs: JsonObject; mode?: PlanMode }) =>
-    this.call<PlanEngagement>("plan.engage", { contract: "trust.plan-engagement-request@1", ...params });
-  replaceDeclarations = (plan: string, expectedRevision: number, declarations: JsonObject) =>
-    this.call<DeclarationReplacement>("plan.declarations.replace", { contract: "trust.plan-declaration-replacement-request@1", plan, expectedRevision, declarations });
+  history = (params: { filter?: NonNullable<HistoryListInput["filter"]>; cursor?: string; limit?: number } = {}) =>
+    this.call<{ snapshots: HistoryView[]; nextCursor?: string }>("history.list", params as RuntimeJsonObject);
+  engagePlan = (params: {
+    procedure: string;
+    procedureVersion: string;
+    plan: string;
+    environment: string;
+    metadata?: RuntimeJsonObject;
+    rootInputs: RuntimeJsonObject;
+    mode?: PlanMode;
+  }) => this.call<PlanEngagementResult>("plan.engage", { contract: "trust.plan-engagement-request@1", ...params });
+  replaceDeclarations = (plan: string, expectedRevision: number, declarations: RuntimeJsonObject) =>
+    this.call<PlanDeclarationReplacementResult>("plan.declarations.replace", {
+      contract: "trust.plan-declaration-replacement-request@1",
+      plan,
+      expectedRevision,
+      declarations,
+    });
   /** `reobserve` (dry-runs only): admit a satisfied Check again to replay it and watch the cascade. */
   admitCheck = (
     checkUri: string,
     attemptKey: string,
     options: { reobserve?: boolean; intent?: string; nextIntent?: string } = {},
-  ) => this.call<CheckAdmission>("check.attempt.admit", {
-    contract: "trust.check-admission-request@1",
-    attemptKey,
-    checkUri,
-    ...(options.reobserve ? { reobserve: true } : {}),
-    ...(options.intent === undefined ? {} : { intent: options.intent }),
-    ...(options.nextIntent === undefined ? {} : { nextIntent: options.nextIntent }),
-  });
+  ) =>
+    this.call<CheckAttemptAdmissionResult>("check.attempt.admit", {
+      contract: "trust.check-admission-request@1",
+      attemptKey,
+      checkUri,
+      ...(options.reobserve ? { reobserve: true } : {}),
+      ...(options.intent === undefined ? {} : { intent: options.intent }),
+      ...(options.nextIntent === undefined ? {} : { nextIntent: options.nextIntent }),
+    });
   /** Same Fact batch the runner reports over OTLP: one Fact per observation of the admitted Operation. */
-  postFacts = (admission: { attemptKey: string; attemptHandle: string; executionId: string; checkUri: string; operation: string }, values: JsonObject) => {
+  postFacts = (
+    admission: { attemptKey: string; attemptHandle: string; executionId: string; checkUri: string; operation: string },
+    values: RuntimeJsonObject,
+  ) => {
     const now = new Date().toISOString();
     return this.call<{ acceptedFactIds: string[]; duplicateFactIds: string[] }>("check.attempt.facts", {
       contract: "trust.fact-batch-request@1",
@@ -165,12 +202,29 @@ export class TrustRuntimeClient {
   /** Dry-runs only: erase the Plan entirely (the runtime refuses for a live Plan). */
   removePlan = (plan: string) => this.call<{ plan: string; removed: true }>("plan.remove", { plan });
   /** Dry-runs only: atomically erase the execution history and engage the same Plan again from revision 1. */
-  resetPlan = (plan: string) => this.call<PlanEngagement>("plan.reset", { plan });
+  resetPlan = (plan: string) => this.call<PlanEngagementResult>("plan.reset", { plan });
   /** Closes the Plan's open Session, if any (`closed: false` when none was open). */
   closePlan = (plan: string) => this.call<{ plan: string; closed: boolean }>("plan.close", { plan });
-  resumePlan = (plan: string, escalationId: string, resumeReason: string) => this.call<{ contract: "trust.plan-resumption@1"; status: "RESUMED"; plan: string; escalationId: string; resumeReason: string; resumedAt: string }>("plan.resume", { plan, escalationId, resumeReason });
+  resumePlan = (plan: string, escalationId: string, resumeReason: string) =>
+    this.call<{
+      contract: "trust.plan-resumption@1";
+      status: "RESUMED";
+      plan: string;
+      escalationId: string;
+      resumeReason: string;
+      resumedAt: string;
+    }>("plan.resume", { plan, escalationId, resumeReason });
   escalateCheck = (checkUri: string, attemptHandle: string, blockingReason: string, forbiddenFurtherAction: string) =>
-    this.call<{ contract: "trust.check-escalation@1"; status: "ESCALATED"; plan: string; checkUri: string; snapshotId: string; blockingReason: string; forbiddenFurtherAction: string; escalatedAt: string }>("check.escalate", {
+    this.call<{
+      contract: "trust.check-escalation@1";
+      status: "ESCALATED";
+      plan: string;
+      checkUri: string;
+      snapshotId: string;
+      blockingReason: string;
+      forbiddenFurtherAction: string;
+      escalatedAt: string;
+    }>("check.escalate", {
       contract: "trust.check-escalation-request@1",
       checkUri,
       attemptHandle,
@@ -178,12 +232,17 @@ export class TrustRuntimeClient {
       forbiddenFurtherAction,
     });
   finalizeAttempt = (attemptHandle: string) =>
-    this.call<AttemptFinalization>("check.attempt.finalize", { contract: "trust.attempt-finalization-request@1", attemptHandle });
-  check = (checkUri: string) => this.call<CheckView>("check.read", {
-    contract: "trust.check-read-request@1",
-    checkUri,
-  });
-  operationEnvironments = async () => (await this.call<{ operations: OperationEnvironments[] }>("operation.environments")).operations;
+    this.call<AttemptFinalizationResult>("check.attempt.finalize", {
+      contract: "trust.attempt-finalization-request@1",
+      attemptHandle,
+    });
+  check = (checkUri: string) =>
+    this.call<CheckView>("check.read", {
+      contract: "trust.check-read-request@1",
+      checkUri,
+    });
+  operationEnvironments = async () =>
+    (await this.call<{ operations: OperationEnvironments[] }>("operation.environments")).operations;
   environments = async (scope?: { operation?: string; version?: string; source?: string }) =>
     (await this.call<{ environments: EnvironmentEntry[] }>("environment.list", scope ?? {})).environments;
   saveEnvironment = async (environment: string, values: Record<string, string>) =>
@@ -192,17 +251,25 @@ export class TrustRuntimeClient {
     (await this.call<{ environment: string; removed: boolean }>("environment.remove", { environment })).removed;
   /** Credential references only — the runtime never returns a value. */
   credentials = async (environment?: string) =>
-    (await this.call<{ credentials: CredentialReference[] }>("credential.list", environment ? { environment } : {})).credentials;
+    (await this.call<{ credentials: CredentialReference[] }>("credential.list", environment ? { environment } : {}))
+      .credentials;
   saveCredential = async (environment: string, name: string, value: string) =>
     (await this.call<{ credential: CredentialReference }>("credential.save", { environment, name, value })).credential;
   removeCredential = async (environment: string, name: string) =>
     (await this.call<{ removed: boolean }>("credential.remove", { environment, name })).removed;
-  startTrial = async (params: { operation?: string; version?: string; source?: string; environment: string; input: JsonObject }) =>
-    (await this.call<{ trial: TrialSummary }>("operation.trial.start", params)).trial;
+  startTrial = async (params: {
+    operation?: string;
+    version?: string;
+    source?: string;
+    environment: string;
+    input: RuntimeJsonObject;
+  }) => (await this.call<{ trial: TrialSummary }>("operation.trial.start", params)).trial;
   cancelTrial = async (trial: string) =>
     (await this.call<{ trial: TrialSummary }>("operation.trial.cancel", { trial })).trial;
-  trial = async (trial: string, after = 0) => (await this.call<{ trial: TrialView }>("operation.trial.read", { trial, after })).trial;
-  trials = async (operation?: string) => (await this.call<{ trials: TrialSummary[] }>("operation.trial.list", operation ? { operation } : {})).trials;
+  trial = async (trial: string, after = 0) =>
+    (await this.call<{ trial: TrialRecord }>("operation.trial.read", { trial, after })).trial;
+  trials = async (operation?: string) =>
+    (await this.call<{ trials: TrialSummary[] }>("operation.trial.list", operation ? { operation } : {})).trials;
   planEventsUrl = () => `${this.baseUrl}/events/plans`;
   trialStreamUrl = (trial: string) => `${this.baseUrl}/otlp/diagnostics/trials/${encodeURIComponent(trial)}/stream`;
 }

@@ -1,13 +1,17 @@
 import assert from "node:assert/strict";
-import { mkdtemp, writeFile, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { startPublicRuntime } from "./support/runtime-process.js";
 
-test("one extension MCP tool shares declared commands with HTTP and announces running catalog changes", { timeout: 30_000 }, async () => {
+test("one extension MCP tool shares declared commands with HTTP and announces running catalog changes", {
+  timeout: 30_000,
+}, async () => {
   const directory = await mkdtemp(path.join(tmpdir(), "trust-extension-commands-"));
-  await writeFile(path.join(directory, "server.mjs"), `
+  await writeFile(
+    path.join(directory, "server.mjs"),
+    `
 export function createExtension() {
   let calls = 0;
   return {
@@ -20,29 +24,80 @@ export function createExtension() {
       return {status:200,body:{value:args.value,calls:++calls},text:'Recorded value '+args.value+'.'};
     }
   };
-}`);
-  const commands = ["records.save", "records.fail", "records.crash", "records.hang"].map(name => ({ name, description: name, inputSchema: { type: "object", properties: { value: { type: "integer" } }, required: ["value"], additionalProperties: false }, readOnly: false }));
+}`,
+  );
+  const commands = ["records.save", "records.fail", "records.crash", "records.hang"].map((name) => ({
+    name,
+    description: name,
+    inputSchema: {
+      type: "object",
+      properties: { value: { type: "integer" } },
+      required: ["value"],
+      additionalProperties: false,
+    },
+    readOnly: false,
+  }));
   const manifest = path.join(directory, "manifest.json");
-  await writeFile(manifest, JSON.stringify({ contract: "trust.extension@1", id: "sample-extension", title: "Sample", version: "1", server: "./server.mjs", configuration: {}, requestedCapabilities: [], mcp: { description: "Manage sample records.", commands } }));
+  await writeFile(
+    manifest,
+    JSON.stringify({
+      contract: "trust.extension@1",
+      id: "sample-extension",
+      title: "Sample",
+      version: "1",
+      server: "./server.mjs",
+      configuration: {},
+      requestedCapabilities: [],
+      mcp: { description: "Manage sample records.", commands },
+    }),
+  );
   const registry = path.join(directory, "registry.json");
-  await writeFile(registry, JSON.stringify({ extensions: [{ manifest, configuration: {}, environment: "local", grants: [] }] }));
+  await writeFile(
+    registry,
+    JSON.stringify({ extensions: [{ manifest, configuration: {}, environment: "local", grants: [] }] }),
+  );
   const runtime = await startPublicRuntime("trust-extension-command-runtime-", { extensionsFile: registry });
   const headers = { "content-type": "application/json", "mcp-protocol-version": "2025-03-26" };
   const rpc = async (method: string, params?: unknown) => {
-    const response = await fetch(`${runtime.endpoint}/mcp`, { method: "POST", headers, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }) });
-    return await response.json() as any;
+    const response = await fetch(`${runtime.endpoint}/mcp`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
+    });
+    return (await response.json()) as any;
   };
-  const post = (suffix: string, body: unknown = {}) => fetch(`${runtime.endpoint}/extensions/sample-extension/${suffix}`, { method: "POST", headers, body: JSON.stringify(body) });
+  const post = (suffix: string, body: unknown = {}) =>
+    fetch(`${runtime.endpoint}/extensions/sample-extension/${suffix}`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(body),
+    });
   const call = (args: unknown) => rpc("tools/call", { name: "trust_extension_sample_extension", arguments: args });
   const catalog = async () => (await rpc("tools/list")).result.tools as any[];
   let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
   try {
     const core = await catalog();
-    assert.equal(core.some(tool => tool.name.startsWith("trust_extension_")), false);
-    const initialized = await rpc("initialize", { protocolVersion: "2025-03-26", capabilities: {}, clientInfo: { name: "acceptance", version: "1" } });
+    assert.equal(
+      core.some((tool) => tool.name.startsWith("trust_extension_")),
+      false,
+    );
+    const initialized = await rpc("initialize", {
+      protocolVersion: "2025-03-26",
+      capabilities: {},
+      clientInfo: { name: "acceptance", version: "1" },
+    });
     assert.equal(initialized.result.capabilities.tools.listChanged, true);
-    assert.equal((await fetch(`${runtime.endpoint}/mcp`, { headers: { accept: "application/json", "mcp-protocol-version": "2025-03-26" } })).status, 406);
-    const stream = await fetch(`${runtime.endpoint}/mcp`, { headers: { accept: "text/event-stream", "mcp-protocol-version": "2025-03-26" } });
+    assert.equal(
+      (
+        await fetch(`${runtime.endpoint}/mcp`, {
+          headers: { accept: "application/json", "mcp-protocol-version": "2025-03-26" },
+        })
+      ).status,
+      406,
+    );
+    const stream = await fetch(`${runtime.endpoint}/mcp`, {
+      headers: { accept: "text/event-stream", "mcp-protocol-version": "2025-03-26" },
+    });
     assert.match(stream.headers.get("content-type")!, /text\/event-stream/);
     reader = stream.body!.getReader();
     const next = async () => new TextDecoder().decode((await reader!.read()).value);
@@ -51,23 +106,35 @@ export function createExtension() {
     assert.match(await next(), /event: message\ndata: .*"method":"notifications\/tools\/list_changed"/);
     const listed = await catalog();
     assert.equal(listed.length, core.length + 1);
-    const tool = listed.find(tool => tool.name === "trust_extension_sample_extension");
-    assert.deepEqual(tool.inputSchema.properties.command.enum, commands.map(command => command.name));
+    const tool = listed.find((tool) => tool.name === "trust_extension_sample_extension");
+    assert.deepEqual(
+      tool.inputSchema.properties.command.enum,
+      commands.map((command) => command.name),
+    );
     assert.equal(tool.inputSchema.oneOf.length, 4);
     assert.equal(tool.annotations.readOnlyHint, false);
     assert.equal((await post("commands", { command: "records.save", arguments: { value: 7 } })).status, 200);
     const result = await call({ command: "records.save", arguments: { value: 8 } });
     assert.deepEqual(result.result.content, [{ type: "text", text: "Recorded value 8." }]);
     assert.equal(result.result.isError, undefined);
-    for (const invalid of [{ command: "records.save", arguments: {}, extra: true }, { command: "records.save", arguments: [] }, { command: "records.unknown", arguments: {} }, { command: "records.save" }]) {
+    for (const invalid of [
+      { command: "records.save", arguments: {}, extra: true },
+      { command: "records.save", arguments: [] },
+      { command: "records.unknown", arguments: {} },
+      { command: "records.save" },
+    ]) {
       assert.equal((await call(invalid)).result.isError, true);
       assert.equal((await post("commands", invalid)).status, 400);
     }
     const invalidArgument = await call({ command: "records.save", arguments: { value: "bad" } });
     assert.equal(invalidArgument.result.isError, true);
     assert.equal(invalidArgument.result.content[0].text, "Value must be an integer.");
-    assert.deepEqual(await (await post("commands", { command: "records.save", arguments: {} })).json(), { error: "invalid-value" });
-    assert.deepEqual(await (await fetch(`${runtime.endpoint}/extensions/sample-extension/api/count`)).json(), { calls: 2 });
+    assert.deepEqual(await (await post("commands", { command: "records.save", arguments: {} })).json(), {
+      error: "invalid-value",
+    });
+    assert.deepEqual(await (await fetch(`${runtime.endpoint}/extensions/sample-extension/api/count`)).json(), {
+      calls: 2,
+    });
     const thrown = await call({ command: "records.fail", arguments: {} });
     assert.equal(thrown.result.isError, true);
     assert.doesNotMatch(JSON.stringify(thrown), /private-secret-stack/);
@@ -76,44 +143,117 @@ export function createExtension() {
     assert.deepEqual(await catalog(), core);
     assert.equal((await call({ command: "records.save", arguments: { value: 9 } })).result.isError, true);
     assert.equal((await post("commands", { command: "records.save", arguments: { value: 9 } })).status, 409);
-    await post("start"); await next();
+    await post("start");
+    await next();
     assert.equal((await call({ command: "records.crash", arguments: {} })).result.isError, true);
     assert.match(await next(), /notifications\/tools\/list_changed/);
     assert.deepEqual(await catalog(), core);
-    await post("start"); await next();
+    await post("start");
+    await next();
     assert.equal((await call({ command: "records.hang", arguments: {} })).result.isError, true);
     assert.match(await next(), /notifications\/tools\/list_changed/);
     assert.deepEqual(await catalog(), core);
-  } finally { await reader?.cancel(); await runtime.close(); await rm(directory, { recursive: true, force: true }); }
+  } finally {
+    await reader?.cancel();
+    await runtime.close();
+    await rm(directory, { recursive: true, force: true });
+  }
 });
 
 test("a declared extension command requires an actual child hook before catalog admission", async () => {
   const directory = await mkdtemp(path.join(tmpdir(), "trust-extension-missing-command-"));
-  await writeFile(path.join(directory, "server.mjs"), "export function createExtension() { return { async prepare(){}, async start(){}, async stop(){}, async read(){} }; }");
+  await writeFile(
+    path.join(directory, "server.mjs"),
+    "export function createExtension() { return { async prepare(){}, async start(){}, async stop(){}, async read(){} }; }",
+  );
   const manifest = path.join(directory, "manifest.json");
-  await writeFile(manifest, JSON.stringify({ contract: "trust.extension@1", id: "missing", title: "Missing", version: "1", server: "./server.mjs", configuration: {}, requestedCapabilities: [], mcp: { description: "Missing hook", commands: [{ name: "records.list", description: "List", inputSchema: { type: "object" }, readOnly: true }] } }));
+  await writeFile(
+    manifest,
+    JSON.stringify({
+      contract: "trust.extension@1",
+      id: "missing",
+      title: "Missing",
+      version: "1",
+      server: "./server.mjs",
+      configuration: {},
+      requestedCapabilities: [],
+      mcp: {
+        description: "Missing hook",
+        commands: [{ name: "records.list", description: "List", inputSchema: { type: "object" }, readOnly: true }],
+      },
+    }),
+  );
   const registry = path.join(directory, "registry.json");
-  await writeFile(registry, JSON.stringify({ extensions: [{ manifest, configuration: {}, environment: "local", grants: [], autoStart: true }] }));
+  await writeFile(
+    registry,
+    JSON.stringify({
+      extensions: [{ manifest, configuration: {}, environment: "local", grants: [], autoStart: true }],
+    }),
+  );
   const runtime = await startPublicRuntime("trust-extension-missing-runtime-", { extensionsFile: registry });
   try {
-    const catalog = await fetch(`${runtime.endpoint}/extensions`).then(response => response.json()) as any;
+    const catalog = (await fetch(`${runtime.endpoint}/extensions`).then((response) => response.json())) as any;
     assert.equal(catalog.extensions[0].state, "FAILED");
-    const result = await fetch(`${runtime.endpoint}/mcp`, { method: "POST", headers: { "content-type": "application/json", "mcp-protocol-version": "2025-03-26" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list" }) }).then(response => response.json()) as any;
-    assert.equal(result.result.tools.some((tool: any) => tool.name === "trust_extension_missing"), false);
-  } finally { await runtime.close(); await rm(directory, { recursive: true, force: true }); }
+    const result = (await fetch(`${runtime.endpoint}/mcp`, {
+      method: "POST",
+      headers: { "content-type": "application/json", "mcp-protocol-version": "2025-03-26" },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list" }),
+    }).then((response) => response.json())) as any;
+    assert.equal(
+      result.result.tools.some((tool: any) => tool.name === "trust_extension_missing"),
+      false,
+    );
+  } finally {
+    await runtime.close();
+    await rm(directory, { recursive: true, force: true });
+  }
 });
 
 test("invalid extension command declarations refuse runtime startup", async () => {
   const directory = await mkdtemp(path.join(tmpdir(), "trust-extension-invalid-commands-"));
-  await writeFile(path.join(directory, "server.mjs"), "export function createExtension() { throw new Error('must not load'); }");
-  const command = { name: "records.list", description: "List records", inputSchema: { type: "object" }, readOnly: true };
+  await writeFile(
+    path.join(directory, "server.mjs"),
+    "export function createExtension() { throw new Error('must not load'); }",
+  );
+  const command = {
+    name: "records.list",
+    description: "List records",
+    inputSchema: { type: "object" },
+    readOnly: true,
+  };
   const manifest = path.join(directory, "manifest.json");
   const registry = path.join(directory, "registry.json");
-  await writeFile(registry, JSON.stringify({ extensions: [{ manifest, configuration: {}, environment: "local", grants: [] }] }));
+  await writeFile(
+    registry,
+    JSON.stringify({ extensions: [{ manifest, configuration: {}, environment: "local", grants: [] }] }),
+  );
   try {
-    for (const commands of [[], [command, command], [{ ...command, readOnly: "true" }], [{ ...command, inputSchema: { type: "array" } }], [{ ...command, name: "arbitrary command" }]]) {
-      await writeFile(manifest, JSON.stringify({ contract: "trust.extension@1", id: "invalid", title: "Invalid", version: "1", server: "./server.mjs", configuration: {}, requestedCapabilities: [], mcp: { description: "Invalid declarations", commands } }));
-      await assert.rejects(startPublicRuntime("trust-invalid-command-runtime-", { extensionsFile: registry }), /Invalid extension/);
+    for (const commands of [
+      [],
+      [command, command],
+      [{ ...command, readOnly: "true" }],
+      [{ ...command, inputSchema: { type: "array" } }],
+      [{ ...command, name: "arbitrary command" }],
+    ]) {
+      await writeFile(
+        manifest,
+        JSON.stringify({
+          contract: "trust.extension@1",
+          id: "invalid",
+          title: "Invalid",
+          version: "1",
+          server: "./server.mjs",
+          configuration: {},
+          requestedCapabilities: [],
+          mcp: { description: "Invalid declarations", commands },
+        }),
+      );
+      await assert.rejects(
+        startPublicRuntime("trust-invalid-command-runtime-", { extensionsFile: registry }),
+        /Invalid extension/,
+      );
     }
-  } finally { await rm(directory, { recursive: true, force: true }); }
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
 });

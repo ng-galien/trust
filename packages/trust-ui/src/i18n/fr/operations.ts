@@ -3,6 +3,7 @@ import type { Translation } from "../types.js";
 
 export const operations: Translation<typeof en> = {
   stepTypes: {
+    postgresql: "PostgreSQL",
     shell: "Shell",
     http: "HTTP",
     fileRead: "Fichier",
@@ -84,7 +85,9 @@ export const operations: Translation<typeof en> = {
     backToList: "Retour aux Opérations",
     simulate: "Simuler",
     run: "Exécuter",
-    editSource: "Modifier la source",
+    editSource: "Ouvrir la source",
+    unsavedChanges: "Modifications non enregistrées",
+    discardChanges: "Annuler les modifications",
     deleteTitle: "Supprimer {{operation}} ?",
     deleteBody: "Le fichier source est retiré du catalogue du runtime.",
     tabs: {
@@ -134,6 +137,8 @@ export const operations: Translation<typeof en> = {
       formatText: "texte",
       formatJson: "JSON",
       fileRead: "lit <path>{{path}}</path> ({{format}}) sous <env>{{root}}</env>",
+      postgresql:
+        "exécute du SQL sur PostgreSQL via Environment <env>{{environment}}</env>, avec Input comme paramètre JSONB $1",
     },
     stepsSection: "Étapes",
     projectionSection: "Projection",

@@ -4,7 +4,9 @@ import { useLocation, useNavigate } from "react-router";
 /* Overlays opened from another overlay close back to it: relation links carry their origin
    in the router state, and the item's close action follows it. */
 
-export interface OriginState { from?: string }
+export interface OriginState {
+  from?: string;
+}
 
 /** Router state to attach to a link that leaves the current item for a related one. */
 export function useOrigin(): OriginState {

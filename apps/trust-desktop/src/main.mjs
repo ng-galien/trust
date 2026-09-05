@@ -1,18 +1,10 @@
-import { app, BrowserWindow, dialog, Menu } from "electron";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-
-import {
-  deployRunner,
-  readTrustServerStatus,
-  resolveTrustInstallation,
-  startTrustServer,
-} from "@trust/shell";
+import { deployRunner, readTrustServerStatus, resolveTrustInstallation, startTrustServer } from "@trust/shell";
+import { app, BrowserWindow, dialog, Menu } from "electron";
 
 const applicationRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const installation = resolveTrustInstallation(
-  process.env.TRUST_INSTALL_ROOT ?? path.resolve(applicationRoot, "../.."),
-);
+const installation = resolveTrustInstallation(process.env.TRUST_INSTALL_ROOT ?? path.resolve(applicationRoot, "../.."));
 const host = process.env.TRUST_HOST ?? "127.0.0.1";
 const runtimePort = environmentPort("TRUST_PORT", 4318);
 const webPort = environmentPort("TRUST_WEB_PORT", 4173);

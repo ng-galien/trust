@@ -19,7 +19,10 @@ export type SentenceToken =
     };
 
 export class SentenceSyntaxError extends Error {
-  constructor(message: string, readonly offset: number) {
+  constructor(
+    message: string,
+    readonly offset: number,
+  ) {
     super(message);
     this.name = "SentenceSyntaxError";
   }
@@ -37,8 +40,13 @@ export function tokenizeSentence(source: string): readonly SentenceToken[] {
     if (character === ",") {
       const previous = tokens.at(-1);
       let next = offset + 1;
-      if (!previous || previous.kind === "comma" || previous.end !== offset
-        || next >= source.length || !/\s/u.test(source[next] ?? "")) {
+      if (
+        !previous ||
+        previous.kind === "comma" ||
+        previous.end !== offset ||
+        next >= source.length ||
+        !/\s/u.test(source[next] ?? "")
+      ) {
         throw new SentenceSyntaxError("Comma must follow a value and be followed by whitespace", offset);
       }
       while (next < source.length && /\s/u.test(source[next] ?? "")) next += 1;
@@ -81,8 +89,12 @@ export class SentenceCursor {
     readonly reject?: (expectation: string) => never,
   ) {}
 
-  get done(): boolean { return this.#index >= this.tokens.length; }
-  peek(): SentenceToken | undefined { return this.tokens[this.#index]; }
+  get done(): boolean {
+    return this.#index >= this.tokens.length;
+  }
+  peek(): SentenceToken | undefined {
+    return this.tokens[this.#index];
+  }
 
   peekText(value: string): boolean {
     const token = this.peek();
@@ -134,7 +146,10 @@ export class SentenceCursor {
   }
 }
 
-export const isExpressionIdentifierStart = (character: string): boolean => character === "_" || character === "$"
-  || (character >= "A" && character <= "Z") || (character >= "a" && character <= "z");
-export const isExpressionIdentifierPart = (character: string): boolean => isExpressionIdentifierStart(character)
-  || (character >= "0" && character <= "9");
+export const isExpressionIdentifierStart = (character: string): boolean =>
+  character === "_" ||
+  character === "$" ||
+  (character >= "A" && character <= "Z") ||
+  (character >= "a" && character <= "z");
+export const isExpressionIdentifierPart = (character: string): boolean =>
+  isExpressionIdentifierStart(character) || (character >= "0" && character <= "9");

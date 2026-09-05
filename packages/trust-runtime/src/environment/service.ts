@@ -1,17 +1,8 @@
+import type { EnvironmentValues, EnvironmentView } from "@trust/extension-sdk";
 import type { CredentialService } from "../credential/service.js";
 import type { Clock } from "../time.js";
 import type { EnvironmentStore } from "./store.js";
-import {
-  assertEnvironmentName,
-  assertEnvironmentValues,
-} from "./validation.js";
-
-export type EnvironmentValues = Readonly<Record<string, string>>;
-
-export interface EnvironmentView {
-  readonly name: string;
-  readonly values: EnvironmentValues;
-}
+import { assertEnvironmentName, assertEnvironmentValues } from "./validation.js";
 
 export interface EnvironmentServiceDependencies {
   readonly environmentStore: EnvironmentStore;
@@ -47,11 +38,7 @@ export class EnvironmentService {
     assertEnvironmentName(name);
     assertEnvironmentValues(values);
     const copy = { ...values };
-    await this.dependencies.environmentStore.save(
-      name,
-      copy,
-      this.dependencies.clock.now().toISOString(),
-    );
+    await this.dependencies.environmentStore.save(name, copy, this.dependencies.clock.now().toISOString());
     this.#environments.set(name, copy);
     return { name, values: { ...copy } };
   }

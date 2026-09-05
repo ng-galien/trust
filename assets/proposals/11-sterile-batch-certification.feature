@@ -33,7 +33,7 @@ Feature: Certify and release one sterile batch under Qualified Person responsibi
 
   @scenario:batch-record
   Scenario: Confirm the executed batch record is complete and the tests are known
-    Then Check "record" runs Operation "pharma.batch-read"
+    Then Check "record" runs Operation "pharma.batch-read@*"
         on "batch" as Input "batch"
         and materializes "required test" from field "requiredTests"
         and must establish "the executed batch record is complete and in quarantine"
@@ -51,7 +51,7 @@ Feature: Certify and release one sterile batch under Qualified Person responsibi
   @scenario:qc-results
   Scenario: Confirm every required QC test passed
     Given scenario "batch-record" is validated
-    Then Check "test result" runs Operation "pharma.test-result-read"
+    Then Check "test result" runs Operation "pharma.test-result-read@*"
         on each "required test" as Input "test"
         using "batch" as Input "batch"
         and materializes "test time" from field "testedAt"
@@ -70,7 +70,7 @@ Feature: Certify and release one sterile batch under Qualified Person responsibi
   @scenario:cold-chain
   Scenario: Confirm the storage cold chain
     Given scenario "batch-record" is validated
-    Then Check "storage" runs Operation "pharma.storage-read"
+    Then Check "storage" runs Operation "pharma.storage-read@*"
         on "batch" as Input "batch"
         and must establish "the batch cold chain has no excursion"
       """js
@@ -87,7 +87,7 @@ Feature: Certify and release one sterile batch under Qualified Person responsibi
   @scenario:deviations
   Scenario: Confirm every deviation is closed with an effective CAPA
     Given scenario "batch-record" is validated
-    Then Check "deviation" runs Operation "pharma.deviation-read"
+    Then Check "deviation" runs Operation "pharma.deviation-read@*"
         on each "deviation" as Input "deviation"
         and must establish "every deviation of the batch is closed with an effective CAPA"
       """js
@@ -104,7 +104,7 @@ Feature: Certify and release one sterile batch under Qualified Person responsibi
         fail("a deviation belongs to another batch")
       )
       """
-    And Check "deviation log" runs Operation "pharma.deviation-log-read"
+    And Check "deviation log" runs Operation "pharma.deviation-log-read@*"
         on "batch" as Input "batch"
         and must establish "the QMS holds no open deviation the agent did not declare"
       """js
@@ -115,7 +115,7 @@ Feature: Certify and release one sterile batch under Qualified Person responsibi
   @scenario:qualified-person
   Scenario: Confirm the Qualified Person authorization for the site
     Given scenario "batch-record" is validated
-    Then Check "authorization" runs Operation "pharma.qp-authorization-read"
+    Then Check "authorization" runs Operation "pharma.qp-authorization-read@*"
         on "qualified person" as Input "person"
         using "manufacturing site" as Input "site"
         and materializes "authorization expiry" from field "expiresAt"
@@ -137,7 +137,7 @@ Feature: Certify and release one sterile batch under Qualified Person responsibi
     And scenario "cold-chain" is validated
     And scenario "deviations" is validated
     And scenario "qualified-person" is validated
-    Then Check "certification" runs Operation "pharma.batch-certify"
+    Then Check "certification" runs Operation "pharma.batch-certify@*"
         on "batch" as Input "batch"
         using "qualified person" as Input "person"
         and must establish "the batch is certified by the authorized Qualified Person"
@@ -163,7 +163,7 @@ Feature: Certify and release one sterile batch under Qualified Person responsibi
   @scenario:release
   Scenario: Confirm the batch release follows the certification
     Given scenario "certification" is validated
-    Then Check "release" runs Operation "pharma.batch-read"
+    Then Check "release" runs Operation "pharma.batch-read@*"
         on "batch" as Input "batch"
         and must establish "the batch was released after its certification"
       """js

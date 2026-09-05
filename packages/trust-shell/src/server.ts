@@ -1,9 +1,15 @@
-import { spawn, type ChildProcess } from "node:child_process";
+import { type ChildProcess, spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { constants, createReadStream } from "node:fs";
 import { copyFile, mkdir, readdir, stat } from "node:fs/promises";
-import { request as httpRequest, createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
-import { createServer as createNetServer, connect as connectSocket } from "node:net";
+import {
+  createServer,
+  request as httpRequest,
+  type IncomingMessage,
+  type Server,
+  type ServerResponse,
+} from "node:http";
+import { connect as connectSocket, createServer as createNetServer } from "node:net";
 import path from "node:path";
 import type { Duplex } from "node:stream";
 import { setTimeout as delay } from "node:timers/promises";
@@ -81,13 +87,15 @@ export async function startTrustServer(options: TrustServerOptions): Promise<Run
 async function prepareOperationsDirectory(source: string, destination: string): Promise<void> {
   await mkdir(destination, { recursive: true });
   const builtIns = (await readdir(source)).filter((name) => name.endsWith(".feature"));
-  await Promise.all(builtIns.map(async (name) => {
-    try {
-      await copyFile(path.join(source, name), path.join(destination, name), constants.COPYFILE_EXCL);
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
-    }
-  }));
+  await Promise.all(
+    builtIns.map(async (name) => {
+      try {
+        await copyFile(path.join(source, name), path.join(destination, name), constants.COPYFILE_EXCL);
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+      }
+    }),
+  );
 }
 
 export async function readTrustServerStatus(host = "127.0.0.1", webPort = 4173): Promise<TrustServerStatus> {
@@ -98,7 +106,7 @@ export async function readTrustServerStatus(host = "127.0.0.1", webPort = 4173):
       fetch(url, { signal: AbortSignal.timeout(1_500) }),
       fetch(`${url}/health`, { signal: AbortSignal.timeout(1_500) }),
     ]);
-    const runtimeAvailable = health.ok && await isTrustHealthResponse(health);
+    const runtimeAvailable = health.ok && (await isTrustHealthResponse(health));
     const pageIsTrust = page.ok && (await page.text()).includes("<title>TRUST</title>");
     return { running: pageIsTrust && runtimeAvailable, url, runtimeAvailable };
   } catch {
@@ -108,7 +116,7 @@ export async function readTrustServerStatus(host = "127.0.0.1", webPort = 4173):
 
 async function isTrustHealthResponse(response: Response): Promise<boolean> {
   try {
-    const payload = await response.json() as { readonly status?: unknown; readonly service?: unknown };
+    const payload = (await response.json()) as { readonly status?: unknown; readonly service?: unknown };
     return payload.status === "ok" && payload.service === "trust-runtime";
   } catch {
     return false;
@@ -118,10 +126,14 @@ async function isTrustHealthResponse(response: Response): Promise<boolean> {
 function createWebServer(webDirectory: string, runtimeHost: string, runtimePort: number): Server {
   const server = createServer((request, response) => {
     const pathname = requestPath(request.url);
-    const extensionNavigation = request.method === "GET"
-      && (request.headers.accept ?? "").split(",").some(value => value.trim().split(";", 1)[0] === "text/html")
-      && /^\/extensions(?:\/[^/]+)?$/.test(pathname);
-    if (!extensionNavigation && PROXY_PATHS.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`))) {
+    const extensionNavigation =
+      request.method === "GET" &&
+      (request.headers.accept ?? "").split(",").some((value) => value.trim().split(";", 1)[0] === "text/html") &&
+      /^\/extensions(?:\/[^/]+)?$/.test(pathname);
+    if (
+      !extensionNavigation &&
+      PROXY_PATHS.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`))
+    ) {
       proxyHttp(request, response, runtimeHost, runtimePort);
       return;
     }
@@ -137,22 +149,20 @@ function createWebServer(webDirectory: string, runtimeHost: string, runtimePort:
   return server;
 }
 
-function proxyHttp(
-  request: IncomingMessage,
-  response: ServerResponse,
-  runtimeHost: string,
-  runtimePort: number,
-): void {
-  const upstream = httpRequest({
-    host: runtimeHost,
-    port: runtimePort,
-    method: request.method,
-    path: request.url,
-    headers: { ...request.headers, host: `${runtimeHost}:${runtimePort}` },
-  }, (incoming) => {
-    response.writeHead(incoming.statusCode ?? 502, incoming.headers);
-    incoming.pipe(response);
-  });
+function proxyHttp(request: IncomingMessage, response: ServerResponse, runtimeHost: string, runtimePort: number): void {
+  const upstream = httpRequest(
+    {
+      host: runtimeHost,
+      port: runtimePort,
+      method: request.method,
+      path: request.url,
+      headers: { ...request.headers, host: `${runtimeHost}:${runtimePort}` },
+    },
+    (incoming) => {
+      response.writeHead(incoming.statusCode ?? 502, incoming.headers);
+      incoming.pipe(response);
+    },
+  );
   upstream.on("error", (error) => {
     if (!response.headersSent) response.writeHead(502, { "content-type": "text/plain; charset=utf-8" });
     response.end(`TRUST runtime unavailable: ${error.message}\n`);
@@ -208,7 +218,7 @@ async function serveWebFile(
     response.writeHead(404).end();
     return;
   }
-  const file = await regularFile(candidate) ? candidate : path.join(webDirectory, "index.html");
+  const file = (await regularFile(candidate)) ? candidate : path.join(webDirectory, "index.html");
   try {
     const information = await stat(file);
     response.writeHead(200, {
@@ -233,14 +243,22 @@ async function regularFile(value: string): Promise<boolean> {
 
 function contentType(file: string): string {
   switch (path.extname(file)) {
-    case ".html": return "text/html; charset=utf-8";
-    case ".js": return "text/javascript; charset=utf-8";
-    case ".css": return "text/css; charset=utf-8";
-    case ".json": return "application/json; charset=utf-8";
-    case ".svg": return "image/svg+xml";
-    case ".png": return "image/png";
-    case ".woff2": return "font/woff2";
-    default: return "application/octet-stream";
+    case ".html":
+      return "text/html; charset=utf-8";
+    case ".js":
+      return "text/javascript; charset=utf-8";
+    case ".css":
+      return "text/css; charset=utf-8";
+    case ".json":
+      return "application/json; charset=utf-8";
+    case ".svg":
+      return "image/svg+xml";
+    case ".png":
+      return "image/png";
+    case ".woff2":
+      return "font/woff2";
+    default:
+      return "application/octet-stream";
   }
 }
 
@@ -271,7 +289,7 @@ function listen(server: Server, host: string, port: number): Promise<void> {
 
 function closeServer(server: Server): Promise<void> {
   return new Promise((resolve, reject) => {
-    server.close((error) => error ? reject(error) : resolve());
+    server.close((error) => (error ? reject(error) : resolve()));
     server.closeAllConnections();
   });
 }

@@ -14,27 +14,27 @@ test("the runtime compiles, publishes and reads one Procedure with its exact Ope
     environments: { local: { workspaceRoot: repositoryRoot } },
   });
   try {
-    const source = await readFile(
-      path.join(repositoryRoot, "assets/procedures/00-git-status.feature"),
-      "utf8",
-    );
-    const compiled = await rpc(runtime.endpoint, "procedure.compile", {
+    const source = await readFile(path.join(repositoryRoot, "assets/procedures/00-git-status.feature"), "utf8");
+    const compiled = (await rpc(runtime.endpoint, "procedure.compile", {
       source,
       sourceName: "00-git-status.feature",
-    }) as {
+    })) as {
       procedure: string;
       version: string;
       operations: readonly { operation: string; definition: { operation: string } }[];
     };
     assert.equal(compiled.procedure, "git-status");
     assert.equal(compiled.version, "2.0.0");
-    assert.deepEqual(compiled.operations.map((item) => item.operation), ["git.head-read"]);
+    assert.deepEqual(
+      compiled.operations.map((item) => item.operation),
+      ["git.head-read"],
+    );
     assert.equal(compiled.operations[0]?.definition.operation, "git.head-read");
 
-    const published = await rpc(runtime.endpoint, "procedure.publish", {
+    const published = (await rpc(runtime.endpoint, "procedure.publish", {
       source,
       sourceName: "00-git-status.feature",
-    }) as { contract: string; procedure: typeof compiled };
+    })) as { contract: string; procedure: typeof compiled };
     assert.equal(published.contract, "trust.published-procedure@1");
     assert.deepEqual(published.procedure, compiled);
 
@@ -54,7 +54,7 @@ async function rpc(endpoint: string, method: string, params: unknown): Promise<u
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ jsonrpc: "2.0", id: method, method, params }),
   });
-  const envelope = await response.json() as { result?: unknown; error?: unknown };
+  const envelope = (await response.json()) as { result?: unknown; error?: unknown };
   assert.equal(envelope.error, undefined, JSON.stringify(envelope.error));
   return envelope.result;
 }

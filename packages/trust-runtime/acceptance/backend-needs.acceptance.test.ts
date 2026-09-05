@@ -11,25 +11,72 @@ const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url))
 const operationsDirectory = path.join(repositoryRoot, "assets/operations");
 
 test("intent admission and interruption publish committed Plan state changes", { timeout: 15_000 }, async () => {
-  const runtime = await startPublicRuntime("trust-intent-events-", { operationsDirectory, environments: { local: { workspaceRoot: repositoryRoot } } });
+  const runtime = await startPublicRuntime("trust-intent-events-", {
+    operationsDirectory,
+    environments: { local: { workspaceRoot: repositoryRoot } },
+  });
   const events = await openPlanEvents(runtime.endpoint);
   try {
-    const source = await readFile(path.join(repositoryRoot, "packages/trust-runtime/acceptance/fixtures/intent-chaining.feature"), "utf8");
+    const source = await readFile(
+      path.join(repositoryRoot, "packages/trust-runtime/acceptance/fixtures/intent-chaining.feature"),
+      "utf8",
+    );
     await rpc(runtime.endpoint, "procedure.publish", { source, sourceName: "intent-chaining.feature" });
-    const engaged = await rpc(runtime.endpoint, "plan.engage", { contract: "trust.plan-engagement-request@1", procedure: "intent-chaining", procedureVersion: "1.0.0", plan: "intent-events", environment: "local", rootInputs: { repository: "trust" }, mode: "dry-run" }) as { checkUris: string[] };
+    const engaged = (await rpc(runtime.endpoint, "plan.engage", {
+      contract: "trust.plan-engagement-request@1",
+      procedure: "intent-chaining",
+      procedureVersion: "1.0.0",
+      plan: "intent-events",
+      environment: "local",
+      rootInputs: { repository: "trust" },
+      mode: "dry-run",
+    })) as { checkUris: string[] };
     const checkUri = engaged.checkUris[0]!;
-    await fetch(`${runtime.endpoint}/mcp`, { method: "POST", headers: { "content-type": "application/json", "mcp-protocol-version": "2025-03-26" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "trust_plan_read", arguments: { checkUri } } }) });
-    const initial = await rpc(runtime.endpoint, "plan.read", { plan: "intent-events" }) as { currentIntent: string };
-    const admission = await rpc(runtime.endpoint, "check.attempt.admit", { contract: "trust.check-admission-request@1", attemptKey: "intent-event-attempt", checkUri, intent: initial.currentIntent, nextIntent: "Observe the remaining Check" }) as { status: string; attemptHandle: string };
+    await fetch(`${runtime.endpoint}/mcp`, {
+      method: "POST",
+      headers: { "content-type": "application/json", "mcp-protocol-version": "2025-03-26" },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "tools/call",
+        params: { name: "trust_plan_read", arguments: { checkUri } },
+      }),
+    });
+    const initial = (await rpc(runtime.endpoint, "plan.read", { plan: "intent-events" })) as { currentIntent: string };
+    const admission = (await rpc(runtime.endpoint, "check.attempt.admit", {
+      contract: "trust.check-admission-request@1",
+      attemptKey: "intent-event-attempt",
+      checkUri,
+      intent: initial.currentIntent,
+      nextIntent: "Observe the remaining Check",
+    })) as { status: string; attemptHandle: string };
     assert.equal(admission.status, "ADMITTED");
-    await events.takeUntil(event => event.type === "plan.state" && event.plan === "intent-events");
-    const pending = await rpc(runtime.endpoint, "plan.read", { plan: "intent-events" }) as { currentIntent: string; nextIntent: string | null };
-    assert.deepEqual({ currentIntent: pending.currentIntent, nextIntent: pending.nextIntent }, { currentIntent: initial.currentIntent, nextIntent: "Observe the remaining Check" });
-    await rpc(runtime.endpoint, "check.attempt.interrupt", { contract: "trust.attempt-interruption-request@1", attemptHandle: admission.attemptHandle });
-    await events.takeUntil(event => event.type === "plan.state" && event.plan === "intent-events");
-    const interrupted = await rpc(runtime.endpoint, "plan.read", { plan: "intent-events" }) as { currentIntent: string; nextIntent: string | null };
-    assert.deepEqual({ currentIntent: interrupted.currentIntent, nextIntent: interrupted.nextIntent }, { currentIntent: initial.currentIntent, nextIntent: null });
-  } finally { events.close(); await runtime.close(); }
+    await events.takeUntil((event) => event.type === "plan.state" && event.plan === "intent-events");
+    const pending = (await rpc(runtime.endpoint, "plan.read", { plan: "intent-events" })) as {
+      currentIntent: string;
+      nextIntent: string | null;
+    };
+    assert.deepEqual(
+      { currentIntent: pending.currentIntent, nextIntent: pending.nextIntent },
+      { currentIntent: initial.currentIntent, nextIntent: "Observe the remaining Check" },
+    );
+    await rpc(runtime.endpoint, "check.attempt.interrupt", {
+      contract: "trust.attempt-interruption-request@1",
+      attemptHandle: admission.attemptHandle,
+    });
+    await events.takeUntil((event) => event.type === "plan.state" && event.plan === "intent-events");
+    const interrupted = (await rpc(runtime.endpoint, "plan.read", { plan: "intent-events" })) as {
+      currentIntent: string;
+      nextIntent: string | null;
+    };
+    assert.deepEqual(
+      { currentIntent: interrupted.currentIntent, nextIntent: interrupted.nextIntent },
+      { currentIntent: initial.currentIntent, nextIntent: null },
+    );
+  } finally {
+    events.close();
+    await runtime.close();
+  }
 });
 
 test("the Operation catalog is writable and catalog summaries stay light", async () => {
@@ -40,7 +87,7 @@ test("the Operation catalog is writable and catalog summaries stay light", async
     const original = await readFile(path.join(directory, "git.head-read.feature"), "utf8");
     const source = original.replace("@operation:git.head-read", "@operation:git.head-copy");
     const secondSource = original.replace("@operation:git.head-read", "@operation:git.head-copy-two");
-    const [saved, secondSaved] = await Promise.all([
+    const [saved, secondSaved] = (await Promise.all([
       rpc(runtime.endpoint, "operation.save", {
         source,
         sourceName: "git.head-copy.feature",
@@ -49,11 +96,30 @@ test("the Operation catalog is writable and catalog summaries stay light", async
         source: secondSource,
         sourceName: "git.head-copy-two.feature",
       }),
-    ]) as [{ operation: { operation: string } }, { operation: { operation: string } }];
+    ])) as [{ operation: { operation: string } }, { operation: { operation: string } }];
     assert.equal(saved.operation.operation, "git.head-copy");
     assert.equal(secondSaved.operation.operation, "git.head-copy-two");
 
-    const summaries = await rpc(runtime.endpoint, "operation.list", { summary: true }) as {
+    // Published identity and its source file are both protected from replacement.
+    for (const candidate of [
+      { source, sourceName: "git.head-copy.feature" },
+      { source: `${source}\n# changed definition\n`, sourceName: "git.head-copy.feature" },
+      { source, sourceName: "duplicate.feature" },
+      { source: source.replace("@version:1.0.0", "@version:1.0.1"), sourceName: "git.head-copy.feature" },
+    ]) {
+      const refusal = await rpcFailure(runtime.endpoint, "operation.save", candidate);
+      assert.equal(refusal.data?.reason, "operation-conflict");
+      assert.equal(await readFile(path.join(directory, "git.head-copy.feature"), "utf8"), source);
+    }
+    const updatedSource = source.replace("@version:1.0.0", "@version:1.0.1");
+    await rpc(runtime.endpoint, "operation.save", { source: updatedSource, sourceName: "git.head-copy-1.0.1.feature" });
+    const retained = (await rpc(runtime.endpoint, "operation.read", {
+      operation: "git.head-copy",
+      version: "1.0.0",
+    })) as { source: string };
+    assert.equal(retained.source, source);
+
+    const summaries = (await rpc(runtime.endpoint, "operation.list", { summary: true })) as {
       operations: Array<Record<string, unknown>>;
     };
     const summary = summaries.operations.find((operation) => operation.operation === "git.head-copy");
@@ -62,15 +128,24 @@ test("the Operation catalog is writable and catalog summaries stay light", async
     assert.equal(Object.hasOwn(summary, "steps"), false);
     assert.ok(summaries.operations.some((operation) => operation.operation === "git.head-copy-two"));
 
-    const read = await rpc(runtime.endpoint, "operation.read", { operation: "git.head-copy", version: "1.0.0" }) as {
+    const read = (await rpc(runtime.endpoint, "operation.read", { operation: "git.head-copy", version: "1.0.0" })) as {
       source: string;
     };
     assert.match(read.source, /@operation:git\.head-copy/);
-    await Promise.all([
-      rpc(runtime.endpoint, "operation.remove", { operation: "git.head-copy", version: "1.0.0" }),
-      rpc(runtime.endpoint, "operation.remove", { operation: "git.head-copy-two", version: "1.0.0" }),
-    ]);
-    await rpcFailure(runtime.endpoint, "operation.read", { operation: "git.head-copy", version: "1.0.0" });
+    for (const [operation, version] of [
+      ["git.head-copy", "1.0.0"],
+      ["git.head-copy", "1.0.1"],
+      ["git.head-copy-two", "1.0.0"],
+    ]) {
+      const refusal = await rpcFailure(runtime.endpoint, "operation.remove", { operation, version });
+      assert.equal(refusal.data?.reason, "immutable-operation");
+      await rpc(runtime.endpoint, "operation.read", { operation, version });
+    }
+    const unknownRemoval = await rpcFailure(runtime.endpoint, "operation.remove", {
+      operation: "git.missing",
+      version: "1.0.0",
+    });
+    assert.equal(unknownRemoval.data?.reason, "unknown-operation");
 
     const procedure = await readFile(path.join(repositoryRoot, "assets/procedures/00-git-status.feature"), "utf8");
     const emptyFailureReason = await rpcFailure(runtime.endpoint, "procedure.compile", {
@@ -81,6 +156,40 @@ test("the Operation catalog is writable and catalog summaries stay light", async
     assert.match(emptyFailureReason.data?.message ?? "", /Failure reason cannot be empty/);
   } finally {
     await runtime.close();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("two public runtimes cannot replace an Operation from a stale catalog", async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), "trust-shared-catalog-"));
+  const first = await startPublicRuntime("trust-catalog-first-", { operationsDirectory: directory });
+  const second = await startPublicRuntime("trust-catalog-second-", { operationsDirectory: directory });
+  try {
+    const source = await readFile(path.join(operationsDirectory, "git.head-read.feature"), "utf8");
+    await rpc(first.endpoint, "operation.save", { source, sourceName: "head.feature" });
+    for (const candidate of [
+      { source: `${source}\n# changed\n`, sourceName: "head.feature" },
+      { source: `${source}\n# changed\n`, sourceName: "other.feature" },
+      { source: source.replace("@version:1.0.0", "@version:1.0.1"), sourceName: "head.feature" },
+    ]) {
+      const refusal = await rpcFailure(second.endpoint, "operation.save", candidate);
+      assert.equal(refusal.data?.reason, "operation-conflict");
+      assert.equal(await readFile(path.join(directory, "head.feature"), "utf8"), source);
+    }
+    // Different identities competing for one new path must never replace the winner.
+    const candidates = ["git.race-one", "git.race-two"].map((name) =>
+      source.replace("@operation:git.head-read", `@operation:${name}`),
+    );
+    const results = await Promise.allSettled(
+      [first, second].map((runtime, index) =>
+        rpc(runtime.endpoint, "operation.save", { source: candidates[index], sourceName: "race.feature" }),
+      ),
+    );
+    assert.equal(results.filter((result) => result.status === "fulfilled").length, 1);
+    const winner = results.findIndex((result) => result.status === "fulfilled");
+    assert.equal(await readFile(path.join(directory, "race.feature"), "utf8"), candidates[winner]);
+  } finally {
+    await Promise.all([first.close(), second.close()]);
     await rm(directory, { recursive: true, force: true });
   }
 });
@@ -130,7 +239,7 @@ test("Plan pages, Check history and live events are served at public boundaries"
       source: await readFile(procedureFile, "utf8"),
       sourceName: "00-git-status.feature",
     });
-    const procedureSummaries = await rpc(runtime.endpoint, "procedure.list", { summary: true }) as {
+    const procedureSummaries = (await rpc(runtime.endpoint, "procedure.list", { summary: true })) as {
       procedures: Array<{ procedure: Record<string, unknown> }>;
     };
     assert.equal(Object.hasOwn(procedureSummaries.procedures[0]!.procedure, "source"), false);
@@ -139,17 +248,17 @@ test("Plan pages, Check history and live events are served at public boundaries"
     for (const plan of ["rehearsal-a", "rehearsal-b", "rehearsal-c"]) {
       await engage(runtime.endpoint, plan);
     }
-    const firstPage = await rpc(runtime.endpoint, "plan.list", {
+    const firstPage = (await rpc(runtime.endpoint, "plan.list", {
       filter: { mode: "dry-run", procedure: "git-status" },
       limit: 2,
-    }) as { plans: Array<{ plan: string }>; nextCursor?: string };
+    })) as { plans: Array<{ plan: string }>; nextCursor?: string };
     assert.equal(firstPage.plans.length, 2);
     assert.ok(firstPage.nextCursor);
-    const secondPage = await rpc(runtime.endpoint, "plan.list", {
+    const secondPage = (await rpc(runtime.endpoint, "plan.list", {
       filter: { mode: "dry-run", procedure: "git-status" },
       limit: 2,
       cursor: firstPage.nextCursor,
-    }) as { plans: Array<{ plan: string }>; nextCursor?: string };
+    })) as { plans: Array<{ plan: string }>; nextCursor?: string };
     assert.equal(secondPage.plans.length, 1);
     assert.equal(secondPage.nextCursor, undefined);
     assert.equal(new Set([...firstPage.plans, ...secondPage.plans].map(({ plan }) => plan)).size, 3);
@@ -175,18 +284,26 @@ test("Plan pages, Check history and live events are served at public boundaries"
       forbiddenFurtherAction: "Modify the repository to manufacture the expected status.",
     });
     view = await readPlan(runtime.endpoint, "rehearsal-a");
-    await rpc(runtime.endpoint, "plan.resume", { plan: "rehearsal-a", escalationId: view.activeEscalation!.escalationId, resumeReason: "The operator reviewed the escalation and authorized a fresh observation." });
+    await rpc(runtime.endpoint, "plan.resume", {
+      plan: "rehearsal-a",
+      escalationId: view.activeEscalation!.escalationId,
+      resumeReason: "The operator reviewed the escalation and authorized a fresh observation.",
+    });
 
-    const historyOne = await rpc(runtime.endpoint, "history.list", {
+    const historyOne = (await rpc(runtime.endpoint, "history.list", {
       filter: { plan: "rehearsal-a", mode: "dry-run", verdict: "NOT_VALIDATED" },
       limit: 1,
-    }) as { snapshots: Array<{ plan: string; verdict: string; factCount: number }>; nextCursor?: string };
-    assert.deepEqual(historyOne.snapshots.map(({ plan, verdict, factCount }) => [plan, verdict, factCount]), [
-      ["rehearsal-a", "NOT_VALIDATED", 1],
-    ]);
+    })) as { snapshots: Array<{ plan: string; verdict: string; factCount: number }>; nextCursor?: string };
+    assert.deepEqual(
+      historyOne.snapshots.map(({ plan, verdict, factCount }) => [plan, verdict, factCount]),
+      [["rehearsal-a", "NOT_VALIDATED", 1]],
+    );
     assert.equal(historyOne.nextCursor, undefined);
 
-    const historyPage = await rpc(runtime.endpoint, "history.list", { filter: { plan: "rehearsal-a" }, limit: 1 }) as {
+    const historyPage = (await rpc(runtime.endpoint, "history.list", {
+      filter: { plan: "rehearsal-a" },
+      limit: 1,
+    })) as {
       snapshots: Array<{ snapshotId: string }>;
       nextCursor?: string;
     };
@@ -196,11 +313,11 @@ test("Plan pages, Check history and live events are served at public boundaries"
       limit: 1,
       cursor: historyPage.nextCursor,
     });
-    const historyNext = await rpc(runtime.endpoint, "history.list", {
+    const historyNext = (await rpc(runtime.endpoint, "history.list", {
       filter: { plan: "rehearsal-a" },
       limit: 1,
       cursor: historyPage.nextCursor,
-    }) as { snapshots: Array<{ snapshotId: string }> };
+    })) as { snapshots: Array<{ snapshotId: string }> };
     assert.notEqual(historyPage.snapshots[0]?.snapshotId, historyNext.snapshots[0]?.snapshotId);
 
     assert.deepEqual(await rpc(runtime.endpoint, "plan.close", { plan: "rehearsal-a" }), {
@@ -293,7 +410,10 @@ interface StreamEvent {
   readonly session?: { readonly state: string };
 }
 
-async function openPlanEvents(endpoint: string, lastEventId?: string): Promise<{
+async function openPlanEvents(
+  endpoint: string,
+  lastEventId?: string,
+): Promise<{
   takeUntil(predicate: (event: StreamEvent) => boolean): Promise<readonly StreamEvent[]>;
   close(): void;
 }> {
@@ -318,7 +438,10 @@ async function openPlanEvents(endpoint: string, lastEventId?: string): Promise<{
         const blocks = buffer.split("\n\n");
         buffer = blocks.pop() ?? "";
         for (const block of blocks) {
-          const data = block.split("\n").find((line) => line.startsWith("data: "))?.slice(6);
+          const data = block
+            .split("\n")
+            .find((line) => line.startsWith("data: "))
+            ?.slice(6);
           if (!data) continue;
           const event = JSON.parse(data) as StreamEvent;
           events.push(event);
@@ -339,7 +462,11 @@ async function rpc(endpoint: string, method: string, params: unknown): Promise<u
   return envelope.result;
 }
 
-async function rpcFailure(endpoint: string, method: string, params: unknown): Promise<{
+async function rpcFailure(
+  endpoint: string,
+  method: string,
+  params: unknown,
+): Promise<{
   data?: { reason?: string; message?: string };
 }> {
   const envelope = await rpcEnvelope(endpoint, method, params);
@@ -347,7 +474,11 @@ async function rpcFailure(endpoint: string, method: string, params: unknown): Pr
   return envelope.error as { data?: { reason?: string; message?: string } };
 }
 
-async function rpcEnvelope(endpoint: string, method: string, params: unknown): Promise<{
+async function rpcEnvelope(
+  endpoint: string,
+  method: string,
+  params: unknown,
+): Promise<{
   result?: unknown;
   error?: unknown;
 }> {

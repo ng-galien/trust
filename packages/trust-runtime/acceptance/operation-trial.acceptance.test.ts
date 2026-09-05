@@ -16,18 +16,19 @@ test("an Operation Trial runs through the packaged runner and streams its diagno
     environments: { local: { workspaceRoot: path.dirname(repositoryRoot) } },
   });
   try {
-    const started = await rpc(runtime.endpoint, "operation.trial.start", {
+    const started = (await rpc(runtime.endpoint, "operation.trial.start", {
       operation: "git.head-read",
       version: "1.0.0",
       environment: "local",
       input: { project: path.basename(repositoryRoot) },
-    }) as { trial: { id: string } };
+    })) as { trial: { id: string } };
 
-    const stream = fetch(`${runtime.endpoint}/otlp/diagnostics/trials/${started.trial.id}/stream`)
-      .then(async (response) => {
+    const stream = fetch(`${runtime.endpoint}/otlp/diagnostics/trials/${started.trial.id}/stream`).then(
+      async (response) => {
         assert.equal(response.status, 200);
         return response.text();
-      });
+      },
+    );
     const trial = await waitForTrial(runtime.endpoint, started.trial.id);
     const streamText = await stream;
 
@@ -43,18 +44,29 @@ test("an Operation Trial runs through the packaged runner and streams its diagno
     assert.match(streamText, /event: trial\.completed/);
     assert.match(streamText, /event: end/);
 
-    const listed = await rpc(runtime.endpoint, "operation.trial.list", {}) as {
+    const listed = (await rpc(runtime.endpoint, "operation.trial.list", {})) as {
       trials: Array<{ id: string; operation: string; status: string }>;
     };
-    assert.deepEqual(listed.trials.map(({ id, operation, status }) => [id, operation, status]), [
-      [started.trial.id, "git.head-read", "succeeded"],
-    ]);
-    const filtered = await rpc(runtime.endpoint, "operation.trial.list", { operation: "git.head-read" }) as {
+    assert.deepEqual(
+      listed.trials.map(({ id, operation, status }) => [id, operation, status]),
+      [[started.trial.id, "git.head-read", "succeeded"]],
+    );
+    const filtered = (await rpc(runtime.endpoint, "operation.trial.list", { operation: "git.head-read" })) as {
       trials: Array<{ id: string }>;
     };
-    assert.deepEqual(filtered.trials.map(({ id }) => id), [started.trial.id]);
-    assert.equal((await rpcEnvelope(runtime.endpoint, "operation.trial.list", { unexpected: true })).error?.code, -32_602);
-    assert.equal((await rpcEnvelope(runtime.endpoint, "operation.trial.read", { trial: started.trial.id, after: "latest" })).error?.code, -32_602);
+    assert.deepEqual(
+      filtered.trials.map(({ id }) => id),
+      [started.trial.id],
+    );
+    assert.equal(
+      (await rpcEnvelope(runtime.endpoint, "operation.trial.list", { unexpected: true })).error?.code,
+      -32_602,
+    );
+    assert.equal(
+      (await rpcEnvelope(runtime.endpoint, "operation.trial.read", { trial: started.trial.id, after: "latest" })).error
+        ?.code,
+      -32_602,
+    );
   } finally {
     await runtime.close();
   }
@@ -69,11 +81,11 @@ test("a timed-out Trial kills its process tree and still closes a full diagnosti
   });
   try {
     const source = stubbornOperation(pidFile);
-    const started = await rpc(runtime.endpoint, "operation.trial.start", {
+    const started = (await rpc(runtime.endpoint, "operation.trial.start", {
       source,
       environment: "local",
       input: {},
-    }) as { trial: { id: string } };
+    })) as { trial: { id: string } };
 
     await waitForFile(pidFile);
     const response = await fetch(`${runtime.endpoint}/otlp/diagnostics/trials/${started.trial.id}/stream`);
@@ -104,11 +116,11 @@ test("an operator can cancel a running Trial and its process tree", async () => 
     trialTimeoutMs: 30_000,
   });
   try {
-    const started = await rpc(runtime.endpoint, "operation.trial.start", {
+    const started = (await rpc(runtime.endpoint, "operation.trial.start", {
       source: stubbornOperation(pidFile),
       environment: "local",
       input: {},
-    }) as { trial: { id: string } };
+    })) as { trial: { id: string } };
 
     await waitForFile(pidFile);
     const response = await fetch(`${runtime.endpoint}/otlp/diagnostics/trials/${started.trial.id}/stream`);
@@ -140,7 +152,7 @@ interface TrialView {
 async function waitForTrial(endpoint: string, trial: string): Promise<TrialView> {
   const deadline = Date.now() + 10_000;
   while (Date.now() < deadline) {
-    const result = await rpc(endpoint, "operation.trial.read", { trial }) as { trial: TrialView };
+    const result = (await rpc(endpoint, "operation.trial.read", { trial })) as { trial: TrialView };
     if (result.trial.status !== "starting" && result.trial.status !== "running") return result.trial;
     await delay(25);
   }
@@ -157,10 +169,12 @@ async function fillDiagnosticStream(endpoint: string, trial: string): Promise<vo
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
-      resourceLogs: [{
-        resource: { attributes: [{ key: "trust.trial.id", value: { stringValue: trial } }] },
-        scopeLogs: [{ logRecords }],
-      }],
+      resourceLogs: [
+        {
+          resource: { attributes: [{ key: "trust.trial.id", value: { stringValue: trial } }] },
+          scopeLogs: [{ logRecords }],
+        },
+      ],
     }),
   });
   assert.equal(response.status, 200);
@@ -232,7 +246,11 @@ async function rpc(endpoint: string, method: string, params: unknown): Promise<u
   return envelope.result;
 }
 
-async function rpcEnvelope(endpoint: string, method: string, params: unknown): Promise<{
+async function rpcEnvelope(
+  endpoint: string,
+  method: string,
+  params: unknown,
+): Promise<{
   result?: unknown;
   error?: { code: number; message: string; data?: unknown };
 }> {

@@ -1,9 +1,7 @@
+import type { JsonValue, Postgresql, PostgresqlResult } from "@trust/operation";
 import { Client, type ClientConfig } from "pg";
-
-import type { Postgresql, PostgresqlResult } from "@trust/operation";
-
 import type { StepReporter } from "../diagnostics/events.js";
-import type { JsonObject, JsonValue } from "../lib/json.js";
+import type { JsonObject } from "../lib/json.js";
 
 const JSONB_OID = 3_802;
 
@@ -29,14 +27,9 @@ export async function runPostgresql(
 ): Promise<PostgresqlResult> {
   const connectionValue = environment[postgresql.connection.environment];
   if (typeof connectionValue !== "string") {
-    throw new TypeError(
-      `PostgreSQL Environment "${postgresql.connection.environment}" must be a connection string.`,
-    );
+    throw new TypeError(`PostgreSQL Environment "${postgresql.connection.environment}" must be a connection string.`);
   }
-  const connectionString = postgresConnectionString(
-    connectionValue,
-    postgresql.connection.environment,
-  );
+  const connectionString = postgresConnectionString(connectionValue, postgresql.connection.environment);
   const processEnvironment = configuration.processEnvironment ?? process.env;
   const client = new Client(clientConfiguration(connectionString, processEnvironment));
   let connected = false;
@@ -49,20 +42,16 @@ export async function runPostgresql(
       rowMode: "array",
     });
     if (
-      response.fields.length !== 1
-      || response.fields[0]?.name !== "result"
-      || response.fields[0]?.dataTypeID !== JSONB_OID
-      || response.rows.length !== 1
+      response.fields.length !== 1 ||
+      response.fields[0]?.name !== "result" ||
+      response.fields[0]?.dataTypeID !== JSONB_OID ||
+      response.rows.length !== 1
     ) {
-      throw new PostgresqlError(
-        "PostgreSQL statement must return exactly one row with one JSONB column named result.",
-      );
+      throw new PostgresqlError("PostgreSQL statement must return exactly one row with one JSONB column named result.");
     }
     const row = response.rows[0];
     if (!Array.isArray(row) || row.length !== 1) {
-      throw new PostgresqlError(
-        "PostgreSQL statement must return exactly one row with one JSONB column named result.",
-      );
+      throw new PostgresqlError("PostgreSQL statement must return exactly one row with one JSONB column named result.");
     }
     const result = json(row[0], "PostgreSQL JSONB result");
     reporter.log("postgresql", "PostgreSQL statement returned one JSONB result.");

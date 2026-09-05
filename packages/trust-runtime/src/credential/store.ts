@@ -22,9 +22,7 @@ export class CredentialStore {
     await this.dependencies.database
       .insertInto("environment_credentials")
       .values({ environment, name, value, updated_at: updatedAt })
-      .onConflict((conflict) => conflict
-        .columns(["environment", "name"])
-        .doUpdateSet({ value, updated_at: updatedAt }))
+      .onConflict((conflict) => conflict.columns(["environment", "name"]).doUpdateSet({ value, updated_at: updatedAt }))
       .execute();
   }
 

@@ -6,13 +6,6 @@
     "outDir": "dist",
     "tsBuildInfoFile": "dist/.tsbuildinfo"
   },
-  "include": [
-    "src/**/*.ts",
-    "acceptance/**/*.ts"
-  ],
-  "references": [
-    { "path": "../trust-gherkin" },
-    { "path": "../trust-operation" },
-    { "path": "../trust-procedure" }
-  ]
+  "include": ["src/**/*.ts", "acceptance/**/*.ts"],
+  "references": [{ "path": "../trust-gherkin" }, { "path": "../trust-operation" }, { "path": "../trust-procedure" }]
 }

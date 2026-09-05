@@ -1,5 +1,5 @@
+import type { Fact } from "@trust/extension-sdk";
 import type { Database } from "../database/database.js";
-import type { Fact } from "../model.js";
 
 interface FactRow {
   fact_id: string;
@@ -47,25 +47,31 @@ export class FactStore {
         .where("fact_id", "=", fact.id)
         .executeTakeFirst();
       if (!existing) {
-        await database.insertInto("facts").values({
-          fact_id: fact.id,
-          check_uri: fact.checkUri,
-          compiled_digest: fact.compiledCheckDigest,
-          fact_index: fact.index,
-          operation: fact.operation,
-          operation_digest: fact.operationDigest,
-          observed_at: fact.observedAt,
-          payload_json: JSON.stringify(fact.values),
-        }).execute();
+        await database
+          .insertInto("facts")
+          .values({
+            fact_id: fact.id,
+            check_uri: fact.checkUri,
+            compiled_digest: fact.compiledCheckDigest,
+            fact_index: fact.index,
+            operation: fact.operation,
+            operation_digest: fact.operationDigest,
+            observed_at: fact.observedAt,
+            payload_json: JSON.stringify(fact.values),
+          })
+          .execute();
       } else {
         duplicateIds.push(fact.id);
       }
-      await database.insertInto("attempt_fact_receipts").values({
-        attempt_handle: fact.attemptHandle,
-        fact_id: fact.id,
-        fact_index: fact.index,
-        recorded_at: fact.recordedAt,
-      }).execute();
+      await database
+        .insertInto("attempt_fact_receipts")
+        .values({
+          attempt_handle: fact.attemptHandle,
+          fact_id: fact.id,
+          fact_index: fact.index,
+          recorded_at: fact.recordedAt,
+        })
+        .execute();
       acceptedIds.push(fact.id);
     }
     return { acceptedIds, duplicateIds };
@@ -77,11 +83,7 @@ export class FactStore {
   }
 }
 
-async function factAtIndex(
-  transaction: Database,
-  attemptHandle: string,
-  index: number,
-): Promise<Fact | undefined> {
+async function factAtIndex(transaction: Database, attemptHandle: string, index: number): Promise<Fact | undefined> {
   const row = await transaction
     .selectFrom("attempt_fact_receipts as receipt")
     .innerJoin("facts as fact", "fact.fact_id", "receipt.fact_id")
@@ -147,8 +149,10 @@ function toFact(row: FactRow): Fact {
 function canonicalJson(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
   if (value !== null && typeof value === "object") {
-    return `{${Object.entries(value).sort(([left], [right]) => left.localeCompare(right))
-      .map(([key, item]) => `${JSON.stringify(key)}:${canonicalJson(item)}`).join(",")}}`;
+    return `{${Object.entries(value)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, item]) => `${JSON.stringify(key)}:${canonicalJson(item)}`)
+      .join(",")}}`;
   }
   return JSON.stringify(value);
 }

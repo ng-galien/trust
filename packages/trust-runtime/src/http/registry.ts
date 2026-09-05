@@ -69,16 +69,22 @@ export async function executeRegistryRpc(
 }
 
 function sourceParams(value: unknown): RegistrySourceInput | undefined {
-  if (!isRecord(value)
-    || typeof value.name !== "string"
-    || typeof value.url !== "string"
-    || (value.kind !== "git" && value.kind !== "http")) return undefined;
+  if (
+    !isRecord(value) ||
+    typeof value.name !== "string" ||
+    typeof value.url !== "string" ||
+    (value.kind !== "git" && value.kind !== "http")
+  )
+    return undefined;
   if (value.kind === "http") {
     if (!hasOnlyKeys(value, ["name", "kind", "url"])) return undefined;
     return { name: value.name, kind: "http", url: value.url };
   }
-  if (!hasOnlyKeys(value, ["name", "kind", "url", "reference"])
-    || (value.reference !== undefined && typeof value.reference !== "string")) return undefined;
+  if (
+    !hasOnlyKeys(value, ["name", "kind", "url", "reference"]) ||
+    (value.reference !== undefined && typeof value.reference !== "string")
+  )
+    return undefined;
   return {
     name: value.name,
     kind: "git",
@@ -88,9 +94,7 @@ function sourceParams(value: unknown): RegistrySourceInput | undefined {
 }
 
 function nameParams(value: unknown): string | undefined {
-  return isRecord(value) && hasOnlyKeys(value, ["name"]) && typeof value.name === "string"
-    ? value.name
-    : undefined;
+  return isRecord(value) && hasOnlyKeys(value, ["name"]) && typeof value.name === "string" ? value.name : undefined;
 }
 
 function invalid(): never {

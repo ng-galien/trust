@@ -3,9 +3,8 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
-
-import { startPublicRuntime } from "./support/runtime-process.js";
 import { otlpFactAttributes } from "./support/otlp-fact.js";
+import { startPublicRuntime } from "./support/runtime-process.js";
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../..");
 const operationsDirectory = path.join(repositoryRoot, "assets/operations");
@@ -22,7 +21,7 @@ test("a dry-run Plan is driven end to end from the RPC boundary without any envi
   try {
     await publish(runtime.endpoint, path.join(repositoryRoot, "assets/procedures/01-mono-project-change.feature"));
 
-    const engagement = await rpc(runtime.endpoint, "plan.engage", {
+    const engagement = (await rpc(runtime.endpoint, "plan.engage", {
       contract: "trust.plan-engagement-request@1",
       procedure: "mono-project-change",
       procedureVersion: "1.0.0",
@@ -30,12 +29,17 @@ test("a dry-run Plan is driven end to end from the RPC boundary without any envi
       environment: "local",
       rootInputs: { "jira issue": "PAY-42", project: "payment-api" },
       mode: "dry-run",
-    }) as { mode: string; revision: number; checkUris: readonly string[] };
+    })) as { mode: string; revision: number; checkUris: readonly string[] };
     assert.equal(engagement.mode, "dry-run");
     assert.equal(engagement.revision, 1);
 
-    const catalog = await rpc(runtime.endpoint, "plan.list", {}) as { plans: readonly { plan: string; mode: string }[] };
-    assert.deepEqual(catalog.plans.map((plan) => [plan.plan, plan.mode]), [["rehearsal", "dry-run"]]);
+    const catalog = (await rpc(runtime.endpoint, "plan.list", {})) as {
+      plans: readonly { plan: string; mode: string }[];
+    };
+    assert.deepEqual(
+      catalog.plans.map((plan) => [plan.plan, plan.mode]),
+      [["rehearsal", "dry-run"]],
+    );
 
     let view = await readPlan(runtime.endpoint, "rehearsal");
     assert.equal(view.mode, "dry-run");
@@ -69,24 +73,35 @@ test("a dry-run Plan is driven end to end from the RPC boundary without any envi
     assert.deepEqual(first.environment, {});
 
     // Facts posted over RPC are validated like runner Facts: an incomplete produced object is rejected.
-    const rejected = await rpcFailure(runtime.endpoint, "check.attempt.facts", factBatch(first, { issueType: "defect" }));
+    const rejected = await rpcFailure(
+      runtime.endpoint,
+      "check.attempt.facts",
+      factBatch(first, { issueType: "defect" }),
+    );
     assert.equal(rejected.data?.reason, "fact-batch-rejected");
 
-    const rejectedRunnerFacts = await postOtlpFacts(runtime.endpoint, factBatch(first, {
-      issue: "PAY-42",
-      summary: "Payment fails on refund",
-      issueType: "defect",
-      workflowStatus: "todo",
-    }));
+    const rejectedRunnerFacts = await postOtlpFacts(
+      runtime.endpoint,
+      factBatch(first, {
+        issue: "PAY-42",
+        summary: "Payment fails on refund",
+        issueType: "defect",
+        workflowStatus: "todo",
+      }),
+    );
     assert.equal(rejectedRunnerFacts.partialSuccess?.rejectedSpans, 1);
     assert.equal(rejectedRunnerFacts.partialSuccess?.errorMessage, "fact-batch-rejected");
 
-    const accepted = await rpc(runtime.endpoint, "check.attempt.facts", factBatch(first, {
-      issue: "PAY-42",
-      summary: "Payment fails on refund",
-      issueType: "defect",
-      workflowStatus: "todo",
-    })) as { acceptedFactIds: readonly string[] };
+    const accepted = (await rpc(
+      runtime.endpoint,
+      "check.attempt.facts",
+      factBatch(first, {
+        issue: "PAY-42",
+        summary: "Payment fails on refund",
+        issueType: "defect",
+        workflowStatus: "todo",
+      }),
+    )) as { acceptedFactIds: readonly string[] };
     assert.equal(accepted.acceptedFactIds.length, 1);
 
     const validated = await finalize(runtime.endpoint, first.attemptHandle);
@@ -94,15 +109,17 @@ test("a dry-run Plan is driven end to end from the RPC boundary without any envi
     assert.equal(validated.reason, "the Jira issue is ready for correction");
     assert.deepEqual(validated.next, {
       action: "RUN_CHECKS",
-      checks: [{
-        name: "baseline",
-        successReason: "the project baseline is clean",
-        checkUri: engagement.checkUris.find((uri) => uri.includes("/baseline/")),
-        actionScope: {
-          authorized: ["Change and verify only the declared project for the Jira defect."],
-          forbidden: ["Alter the Jira evidence, project baseline, or execution environment to make a Check pass."],
+      checks: [
+        {
+          name: "baseline",
+          successReason: "the project baseline is clean",
+          checkUri: engagement.checkUris.find((uri) => uri.includes("/baseline/")),
+          actionScope: {
+            authorized: ["Change and verify only the declared project for the Jira defect."],
+            forbidden: ["Alter the Jira evidence, project baseline, or execution environment to make a Check pass."],
+          },
         },
-      }],
+      ],
     });
 
     view = await readPlan(runtime.endpoint, "rehearsal");
@@ -114,7 +131,11 @@ test("a dry-run Plan is driven end to end from the RPC boundary without any envi
     // A NOT_VALIDATED verdict carries the compiled failure reason and leaves the Check open.
     const second = await admit(runtime.endpoint, view.actionableChecks[0]!, "rehearsal-baseline");
     assert.equal(second.status, "ADMITTED");
-    await rpc(runtime.endpoint, "check.attempt.facts", factBatch(second, { headRevision: "abc123", workingTree: "dirty" }));
+    await rpc(
+      runtime.endpoint,
+      "check.attempt.facts",
+      factBatch(second, { headRevision: "abc123", workingTree: "dirty" }),
+    );
     const refused = await finalize(runtime.endpoint, second.attemptHandle);
     assert.equal(refused.verdict, "NOT_VALIDATED");
     assert.equal(refused.reason, "the project has uncommitted changes");
@@ -124,7 +145,10 @@ test("a dry-run Plan is driven end to end from the RPC boundary without any envi
     assert.equal(view.satisfiedChecks, 1);
     assert.deepEqual(
       view.checks.map((check) => [check.name, check.state, check.latestVerdict]),
-      [["baseline", "OPEN", "NOT_VALIDATED"], ["issue", "SATISFIED", "VALIDATED"]],
+      [
+        ["baseline", "OPEN", "NOT_VALIDATED"],
+        ["issue", "SATISFIED", "VALIDATED"],
+      ],
     );
 
     const failedCheck = view.checks.find((check) => check.name === "baseline")!;
@@ -149,13 +173,27 @@ test("a dry-run Plan is driven end to end from the RPC boundary without any envi
 
     const latestFailure = await admit(runtime.endpoint, failedCheck.checkUri, "rehearsal-latest-failure");
     const repeatedObservationAt = new Date().toISOString();
-    await rpc(runtime.endpoint, "check.attempt.facts", factBatch(latestFailure, { headRevision: "abc123", workingTree: "dirty" }, repeatedObservationAt));
+    await rpc(
+      runtime.endpoint,
+      "check.attempt.facts",
+      factBatch(latestFailure, { headRevision: "abc123", workingTree: "dirty" }, repeatedObservationAt),
+    );
     assert.equal((await finalize(runtime.endpoint, latestFailure.attemptHandle)).verdict, "NOT_VALIDATED");
     view = await readPlan(runtime.endpoint, "rehearsal");
     assert.equal(view.checks.find((check) => check.name === "baseline")?.escalatable, true);
-    const escalationAvailability = await mcpTool(runtime.endpoint, "trust_plan_read", { checkUri: failedCheck.checkUri });
-    assert.ok(escalationAvailability.includes(`- Check URI: ${failedCheck.checkUri}\n  Attempt: ${latestFailure.attemptHandle}`));
-    assert.ok((await mcpTool(runtime.endpoint, "trust_check_read", { checkUri: failedCheck.checkUri })).includes(`Attempt: ${latestFailure.attemptHandle}`));
+    const escalationAvailability = await mcpTool(runtime.endpoint, "trust_plan_read", {
+      checkUri: failedCheck.checkUri,
+    });
+    assert.ok(
+      escalationAvailability.includes(
+        `- Check URI: ${failedCheck.checkUri}\n  Attempt: ${latestFailure.attemptHandle}`,
+      ),
+    );
+    assert.ok(
+      (await mcpTool(runtime.endpoint, "trust_check_read", { checkUri: failedCheck.checkUri })).includes(
+        `Attempt: ${latestFailure.attemptHandle}`,
+      ),
+    );
 
     const whitespaceDeclaration = await rpcFailure(runtime.endpoint, "check.escalate", {
       contract: "trust.check-escalation-request@1",
@@ -188,7 +226,8 @@ test("a dry-run Plan is driven end to end from the RPC boundary without any envi
     const escalationInput = {
       checkUri: failedCheck.checkUri,
       attemptHandle: latestFailure.attemptHandle,
-      blockingReason: "The repository contains unrelated local changes that cannot be reconciled within this Procedure.",
+      blockingReason:
+        "The repository contains unrelated local changes that cannot be reconciled within this Procedure.",
       forbiddenFurtherAction: "Discard or hide the unrelated changes to manufacture a clean baseline.",
     };
     const escalationText = await mcpTool(runtime.endpoint, "trust_check_escalate", escalationInput);
@@ -205,8 +244,14 @@ test("a dry-run Plan is driven end to end from the RPC boundary without any envi
     assert.equal(view.activeEscalation?.checkUri, failedCheck.checkUri);
     assert.equal(view.activeEscalation?.planRevision, view.revision);
     assert.equal(view.activeEscalation?.snapshotPlanRevision, view.revision - 1);
-    assert.equal(view.activeEscalation?.blockingReason, "The repository contains unrelated local changes that cannot be reconciled within this Procedure.");
-    assert.equal(view.activeEscalation?.forbiddenFurtherAction, "Discard or hide the unrelated changes to manufacture a clean baseline.");
+    assert.equal(
+      view.activeEscalation?.blockingReason,
+      "The repository contains unrelated local changes that cannot be reconciled within this Procedure.",
+    );
+    assert.equal(
+      view.activeEscalation?.forbiddenFurtherAction,
+      "Discard or hide the unrelated changes to manufacture a clean baseline.",
+    );
     assert.equal(view.latestQualification?.verdict, "NOT_VALIDATED");
     assert.deepEqual(replayedEscalation, {
       contract: "trust.check-escalation@1",
@@ -232,15 +277,65 @@ test("a dry-run Plan is driven end to end from the RPC boundary without any envi
 
     const firstEscalationId = view.activeEscalation!.escalationId;
     const firstResumeReason = "The operator reconciled the unrelated changes and authorized a retry.";
-    assert.equal((await rpcFailure(runtime.endpoint, "plan.resume", { plan: "rehearsal", escalationId: firstEscalationId })).code, -32_602);
-    assert.equal((await rpcFailure(runtime.endpoint, "plan.resume", { plan: "rehearsal", escalationId: firstEscalationId, resumeReason: " " })).code, -32_602);
-    assert.equal((await rpcFailure(runtime.endpoint, "plan.resume", { plan: "rehearsal", escalationId: firstEscalationId, resumeReason: " padded reason " })).code, -32_602);
-    assert.equal((await rpcFailure(runtime.endpoint, "plan.resume", { plan: "rehearsal", escalationId: firstEscalationId, resumeReason: "x".repeat(4_097) })).code, -32_602);
-    const resumed = await rpc(runtime.endpoint, "plan.resume", { plan: "rehearsal", escalationId: firstEscalationId, resumeReason: firstResumeReason }) as { status: string; resumeReason: string };
+    assert.equal(
+      (await rpcFailure(runtime.endpoint, "plan.resume", { plan: "rehearsal", escalationId: firstEscalationId })).code,
+      -32_602,
+    );
+    assert.equal(
+      (
+        await rpcFailure(runtime.endpoint, "plan.resume", {
+          plan: "rehearsal",
+          escalationId: firstEscalationId,
+          resumeReason: " ",
+        })
+      ).code,
+      -32_602,
+    );
+    assert.equal(
+      (
+        await rpcFailure(runtime.endpoint, "plan.resume", {
+          plan: "rehearsal",
+          escalationId: firstEscalationId,
+          resumeReason: " padded reason ",
+        })
+      ).code,
+      -32_602,
+    );
+    assert.equal(
+      (
+        await rpcFailure(runtime.endpoint, "plan.resume", {
+          plan: "rehearsal",
+          escalationId: firstEscalationId,
+          resumeReason: "x".repeat(4_097),
+        })
+      ).code,
+      -32_602,
+    );
+    const resumed = (await rpc(runtime.endpoint, "plan.resume", {
+      plan: "rehearsal",
+      escalationId: firstEscalationId,
+      resumeReason: firstResumeReason,
+    })) as { status: string; resumeReason: string };
     assert.equal(resumed.status, "RESUMED");
     assert.equal(resumed.resumeReason, firstResumeReason);
-    assert.deepEqual(await rpc(runtime.endpoint, "plan.resume", { plan: "rehearsal", escalationId: firstEscalationId, resumeReason: firstResumeReason }), resumed);
-    assert.equal((await rpcFailure(runtime.endpoint, "plan.resume", { plan: "rehearsal", escalationId: firstEscalationId, resumeReason: "A different audit explanation." })).data?.reason, "plan-conflict");
+    assert.deepEqual(
+      await rpc(runtime.endpoint, "plan.resume", {
+        plan: "rehearsal",
+        escalationId: firstEscalationId,
+        resumeReason: firstResumeReason,
+      }),
+      resumed,
+    );
+    assert.equal(
+      (
+        await rpcFailure(runtime.endpoint, "plan.resume", {
+          plan: "rehearsal",
+          escalationId: firstEscalationId,
+          resumeReason: "A different audit explanation.",
+        })
+      ).data?.reason,
+      "plan-conflict",
+    );
     view = await readPlan(runtime.endpoint, "rehearsal");
     assert.equal(view.workState, "IN_PROGRESS");
     assert.equal(view.sessionState, "OPEN");
@@ -251,22 +346,36 @@ test("a dry-run Plan is driven end to end from the RPC boundary without any envi
     assert.deepEqual(view.actionableChecks, [failedCheck.checkUri]);
 
     // A delayed retry of the accepted escalation is idempotent across the operator resumption.
-    assert.deepEqual(await rpc(runtime.endpoint, "check.escalate", {
-      contract: "trust.check-escalation-request@1",
-      ...escalationInput,
-    }), replayedEscalation);
+    assert.deepEqual(
+      await rpc(runtime.endpoint, "check.escalate", {
+        contract: "trust.check-escalation-request@1",
+        ...escalationInput,
+      }),
+      replayedEscalation,
+    );
     assert.equal((await readPlan(runtime.endpoint, "rehearsal")).workState, "IN_PROGRESS");
 
     const repeatedFailure = await admit(runtime.endpoint, failedCheck.checkUri, "rehearsal-repeated-failure");
-    await rpc(runtime.endpoint, "check.attempt.facts", factBatch(repeatedFailure, { headRevision: "abc123", workingTree: "dirty" }, repeatedObservationAt));
+    await rpc(
+      runtime.endpoint,
+      "check.attempt.facts",
+      factBatch(repeatedFailure, { headRevision: "abc123", workingTree: "dirty" }, repeatedObservationAt),
+    );
     assert.equal((await finalize(runtime.endpoint, repeatedFailure.attemptHandle)).verdict, "NOT_VALIDATED");
     const repeatedCheckRead = await mcpTool(runtime.endpoint, "trust_check_read", { checkUri: failedCheck.checkUri });
-    assert.ok(repeatedCheckRead.includes(`ESCALATION AVAILABLE\nCheck URI: ${failedCheck.checkUri}\nAttempt: ${repeatedFailure.attemptHandle}`));
+    assert.ok(
+      repeatedCheckRead.includes(
+        `ESCALATION AVAILABLE\nCheck URI: ${failedCheck.checkUri}\nAttempt: ${repeatedFailure.attemptHandle}`,
+      ),
+    );
     // Even after a newer negative result, a delayed retry remains correlated to its original Attempt.
-    assert.deepEqual(await rpc(runtime.endpoint, "check.escalate", {
-      contract: "trust.check-escalation-request@1",
-      ...escalationInput,
-    }), replayedEscalation);
+    assert.deepEqual(
+      await rpc(runtime.endpoint, "check.escalate", {
+        contract: "trust.check-escalation-request@1",
+        ...escalationInput,
+      }),
+      replayedEscalation,
+    );
     assert.equal((await readPlan(runtime.endpoint, "rehearsal")).workState, "IN_PROGRESS");
     await rpc(runtime.endpoint, "check.escalate", {
       contract: "trust.check-escalation-request@1",
@@ -281,9 +390,20 @@ test("a dry-run Plan is driven end to end from the RPC boundary without any envi
     assert.ok(view.escalations[0]!.escalatedAt <= view.escalations[1]!.escalatedAt);
     const secondEscalationId = view.activeEscalation!.escalationId;
     // A delayed retry of the first resumption cannot resume this newer escalation.
-    assert.deepEqual(await rpc(runtime.endpoint, "plan.resume", { plan: "rehearsal", escalationId: firstEscalationId, resumeReason: firstResumeReason }), resumed);
+    assert.deepEqual(
+      await rpc(runtime.endpoint, "plan.resume", {
+        plan: "rehearsal",
+        escalationId: firstEscalationId,
+        resumeReason: firstResumeReason,
+      }),
+      resumed,
+    );
     assert.equal((await readPlan(runtime.endpoint, "rehearsal")).workState, "ESCALATED");
-    await rpc(runtime.endpoint, "plan.resume", { plan: "rehearsal", escalationId: secondEscalationId, resumeReason: "The operator removed the later blocker and authorized continuation." });
+    await rpc(runtime.endpoint, "plan.resume", {
+      plan: "rehearsal",
+      escalationId: secondEscalationId,
+      resumeReason: "The operator removed the later blocker and authorized continuation.",
+    });
     view = await readPlan(runtime.endpoint, "rehearsal");
     assert.equal(view.escalations.length, 2);
     assert.ok(view.escalations.every(({ resumedAt }) => resumedAt !== null));
@@ -291,7 +411,11 @@ test("a dry-run Plan is driven end to end from the RPC boundary without any envi
     // Validate the baseline: its produced value materializes "baseline revision", the fix Check appears.
     const third = await admit(runtime.endpoint, view.actionableChecks[0]!, "rehearsal-baseline-again");
     assert.equal(third.status, "ADMITTED");
-    await rpc(runtime.endpoint, "check.attempt.facts", factBatch(third, { headRevision: "abc123", workingTree: "clean" }));
+    await rpc(
+      runtime.endpoint,
+      "check.attempt.facts",
+      factBatch(third, { headRevision: "abc123", workingTree: "clean" }),
+    );
     assert.equal((await finalize(runtime.endpoint, third.attemptHandle)).verdict, "VALIDATED");
     view = await readPlan(runtime.endpoint, "rehearsal");
     assert.equal(view.satisfiedChecks, 2);
@@ -301,13 +425,24 @@ test("a dry-run Plan is driven end to end from the RPC boundary without any envi
     // it stays SATISFIED, not actionable, and only the next Check opens.
     const fourth = await admit(runtime.endpoint, view.actionableChecks[0]!, "rehearsal-fix");
     assert.equal(fourth.status, "ADMITTED");
-    await rpc(runtime.endpoint, "check.attempt.facts", factBatch(fourth, { comparedBaseRevision: "abc123", headRevision: "def456", commitsAhead: 2, workingTree: "clean" }));
+    await rpc(
+      runtime.endpoint,
+      "check.attempt.facts",
+      factBatch(fourth, {
+        comparedBaseRevision: "abc123",
+        headRevision: "def456",
+        commitsAhead: 2,
+        workingTree: "clean",
+      }),
+    );
     assert.equal((await finalize(runtime.endpoint, fourth.attemptHandle)).verdict, "VALIDATED");
     view = await readPlan(runtime.endpoint, "rehearsal");
-    assert.deepEqual(
-      view.checks.map((check) => [check.name, check.state, check.actionable]).sort(),
-      [["Maven verification", "OPEN", true], ["baseline", "SATISFIED", false], ["fix", "SATISFIED", false], ["issue", "SATISFIED", false]],
-    );
+    assert.deepEqual(view.checks.map((check) => [check.name, check.state, check.actionable]).sort(), [
+      ["Maven verification", "OPEN", true],
+      ["baseline", "SATISFIED", false],
+      ["fix", "SATISFIED", false],
+      ["issue", "SATISFIED", false],
+    ]);
 
     // An explicit dry-run re-observation of the satisfied baseline resets everything below it, in cascade:
     // fix and Maven verification reopen, the baseline stays satisfied with its new value.
@@ -315,14 +450,19 @@ test("a dry-run Plan is driven end to end from the RPC boundary without any envi
     assert.ok(baselineUri);
     const later = await admit(runtime.endpoint, baselineUri, "rehearsal-baseline-later", true);
     assert.equal(later.status, "ADMITTED");
-    await rpc(runtime.endpoint, "check.attempt.facts", factBatch(later, { headRevision: "0ff1ce", workingTree: "clean" }));
+    await rpc(
+      runtime.endpoint,
+      "check.attempt.facts",
+      factBatch(later, { headRevision: "0ff1ce", workingTree: "clean" }),
+    );
     const reverdict = await finalize(runtime.endpoint, later.attemptHandle);
     assert.equal(reverdict.verdict, "VALIDATED");
     view = await readPlan(runtime.endpoint, "rehearsal");
-    assert.deepEqual(
-      view.checks.map((check) => [check.name, check.state, check.actionable]).sort(),
-      [["baseline", "SATISFIED", false], ["fix", "OPEN", true], ["issue", "SATISFIED", false]],
-    );
+    assert.deepEqual(view.checks.map((check) => [check.name, check.state, check.actionable]).sort(), [
+      ["baseline", "SATISFIED", false],
+      ["fix", "OPEN", true],
+      ["issue", "SATISFIED", false],
+    ]);
     assert.deepEqual(view.latestQualification?.newlyOpened.length, 1);
     const fixAgain = await admit(runtime.endpoint, view.actionableChecks[0]!, "rehearsal-fix-again");
     assert.equal(fixAgain.status, "ADMITTED");
@@ -341,27 +481,30 @@ test("a dry-run Plan is driven end to end from the RPC boundary without any envi
 
     // Reset is one public operation: it preserves the Plan identity and root Inputs, while clearing every
     // attempt, verdict and revision after the new revision 1.
-    const reset = await rpc(runtime.endpoint, "plan.reset", { plan: "rehearsal" }) as { revision: number };
+    const reset = (await rpc(runtime.endpoint, "plan.reset", { plan: "rehearsal" })) as { revision: number };
     assert.equal(reset.revision, 1);
     const resetView = await readPlan(runtime.endpoint, "rehearsal");
     assert.deepEqual(resetView.rootInputs, { "jira issue": "PAY-42", project: "payment-api" });
     assert.equal(resetView.revision, 1);
     assert.equal(resetView.satisfiedChecks, 0);
     assert.equal(resetView.latestQualification == null, true);
-    assert.equal(resetView.checks.every((check) => check.latestVerdict == null), true);
-    const resetCheck = await rpc(runtime.endpoint, "check.read", {
+    assert.equal(
+      resetView.checks.every((check) => check.latestVerdict == null),
+      true,
+    );
+    const resetCheck = (await rpc(runtime.endpoint, "check.read", {
       contract: "trust.check-read-request@1",
       checkUri: resetView.checks[0]!.checkUri,
-    }) as { history: unknown[]; attempts: unknown[] };
+    })) as { history: unknown[]; attempts: unknown[] };
     assert.deepEqual(resetCheck.history, []);
     assert.deepEqual(resetCheck.attempts, []);
 
     // Removing a dry-run still clears its entire Plan context, so the same slug can then be engaged with
     // different root Inputs and no value from the erased Plan survives.
-    const removed = await rpc(runtime.endpoint, "plan.remove", { plan: "rehearsal" }) as { removed: boolean };
+    const removed = (await rpc(runtime.endpoint, "plan.remove", { plan: "rehearsal" })) as { removed: boolean };
     assert.equal(removed.removed, true);
-    assert.deepEqual((await rpc(runtime.endpoint, "plan.list", {}) as { plans: unknown[] }).plans, []);
-    const again = await rpc(runtime.endpoint, "plan.engage", {
+    assert.deepEqual(((await rpc(runtime.endpoint, "plan.list", {})) as { plans: unknown[] }).plans, []);
+    const again = (await rpc(runtime.endpoint, "plan.engage", {
       contract: "trust.plan-engagement-request@1",
       procedure: "mono-project-change",
       procedureVersion: "1.0.0",
@@ -369,7 +512,7 @@ test("a dry-run Plan is driven end to end from the RPC boundary without any envi
       environment: "local",
       rootInputs: { "jira issue": "PAY-101", project: "payment-worker" },
       mode: "dry-run",
-    }) as { revision: number };
+    })) as { revision: number };
     assert.equal(again.revision, 1);
     const restarted = await readPlan(runtime.endpoint, "rehearsal");
     assert.deepEqual(restarted.rootInputs, { "jira issue": "PAY-101", project: "payment-worker" });
@@ -400,39 +543,39 @@ test("a live OTLP-qualified Check exposes its effective scope and may be escalat
     let view = await readPlan(runtime.endpoint, "live-escalation");
     const check = view.checks[0]!;
     const expectedScope = {
-      authorized: [
-        "Read the declared repository state.",
-        "Read Git metadata required to observe this Check.",
-      ],
+      authorized: ["Read the declared repository state.", "Read Git metadata required to observe this Check."],
       forbidden: [
         "Modify the repository or its environment to obtain the expected state.",
         "Change repository files while observing repository status.",
       ],
     };
     assert.deepEqual(check.actionScope, expectedScope);
-    const checkRead = await rpc(runtime.endpoint, "check.read", {
+    const checkRead = (await rpc(runtime.endpoint, "check.read", {
       contract: "trust.check-read-request@1",
       checkUri: check.checkUri,
-    }) as { actionScope: unknown; escalatable: boolean };
+    })) as { actionScope: unknown; escalatable: boolean };
     assert.deepEqual(checkRead.actionScope, expectedScope);
     assert.equal(checkRead.escalatable, false);
 
     const admission = await admit(runtime.endpoint, check.checkUri, "live-escalation-attempt");
-    await postOtlpFacts(runtime.endpoint, factBatch(admission, {
-      headRevision: "abc123",
-      workingTree: "clean",
-    }));
+    await postOtlpFacts(
+      runtime.endpoint,
+      factBatch(admission, {
+        headRevision: "abc123",
+        workingTree: "clean",
+      }),
+    );
     assert.equal((await finalize(runtime.endpoint, admission.attemptHandle)).verdict, "NOT_VALIDATED");
     view = await readPlan(runtime.endpoint, "live-escalation");
     assert.equal(view.checks[0]?.escalatable, true);
 
-    const escalation = await rpc(runtime.endpoint, "check.escalate", {
+    const escalation = (await rpc(runtime.endpoint, "check.escalate", {
       contract: "trust.check-escalation-request@1",
       checkUri: check.checkUri,
       attemptHandle: admission.attemptHandle,
       blockingReason: "The live repository does not contain the expected local change.",
       forbiddenFurtherAction: "Modify the repository merely to manufacture the expected status.",
-    }) as { status: string };
+    })) as { status: string };
     assert.equal(escalation.status, "ESCALATED");
     assert.equal((await readPlan(runtime.endpoint, "live-escalation")).workState, "ESCALATED");
   } finally {
@@ -458,7 +601,7 @@ Feature: Serialize escalation with Plan writes
 
   @scenario:status
   Scenario: Read repository status
-    Then Check "status" runs Operation "git.head-read" on "repository" as Input "project" and must establish "the repository is dirty"
+    Then Check "status" runs Operation "git.head-read@*" on "repository" as Input "project" and must establish "the repository is dirty"
       """js
       fact.workingTree === "dirty" ||
       fail("the repository is clean")
@@ -466,7 +609,7 @@ Feature: Serialize escalation with Plan writes
 
   @scenario:independent
   Scenario: Read an independent repository status
-    Then Check "independent status" runs Operation "git.head-read" on "repository" as Input "project" and must establish "the independent repository observation is dirty"
+    Then Check "independent status" runs Operation "git.head-read@*" on "repository" as Input "project" and must establish "the independent repository observation is dirty"
       """js
       fact.workingTree === "dirty" ||
       fail("the independent repository observation is clean")
@@ -475,7 +618,9 @@ Feature: Serialize escalation with Plan writes
   try {
     await rpc(runtime.endpoint, "procedure.publish", { source, sourceName: "escalation-race.feature" });
 
-    const prepareFailure = async (plan: string): Promise<{ checkUri: string; attemptHandle: string; revision: number }> => {
+    const prepareFailure = async (
+      plan: string,
+    ): Promise<{ checkUri: string; attemptHandle: string; revision: number }> => {
       await rpc(runtime.endpoint, "plan.engage", {
         contract: "trust.plan-engagement-request@1",
         procedure: "escalation-race",
@@ -488,13 +633,21 @@ Feature: Serialize escalation with Plan writes
       const initial = await readPlan(runtime.endpoint, plan);
       const failedCheckUri = initial.checks.find(({ name }) => name === "status")!.checkUri;
       const admission = await admit(runtime.endpoint, failedCheckUri, `${plan}-failure`);
-      await rpc(runtime.endpoint, "check.attempt.facts", factBatch(admission, {
-        headRevision: "abc123",
-        workingTree: "clean",
-      }));
+      await rpc(
+        runtime.endpoint,
+        "check.attempt.facts",
+        factBatch(admission, {
+          headRevision: "abc123",
+          workingTree: "clean",
+        }),
+      );
       assert.equal((await finalize(runtime.endpoint, admission.attemptHandle)).verdict, "NOT_VALIDATED");
       const failed = await readPlan(runtime.endpoint, plan);
-      return { checkUri: failed.checks.find(({ name }) => name === "status")!.checkUri, attemptHandle: admission.attemptHandle, revision: failed.revision };
+      return {
+        checkUri: failed.checks.find(({ name }) => name === "status")!.checkUri,
+        attemptHandle: admission.attemptHandle,
+        revision: failed.revision,
+      };
     };
 
     const declarationPlan = await prepareFailure("declaration-race");
@@ -514,7 +667,9 @@ Feature: Serialize escalation with Plan writes
       }),
     ]);
     const afterDeclarationRace = await readPlan(runtime.endpoint, "declaration-race");
-    assert.ok(afterDeclarationRace.activeEscalation !== null || afterDeclarationRace.revision === declarationPlan.revision + 1);
+    assert.ok(
+      afterDeclarationRace.activeEscalation !== null || afterDeclarationRace.revision === declarationPlan.revision + 1,
+    );
     if (afterDeclarationRace.activeEscalation) {
       assert.equal(afterDeclarationRace.activeEscalation.planRevision, afterDeclarationRace.revision);
     }
@@ -552,13 +707,18 @@ Feature: Serialize escalation with Plan writes
     });
     assert.equal(rejectedEscalation.data?.reason, "check-not-escalatable");
     await interrupt(runtime.endpoint, pendingOther.attemptHandle);
-    assert.equal((await rpc(runtime.endpoint, "check.escalate", {
-      contract: "trust.check-escalation-request@1",
-      checkUri: pendingPlan.checkUri,
-      attemptHandle: pendingPlan.attemptHandle,
-      blockingReason: "The failed Check cannot proceed within its declared scope.",
-      forbiddenFurtherAction: "Modify the repository to manufacture the expected state.",
-    }) as { status: string }).status, "ESCALATED");
+    assert.equal(
+      (
+        (await rpc(runtime.endpoint, "check.escalate", {
+          contract: "trust.check-escalation-request@1",
+          checkUri: pendingPlan.checkUri,
+          attemptHandle: pendingPlan.attemptHandle,
+          blockingReason: "The failed Check cannot proceed within its declared scope.",
+          forbiddenFurtherAction: "Modify the repository to manufacture the expected state.",
+        })) as { status: string }
+      ).status,
+      "ESCALATED",
+    );
   } finally {
     await runtime.close();
   }
@@ -581,11 +741,17 @@ test("an expired pending Attempt cannot permanently block escalation", async () 
       rootInputs: { repository: "trust" },
       mode: "dry-run",
     } as const;
-    const engagement = await rpc(runtime.endpoint, "plan.engage", engagementInput) as { checkUris: readonly string[] };
+    const engagement = (await rpc(runtime.endpoint, "plan.engage", engagementInput)) as {
+      checkUris: readonly string[];
+    };
     const checkUri = engagement.checkUris[0]!;
 
     const firstFailure = await admit(runtime.endpoint, checkUri, "expired-escalation-first-failure");
-    await rpc(runtime.endpoint, "check.attempt.facts", factBatch(firstFailure, { headRevision: "abc123", workingTree: "clean" }));
+    await rpc(
+      runtime.endpoint,
+      "check.attempt.facts",
+      factBatch(firstFailure, { headRevision: "abc123", workingTree: "clean" }),
+    );
     assert.equal((await finalize(runtime.endpoint, firstFailure.attemptHandle)).verdict, "NOT_VALIDATED");
 
     const abandonedRetry = await admit(runtime.endpoint, checkUri, "expired-escalation-abandoned-retry");
@@ -594,17 +760,97 @@ test("an expired pending Attempt cannot permanently block escalation", async () 
     await rpc(runtime.endpoint, "plan.engage", engagementInput);
 
     const latestFailure = await admit(runtime.endpoint, checkUri, "expired-escalation-latest-failure");
-    await rpc(runtime.endpoint, "check.attempt.facts", factBatch(latestFailure, { headRevision: "abc123", workingTree: "clean" }));
+    await rpc(
+      runtime.endpoint,
+      "check.attempt.facts",
+      factBatch(latestFailure, { headRevision: "abc123", workingTree: "clean" }),
+    );
     assert.equal((await finalize(runtime.endpoint, latestFailure.attemptHandle)).verdict, "NOT_VALIDATED");
 
-    const escalation = await rpc(runtime.endpoint, "check.escalate", {
+    const escalation = (await rpc(runtime.endpoint, "check.escalate", {
       contract: "trust.check-escalation-request@1",
       checkUri,
       attemptHandle: latestFailure.attemptHandle,
       blockingReason: "The latest observation still does not establish the required repository state.",
       forbiddenFurtherAction: "Modify the repository merely to manufacture the expected status.",
-    }) as { status: string };
+    })) as { status: string };
     assert.equal(escalation.status, "ESCALATED");
+  } finally {
+    await runtime.close();
+  }
+});
+
+test("canonical scalar inputs and fact, context and Check instant references qualify through RPC", async () => {
+  const runtime = await startPublicRuntime("trust-scalar-contract-", {
+    operationsDirectory,
+    environments: { unused: {} },
+  });
+  const source = `# language: en
+@trust-dsl:1 @procedure:scalar-contract @version:1.0.0
+Feature: Validate scalar and instant reference contracts
+  Background: Plan context
+    Given Procedure scope
+      | check | authorized | forbidden |
+      | all | Read the supplied document. | Change the document. |
+    Given one reference "document"
+    And one instant "cutoff"
+    And one number "threshold"
+    And one string "expected"
+  @scenario:observe
+  Scenario: Observe
+    Then Check "first" runs Operation "healthcare.document-read@1.0.0"
+      on "document" as Input "document"
+      and must establish "first instant accepted"
+      """js
+      (fact.recordedAt > context.cutoff || fail("too early")) &&
+      (context.threshold >= 0 || fail("negative threshold")) &&
+      (fact.documentStatus === context.expected || fail("unexpected status"))
+      """
+  @scenario:compare
+  Scenario: Compare
+    Given scenario "observe" is validated
+    Then Check "second" runs Operation "healthcare.document-read@1.0.0"
+      on "document" as Input "document"
+      and must establish "second instant accepted"
+      """js
+      fact.recordedAt > checks.first.recordedAt || fail("not later than first")
+      """
+`;
+  try {
+    await rpc(runtime.endpoint, "procedure.publish", { source, sourceName: "scalar-contract.feature" });
+    const rootInputs = { document: "document", cutoff: "2026-01-01T00:00:00Z", threshold: 1, expected: "confirmed" };
+    const request = {
+      contract: "trust.plan-engagement-request@1",
+      procedure: "scalar-contract",
+      procedureVersion: "1.0.0",
+      environment: "unused",
+      mode: "dry-run",
+    };
+    for (const [index, input] of [
+      { ...rootInputs, document: "" },
+      { ...rootInputs, threshold: "1" },
+      { ...rootInputs, expected: 2 },
+      { ...rootInputs, cutoff: "not-an-instant" },
+    ].entries()) {
+      const failure = await rpcFailure(runtime.endpoint, "plan.engage", {
+        ...request,
+        plan: `scalar-invalid-${index}`,
+        rootInputs: input,
+      });
+      assert.equal(failure.data?.reason, "invalid-plan-engagement");
+    }
+    await rpc(runtime.endpoint, "plan.engage", { ...request, plan: "scalar-valid", rootInputs });
+    for (const [index, recordedAt] of ["2026-01-02T00:00:00Z", "2026-01-03T00:00:00Z"].entries()) {
+      const plan = await readPlan(runtime.endpoint, "scalar-valid");
+      const admission = await admit(runtime.endpoint, plan.actionableChecks[0]!, `scalar-${index}`);
+      await rpc(
+        runtime.endpoint,
+        "check.attempt.facts",
+        factBatch(admission, { document: "document", documentStatus: "confirmed", recordedAt }),
+      );
+      assert.equal((await finalize(runtime.endpoint, admission.attemptHandle)).verdict, "VALIDATED");
+    }
+    assert.equal((await readPlan(runtime.endpoint, "scalar-valid")).workState, "COMPLETE");
   } finally {
     await runtime.close();
   }
@@ -631,7 +877,7 @@ Feature: Evaluate the typed qualification expression surface
 
   @scenario:surface
   Scenario: Qualify the comparison
-    Then Check "surface" runs Operation "git.head-compare"
+    Then Check "surface" runs Operation "git.head-compare@*"
         on "project" as Input "project"
         using "baseline revision" as Input "baseRevision"
         and must establish "the expression is satisfied"
@@ -674,24 +920,32 @@ Feature: Evaluate the typed qualification expression surface
     const checkUri = view.actionableChecks[0]!;
     const admitted = await admit(runtime.endpoint, checkUri, "expression-pass");
     assert.deepEqual(admitted.actionInput, { project: "payment-api", baseRevision: "base" });
-    await rpc(runtime.endpoint, "check.attempt.facts", factBatch(admitted, {
-      headRevision: "head",
-      comparedBaseRevision: "base",
-      commitsAhead: 3,
-      workingTree: "clean",
-    }));
+    await rpc(
+      runtime.endpoint,
+      "check.attempt.facts",
+      factBatch(admitted, {
+        headRevision: "head",
+        comparedBaseRevision: "base",
+        commitsAhead: 3,
+        workingTree: "clean",
+      }),
+    );
     const passed = await finalize(runtime.endpoint, admitted.attemptHandle);
     assert.equal(passed.verdict, "VALIDATED", JSON.stringify(passed));
     assert.equal(passed.reasonCode, "check-qualified");
 
     view = await readPlan(runtime.endpoint, "expression-runtime");
     const reobserved = await admit(runtime.endpoint, view.checks[0]!.checkUri, "expression-fail", true);
-    await rpc(runtime.endpoint, "check.attempt.facts", factBatch(reobserved, {
-      headRevision: "head",
-      comparedBaseRevision: "other",
-      commitsAhead: 3,
-      workingTree: "clean",
-    }));
+    await rpc(
+      runtime.endpoint,
+      "check.attempt.facts",
+      factBatch(reobserved, {
+        headRevision: "head",
+        comparedBaseRevision: "other",
+        commitsAhead: 3,
+        workingTree: "clean",
+      }),
+    );
     const failed = await finalize(runtime.endpoint, reobserved.attemptHandle);
     assert.equal(failed.verdict, "NOT_VALIDATED");
     assert.equal(failed.reasonCode, "qualification-not-satisfied");
@@ -708,14 +962,14 @@ test("a live Plan keeps handing out its environment and declarations are replace
   });
   try {
     await publish(runtime.endpoint, path.join(repositoryRoot, "assets/procedures/04-end-to-end-red-green.feature"));
-    const engagement = await rpc(runtime.endpoint, "plan.engage", {
+    const engagement = (await rpc(runtime.endpoint, "plan.engage", {
       contract: "trust.plan-engagement-request@1",
       procedure: "end-to-end-red-green",
       procedureVersion: "3.2.0",
       plan: "delivery",
       environment: "local",
       rootInputs: { "jira issue": "TK-100" },
-    }) as { mode: string; checkUris: readonly string[] };
+    })) as { mode: string; checkUris: readonly string[] };
     assert.equal(engagement.mode, "live");
 
     let view = await readPlan(runtime.endpoint, "delivery");
@@ -726,21 +980,28 @@ test("a live Plan keeps handing out its environment and declarations are replace
     assert.equal(admission.status, "ADMITTED");
     assert.deepEqual(admission.environment, { workspaceRoot: repositoryRoot });
 
-    const operatorFacts = await rpcFailure(runtime.endpoint, "check.attempt.facts", factBatch(admission, {
-      baseRevision: "acc000",
-      workingTree: "clean",
-      branch: "TK-100",
-    }));
+    const operatorFacts = await rpcFailure(
+      runtime.endpoint,
+      "check.attempt.facts",
+      factBatch(admission, {
+        baseRevision: "acc000",
+        workingTree: "clean",
+        branch: "TK-100",
+      }),
+    );
     assert.equal(operatorFacts.data?.reason, "fact-batch-rejected");
 
     // A satisfied Check survives a declaration replacement that does not concern it.
-    await postOtlpFacts(runtime.endpoint, factBatch(admission, { baseRevision: "acc000", workingTree: "clean", branch: "TK-100" }));
+    await postOtlpFacts(
+      runtime.endpoint,
+      factBatch(admission, { baseRevision: "acc000", workingTree: "clean", branch: "TK-100" }),
+    );
     assert.equal((await finalize(runtime.endpoint, admission.attemptHandle)).verdict, "VALIDATED");
     view = await readPlan(runtime.endpoint, "delivery");
     assert.equal(view.satisfiedChecks, 1);
 
     // Declarations over RPC call the same runtime function as the MCP tool.
-    const replaced = await rpc(runtime.endpoint, "plan.declarations.replace", {
+    const replaced = (await rpc(runtime.endpoint, "plan.declarations.replace", {
       contract: "trust.plan-declaration-replacement-request@1",
       plan: "delivery",
       expectedRevision: view.revision,
@@ -748,13 +1009,16 @@ test("a live Plan keeps handing out its environment and declarations are replace
         "affected project": ["payment-api", "payment-worker"],
         "test argument": "refund-flow",
       },
-    }) as { revision: number; openedCheckUris: readonly string[] };
+    })) as { revision: number; openedCheckUris: readonly string[] };
     assert.equal(replaced.revision, view.revision + 1);
     assert.ok(replaced.openedCheckUris.length > 0);
     view = await readPlan(runtime.endpoint, "delivery");
     assert.deepEqual(view.declarations["affected project"], ["payment-api", "payment-worker"]);
     assert.equal(view.satisfiedChecks, 1);
-    assert.deepEqual(view.checks.filter((check) => check.name === "acceptance baseline").map((check) => check.state), ["SATISFIED"]);
+    assert.deepEqual(
+      view.checks.filter((check) => check.name === "acceptance baseline").map((check) => check.state),
+      ["SATISFIED"],
+    );
 
     const stale = await rpcFailure(runtime.endpoint, "plan.declarations.replace", {
       contract: "trust.plan-declaration-replacement-request@1",
@@ -801,18 +1065,26 @@ test("a declaration change reopens a Check when its exact upstream Checks change
 
     view = await readPlan(runtime.endpoint, "dependency-change");
     const baseline = await admit(runtime.endpoint, view.actionableChecks[0]!, "dependency-baseline-a");
-    await rpc(runtime.endpoint, "check.attempt.facts", factBatch(baseline, {
-      headRevision: "revision-a",
-      workingTree: "clean",
-    }));
+    await rpc(
+      runtime.endpoint,
+      "check.attempt.facts",
+      factBatch(baseline, {
+        headRevision: "revision-a",
+        workingTree: "clean",
+      }),
+    );
     assert.equal((await finalize(runtime.endpoint, baseline.attemptHandle)).verdict, "VALIDATED");
 
     view = await readPlan(runtime.endpoint, "dependency-change");
     const workspace = await admit(runtime.endpoint, view.actionableChecks[0]!, "dependency-workspace");
-    await rpc(runtime.endpoint, "check.attempt.facts", factBatch(workspace, {
-      headRevision: "revision-a",
-      workingTree: "clean",
-    }));
+    await rpc(
+      runtime.endpoint,
+      "check.attempt.facts",
+      factBatch(workspace, {
+        headRevision: "revision-a",
+        workingTree: "clean",
+      }),
+    );
     assert.equal((await finalize(runtime.endpoint, workspace.attemptHandle)).verdict, "VALIDATED");
 
     view = await readPlan(runtime.endpoint, "dependency-change");
@@ -869,12 +1141,16 @@ test("a declaration change reopens downstream Checks when an upstream Check keep
       nextIntent: "Confirm the resulting revision",
     });
     const baselineUri = baseline.checkUri;
-    await rpc(runtime.endpoint, "check.attempt.facts", factBatch(baseline, {
-      comparedBaseRevision: "revision-a",
-      headRevision: "revision-result",
-      commitsAhead: 1,
-      workingTree: "clean",
-    }));
+    await rpc(
+      runtime.endpoint,
+      "check.attempt.facts",
+      factBatch(baseline, {
+        comparedBaseRevision: "revision-a",
+        headRevision: "revision-result",
+        commitsAhead: 1,
+        workingTree: "clean",
+      }),
+    );
     assert.equal((await finalize(runtime.endpoint, baseline.attemptHandle)).verdict, "VALIDATED");
 
     view = await readPlan(runtime.endpoint, "stable-upstream");
@@ -882,10 +1158,14 @@ test("a declaration change reopens downstream Checks when an upstream Check keep
     const consumer = await admit(runtime.endpoint, view.actionableChecks[0]!, "stable-consumer", false, {
       intent: view.currentIntent,
     });
-    await rpc(runtime.endpoint, "check.attempt.facts", factBatch(consumer, {
-      headRevision: "revision-result",
-      workingTree: "clean",
-    }));
+    await rpc(
+      runtime.endpoint,
+      "check.attempt.facts",
+      factBatch(consumer, {
+        headRevision: "revision-result",
+        workingTree: "clean",
+      }),
+    );
     assert.equal((await finalize(runtime.endpoint, consumer.attemptHandle)).verdict, "VALIDATED");
 
     view = await readPlan(runtime.endpoint, "stable-upstream");
@@ -909,12 +1189,16 @@ test("a declaration change reopens downstream Checks when an upstream Check keep
     const reobserved = await admit(runtime.endpoint, baselineUri, "stable-baseline-reobserved", true, {
       nextIntent: "Confirm the re-observed revision",
     });
-    await rpc(runtime.endpoint, "check.attempt.facts", factBatch(reobserved, {
-      comparedBaseRevision: "revision-a",
-      headRevision: "revision-result",
-      commitsAhead: 1,
-      workingTree: "clean",
-    }));
+    await rpc(
+      runtime.endpoint,
+      "check.attempt.facts",
+      factBatch(reobserved, {
+        comparedBaseRevision: "revision-a",
+        headRevision: "revision-result",
+        commitsAhead: 1,
+        workingTree: "clean",
+      }),
+    );
     assert.equal((await finalize(runtime.endpoint, reobserved.attemptHandle)).verdict, "VALIDATED");
     view = await readPlan(runtime.endpoint, "stable-upstream");
     assert.equal(view.intentChainState, "ACTIVE");
@@ -924,10 +1208,14 @@ test("a declaration change reopens downstream Checks when an upstream Check keep
     const revalidated = await admit(runtime.endpoint, consumer.checkUri, "stable-consumer-revalidated", false, {
       intent: view.currentIntent!,
     });
-    await rpc(runtime.endpoint, "check.attempt.facts", factBatch(revalidated, {
-      headRevision: "revision-result",
-      workingTree: "clean",
-    }));
+    await rpc(
+      runtime.endpoint,
+      "check.attempt.facts",
+      factBatch(revalidated, {
+        headRevision: "revision-result",
+        workingTree: "clean",
+      }),
+    );
     assert.equal((await finalize(runtime.endpoint, revalidated.attemptHandle)).verdict, "VALIDATED");
     view = await readPlan(runtime.endpoint, "stable-upstream");
     assert.equal(view.intentChainState, "COMPLETE");
@@ -943,10 +1231,10 @@ test("a declaration change reopens downstream Checks when an upstream Check keep
     assert.equal(view.intentChainState, "ACTIVE");
     assert.ok(view.currentIntent);
     assert.equal(view.checks.find((check) => check.name === "baseline")?.checkUri, baselineUri);
-    assert.deepEqual(
-      view.checks.map((check) => [check.name, check.state, check.actionable]).sort(),
-      [["baseline", "OPEN", true], ["consumer", "OPEN", false]],
-    );
+    assert.deepEqual(view.checks.map((check) => [check.name, check.state, check.actionable]).sort(), [
+      ["baseline", "OPEN", true],
+      ["consumer", "OPEN", false],
+    ]);
   } finally {
     await runtime.close();
   }
@@ -1000,10 +1288,14 @@ test("declaration replacement cannot overtake an intent Attempt and completes a 
     assert.equal(whilePending.revision, view.revision);
     assert.equal(whilePending.currentIntent, currentIntent);
 
-    await rpc(runtime.endpoint, "check.attempt.facts", factBatch(pending, {
-      headRevision: "revision-a",
-      workingTree: "clean",
-    }));
+    await rpc(
+      runtime.endpoint,
+      "check.attempt.facts",
+      factBatch(pending, {
+        headRevision: "revision-a",
+        workingTree: "clean",
+      }),
+    );
     assert.equal((await finalize(runtime.endpoint, pending.attemptHandle)).verdict, "VALIDATED");
     view = await readPlan(runtime.endpoint, "intent-declaration");
     assert.equal(view.intentChainState, "ACTIVE");
@@ -1036,17 +1328,23 @@ test("declaration replacement cannot overtake an intent Attempt and completes a 
       declarations: { project: ["project-a", "project-b"] },
     });
     closedView = await readPlan(runtime.endpoint, "intent-declaration-closed");
-    const closedAttempt = await admit(runtime.endpoint, closedView.actionableChecks[0]!, "intent-declaration-closed-pending", false, {
-      intent: closedView.currentIntent!,
-      nextIntent: "Finish the remaining project after reopening",
-    });
+    const closedAttempt = await admit(
+      runtime.endpoint,
+      closedView.actionableChecks[0]!,
+      "intent-declaration-closed-pending",
+      false,
+      {
+        intent: closedView.currentIntent!,
+        nextIntent: "Finish the remaining project after reopening",
+      },
+    );
     await rpc(runtime.endpoint, "plan.close", { plan: "intent-declaration-closed" });
-    const replacementAfterClose = await rpc(runtime.endpoint, "plan.declarations.replace", {
+    const replacementAfterClose = (await rpc(runtime.endpoint, "plan.declarations.replace", {
       contract: "trust.plan-declaration-replacement-request@1",
       plan: "intent-declaration-closed",
       expectedRevision: closedView.revision,
       declarations: { project: ["project-a"] },
-    }) as { revision: number };
+    })) as { revision: number };
     assert.equal(replacementAfterClose.revision, closedView.revision + 1);
     const staleFactsAfterClose = await rpcFailure(
       runtime.endpoint,
@@ -1086,10 +1384,10 @@ test("a Check bound with using plan receives the Plan identifier in its admitted
     assert.equal(view.actionableChecks.length, 1);
     assert.deepEqual(view.checks[0]?.inputs, { project: "payment-api", baseRevision: "release-2026-08" });
     // `using plan` binds the synthesised role "plan": the Plan identifier is ordinary Check context.
-    const detail = await rpc(runtime.endpoint, "check.read", {
+    const detail = (await rpc(runtime.endpoint, "check.read", {
       contract: "trust.check-read-request@1",
       checkUri: view.actionableChecks[0]!,
-    }) as { context: Record<string, unknown> };
+    })) as { context: Record<string, unknown> };
     assert.deepEqual(detail.context, { project: "payment-api", plan: "release-2026-08" });
 
     const admission = await admit(runtime.endpoint, view.actionableChecks[0]!, "plan-identifier-comparison");
@@ -1134,7 +1432,12 @@ interface PlanViewShape {
     snapshotId: string;
     escalatedAt: string;
   } | null;
-  escalations: readonly { escalationId: string; escalatedAt: string; resumedAt: string | null; resumeReason: string | null }[];
+  escalations: readonly {
+    escalationId: string;
+    escalatedAt: string;
+    resumedAt: string | null;
+    resumeReason: string | null;
+  }[];
   checks: readonly {
     checkUri: string;
     name: string;
@@ -1184,13 +1487,19 @@ async function admit(
   }) as Promise<Admission>;
 }
 
-async function finalize(endpoint: string, attemptHandle: string): Promise<{
+async function finalize(
+  endpoint: string,
+  attemptHandle: string,
+): Promise<{
   verdict: string;
   reasonCode: string;
   reason: string;
   next: unknown;
 }> {
-  return rpc(endpoint, "check.attempt.finalize", { contract: "trust.attempt-finalization-request@1", attemptHandle }) as Promise<{
+  return rpc(endpoint, "check.attempt.finalize", {
+    contract: "trust.attempt-finalization-request@1",
+    attemptHandle,
+  }) as Promise<{
     verdict: string;
     reasonCode: string;
     reason: string;
@@ -1205,29 +1514,40 @@ async function interrupt(endpoint: string, attemptHandle: string): Promise<void>
   });
 }
 
-async function postOtlpFacts(endpoint: string, batch: ReturnType<typeof factBatch>): Promise<{
+async function postOtlpFacts(
+  endpoint: string,
+  batch: ReturnType<typeof factBatch>,
+): Promise<{
   partialSuccess?: { rejectedSpans?: number; errorMessage?: string };
 }> {
   const response = await fetch(`${endpoint}/v1/traces`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
-      resourceSpans: [{
-        scopeSpans: [{ spans: [{
-          name: "trust.runner.facts",
-          startTimeUnixNano: `${BigInt(Date.parse(batch.recordedAt)) * 1_000_000n}`,
-          attributes: [
-            attribute("trust.attempt_key", batch.attemptKey),
-            attribute("trust.attempt_handle", batch.attemptHandle),
-            attribute("trust.execution_id", batch.executionId),
-            attribute("trust.check_uri", batch.checkUri),
+      resourceSpans: [
+        {
+          scopeSpans: [
+            {
+              spans: [
+                {
+                  name: "trust.runner.facts",
+                  startTimeUnixNano: `${BigInt(Date.parse(batch.recordedAt)) * 1_000_000n}`,
+                  attributes: [
+                    attribute("trust.attempt_key", batch.attemptKey),
+                    attribute("trust.attempt_handle", batch.attemptHandle),
+                    attribute("trust.execution_id", batch.executionId),
+                    attribute("trust.check_uri", batch.checkUri),
+                  ],
+                  events: batch.facts.map((fact, index) => ({
+                    name: "trust.runner.fact",
+                    attributes: otlpFactAttributes(fact, index),
+                  })),
+                },
+              ],
+            },
           ],
-          events: batch.facts.map((fact, index) => ({
-            name: "trust.runner.fact",
-            attributes: otlpFactAttributes(fact, index),
-          })),
-        }] }],
-      }],
+        },
+      ],
     }),
   });
   assert.equal(response.status, 200);
@@ -1252,7 +1572,11 @@ async function rpcFailure(endpoint: string, method: string, params: unknown) {
   return envelope.error!;
 }
 
-async function rpcEnvelope(endpoint: string, method: string, params: unknown): Promise<{
+async function rpcEnvelope(
+  endpoint: string,
+  method: string,
+  params: unknown,
+): Promise<{
   result?: unknown;
   error?: { code: number; message: string; data?: { reason?: string } };
 }> {
@@ -1262,14 +1586,13 @@ async function rpcEnvelope(endpoint: string, method: string, params: unknown): P
     body: JSON.stringify({ jsonrpc: "2.0", id: method, method, params }),
   });
   assert.equal(response.status, 200);
-  return response.json() as Promise<{ result?: unknown; error?: { code: number; message: string; data?: { reason?: string } } }>;
+  return response.json() as Promise<{
+    result?: unknown;
+    error?: { code: number; message: string; data?: { reason?: string } };
+  }>;
 }
 
-async function mcpTool(
-  endpoint: string,
-  name: string,
-  arguments_: Readonly<Record<string, unknown>>,
-): Promise<string> {
+async function mcpTool(endpoint: string, name: string, arguments_: Readonly<Record<string, unknown>>): Promise<string> {
   const envelope = await mcpToolEnvelope(endpoint, name, arguments_);
   assert.equal(envelope.error, undefined, JSON.stringify(envelope.error));
   assert.notEqual(envelope.result?.isError, true, envelope.result?.content?.[0]?.text);

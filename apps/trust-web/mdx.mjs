@@ -14,11 +14,16 @@ function remarkSearchText() {
     const visit = (node) => {
       if (node.type === "code" || node.type === "mdxjsEsm" || node.type === "yaml") return;
       if (node.type === "text" || node.type === "inlineCode") parts.push(node.value);
-      if (node.type === "heading" || node.type === "paragraph" || node.type === "listItem" || node.type === "tableRow") parts.push("\n");
+      if (node.type === "heading" || node.type === "paragraph" || node.type === "listItem" || node.type === "tableRow")
+        parts.push("\n");
       for (const child of node.children ?? []) visit(child);
     };
     visit(tree);
-    const text = parts.join(" ").replace(/[ \t]+/g, " ").replace(/\s*\n\s*/g, "\n").trim();
+    const text = parts
+      .join(" ")
+      .replace(/[ \t]+/g, " ")
+      .replace(/\s*\n\s*/g, "\n")
+      .trim();
     tree.children.unshift({
       type: "mdxjsEsm",
       value: "",
@@ -26,15 +31,23 @@ function remarkSearchText() {
         estree: {
           type: "Program",
           sourceType: "module",
-          body: [{
-            type: "ExportNamedDeclaration",
-            specifiers: [],
-            declaration: {
-              type: "VariableDeclaration",
-              kind: "const",
-              declarations: [{ type: "VariableDeclarator", id: { type: "Identifier", name: "searchText" }, init: { type: "Literal", value: text } }],
+          body: [
+            {
+              type: "ExportNamedDeclaration",
+              specifiers: [],
+              declaration: {
+                type: "VariableDeclaration",
+                kind: "const",
+                declarations: [
+                  {
+                    type: "VariableDeclarator",
+                    id: { type: "Identifier", name: "searchText" },
+                    init: { type: "Literal", value: text },
+                  },
+                ],
+              },
             },
-          }],
+          ],
         },
       },
     });
@@ -45,7 +58,8 @@ function remarkSearchText() {
 function rehypeCodeMeta() {
   return (tree) => {
     const visit = (node) => {
-      if (node.type === "element" && node.tagName === "code" && node.data?.meta) node.properties = { ...node.properties, meta: node.data.meta };
+      if (node.type === "element" && node.tagName === "code" && node.data?.meta)
+        node.properties = { ...node.properties, meta: node.data.meta };
       for (const child of node.children ?? []) visit(child);
     };
     visit(tree);

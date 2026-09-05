@@ -1,5 +1,5 @@
-import type { CompiledOperation, OperationStep, OperationValueDomain } from "./operation.js";
 import type { SourceRange } from "@trust/gherkin";
+import type { CompiledOperation, OperationStep, OperationValueDomain } from "./operation.js";
 
 export type { SourcePosition, SourceRange } from "@trust/gherkin";
 

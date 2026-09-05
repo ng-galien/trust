@@ -1,6 +1,6 @@
+import type { PlanEvent } from "@trust/extension-sdk";
 import express, { type Router } from "express";
-
-import type { PlanEvent, PlanEvents } from "../plan/events.js";
+import type { PlanEvents } from "../plan/events.js";
 
 export interface PlanEventsHttpDependencies {
   readonly planEvents: PlanEvents;

@@ -29,7 +29,9 @@ function createQualificationEngine(): LogicEngine {
     ...Object.values(qualification.operators.equality),
     ...Object.values(qualification.operators.ordered),
     qualification.operators.unary["!"],
-    ...Object.values(qualification.collectionMethods).map(({ opcode }) => opcode).filter((opcode) => opcode !== everyOpcode),
+    ...Object.values(qualification.collectionMethods)
+      .map(({ opcode }) => opcode)
+      .filter((opcode) => opcode !== everyOpcode),
   ]);
   const available = defaultMethods as unknown as Record<string, unknown>;
   const methods: Record<string, unknown> = Object.fromEntries([...standard].map((name) => [name, available[name]]));
@@ -38,7 +40,9 @@ function createQualificationEngine(): LogicEngine {
     method: (args: unknown, context: unknown, above: unknown[], engine: LogicEngine): boolean => {
       if (!Array.isArray(args)) throw new TypeError("every requires an array and an expression callback");
       const selector = engine.run(args[0], context, { above });
-      return Array.isArray(selector) && selector.length === 0 ? true : defaultMethods.all.method(args, context, above, engine);
+      return Array.isArray(selector) && selector.length === 0
+        ? true
+        : defaultMethods.all.method(args, context, above, engine);
     },
   };
   const engine = new LogicEngine(methods, {
@@ -70,9 +74,14 @@ function evaluateArithmetic(operator: string, args: unknown[]): number {
   if (operator === "+") return finite(values.reduce((total, value) => total + value, 0));
   if (operator === "*") return finite(values.reduce((total, value) => total * value, 1));
   if (values.length === 0) throw new TypeError(`Operator ${operator} requires an operand`);
-  if (operator === "-") return finite(values.length === 1 ? -values[0]! : values.slice(1).reduce((total, value) => total - value, values[0]!));
+  if (operator === "-")
+    return finite(
+      values.length === 1 ? -values[0]! : values.slice(1).reduce((total, value) => total - value, values[0]!),
+    );
   if (values.length < 2) throw new TypeError(`Operator ${operator} requires two operands`);
-  return finite(values.slice(1).reduce((total, value) => operator === "/" ? total / value : total % value, values[0]!));
+  return finite(
+    values.slice(1).reduce((total, value) => (operator === "/" ? total / value : total % value), values[0]!),
+  );
 }
 
 function evaluateMath(native: string, args: unknown[]): number {
@@ -86,8 +95,12 @@ function evaluateStringMethod(
   [receiver, ...args]: unknown[],
 ): string | boolean {
   const value = string(receiver);
-  const typed = args.map((argument, index) => spec.arguments[index] === "number" ? number(argument) : string(argument));
-  const method = value[spec.native as keyof string] as unknown as (...values: Array<string | number>) => string | boolean;
+  const typed = args.map((argument, index) =>
+    spec.arguments[index] === "number" ? number(argument) : string(argument),
+  );
+  const method = value[spec.native as keyof string] as unknown as (
+    ...values: Array<string | number>
+  ) => string | boolean;
   if (typeof method !== "function") throw new TypeError(`String method ${spec.native} is unavailable`);
   return method.apply(value, typed);
 }
@@ -98,7 +111,8 @@ const finite = (value: number): number => {
   return value;
 };
 const number = (value: unknown): number => {
-  if (typeof value !== "number" || !Number.isFinite(value)) throw new TypeError("Numeric operator requires finite numbers");
+  if (typeof value !== "number" || !Number.isFinite(value))
+    throw new TypeError("Numeric operator requires finite numbers");
   return value;
 };
 const string = (value: unknown): string => {

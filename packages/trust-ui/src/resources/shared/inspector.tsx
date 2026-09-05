@@ -7,7 +7,17 @@ import { useOrigin } from "./origin.js";
 
 /* Right-hand context of an item overlay: relations first, then contract facts. */
 
-export function InspectorSection({ title, count, children, className }: { title: string; count?: number; children: ReactNode; className?: string }) {
+export function InspectorSection({
+  title,
+  count,
+  children,
+  className,
+}: {
+  title: string;
+  count?: number;
+  children: ReactNode;
+  className?: string;
+}) {
   return (
     <section className={cx("border-b border-border px-4 py-3 last:border-b-0", className)}>
       <h3 className="kicker mb-2 flex items-center gap-2">
@@ -19,10 +29,26 @@ export function InspectorSection({ title, count, children, className }: { title:
   );
 }
 
-export function RelationLink({ to, icon, title, meta, state }: { to: string; icon: ReactNode; title: string; meta?: string; state?: ReactNode }) {
+export function RelationLink({
+  to,
+  icon,
+  title,
+  meta,
+  state,
+}: {
+  to: string;
+  icon: ReactNode;
+  title: string;
+  meta?: string;
+  state?: ReactNode;
+}) {
   const origin = useOrigin();
   return (
-    <Link to={to} state={origin} className="flex items-center gap-2 rounded-(--radius-1) px-1.5 py-1 hover:bg-surface-2">
+    <Link
+      to={to}
+      state={origin}
+      className="flex items-center gap-2 rounded-(--radius-1) px-1.5 py-1 hover:bg-surface-2"
+    >
       <span className="shrink-0 text-muted [&>svg]:h-3.5 [&>svg]:w-3.5">{icon}</span>
       <span className="min-w-0 flex-1">
         <span className="mono truncate-1 block text-body font-medium">{title}</span>

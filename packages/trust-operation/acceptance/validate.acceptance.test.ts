@@ -1,17 +1,16 @@
-import { readFileSync, readdirSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 
 import {
   compileOperation,
   OperationValidationError,
+  type OperationValues,
   validateOperationEnvironment,
   validateOperationInput,
   validateOperationProduced,
-  type OperationValues,
 } from "@trust/operation";
 import { describe, expect, test } from "vitest";
 
-const fixture = (path: string): string =>
-  readFileSync(new URL(`./fixtures/${path}`, import.meta.url), "utf8");
+const fixture = (path: string): string => readFileSync(new URL(`./fixtures/${path}`, import.meta.url), "utf8");
 
 const operation = compileOperation({
   source: fixture("valid/shell.context-read.feature"),
@@ -19,7 +18,9 @@ const operation = compileOperation({
 });
 
 const invalidDirectory = new URL("./fixtures/values/invalid/", import.meta.url);
-const invalidFiles = readdirSync(invalidDirectory).filter((name) => name.endsWith(".json")).sort();
+const invalidFiles = readdirSync(invalidDirectory)
+  .filter((name) => name.endsWith(".json"))
+  .sort();
 
 interface InvalidFixture {
   readonly values: OperationValues;
@@ -55,7 +56,13 @@ describe("compiled Operation schemas", () => {
 });
 
 function validateValues(values: OperationValues, value: unknown): void {
-  if (values === "input") return validateOperationInput(operation, value);
-  if (values === "environment") return validateOperationEnvironment(operation, value);
+  if (values === "input") {
+    validateOperationInput(operation, value);
+    return;
+  }
+  if (values === "environment") {
+    validateOperationEnvironment(operation, value);
+    return;
+  }
   validateOperationProduced(operation, value);
 }

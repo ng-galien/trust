@@ -1,5 +1,6 @@
+import type { JsonValue } from "@trust/operation";
 import type { CheckResult } from "../check/run.js";
-import { isJsonObject, type JsonObject, type JsonValue } from "../lib/json.js";
+import { isJsonObject, type JsonObject } from "../lib/json.js";
 
 export const MCP_PROTOCOL_VERSION = "2025-11-25";
 export const TRUST_CHECK_RUN_TOOL = "trust_check_run";
@@ -33,17 +34,20 @@ export function createMcpHandler(runner: CheckRunner) {
     if (message.method === "ping") return success(id, {});
     if (message.method === "tools/list") {
       return success(id, {
-        tools: [{
-          name: TRUST_CHECK_RUN_TOOL,
-          title: "Run TRUST Check",
-          description: "Execute one opaque semantic Check URI, including intent query parameters when its Procedure requires intent chaining.",
-          inputSchema: {
-            type: "object",
-            properties: { checkUri: { type: "string" } },
-            required: ["checkUri"],
-            additionalProperties: false,
+        tools: [
+          {
+            name: TRUST_CHECK_RUN_TOOL,
+            title: "Run TRUST Check",
+            description:
+              "Execute one opaque semantic Check URI, including intent query parameters when its Procedure requires intent chaining.",
+            inputSchema: {
+              type: "object",
+              properties: { checkUri: { type: "string" } },
+              required: ["checkUri"],
+              additionalProperties: false,
+            },
           },
-        }],
+        ],
       });
     }
     if (message.method !== "tools/call") return error(id, -32601, "Method not found");
@@ -51,11 +55,7 @@ export function createMcpHandler(runner: CheckRunner) {
       return error(id, -32602, `Unknown tool; expected ${TRUST_CHECK_RUN_TOOL}`);
     }
     const arguments_ = message.params.arguments;
-    if (
-      !isJsonObject(arguments_)
-      || Object.keys(arguments_).length !== 1
-      || typeof arguments_.checkUri !== "string"
-    ) {
+    if (!isJsonObject(arguments_) || Object.keys(arguments_).length !== 1 || typeof arguments_.checkUri !== "string") {
       return error(id, -32602, "Tool accepts exactly one checkUri string");
     }
     try {

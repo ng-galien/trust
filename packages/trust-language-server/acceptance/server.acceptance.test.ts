@@ -1,23 +1,41 @@
 import assert from "node:assert/strict";
-import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import { once } from "node:events";
 import { readFileSync } from "node:fs";
 import test, { type TestContext } from "node:test";
-
-import {
-  createMessageConnection,
-  StreamMessageReader,
-  StreamMessageWriter,
-  type MessageConnection,
-} from "vscode-jsonrpc/node";
 import { compileOperation } from "@trust/operation";
 import { operationLanguage } from "@trust/operation/language";
 import { compileProcedure } from "@trust/procedure";
+import {
+  createMessageConnection,
+  type MessageConnection,
+  StreamMessageReader,
+  StreamMessageWriter,
+} from "vscode-jsonrpc/node";
 import { CompletionItemKind } from "vscode-languageserver/node";
 
 const semanticTokenTypes = [
-  "comment", "tag", "keyword", "keyword-control", "title", "type", "verb", "string",
-  "number", "delimiter", "table-header", "table-cell", "function", "root", "operator", "variable",
+  "comment",
+  "tag",
+  "keyword",
+  "keyword-control",
+  "title",
+  "type",
+  "verb",
+  "string",
+  "number",
+  "delimiter",
+  "table-header",
+  "table-cell",
+  "function",
+  "root",
+  "operator",
+  "variable",
+  "cardinality",
+  "declaration",
+  "reference",
+  "property",
+  "boolean",
 ] as const;
 
 test("the Microsoft LSP server exposes the Operation language through standard JSON-RPC", async (context) => {
@@ -49,13 +67,18 @@ test("the server accepts step continuation lines and formats long steps onto the
   });
   assert.deepEqual(await diagnostics, { uri, version: 1, diagnostics: [] });
 
-  const edits = await session.connection.sendRequest<Array<{ newText: string }>>(
-    "textDocument/formatting",
-    { textDocument: { uri }, options: { tabSize: 2, insertSpaces: true } },
-  );
+  const edits = await session.connection.sendRequest<Array<{ newText: string }>>("textDocument/formatting", {
+    textDocument: { uri },
+    options: { tabSize: 2, insertSpaces: true },
+  });
   assert.equal(edits.length, 1);
   const formatted = edits[0]!.newText;
-  assert.ok(formatted.includes('When Shell "head" runs "git" with cwd from Environment "workspaceRoot"\n        and Input "project"'), formatted);
+  assert.ok(
+    formatted.includes(
+      'When Shell "head" runs "git" with cwd from Environment "workspaceRoot"\n        and Input "project"',
+    ),
+    formatted,
+  );
 
   const reopened = "file:///workspace/format/continued.feature";
   const reopenedDiagnostics = waitForDiagnostics(session.connection, reopened, 1);
@@ -67,13 +90,194 @@ test("the server accepts step continuation lines and formats long steps onto the
     textDocument: { uri: reopened },
     position: positionAt(formatted, formatted.indexOf('"project"') + 1),
   });
-  assert.deepEqual(continuedInput.map(({ label }) => label), ["project"]);
+  assert.deepEqual(
+    continuedInput.map(({ label }) => label),
+    ["project"],
+  );
   const semantic = await session.connection.sendRequest<SemanticTokens>("textDocument/semanticTokens/full", {
     textDocument: { uri: reopened },
   });
   const continuedType = formatted.indexOf('Input "project"', formatted.indexOf("\n        and Input"));
   assert.ok(continuedType > 0, "formatted continuation carries the Input type");
   assertSemanticTokenAt(semantic, positionAt(formatted, continuedType), "Input".length, "type");
+  await session.shutdown();
+});
+
+test("stdio hover and document links resolve canonical Operation and exact-version Procedure references safely", async (context) => {
+  const session = await startLanguageServer(context);
+  const { connection } = session;
+  const open = async (uri: string, text: string, version = 1) => {
+    const diagnostics = waitForDiagnostics(connection, uri, version);
+    connection.sendNotification("textDocument/didOpen", {
+      textDocument: { uri, languageId: "gherkin", version, text },
+    });
+    await diagnostics;
+  };
+  const operationUri = "file:///workspace/hover/operation.feature";
+  const operation = operationFixture("valid/git.head-read.feature").replace(
+    /Feature: [^\n]*/,
+    "Feature: [unsafe](command:bad) <script>title</script>\n\n  [description](https://evil.invalid) and `command:bad`\n  Unicode équipe龍🎲\tkept\u0000\u0008\u000b\u000c\u000e\u001f\u007f clean\r\n  next line",
+  );
+  await open(operationUri, operation);
+  const child = (version: string) => `@trust-dsl:1 @procedure:hover-child @version:${version}
+Feature: Child ${version} [unsafe](command:bad)
+  Background: Plan context
+    Given Procedure scope
+      | check | authorized | forbidden |
+      | all | Observe the repository. | Modify external state. |
+    And one reference "repository"
+  @scenario:observe
+  Scenario: Observe
+    Then Check "child observation" runs Operation "git.head-read@*" on "repository" as Input "project" and must establish "observed"
+      """js
+      fact.workingTree === "clean" || fail("not clean")
+      """
+`;
+  await open("file:///workspace/hover/child-v1.feature", child("1.0.0"));
+  await open("file:///workspace/hover/child-v2.feature", child("2.0.0"));
+  const uri = "file:///workspace/hover/parent.feature";
+  const source = `@trust-dsl:1 @procedure:hover-parent @version:1.0.0
+Feature: References
+  Background: Plan context
+    Given Procedure scope
+      | check | authorized | forbidden |
+      | all | Observe the repository. | Modify external state. |
+    And one reference "repository"
+  @scenario:observe
+  Scenario: Observe
+    # Then Invocation "fake" runs Procedure "hover-child@1.0.0" and must establish "fake"
+    Then Check "git.head-read" runs Operation
+        "git.head-read@^1.0.0" on "repository" as Input "project" and must establish "observed"
+      """js
+      fact.workingTree === "clean" || fail('Operation "git.head-read"')
+      """
+    And Invocation "first" runs Procedure
+        "hover-child@^1.0.0" on "repository" as Input "repository" and must establish "first done"
+    And Invocation "second" runs Procedure "hover-child@2.0.0" on "repository" as Input "repository" and must establish "second done"
+    And Invocation "unknown" runs Procedure "hover-child@9.0.0" on "repository" as Input "repository" and must establish "unknown"
+    And Check "unresolved" runs Operation "command:forged@*" on "repository" as Input "project" and must establish "unresolved"
+    And Check "malformed" runs Operation "git.head-read@*" unexpected tail
+`;
+  await open(uri, source);
+  const links = await connection.sendRequest<Array<{ target: string; range: { start: Position; end: Position } }>>(
+    "textDocument/documentLink",
+    { textDocument: { uri } },
+  );
+  assert.deepEqual(
+    links.map((value) => value.target),
+    [
+      "trust-resource://operation/git.head-read?version=1.0.0",
+      "trust-resource://procedure/hover-child?version=1.0.0",
+      "trust-resource://procedure/hover-child?version=2.0.0",
+    ],
+  );
+  const offsets = [
+    source.indexOf('"git.head-read@^1.0.0" on') + 1,
+    source.indexOf('"hover-child@^1.0.0" on') + 1,
+    source.indexOf('"hover-child@2.0.0" on') + 1,
+  ];
+  for (const [index, link] of links.entries()) {
+    const name = index === 0 ? "git.head-read@^1.0.0" : index === 1 ? "hover-child@^1.0.0" : "hover-child@2.0.0";
+    assert.deepEqual(link.range, {
+      start: positionAt(source, offsets[index]!),
+      end: positionAt(source, offsets[index]! + name.length),
+    });
+    const hover = await connection.sendRequest<{ contents: { kind: string; value: string }; range: unknown }>(
+      "textDocument/hover",
+      { textDocument: { uri }, position: link.range.start },
+    );
+    assert.equal(hover.contents.kind, "markdown");
+    assert.deepEqual(hover.range, link.range);
+    assert.ok(hover.contents.value.includes(`](${link.target})`));
+    assert.ok(!hover.contents.value.includes("](" + "command:"));
+    assert.ok(!hover.contents.value.includes("<script>"));
+    assert.ok(!hover.contents.value.includes("](https://evil.invalid)"));
+    if (index === 0) {
+      assert.ok(hover.contents.value.includes("équipe龍🎲\tkept clean"));
+      assert.ok(hover.contents.value.includes("\n"));
+      for (const code of [0, 8, 11, 12, 14, 31, 127]) {
+        assert.ok(!hover.contents.value.includes(String.fromCharCode(code)));
+      }
+    }
+  }
+  for (const offset of [
+    source.indexOf('Check "git.head-read"') + 8,
+    source.indexOf('"hover-child@9.0.0"') + 2,
+    source.indexOf("command:forged") + 2,
+    source.lastIndexOf('"git.head-read@*"') + 2,
+    source.indexOf('Operation "git.head-read"') + 12,
+  ]) {
+    assert.equal(
+      await connection.sendRequest("textDocument/hover", {
+        textDocument: { uri },
+        position: positionAt(source, offset),
+      }),
+      null,
+    );
+  }
+  // Document changes must not leave stale actionable links behind.
+  const changed = waitForDiagnostics(connection, uri, 2);
+  connection.sendNotification("textDocument/didChange", {
+    textDocument: { uri, version: 2 },
+    contentChanges: [
+      {
+        text: '@trust-dsl:1 @procedure:hover-parent @version:1.0.0\nFeature: broken\n  Scenario: Broken\n    Then Invocation "bad" runs Procedure "hover-child\n',
+      },
+    ],
+  });
+  await changed;
+  assert.deepEqual(await connection.sendRequest("textDocument/documentLink", { textDocument: { uri } }), []);
+  await session.shutdown();
+});
+
+test("async catalog changes do not resurrect closed or older diagnostics and failures preserve the LSP connection", async (context) => {
+  const session = await startLanguageServer(context, new URL("./support/catalog-server.js", import.meta.url).pathname);
+  const { connection } = session;
+  const uri = "file:///workspace/catalog/async.feature";
+  const diagnostics: Array<{ uri: string; version: number; diagnostics: unknown[] }> = [];
+  connection.onNotification("textDocument/publishDiagnostics", (value) => {
+    diagnostics.push(value);
+  });
+  const text = "@trust-dsl:1 @procedure:async-catalog @version:1.0.0\nFeature: Catalog\n";
+  await connection.sendRequest("acceptance/catalog", { action: "pause" });
+  connection.sendNotification("textDocument/didOpen", {
+    textDocument: { uri, languageId: "gherkin", version: 1, text },
+  });
+  connection.sendNotification("textDocument/didClose", { textDocument: { uri } });
+  await connection.sendRequest("acceptance/catalog", { action: "release" });
+  assert.deepEqual(
+    diagnostics,
+    [{ uri, version: 1, diagnostics: [] }],
+    "closed documents must not receive deferred diagnostics",
+  );
+  diagnostics.length = 0;
+  await connection.sendRequest("acceptance/catalog", { action: "pause" });
+  connection.sendNotification("textDocument/didOpen", {
+    textDocument: { uri, languageId: "gherkin", version: 1, text },
+  });
+  connection.sendNotification("textDocument/didChange", {
+    textDocument: { uri, version: 2 },
+    contentChanges: [{ text: text + "  Scenario: Still incomplete\n" }],
+  });
+  await connection.sendRequest("acceptance/catalog", { action: "release" });
+  assert.ok(diagnostics.length > 0);
+  assert.ok(
+    diagnostics.every((value) => value.version === 2),
+    "only the latest open document version may publish",
+  );
+  diagnostics.length = 0;
+  await connection.sendRequest("acceptance/catalog", { action: "fail" });
+  const failed = waitForDiagnostics(connection, uri, 3);
+  connection.sendNotification("textDocument/didChange", {
+    textDocument: { uri, version: 3 },
+    contentChanges: [{ text }],
+  });
+  assert.equal((await failed).diagnostics[0]?.code, "catalog-unavailable");
+  await assert.rejects(connection.sendRequest("textDocument/documentLink", { textDocument: { uri } }));
+  assert.deepEqual(
+    await connection.sendRequest("textDocument/documentLink", { textDocument: { uri: "file:///absent.feature" } }),
+    [],
+  );
   await session.shutdown();
 });
 
@@ -90,10 +294,7 @@ async function assertIgnoredDocument(connection: MessageConnection): Promise<voi
   });
 
   assert.deepEqual(await diagnostics, { uri, version: 1, diagnostics: [] });
-  assert.deepEqual(
-    await connection.sendRequest("textDocument/documentSymbol", { textDocument: { uri } }),
-    [],
-  );
+  assert.deepEqual(await connection.sendRequest("textDocument/documentSymbol", { textDocument: { uri } }), []);
 
   const docStringUri = "file:///workspace/docstring.feature";
   const docStringDiagnostics = waitForDiagnostics(connection, docStringUri, 1);
@@ -102,7 +303,7 @@ async function assertIgnoredDocument(connection: MessageConnection): Promise<voi
       uri: docStringUri,
       languageId: "gherkin",
       version: 1,
-      text: "Feature: Ordinary\n  Scenario: Text\n    Given a value\n      \"\"\"\n      @operation:not-a-tag\n      \"\"\"\n",
+      text: 'Feature: Ordinary\n  Scenario: Text\n    Given a value\n      """\n      @operation:not-a-tag\n      """\n',
     },
   });
   assert.deepEqual(await docStringDiagnostics, {
@@ -172,10 +373,9 @@ async function assertValidCatalog(connection: MessageConnection): Promise<void> 
     });
     assert.deepEqual(await diagnostics, { uri, version: 1, diagnostics: [] });
 
-    const symbols = await connection.sendRequest<DocumentSymbol[]>(
-      "textDocument/documentSymbol",
-      { textDocument: { uri } },
-    );
+    const symbols = await connection.sendRequest<DocumentSymbol[]>("textDocument/documentSymbol", {
+      textDocument: { uri },
+    });
     assert.equal(symbols.length, 1, file);
     assert.ok(symbols[0]?.name.includes("."), file);
     assert.equal(
@@ -192,14 +392,17 @@ async function assertValidCatalog(connection: MessageConnection): Promise<void> 
         start: { line: 1, character: 24 },
         end: { line: 1, character: 37 },
       });
-      assert.deepEqual(symbols[0]?.children?.map(({ name, detail }) => ({ name, detail })), [
-        { name: "workspaceRoot", detail: "Environment: directory" },
-        { name: "project", detail: "Input: reference one" },
-        { name: "head", detail: "Step: shell" },
-        { name: "status", detail: "Step: shell" },
-        { name: "headRevision", detail: "Produced: reference one" },
-        { name: "workingTree", detail: "Produced: string one" },
-      ]);
+      assert.deepEqual(
+        symbols[0]?.children?.map(({ name, detail }) => ({ name, detail })),
+        [
+          { name: "workspaceRoot", detail: "Environment: directory" },
+          { name: "project", detail: "Input: reference one" },
+          { name: "head", detail: "Step: shell" },
+          { name: "status", detail: "Step: shell" },
+          { name: "headRevision", detail: "Produced: reference one" },
+          { name: "workingTree", detail: "Produced: string one" },
+        ],
+      );
       assert.deepEqual(symbols[0]?.children?.[0]?.selectionRange, {
         start: { line: 7, character: 8 },
         end: { line: 7, character: 21 },
@@ -210,22 +413,28 @@ async function assertValidCatalog(connection: MessageConnection): Promise<void> 
       });
       const stepsPosition = positionAt(source, source.indexOf("steps.head") + "steps.".length);
       const steps = await connection.sendRequest<CompletionItem[]>("textDocument/completion", {
-        textDocument: { uri }, position: stepsPosition,
+        textDocument: { uri },
+        position: stepsPosition,
       });
       assert.deepEqual(steps.map(({ label }) => label).sort(), ["head", "status"]);
 
       const resultPosition = positionAt(source, source.indexOf("steps.head.stdout") + "steps.head.".length);
       const shellResult = await connection.sendRequest<CompletionItem[]>("textDocument/completion", {
-        textDocument: { uri }, position: resultPosition,
+        textDocument: { uri },
+        position: resultPosition,
       });
       assert.deepEqual(shellResult.map(({ label }) => label).sort(), ["exitCode", "stderr", "stdout"]);
 
       const jsonataPosition = positionAt(source, source.indexOf("$trim"));
       const jsonata = await connection.sendRequest<CompletionItem[]>("textDocument/completion", {
-        textDocument: { uri }, position: jsonataPosition,
+        textDocument: { uri },
+        position: jsonataPosition,
       });
       assert.deepEqual(
-        jsonata.map(({ label }) => label).filter((label) => label.startsWith("$")).sort(),
+        jsonata
+          .map(({ label }) => label)
+          .filter((label) => label.startsWith("$"))
+          .sort(),
         operationLanguage.jsonata.functions.map((name) => `$${name}`).sort(),
       );
 
@@ -234,31 +443,58 @@ async function assertValidCatalog(connection: MessageConnection): Promise<void> 
       });
       assertSemanticTokenAt(semantic, positionAt(source, 0), "# language: en".length, "comment");
       assertSemanticTokenAt(semantic, positionAt(source, source.indexOf("@trust-dsl:1")), "@trust-dsl:1".length, "tag");
-      assertSemanticTokenAt(semantic, positionAt(source, source.indexOf("Feature")), "Feature".length, "keyword-control");
-      assertSemanticTokenAt(semantic, positionAt(source, source.indexOf("Feature:") + "Feature:".length), " Read Git HEAD and working tree".length, "title");
+      assertSemanticTokenAt(
+        semantic,
+        positionAt(source, source.indexOf("Feature")),
+        "Feature".length,
+        "keyword-control",
+      );
+      assertSemanticTokenAt(
+        semantic,
+        positionAt(source, source.indexOf("Feature:") + "Feature:".length),
+        " Read Git HEAD and working tree".length,
+        "title",
+      );
       assertSemanticTokenAt(semantic, positionAt(source, source.indexOf("Given")), "Given".length, "keyword");
-      assertSemanticTokenAt(semantic, positionAt(source, source.indexOf("Environment", source.indexOf("Given"))), "Environment".length, "type");
+      assertSemanticTokenAt(
+        semantic,
+        positionAt(source, source.indexOf("Environment", source.indexOf("Given"))),
+        "Environment".length,
+        "type",
+      );
       assertSemanticTokenAt(semantic, positionAt(source, source.indexOf("runs")), "runs".length, "verb");
       assertSemanticTokenAt(semantic, positionAt(source, source.indexOf('"head"')), '"head"'.length, "string");
-      assertSemanticTokenAt(semantic, positionAt(source, source.indexOf("name", source.indexOf("| name"))), "name".length, "table-header");
-      assertSemanticTokenAt(semantic, positionAt(source, source.indexOf("workspaceRoot", source.indexOf("| workspaceRoot"))), "workspaceRoot".length, "table-cell");
+      assertSemanticTokenAt(
+        semantic,
+        positionAt(source, source.indexOf("name", source.indexOf("| name"))),
+        "name".length,
+        "table-header",
+      );
+      assertSemanticTokenAt(
+        semantic,
+        positionAt(source, source.indexOf("workspaceRoot", source.indexOf("| workspaceRoot"))),
+        "workspaceRoot".length,
+        "table-cell",
+      );
       assertSemanticTokenAt(semantic, positionAt(source, source.indexOf("{", source.indexOf('"""'))), 1, "delimiter");
       assertSemanticTokenAt(semantic, positionAt(source, source.indexOf("$trim")), "$trim".length, "function");
       assertSemanticTokenAt(semantic, positionAt(source, source.indexOf("steps.head")), "steps".length, "root");
-      assertSemanticTokenAt(semantic, positionAt(source, source.indexOf("head.stdout")), "head".length, "variable");
-      assertSemanticTokenAt(semantic, positionAt(source, source.indexOf(" = \"") + 1), 1, "operator");
+      assertSemanticTokenAt(semantic, positionAt(source, source.indexOf("head.stdout")), "head".length, "property");
+      assertSemanticTokenAt(semantic, positionAt(source, source.indexOf(' = "') + 1), 1, "operator");
     }
     if (file === "file.package-read.feature") {
       const afterFormat = source.indexOf("JSON from Environment") + "JSON ".length;
       const completions = await connection.sendRequest<CompletionItem[]>("textDocument/completion", {
-        textDocument: { uri }, position: positionAt(source, afterFormat),
+        textDocument: { uri },
+        position: positionAt(source, afterFormat),
       });
       assert.ok(completions.some(({ label }) => label === "from Environment"));
     }
     if (file === "http.status-read.feature") {
       const afterEnvironment = source.indexOf('"serviceUrl" and reads') + '"serviceUrl" '.length;
       const completions = await connection.sendRequest<CompletionItem[]>("textDocument/completion", {
-        textDocument: { uri }, position: positionAt(source, afterEnvironment),
+        textDocument: { uri },
+        position: positionAt(source, afterEnvironment),
       });
       assert.deepEqual(completions.map(({ label }) => label).sort(), [
         "and reads",
@@ -273,7 +509,8 @@ async function assertValidCatalog(connection: MessageConnection): Promise<void> 
     if (file === "http.segments-query.feature") {
       const afterQueryName = source.indexOf('"limit" as') + '"limit" '.length;
       const completions = await connection.sendRequest<CompletionItem[]>("textDocument/completion", {
-        textDocument: { uri }, position: positionAt(source, afterQueryName),
+        textDocument: { uri },
+        position: positionAt(source, afterQueryName),
       });
       assert.deepEqual(completions.map(({ label }) => label).sort(), ["as", "from Environment", "from Input"]);
     }
@@ -305,11 +542,15 @@ async function assertOperationCompletionCompiles(connection: MessageConnection):
     textDocument: { uri, languageId: "trust-operation", version: 1, text: incomplete },
   });
   const completions = await connection.sendRequest<CompletionItem[]>("textDocument/completion", {
-    textDocument: { uri }, position: positionAt(incomplete, insertionOffset),
+    textDocument: { uri },
+    position: positionAt(incomplete, insertionOffset),
   });
   const completion = completions.find(({ label }) => label === phrase);
   assert.ok(completion);
-  const completed = incomplete.slice(0, insertionOffset) + (completion.insertText ?? completion.label) + incomplete.slice(insertionOffset);
+  const completed =
+    incomplete.slice(0, insertionOffset) +
+    (completion.insertText ?? completion.label) +
+    incomplete.slice(insertionOffset);
   compileOperation({ source: completed });
 }
 
@@ -319,7 +560,8 @@ async function assertDefaultTemplates(connection: MessageConnection): Promise<vo
     textDocument: { uri: operationUri, languageId: "trust-operation", version: 1, text: "" },
   });
   const operationItems = await connection.sendRequest<CompletionItem[]>("textDocument/completion", {
-    textDocument: { uri: operationUri }, position: { line: 0, character: 0 },
+    textDocument: { uri: operationUri },
+    position: { line: 0, character: 0 },
   });
   const operationTemplate = operationItems.find(({ label }) => label === "Operation feature")?.insertText;
   assert.ok(operationTemplate);
@@ -330,11 +572,15 @@ async function assertDefaultTemplates(connection: MessageConnection): Promise<vo
     textDocument: { uri: procedureUri, languageId: "trust-procedure", version: 1, text: "" },
   });
   const procedureItems = await connection.sendRequest<CompletionItem[]>("textDocument/completion", {
-    textDocument: { uri: procedureUri }, position: { line: 0, character: 0 },
+    textDocument: { uri: procedureUri },
+    position: { line: 0, character: 0 },
   });
   const procedureTemplate = procedureItems.find(({ label }) => label === "Procedure feature")?.insertText;
   assert.ok(procedureTemplate);
-  compileProcedure({ source: procedureTemplate, operations: [compileOperation({ source: operationFixture("valid/git.head-read.feature") })] });
+  compileProcedure({
+    source: procedureTemplate,
+    operations: [compileOperation({ source: operationFixture("valid/git.head-read.feature") })],
+  });
 
   const scopeBlock = `Procedure scope
       | check | authorized | forbidden |
@@ -346,33 +592,46 @@ async function assertDefaultTemplates(connection: MessageConnection): Promise<vo
     textDocument: { uri: scopeUri, languageId: "trust-procedure", version: 1, text: incompleteScope },
   });
   const scopeItems = await connection.sendRequest<CompletionItem[]>("textDocument/completion", {
-    textDocument: { uri: scopeUri }, position: positionAt(incompleteScope, scopeOffset),
+    textDocument: { uri: scopeUri },
+    position: positionAt(incompleteScope, scopeOffset),
   });
   const scopeCompletion = scopeItems.find(({ label }) => label === "Procedure scope");
   assert.ok(scopeCompletion?.insertText);
   assert.match(scopeCompletion.insertText, /\| check \| authorized \| forbidden \|/);
-  const completedScope = incompleteScope.slice(0, scopeOffset)
-    + scopeCompletion.insertText
+  const completedScope =
+    incompleteScope.slice(0, scopeOffset) +
+    scopeCompletion.insertText
       .replace("${1:Authorized actions.}", "Read the declared repository.")
-      .replace("${2:Forbidden actions.}", "Alter the environment to make the Check pass.")
-    + incompleteScope.slice(scopeOffset);
-  compileProcedure({ source: completedScope, operations: [compileOperation({ source: operationFixture("valid/git.head-read.feature") })] });
+      .replace("${2:Forbidden actions.}", "Alter the environment to make the Check pass.") +
+    incompleteScope.slice(scopeOffset);
+  compileProcedure({
+    source: completedScope,
+    operations: [compileOperation({ source: operationFixture("valid/git.head-read.feature") })],
+  });
 
   const phrase = "must establish";
   const insertionOffset = procedureTemplate.indexOf(phrase);
   assert.ok(insertionOffset > 0);
-  const incomplete = procedureTemplate.slice(0, insertionOffset) + procedureTemplate.slice(insertionOffset + phrase.length);
+  const incomplete =
+    procedureTemplate.slice(0, insertionOffset) + procedureTemplate.slice(insertionOffset + phrase.length);
   const completionUri = "file:///workspace/completion/new-procedure.feature";
   connection.sendNotification("textDocument/didOpen", {
     textDocument: { uri: completionUri, languageId: "trust-procedure", version: 1, text: incomplete },
   });
   const grammarItems = await connection.sendRequest<CompletionItem[]>("textDocument/completion", {
-    textDocument: { uri: completionUri }, position: positionAt(incomplete, insertionOffset),
+    textDocument: { uri: completionUri },
+    position: positionAt(incomplete, insertionOffset),
   });
   const grammarCompletion = grammarItems.find(({ label }) => label === phrase);
   assert.ok(grammarCompletion);
-  const completed = incomplete.slice(0, insertionOffset) + (grammarCompletion.insertText ?? grammarCompletion.label) + incomplete.slice(insertionOffset);
-  compileProcedure({ source: completed, operations: [compileOperation({ source: operationFixture("valid/git.head-read.feature") })] });
+  const completed =
+    incomplete.slice(0, insertionOffset) +
+    (grammarCompletion.insertText ?? grammarCompletion.label) +
+    incomplete.slice(insertionOffset);
+  compileProcedure({
+    source: completed,
+    operations: [compileOperation({ source: operationFixture("valid/git.head-read.feature") })],
+  });
 }
 
 async function assertInvalidFixtures(connection: MessageConnection): Promise<void> {
@@ -396,10 +655,9 @@ async function assertInvalidFixtures(connection: MessageConnection): Promise<voi
     assert.equal(published.diagnostics[0]?.source, "trust-operation", file);
     assert.ok(published.diagnostics[0]?.message, file);
     assertValidRange(published.diagnostics[0]?.range, file);
-    const symbols = await connection.sendRequest<DocumentSymbol[]>(
-      "textDocument/documentSymbol",
-      { textDocument: { uri } },
-    );
+    const symbols = await connection.sendRequest<DocumentSymbol[]>("textDocument/documentSymbol", {
+      textDocument: { uri },
+    });
     assert.equal(symbols.length, 1, file);
     assert.ok(symbols[0]?.name, file);
   }
@@ -426,36 +684,37 @@ async function assertIncrementalDiagnostics(connection: MessageConnection): Prom
   assert.deepEqual(await invalid, {
     uri,
     version: 2,
-    diagnostics: [{
-      severity: 1,
-      range: {
-        start: { line: 14, character: 4 },
-        end: { line: 14, character: 79 },
+    diagnostics: [
+      {
+        severity: 1,
+        range: {
+          start: { line: 14, character: 4 },
+          end: { line: 14, character: 79 },
+        },
+        message: 'HTTP "response" uses undeclared Environment "missingUrl"',
+        code: "unknown-environment",
+        source: "trust-operation",
       },
-      message: 'HTTP "response" uses undeclared Environment "missingUrl"',
-      code: "unknown-environment",
-      source: "trust-operation",
-    }],
+    ],
   });
-  const symbolsWhileInvalid = await connection.sendRequest<DocumentSymbol[]>(
-    "textDocument/documentSymbol",
-    { textDocument: { uri } },
-  );
+  const symbolsWhileInvalid = await connection.sendRequest<DocumentSymbol[]>("textDocument/documentSymbol", {
+    textDocument: { uri },
+  });
   assert.equal(symbolsWhileInvalid[0]?.name, "http.status-read");
-  assert.deepEqual(symbolsWhileInvalid[0]?.children?.map(({ name }) => name), [
-    "serviceUrl",
-    "response",
-    "service",
-    "status",
-  ]);
+  assert.deepEqual(
+    symbolsWhileInvalid[0]?.children?.map(({ name }) => name),
+    ["serviceUrl", "response", "service", "status"],
+  );
 
   const corrected = waitForDiagnostics(connection, uri, 3);
   connection.sendNotification("textDocument/didChange", {
     textDocument: { uri, version: 3 },
-    contentChanges: [{
-      range: { start, end },
-      text: "serviceUrl",
-    }],
+    contentChanges: [
+      {
+        range: { start, end },
+        text: "serviceUrl",
+      },
+    ],
   });
   assert.deepEqual(await corrected, { uri, version: 3, diagnostics: [] });
 
@@ -467,18 +726,25 @@ async function assertIncrementalDiagnostics(connection: MessageConnection): Prom
     textDocument: { uri, version: 4 },
     contentChanges: [{ range: { start: operationTagStart, end: operationTagEnd }, text: "" }],
   });
-  assert.deepEqual((await missingIdentity).diagnostics.map(({ code, message }) => ({ code, message })), [{
-    code: "invalid-operation",
-    message: "Operation must declare exactly one Operation tag",
-  }]);
+  assert.deepEqual(
+    (await missingIdentity).diagnostics.map(({ code, message }) => ({ code, message })),
+    [
+      {
+        code: "invalid-operation",
+        message: "Operation must declare exactly one Operation tag",
+      },
+    ],
+  );
 
   const identityRestored = waitForDiagnostics(connection, uri, 5);
   connection.sendNotification("textDocument/didChange", {
     textDocument: { uri, version: 5 },
-    contentChanges: [{
-      range: { start: operationTagStart, end: operationTagStart },
-      text: operationTag,
-    }],
+    contentChanges: [
+      {
+        range: { start: operationTagStart, end: operationTagStart },
+        text: operationTag,
+      },
+    ],
   });
   assert.deepEqual(await identityRestored, { uri, version: 5, diagnostics: [] });
 
@@ -502,10 +768,7 @@ async function assertIncrementalDiagnostics(connection: MessageConnection): Prom
   const closed = waitForDiagnostics(connection, uri, 7);
   connection.sendNotification("textDocument/didClose", { textDocument: { uri } });
   assert.deepEqual(await closed, { uri, version: 7, diagnostics: [] });
-  assert.deepEqual(
-    await connection.sendRequest("textDocument/documentSymbol", { textDocument: { uri } }),
-    [],
-  );
+  assert.deepEqual(await connection.sendRequest("textDocument/documentSymbol", { textDocument: { uri } }), []);
 }
 
 async function assertProcedureEditing(connection: MessageConnection): Promise<void> {
@@ -533,7 +796,12 @@ async function assertProcedureEditing(connection: MessageConnection): Promise<vo
     'Given one reference "repository"',
     'Given one reference "repository" declared ',
   );
-  const completionDiagnostics = waitForDiagnostics(connection, completionUri, 1, (message) => message.diagnostics.length > 0);
+  const completionDiagnostics = waitForDiagnostics(
+    connection,
+    completionUri,
+    1,
+    (message) => message.diagnostics.length > 0,
+  );
   connection.sendNotification("textDocument/didOpen", {
     textDocument: { uri: completionUri, languageId: "trust-procedure", version: 1, text: completionSource },
   });
@@ -544,12 +812,15 @@ async function assertProcedureEditing(connection: MessageConnection): Promise<vo
     textDocument: { uri: completionUri },
     position: positionAt(completionSource, declarationOffset),
   });
-  const optionalCompletion = optionalCompletions.find(({ label, kind }) => label === "optionally" && kind === CompletionItemKind.Keyword);
+  const optionalCompletion = optionalCompletions.find(
+    ({ label, kind }) => label === "optionally" && kind === CompletionItemKind.Keyword,
+  );
   assert.ok(optionalCompletion);
   const completionOffset = declarationOffset;
-  const completedSource = completionSource.slice(0, completionOffset)
-    + (optionalCompletion.insertText ?? optionalCompletion.label)
-    + completionSource.slice(completionOffset);
+  const completedSource =
+    completionSource.slice(0, completionOffset) +
+    (optionalCompletion.insertText ?? optionalCompletion.label) +
+    completionSource.slice(completionOffset);
   compileProcedure({
     source: completedSource,
     operations: [compileOperation({ source: operationFixture("valid/git.head-read.feature") })],
@@ -572,9 +843,10 @@ async function assertProcedureEditing(connection: MessageConnection): Promise<vo
   });
   const existingClauseCompletion = existingClauseCompletions.find(({ label }) => label === "optionally");
   assert.ok(existingClauseCompletion);
-  const optionalizedSource = requiredSource.slice(0, beforeByAgent)
-    + (existingClauseCompletion.insertText ?? existingClauseCompletion.label)
-    + requiredSource.slice(beforeByAgent);
+  const optionalizedSource =
+    requiredSource.slice(0, beforeByAgent) +
+    (existingClauseCompletion.insertText ?? existingClauseCompletion.label) +
+    requiredSource.slice(beforeByAgent);
   compileProcedure({
     source: optionalizedSource,
     operations: [compileOperation({ source: operationFixture("valid/git.head-read.feature") })],
@@ -589,22 +861,30 @@ async function assertProcedureEditing(connection: MessageConnection): Promise<vo
   const optionalSemantic = await connection.sendRequest<SemanticTokens>("textDocument/semanticTokens/full", {
     textDocument: { uri: optionalUri },
   });
-  assertSemanticTokenAt(optionalSemantic, positionAt(optionalSource, optionalSource.indexOf("optionally")), "optionally".length, "verb");
+  assertSemanticTokenAt(
+    optionalSemantic,
+    positionAt(optionalSource, optionalSource.indexOf("declared optionally by agent")),
+    "declared optionally by agent".length,
+    "declaration",
+  );
 
   const operationPosition = positionAt(source, source.indexOf('Operation "') + 'Operation "'.length);
   const operations = await connection.sendRequest<CompletionItem[]>("textDocument/completion", {
-    textDocument: { uri }, position: operationPosition,
+    textDocument: { uri },
+    position: operationPosition,
   });
-  assert.ok(operations.some(({ label }) => label === "git.head-read"));
+  assert.ok(operations.some(({ label }) => label === "git.head-read@1.0.0"));
 
   const factPosition = positionAt(source, source.indexOf("fact.") + "fact.".length);
   const facts = await connection.sendRequest<CompletionItem[]>("textDocument/completion", {
-    textDocument: { uri }, position: factPosition,
+    textDocument: { uri },
+    position: factPosition,
   });
   assert.deepEqual(facts.map(({ label }) => label).sort(), ["headRevision", "workingTree"]);
 
   const roots = await connection.sendRequest<CompletionItem[]>("textDocument/completion", {
-    textDocument: { uri }, position: positionAt(source, source.indexOf("fact.")),
+    textDocument: { uri },
+    position: positionAt(source, source.indexOf("fact.")),
   });
   assert.ok(roots.some(({ label }) => label === "fail"));
   assert.ok(!roots.some(({ label }) => label === "failed"));
@@ -640,13 +920,18 @@ async function assertProcedureEditing(connection: MessageConnection): Promise<vo
   const restored = waitForDiagnostics(connection, uri, 3);
   connection.sendNotification("textDocument/didChange", {
     textDocument: { uri, version: 3 },
-    contentChanges: [{ range: { start, end: positionAt(source, occurrence + "missingField".length) }, text: "workingTree" }],
+    contentChanges: [
+      { range: { start, end: positionAt(source, occurrence + "missingField".length) }, text: "workingTree" },
+    ],
   });
   assert.deepEqual(await restored, { uri, version: 3, diagnostics: [] });
 
   const naturalUri = "file:///workspace/procedures/natural-role.feature";
   const naturalSource = source
-    .replace('Given one reference "repository"', 'Given one reference "repository"\n    And one reference "baseline revision"')
+    .replace(
+      'Given one reference "repository"',
+      'Given one reference "repository"\n    And one reference "baseline revision"',
+    )
     .replace('fail("the repository has no local changes")', 'fail(`No changes since ${context["baseline revision"]}`)');
   const naturalDiagnostics = waitForDiagnostics(connection, naturalUri, 1);
   connection.sendNotification("textDocument/didOpen", {
@@ -655,7 +940,8 @@ async function assertProcedureEditing(connection: MessageConnection): Promise<vo
   assert.deepEqual(await naturalDiagnostics, { uri: naturalUri, version: 1, diagnostics: [] });
   const contextEnd = naturalSource.indexOf("context[") + "context".length;
   const roles = await connection.sendRequest<CompletionItem[]>("textDocument/completion", {
-    textDocument: { uri: naturalUri }, position: positionAt(naturalSource, contextEnd),
+    textDocument: { uri: naturalUri },
+    position: positionAt(naturalSource, contextEnd),
   });
   assert.deepEqual(roles.find(({ label }) => label === "baseline revision")?.textEdit, {
     range: { start: positionAt(naturalSource, contextEnd), end: positionAt(naturalSource, contextEnd) },
@@ -666,14 +952,20 @@ async function assertProcedureEditing(connection: MessageConnection): Promise<vo
   const completeAccessor = 'context["baseline revision"]';
   const incompleteAccessor = 'context["base';
   const incompleteSource = naturalSource.replace(completeAccessor, incompleteAccessor);
-  const incompleteDiagnostics = waitForDiagnostics(connection, incompleteUri, 1, (message) => message.diagnostics.length > 0);
+  const incompleteDiagnostics = waitForDiagnostics(
+    connection,
+    incompleteUri,
+    1,
+    (message) => message.diagnostics.length > 0,
+  );
   connection.sendNotification("textDocument/didOpen", {
     textDocument: { uri: incompleteUri, languageId: "trust-procedure", version: 1, text: incompleteSource },
   });
   await incompleteDiagnostics;
   const incompleteEnd = incompleteSource.indexOf(incompleteAccessor) + incompleteAccessor.length;
   const incompleteRoles = await connection.sendRequest<CompletionItem[]>("textDocument/completion", {
-    textDocument: { uri: incompleteUri }, position: positionAt(incompleteSource, incompleteEnd),
+    textDocument: { uri: incompleteUri },
+    position: positionAt(incompleteSource, incompleteEnd),
   });
   assert.deepEqual(incompleteRoles.find(({ label }) => label === "baseline revision")?.textEdit, {
     range: {
@@ -684,32 +976,44 @@ async function assertProcedureEditing(connection: MessageConnection): Promise<vo
   });
 
   const multipleUri = "file:///workspace/procedures/multiple-errors.feature";
-  const multipleSource = source.replace("fact.workingTree", "fact.missingOne").trimEnd() + `
+  const multipleSource =
+    source.replace("fact.workingTree", "fact.missingOne").trimEnd() +
+    `
 
-    And Check "second status" runs Operation "git.head-read" on "repository" as Input "project" and must establish "the second observation is valid"
+    And Check "second status" runs Operation "git.head-read@*" on "repository" as Input "project" and must establish "the second observation is valid"
       """js
       fact.missingTwo === "dirty" ||
       fail("the second observation is invalid")
       """
 `;
-  const multipleDiagnostics = waitForDiagnostics(connection, multipleUri, 1, (message) => message.diagnostics.length === 2);
+  const multipleDiagnostics = waitForDiagnostics(
+    connection,
+    multipleUri,
+    1,
+    (message) => message.diagnostics.length === 2,
+  );
   connection.sendNotification("textDocument/didOpen", {
     textDocument: { uri: multipleUri, languageId: "trust-procedure", version: 1, text: multipleSource },
   });
-  assert.deepEqual((await multipleDiagnostics).diagnostics.map(({ code, message }) => ({ code, message })), [
-    { code: "unknown-field", message: 'Operation "git.head-read" produces no field "missingOne"' },
-    { code: "unknown-field", message: 'Operation "git.head-read" produces no field "missingTwo"' },
-  ]);
+  assert.deepEqual(
+    (await multipleDiagnostics).diagnostics.map(({ code, message }) => ({ code, message })),
+    [
+      { code: "unknown-field", message: 'Operation "git.head-read" produces no field "missingOne"' },
+      { code: "unknown-field", message: 'Operation "git.head-read" produces no field "missingTwo"' },
+    ],
+  );
 }
 
-async function startLanguageServer(context: TestContext): Promise<LanguageServerSession> {
-  const server = spawn(process.execPath, [
-    new URL("../../bin/trust-language-server.js", import.meta.url).pathname,
-    "--stdio",
-  ], { stdio: "pipe" });
+async function startLanguageServer(
+  context: TestContext,
+  entry = new URL("../../bin/trust-language-server.js", import.meta.url).pathname,
+): Promise<LanguageServerSession> {
+  const server = spawn(process.execPath, [entry, "--stdio"], { stdio: "pipe" });
   let stderr = "";
   server.stderr.setEncoding("utf8");
-  server.stderr.on("data", (chunk: string) => { stderr += chunk; });
+  server.stderr.on("data", (chunk: string) => {
+    stderr += chunk;
+  });
   context.after(() => {
     if (server.exitCode === null) server.kill("SIGTERM");
   });
@@ -725,6 +1029,8 @@ async function startLanguageServer(context: TestContext): Promise<LanguageServer
     capabilities: {
       textDocumentSync?: unknown;
       documentSymbolProvider?: unknown;
+      hoverProvider?: unknown;
+      documentLinkProvider?: unknown;
       semanticTokensProvider?: { legend: { tokenTypes: string[]; tokenModifiers: string[] }; full: boolean };
     };
   }>("initialize", {
@@ -736,6 +1042,8 @@ async function startLanguageServer(context: TestContext): Promise<LanguageServer
   });
   assert.equal(initialized.capabilities.textDocumentSync, 2);
   assert.equal(initialized.capabilities.documentSymbolProvider, true);
+  assert.equal(initialized.capabilities.hoverProvider, true);
+  assert.deepEqual(initialized.capabilities.documentLinkProvider, { resolveProvider: false });
   assert.deepEqual(initialized.capabilities.semanticTokensProvider, {
     legend: { tokenTypes: [...semanticTokenTypes], tokenModifiers: [] },
     full: true,
@@ -755,10 +1063,7 @@ async function startLanguageServer(context: TestContext): Promise<LanguageServer
 }
 
 function operationFixture(path: string): string {
-  return readFileSync(
-    new URL(`../../../trust-operation/acceptance/fixtures/${path}`, import.meta.url),
-    "utf8",
-  );
+  return readFileSync(new URL(`../../../trust-operation/acceptance/fixtures/${path}`, import.meta.url), "utf8");
 }
 
 function procedureFixture(path: string): string {
@@ -771,7 +1076,12 @@ function positionAt(source: string, offset: number): Position {
   return { line: lines.length - 1, character: lines.at(-1)?.length ?? 0 };
 }
 
-function assertSemanticTokenAt(tokens: SemanticTokens, expected: Position, length: number, expectedType: typeof semanticTokenTypes[number]): void {
+function assertSemanticTokenAt(
+  tokens: SemanticTokens,
+  expected: Position,
+  length: number,
+  expectedType: (typeof semanticTokenTypes)[number],
+): void {
   let line = 0;
   let character = 0;
   for (let index = 0; index < tokens.data.length; index += 5) {
@@ -790,8 +1100,7 @@ function assertValidRange(range: Range | undefined, file: string): void {
   assert.ok(range, file);
   assert.ok(range.start.line >= 0, file);
   assert.ok(range.start.character >= 0, file);
-  assert.ok(range.end.line > range.start.line
-    || range.end.character > range.start.character, file);
+  assert.ok(range.end.line > range.start.line || range.end.character > range.start.character, file);
 }
 
 function waitForDiagnostics(
@@ -803,8 +1112,7 @@ function waitForDiagnostics(
   return waitForNotification(
     connection,
     "textDocument/publishDiagnostics",
-    (message: PublishDiagnostics) =>
-      message.uri === uri && message.version === version && predicate(message),
+    (message: PublishDiagnostics) => message.uri === uri && message.version === version && predicate(message),
   );
 }
 
@@ -859,9 +1167,19 @@ interface DocumentSymbol {
   readonly children?: readonly DocumentSymbol[];
 }
 
-interface CompletionItem { readonly label: string; readonly kind?: number; readonly insertText?: string; readonly textEdit?: { readonly range: Range; readonly newText: string } }
-interface FoldingRange { readonly startLine: number; readonly endLine: number }
-interface SemanticTokens { readonly data: readonly number[] }
+interface CompletionItem {
+  readonly label: string;
+  readonly kind?: number;
+  readonly insertText?: string;
+  readonly textEdit?: { readonly range: Range; readonly newText: string };
+}
+interface FoldingRange {
+  readonly startLine: number;
+  readonly endLine: number;
+}
+interface SemanticTokens {
+  readonly data: readonly number[];
+}
 
 interface LanguageServerSession {
   readonly connection: MessageConnection;

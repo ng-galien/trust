@@ -22,8 +22,14 @@ describe("Gherkin step continuation lines", () => {
 
   test("resolves ranges of continued values back to their physical line", () => {
     const step = { location: { line: 3, column: 5 } };
-    expect(sourceValueRange(source, step, '"workspaceRoot"')).toEqual({ start: { line: 4, column: 26 }, end: { line: 4, column: 41 } });
-    expect(sourceLineRange(source, step.location)).toEqual({ start: { line: 3, column: 5 }, end: { line: 4, column: 61 } });
+    expect(sourceValueRange(source, step, '"workspaceRoot"')).toEqual({
+      start: { line: 4, column: 26 },
+      end: { line: 4, column: 41 },
+    });
+    expect(sourceLineRange(source, step.location)).toEqual({
+      start: { line: 3, column: 5 },
+      end: { line: 4, column: 61 },
+    });
   });
 
   test("does not fold lines inside doc strings", () => {
@@ -35,8 +41,12 @@ describe("Gherkin step continuation lines", () => {
   test("formats long steps onto continuation lines at connectives, idempotently, without touching tables", () => {
     const long = `Feature: F\n  Scenario: S\n    When Shell "status" runs "git" with cwd from Environment "workspaceRoot" and Input "project" where "a b" is quoted\n      | argument | source |\n`;
     const formatted = formatGherkinSource(long, { width: 60 });
-    expect(formatted).toBe(`Feature: F\n  Scenario: S\n    When Shell "status" runs "git" with cwd\n        from Environment "workspaceRoot" and Input "project"\n        where "a b" is quoted\n      | argument | source |\n`);
+    expect(formatted).toBe(
+      `Feature: F\n  Scenario: S\n    When Shell "status" runs "git" with cwd\n        from Environment "workspaceRoot" and Input "project"\n        where "a b" is quoted\n      | argument | source |\n`,
+    );
     expect(formatGherkinSource(formatted, { width: 60 })).toBe(formatted);
-    expect(parseGherkin(formatted).feature!.children[0]!.scenario!.steps[0]!.text).toBe(parseGherkin(long).feature!.children[0]!.scenario!.steps[0]!.text);
+    expect(parseGherkin(formatted).feature!.children[0]!.scenario!.steps[0]!.text).toBe(
+      parseGherkin(long).feature!.children[0]!.scenario!.steps[0]!.text,
+    );
   });
 });

@@ -1,10 +1,10 @@
-import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import { once } from "node:events";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import type { EnvironmentValues } from "../../src/environment/service.js";
+import type { EnvironmentValues } from "@trust/extension-sdk";
 
 const buildRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 
@@ -14,6 +14,8 @@ export interface PublicRuntimeProcess {
 }
 
 export interface PublicRuntimeOptions {
+  readonly port?: number;
+  readonly processEnvironment?: Readonly<Record<string, string>>;
   readonly extensionsFile?: string;
   readonly databasePath?: string;
   readonly operationsDirectory?: string;
@@ -30,19 +32,16 @@ export async function startPublicRuntime(
   const runtime = spawn(process.execPath, [path.join(buildRoot, "src/index.js")], {
     env: {
       ...process.env,
+      ...options.processEnvironment,
       TRUST_HOST: "127.0.0.1",
-      TRUST_PORT: "0",
+      TRUST_PORT: String(options.port ?? 0),
       ...(options.extensionsFile === undefined ? {} : { TRUST_EXTENSIONS_FILE: options.extensionsFile }),
       TRUST_DATABASE_PATH: options.databasePath ?? path.join(dataDirectory, "trust.sqlite"),
-      ...(options.operationsDirectory === undefined
-        ? {}
-        : { TRUST_OPERATIONS_DIRECTORY: options.operationsDirectory }),
+      ...(options.operationsDirectory === undefined ? {} : { TRUST_OPERATIONS_DIRECTORY: options.operationsDirectory }),
       ...(options.sessionDurationMs === undefined
         ? {}
         : { TRUST_SESSION_DURATION_MS: String(options.sessionDurationMs) }),
-      ...(options.trialTimeoutMs === undefined
-        ? {}
-        : { TRUST_TRIAL_TIMEOUT_MS: String(options.trialTimeoutMs) }),
+      ...(options.trialTimeoutMs === undefined ? {} : { TRUST_TRIAL_TIMEOUT_MS: String(options.trialTimeoutMs) }),
     },
     stdio: "pipe",
   });
@@ -69,11 +68,7 @@ export async function startPublicRuntime(
   }
 }
 
-async function configureEnvironment(
-  endpoint: string,
-  environment: string,
-  values: EnvironmentValues,
-): Promise<void> {
+async function configureEnvironment(endpoint: string, environment: string, values: EnvironmentValues): Promise<void> {
   const response = await fetch(`${endpoint}/rpc`, {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -84,7 +79,7 @@ async function configureEnvironment(
       params: { environment, values },
     }),
   });
-  const envelope = await response.json() as { readonly error?: unknown };
+  const envelope = (await response.json()) as { readonly error?: unknown };
   if (!response.ok || envelope.error !== undefined) {
     throw new Error(`TRUST runtime rejected Environment "${environment}": ${JSON.stringify(envelope.error)}`);
   }

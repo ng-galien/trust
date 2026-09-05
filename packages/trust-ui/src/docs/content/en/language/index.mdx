@@ -20,7 +20,7 @@ Operations and Procedures are written in **English Gherkin with a closed sentenc
 A step may continue on the following lines when they are indented deeper than its keyword and are not a table row, doc string, comment, tag or keyword line. The compiler folds them before parsing and reports positions on the physical lines. The formatter — **Format source** in the editor, *Shift+Alt+F*, or the language server's *Format document* — re-flows long steps onto such lines at their connective words (`on`, `using`, `and materializes`, `and must establish`, `with cwd from`, `appending`…), width 88.
 
 ```gherkin fragment
-    Then Check "Maven verification" runs Operation "maven.project-verify"
+    Then Check "Maven verification" runs Operation "maven.project-verify@*"
         on "project" as Input "project"
         using "fix revision" as Input "revision"
         and must establish "the committed fix passes Maven verification"
@@ -56,7 +56,7 @@ Feature: <title>
     And <typed context roles> ...
   @scenario:<slug>
   Scenario: <title>
-    Then Check "<name>" runs Operation "<domain.action>"
+    Then Check "<name>" runs Operation "<domain.action>@*"
         on "<role>" as Input "<input>"
         and must establish "<success reason>"
 ```

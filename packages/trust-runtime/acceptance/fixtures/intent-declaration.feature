@@ -10,7 +10,7 @@ Feature: Complete an intent chain when declarations remove the remaining work
 
   @scenario:inspection
   Scenario: Inspect every declared project
-    Then Check "inspection" runs Operation "git.head-read" on each "project" as Input "project" and must establish "the project is clean"
+    Then Check "inspection" runs Operation "git.head-read@*" on each "project" as Input "project" and must establish "the project is clean"
       """js
       fact.workingTree === "clean" ||
       fail("the project has local changes")

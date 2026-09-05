@@ -11,7 +11,8 @@
    lines, so every location Gherkin reports still points at the physical source. Ranges that fall
    inside the continued text are resolved back to the physical line that holds them. */
 
-const KEYWORD_LINE = /^(?:Feature|Ability|Business Need|Background|Rule|Scenario Outline|Scenario Template|Scenario|Example|Examples|Scenarios):|^(?:Given|When|Then|And|But|\*)\s/u;
+const KEYWORD_LINE =
+  /^(?:Feature|Ability|Business Need|Background|Rule|Scenario Outline|Scenario Template|Scenario|Example|Examples|Scenarios):|^(?:Given|When|Then|And|But|\*)\s/u;
 const STEP_LINE = /^(?:Given|When|Then|And|But|\*)\s/u;
 
 export function splitLines(source: string): string[] {
@@ -26,7 +27,14 @@ function indentOf(line: string): number {
 export function isContinuationLine(line: string, stepIndent: number): boolean {
   const text = line.trimStart();
   if (text.length === 0 || indentOf(line) <= stepIndent) return false;
-  if (text.startsWith("|") || text.startsWith('"""') || text.startsWith("```") || text.startsWith("#") || text.startsWith("@")) return false;
+  if (
+    text.startsWith("|") ||
+    text.startsWith('"""') ||
+    text.startsWith("```") ||
+    text.startsWith("#") ||
+    text.startsWith("@")
+  )
+    return false;
   return !KEYWORD_LINE.test(text);
 }
 

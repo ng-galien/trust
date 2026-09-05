@@ -2,14 +2,18 @@ import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-
-import { compileOperation, type CompiledOperation, OperationCompilationError, projectOperationEnvironment, validateOperationInput } from "@trust/operation";
-
-import type { RuntimeJsonObject } from "../model.js";
-import type { Clock } from "../time.js";
+import type { RuntimeJsonObject, TrialRecord, TrialSummary } from "@trust/extension-sdk";
+import {
+  type CompiledOperation,
+  compileOperation,
+  OperationCompilationError,
+  projectOperationEnvironment,
+  validateOperationInput,
+} from "@trust/operation";
 import type { EnvironmentService } from "../environment/service.js";
-import type { TrialRecord, TrialRegistry, TrialSummary } from "./registry.js";
 import type { OperationCatalog } from "../operation/catalog.js";
+import type { Clock } from "../time.js";
+import type { TrialRegistry } from "./registry.js";
 
 /* Starts trial runs: the same packaged runner an agent uses, spawned by TRUST, fed one job on stdin,
    its diagnostics streamed back through the diagnostic OTLP receiver. */
@@ -24,7 +28,11 @@ export type TrialErrorCode =
   | "unknown-trial";
 
 export class TrialError extends Error {
-  constructor(readonly reason: TrialErrorCode, message: string, readonly location?: { line: number; column: number }) {
+  constructor(
+    readonly reason: TrialErrorCode,
+    message: string,
+    readonly location?: { line: number; column: number },
+  ) {
     super(message);
     this.name = "TrialError";
   }
@@ -75,12 +83,12 @@ export class TrialService {
     this.#timeoutMs = dependencies.trialTimeoutMs;
   }
 
-  environments(): Array<{ name: string; values: RuntimeJsonObject }> {
+  environments(): import("@trust/extension-sdk").EnvironmentView[] {
     return this.#environments.list();
   }
 
   /** For every catalog operation, which configured environments can run it. */
-  catalogEnvironments(): Array<{ operation: string; version: string; environments: Array<{ name: string; compatible: boolean; missing: string[] }> }> {
+  catalogEnvironments(): import("@trust/extension-sdk").OperationEnvironments[] {
     return this.#operations.list().map((operation) => ({
       operation: operation.operation,
       version: operation.version,
@@ -92,7 +100,11 @@ export class TrialService {
   }
 
   /** Environments qualified against one operation: compatible when every declared value is present. */
-  environmentsFor(input: { operation?: string; version?: string; source?: string }): Array<{ name: string; values: RuntimeJsonObject; compatible: boolean; missing: string[] }> {
+  environmentsFor(input: {
+    operation?: string;
+    version?: string;
+    source?: string;
+  }): import("@trust/extension-sdk").QualifiedEnvironmentView[] {
     const operation = this.#resolveOperation({ ...input, environment: "", input: {}, startedBy: "" });
     return this.#environments.list().map(({ name, values }) => {
       const { missing } = projectOperationEnvironment(operation, values);
@@ -103,10 +115,14 @@ export class TrialService {
   start(input: TrialStartInput): TrialSummary {
     const operation = this.#resolveOperation(input);
     const environment = this.#environments.resolve(input.environment);
-    if (!environment) throw new TrialError("unknown-environment", `Environment "${input.environment}" is not configured`);
+    if (!environment)
+      throw new TrialError("unknown-environment", `Environment "${input.environment}" is not configured`);
     const declared = projectOperationEnvironment(operation, environment);
     if (declared.missing.length) {
-      throw new TrialError("incompatible-environment", `Environment "${input.environment}" does not declare ${declared.missing.join(", ")} required by ${operation.operation}`);
+      throw new TrialError(
+        "incompatible-environment",
+        `Environment "${input.environment}" does not declare ${declared.missing.join(", ")} required by ${operation.operation}`,
+      );
     }
     try {
       validateOperationInput(operation, input.input);
@@ -114,7 +130,10 @@ export class TrialService {
       throw new TrialError("invalid-input", error instanceof Error ? error.message : String(error));
     }
     if (!existsSync(this.#script)) {
-      throw new TrialError("runner-unavailable", `Runner trial script is missing: ${this.#script} (run npm run package:skill)`);
+      throw new TrialError(
+        "runner-unavailable",
+        `Runner trial script is missing: ${this.#script} (run npm run package:skill)`,
+      );
     }
 
     const startedAt = this.#clock.now().toISOString();
@@ -126,7 +145,13 @@ export class TrialService {
       startedBy: input.startedBy,
       startedAt,
     });
-    this.#registry.append(trial.id, { type: "trial.started", at: startedAt, operation: operation.operation, version: operation.version, environment: input.environment });
+    this.#registry.append(trial.id, {
+      type: "trial.started",
+      at: startedAt,
+      operation: operation.operation,
+      version: operation.version,
+      environment: input.environment,
+    });
     // The compiled schema is closed: hand the runner only the values this operation declares.
     this.#spawn(trial, operation, declared.environment);
     return summaryOf(this.#registry, trial.id);
@@ -162,9 +187,10 @@ export class TrialService {
         throw error;
       }
     }
-    const found = input.version === undefined
-      ? this.#operations.list().find((candidate) => candidate.operation === input.operation)
-      : this.#operations.find(input.operation ?? "", input.version);
+    const found =
+      input.version === undefined
+        ? this.#operations.list().find((candidate) => candidate.operation === input.operation)
+        : this.#operations.find(input.operation ?? "", input.version);
     if (!found) throw new TrialError("unknown-operation", `Operation "${input.operation ?? ""}" is not in the catalog`);
     return found;
   }
@@ -187,7 +213,12 @@ export class TrialService {
       terminateProcessTree(child, "SIGTERM");
       forceKillTimer = setTimeout(() => terminateProcessTree(child, "SIGKILL"), FORCE_KILL_DELAY_MS);
       forceKillTimer.unref();
-      this.#registry.append(trial.id, { type: "runner.log", at: this.#clock.now().toISOString(), level: "error", text: reason });
+      this.#registry.append(trial.id, {
+        type: "runner.log",
+        at: this.#clock.now().toISOString(),
+        level: "error",
+        text: reason,
+      });
     };
     this.#stop.set(trial.id, stop);
     const timer = setTimeout(() => {
@@ -196,16 +227,27 @@ export class TrialService {
     timer.unref();
     let stdout = "";
     child.stdout.setEncoding("utf8");
-    child.stdout.on("data", (chunk: string) => { stdout += chunk; });
+    child.stdout.on("data", (chunk: string) => {
+      stdout += chunk;
+    });
     child.stderr.setEncoding("utf8");
     child.stderr.on("data", (chunk: string) => {
-      this.#registry.append(trial.id, { type: "runner.log", at: this.#clock.now().toISOString(), level: "warn", text: chunk.trimEnd() });
+      this.#registry.append(trial.id, {
+        type: "runner.log",
+        at: this.#clock.now().toISOString(),
+        level: "warn",
+        text: chunk.trimEnd(),
+      });
     });
     child.on("error", (error) => {
       clearTimeout(timer);
       if (forceKillTimer) clearTimeout(forceKillTimer);
       this.#stop.delete(trial.id);
-      this.#registry.complete(trial.id, { status: "failed", endedAt: this.#clock.now().toISOString(), error: `Runner could not start: ${error.message}` });
+      this.#registry.complete(trial.id, {
+        status: "failed",
+        endedAt: this.#clock.now().toISOString(),
+        error: `Runner could not start: ${error.message}`,
+      });
     });
     child.on("close", (code, signal) => {
       clearTimeout(timer);
@@ -229,7 +271,9 @@ export class TrialService {
       this.#registry.complete(trial.id, {
         status: signal ? "aborted" : "failed",
         endedAt,
-        error: signal ? `Runner stopped by ${signal}` : `Runner exited with code ${code ?? "unknown"} without an outcome`,
+        error: signal
+          ? `Runner stopped by ${signal}`
+          : `Runner exited with code ${code ?? "unknown"} without an outcome`,
       });
     });
     const job = {
@@ -258,11 +302,18 @@ function terminateProcessTree(child: ReturnType<typeof spawn>, signal: NodeJS.Si
 }
 
 function parseOutcome(stdout: string): RuntimeJsonObject | undefined {
-  const line = stdout.trim().split("\n").reverse().find((candidate) => candidate.startsWith("{"));
+  const line = stdout
+    .trim()
+    .split("\n")
+    .reverse()
+    .find((candidate) => candidate.startsWith("{"));
   if (!line) return undefined;
   try {
     const parsed: unknown = JSON.parse(line);
-    return parsed && typeof parsed === "object" && !Array.isArray(parsed) && (parsed as RuntimeJsonObject).contract === "trust.trial-outcome@1"
+    return parsed &&
+      typeof parsed === "object" &&
+      !Array.isArray(parsed) &&
+      (parsed as RuntimeJsonObject).contract === "trust.trial-outcome@1"
       ? (parsed as RuntimeJsonObject)
       : undefined;
   } catch {

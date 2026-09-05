@@ -1,18 +1,16 @@
+import type {
+  AttemptQualification,
+  AttemptState,
+  ChecklistDelta,
+  ChecklistVerdict,
+  CheckState,
+  IntentChainState,
+  PlanMetadata,
+  PlanMode,
+  RuntimeJsonObject,
+} from "@trust/extension-sdk";
 import type { CompiledOperation } from "@trust/operation";
-import type { CompiledProcedureCheck } from "@trust/procedure";
-
-export type RuntimeJsonObject = Readonly<Record<string, unknown>>;
-
-export interface PlanMetadata {
-  readonly title?: string;
-  readonly labels: readonly string[];
-  readonly annotations: Readonly<Record<string, string>>;
-}
-
-/** A dry-run Plan follows every rule of a live Plan, but its Checks are qualified from Facts
-    supplied by the operator instead of the runner: no environment is ever resolved for it. */
-export type PlanMode = "live" | "dry-run";
-export type IntentChainState = "DISABLED" | "NOT_STARTED" | "ACTIVE" | "COMPLETE";
+import type { CompiledProcedure, CompiledProcedureCheck, CompiledProcedureInvocation } from "@trust/procedure";
 
 export interface Plan {
   slug: string;
@@ -84,6 +82,7 @@ export interface CheckValues {
 }
 
 export interface PlanRevision {
+  resolvedProcedure: CompiledProcedure;
   procedure: string;
   procedureVersion: string;
   environment: string;
@@ -97,8 +96,26 @@ export interface PlanRevision {
   definitionDigest: string;
   source: string;
   checks: readonly PlanCheck[];
+  invocations: readonly PlanInvocation[];
   roleValues: readonly ProducedRoleValue[];
   checkValues: readonly CheckValues[];
+}
+
+export interface PlanInvocation {
+  id: string;
+  definition: CompiledProcedureInvocation;
+  rootInputs: RuntimeJsonObject;
+  scenarioDependencies: readonly string[];
+}
+
+export interface ChildGeneration {
+  parentPlan: string;
+  invocationId: string;
+  generation: number;
+  childPlan: string;
+  inputDigest: string;
+  createdAt: string;
+  supersededAt: string | null;
 }
 
 export type SessionState = "open" | "closed" | "expired";
@@ -112,9 +129,8 @@ export interface Session {
   closedAt?: string;
 }
 
-export type AttemptState = "pending" | "interrupted" | "finalized";
-
 export interface Attempt {
+  invocationDigest?: string;
   handle: string;
   attemptKey: string;
   executionId: string;
@@ -135,39 +151,7 @@ export interface Attempt {
   expiresAt: string;
   interruptedAt?: string;
   finalizedAt?: string;
-  finalization?: {
-    readonly verdict: "VALIDATED" | "NOT_VALIDATED";
-    readonly reasonCode: string;
-    readonly reason: string;
-    readonly checklistDelta: {
-      readonly newlySatisfied: readonly string[];
-      readonly newlyOpened: readonly string[];
-      readonly unchanged: readonly string[];
-    };
-  };
-}
-
-export interface Fact {
-  id: string;
-  attemptHandle: string;
-  executionId: string;
-  checkUri: string;
-  compiledCheckDigest: string;
-  index: number;
-  operation: string;
-  operationDigest: string;
-  observedAt: string;
-  recordedAt: string;
-  values: RuntimeJsonObject;
-}
-
-export type CheckState = "open" | "satisfied";
-export type ChecklistVerdict = "VALIDATED" | "NOT_VALIDATED";
-
-export interface ChecklistDelta {
-  newlySatisfied: readonly string[];
-  newlyOpened: readonly string[];
-  unchanged: readonly string[];
+  finalization?: AttemptQualification;
 }
 
 export interface CheckSnapshot {

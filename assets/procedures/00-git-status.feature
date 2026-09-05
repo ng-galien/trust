@@ -15,7 +15,7 @@ Feature: Establish whether a Git repository has local changes
 
   @scenario:repository-status
   Scenario: Read the repository status
-    Then Check "repository status" runs Operation "git.head-read" on "repository" as Input "project" and must establish "the repository has local changes"
+    Then Check "repository status" runs Operation "git.head-read@*" on "repository" as Input "project" and must establish "the repository has local changes"
       """js
       fact.workingTree === "dirty" ||
       fail("the repository has no local changes")

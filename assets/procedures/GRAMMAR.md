@@ -60,7 +60,7 @@ depending on array position.
 
 ## Scenario dependencies
 
-A Scenario has one `@scenario:<slug>` tag. Dependencies precede Checks:
+A Scenario has one `@scenario:<slug>` tag. Dependencies precede Checks and Invocations:
 
 ```gherkin
 Given scenario "baseline" is validated
@@ -74,7 +74,7 @@ Dependencies must reference existing Scenarios and form an acyclic graph.
 The complete Check sentence is:
 
 ```text
-Check "<name>" runs Operation "<domain.action>"
+Check "<name>" runs Operation "<domain.action>@<selector>"
   on [each|all] "<role>" as Input "<input>"
   [using [all] "<role>" as Input "<input>" | using plan as Input "<input>" ...]
   [and materializes "<role>" from field "<field>" ...]
@@ -117,12 +117,66 @@ and dynamic properties. JSEP parses the expression, TRUST resolves and staticall
 compiler emits canonical JSON Logic guards. JavaScript source is never executed.
 
 An upstream Check field or a materialized context value must come from a prerequisite Scenario.
-Names, types and cardinalities must match. Every Scenario contains at least one Check; its
-satisfaction follows from the state of those Checks and requires no closing step.
+Names, types and cardinalities must match. Every Scenario contains at least one Check or Invocation.
+Its satisfaction requires all local Checks and all current child invocations to be satisfied.
+
+## Child Procedure Invocation
+
+Operation and Procedure references share the quoted `name@selector` form. A selector
+is an exact semantic version or a standard node-semver range (`^1.2.3`, `~1.2.3`,
+`>=1.2.3 <2.0.0`, or `*`). Tags such as `latest` are not accepted. The highest
+matching candidate is selected before compatibility validation; an incompatible
+candidate is refused, never silently replaced by an older matching candidate.
+
+Publication stores an immutable definition and its requested selectors. Engagement
+resolves the complete recursive composition against the current published catalog,
+validates it, and pins its exact definitions for the entire Plan lifetime. New
+publications affect new engagements only, not delayed children or resumed Plans.
+
+An Invocation selects a published Procedure version as a separate child Plan. It does not
+flatten child Checks into the parent and does not create a synthetic Operation or Check.
+
+```text
+Invocation "<name>" runs Procedure "<procedure-slug>@<selector>"
+  [on [each|all] "<role>" as Input "<child root role>"
+    [using [all] "<role>" as Input "<child root role>" | using plan as Input "<child root role>" ...]]
+  and must establish "<success reason>"
+```
+
+Place the sentence under `Then` or `And`. The complete binding clause is absent only for a child
+with no root Plan inputs. Otherwise bind every child root input exactly once. Fixed roles, child
+agent declarations, child Plan identifiers and Check-produced roles are not root inputs and cannot
+be supplied by the parent. `using plan` supplies the parent's identifier; the child's own reserved
+Plan identifier remains independent. Types must match. `each` creates an invocation per parent role
+value; `all` passes one collection to a many-valued child root. Additional bindings use the same
+parent-scope selection rules as Check inputs. A parent role produced by a Check must belong to a
+prerequisite Scenario.
+
+Invocation names are unique across the Procedure, distinct from Check names, and cannot be `all`.
+Two differently named invocations may use the same child version. Exact Procedure-version cycles
+are rejected; finite nested calls, including depths three and four, are supported. Each dependency
+embeds the exact child definition and digest, independently of later catalog additions.
+
+An Invocation has no qualification DocString or DataTable. It observes authoritative completion of
+its current child generation, not an agent's declared response. `must establish` supplies its
+success reason, not an executable predicate. Scenario prerequisites govern invocation eligibility
+and downstream parent work. The runtime owns child creation and lifecycle; compilation alone does
+not instantiate a child.
+
+Foundation limits:
+
+- Children inherit the parent's Environment. No override syntax is accepted.
+- Child Results are not exported into parent context; custom invocation qualification and
+  materialization are rejected.
+- Child root inputs with parent topology (`for` or `for each`) are rejected explicitly. Flat root
+  inputs support one/many cardinalities; this is not a claim of complete topology support.
+- Runtime compilation resolves already published exact child versions. Registry synchronization
+  does not resolve an unpublished child from the same incoming batch: publish dependencies first.
+  The batch is rejected during validation, before importing its artifacts.
 
 ## Compiled revision
 
-The compiler emits the current Procedure structure with scope, roles, Scenarios, Checks, deterministic
-digests and the exact `CompiledOperation` definitions used by the Procedure. Source formatting,
+The compiler emits the current Procedure structure with scope, roles, Scenarios, Checks, Invocations,
+deterministic digests and exact embedded Operation and child Procedure definitions. Source formatting,
 comments and JSONata formatting do not change an Operation digest; a semantic Operation change
 does.

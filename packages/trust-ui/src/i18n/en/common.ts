@@ -1,5 +1,7 @@
 export const common = {
   actions: {
+    retry: "Retry display",
+    backToOverview: "Back to overview",
     save: "Save",
     saving: "Saving…",
     create: "Create",
@@ -24,6 +26,8 @@ export const common = {
     daysAgo: "{{count}}d ago",
   },
   states: {
+    pageFailed: "This page could not be displayed",
+    pageFailedBody: "The display failed. Navigation remains available; this error does not report an execution result.",
     loading: "Loading…",
     empty: "Nothing here",
     unknown: "unknown",

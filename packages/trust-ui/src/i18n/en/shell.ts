@@ -47,7 +47,8 @@ export const shell = {
   },
   items: {
     operationUsedByProcedure: "Used by a published procedure",
-    removeOperationBody: "The source file is removed from the runtime catalog. Procedures that already use this operation keep their published copy.",
+    removeOperationBody:
+      "The source file is removed from the runtime catalog. Procedures that already use this operation keep their published copy.",
     removeEnvironmentBody: "The environment, its values and its credentials are removed from the runtime.",
     removeDryRunBody: "The rehearsal, its revisions and its verdicts are erased.",
   },

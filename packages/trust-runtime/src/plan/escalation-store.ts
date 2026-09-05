@@ -13,21 +13,24 @@ export class EscalationStore {
   }
 
   async create(escalation: PlanEscalation): Promise<void> {
-    await this.dependencies.database.insertInto("plan_escalations").values({
-      escalation_id: escalation.id,
-      plan_slug: escalation.planSlug,
-      plan_revision: escalation.planRevision,
-      snapshot_plan_revision: escalation.snapshotPlanRevision,
-      check_uri: escalation.checkUri,
-      compiled_digest: escalation.compiledCheckDigest,
-      snapshot_id: escalation.snapshotId,
-      attempt_handle: escalation.attemptHandle,
-      blocking_reason: escalation.blockingReason,
-      forbidden_further_action: escalation.forbiddenFurtherAction,
-      escalated_at: escalation.escalatedAt,
-      resumed_at: escalation.resumedAt ?? null,
-      resume_reason: escalation.resumeReason ?? null,
-    }).execute();
+    await this.dependencies.database
+      .insertInto("plan_escalations")
+      .values({
+        escalation_id: escalation.id,
+        plan_slug: escalation.planSlug,
+        plan_revision: escalation.planRevision,
+        snapshot_plan_revision: escalation.snapshotPlanRevision,
+        check_uri: escalation.checkUri,
+        compiled_digest: escalation.compiledCheckDigest,
+        snapshot_id: escalation.snapshotId,
+        attempt_handle: escalation.attemptHandle,
+        blocking_reason: escalation.blockingReason,
+        forbidden_further_action: escalation.forbiddenFurtherAction,
+        escalated_at: escalation.escalatedAt,
+        resumed_at: escalation.resumedAt ?? null,
+        resume_reason: escalation.resumeReason ?? null,
+      })
+      .execute();
   }
 
   async findActive(planSlug: string): Promise<PlanEscalation | undefined> {

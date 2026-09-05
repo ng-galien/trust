@@ -3,10 +3,7 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import {
-  packageRunnerSkill,
-  trustInstallationAt,
-} from "../../trust-shell/dist/src/index.js";
+import { packageRunnerSkill, trustInstallationAt } from "../../trust-shell/dist/src/index.js";
 
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const repositoryRoot = path.resolve(packageRoot, "../..");

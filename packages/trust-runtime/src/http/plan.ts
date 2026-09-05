@@ -1,15 +1,17 @@
-import type { HistoryListInput, PlanListInput, PlanReader, ReadErrorCode } from "../plan/read.js";
-import type { PlanRuntime } from "../plan/runtime.js";
 import type {
   CheckAttemptAdmissionInput as CheckAttemptAdmissionParams,
   CheckEscalationInput,
   FactBatchInput,
+  HistoryListInput,
   PlanDeclarationReplacementInput,
   PlanEngagementInput as PlanEngagementParams,
+  PlanListInput,
   PlanResumptionInput,
-} from "../plan/runtime.js";
-import type { RuntimeJsonObject } from "../model.js";
+  RuntimeJsonObject,
+} from "@trust/extension-sdk";
 import { checkContinuation } from "../plan/continuation.js";
+import type { PlanReader, ReadErrorCode } from "../plan/read.js";
+import type { PlanRuntime } from "../plan/runtime.js";
 
 export const PLAN_ENGAGE_METHOD = "plan.engage" as const;
 export const PLAN_LIST_METHOD = "plan.list" as const;
@@ -96,18 +98,18 @@ export async function executePlanRuntimeRpc(
     case PLAN_LIST_METHOD:
       return {
         contract: "trust.plan-catalog@1",
-        ...await dependencies.planReader.listPlans(parsePlanList(params)),
+        ...(await dependencies.planReader.listPlans(parsePlanList(params))),
       };
     case HISTORY_LIST_METHOD:
       return {
         contract: "trust.check-history@1",
-        ...await dependencies.planReader.listHistory(parseHistoryList(params)),
+        ...(await dependencies.planReader.listHistory(parseHistoryList(params))),
       };
     case PLAN_READ_METHOD: {
       const input = parsePlanRead(params);
       return {
         contract: "trust.plan-view@1",
-        ...await dependencies.planReader.readPlanBySlug(input.plan, true),
+        ...(await dependencies.planReader.readPlanBySlug(input.plan, true)),
       };
     }
     case SESSION_READ_METHOD: {
@@ -192,7 +194,11 @@ export async function executePlanRuntimeRpc(
 
 function parsePlanResumption(value: unknown): PlanResumptionInput {
   const record = exactRecord(value, ["plan", "escalationId", "resumeReason"]);
-  if (!boundedString(record.plan) || !boundedString(record.escalationId) || !boundedTrimmedString(record.resumeReason, 4_096)) {
+  if (
+    !boundedString(record.plan) ||
+    !boundedString(record.escalationId) ||
+    !boundedTrimmedString(record.resumeReason, 4_096)
+  ) {
     throw new InvalidPlanRuntimeRpcParams();
   }
   return { plan: record.plan, escalationId: record.escalationId, resumeReason: record.resumeReason };
@@ -200,11 +206,11 @@ function parsePlanResumption(value: unknown): PlanResumptionInput {
 
 function parsePlanList(value: unknown): PlanListInput {
   const record = exactRecord(value, [], ["filter", "cursor", "limit"]);
-  const filter = record.filter === undefined
-    ? undefined
-    : parseListFilter(record.filter, ["procedure", "mode"]);
-  if ((record.cursor !== undefined && !boundedString(record.cursor, 2_048))
-    || (record.limit !== undefined && !Number.isSafeInteger(record.limit))) {
+  const filter = record.filter === undefined ? undefined : parseListFilter(record.filter, ["procedure", "mode"]);
+  if (
+    (record.cursor !== undefined && !boundedString(record.cursor, 2_048)) ||
+    (record.limit !== undefined && !Number.isSafeInteger(record.limit))
+  ) {
     throw new InvalidPlanRuntimeRpcParams();
   }
   if (filter?.mode !== undefined && filter.mode !== "live" && filter.mode !== "dry-run") {
@@ -219,38 +225,50 @@ function parsePlanList(value: unknown): PlanListInput {
 
 function parseHistoryList(value: unknown): HistoryListInput {
   const record = exactRecord(value, [], ["filter", "cursor", "limit"]);
-  const filter = record.filter === undefined
-    ? undefined
-    : parseListFilter(record.filter, ["plan", "procedure", "mode", "verdict", "since", "until"]);
-  if ((record.cursor !== undefined && !boundedString(record.cursor, 2_048))
-    || (record.limit !== undefined && !Number.isSafeInteger(record.limit))) {
+  const filter =
+    record.filter === undefined
+      ? undefined
+      : parseListFilter(record.filter, ["plan", "procedure", "mode", "verdict", "since", "until"]);
+  if (
+    (record.cursor !== undefined && !boundedString(record.cursor, 2_048)) ||
+    (record.limit !== undefined && !Number.isSafeInteger(record.limit))
+  ) {
     throw new InvalidPlanRuntimeRpcParams();
   }
   const mode = filter?.mode;
   const verdict = filter?.verdict;
-  if ((mode !== undefined && mode !== "live" && mode !== "dry-run")
-    || (verdict !== undefined && verdict !== "VALIDATED" && verdict !== "NOT_VALIDATED")) {
+  if (
+    (mode !== undefined && mode !== "live" && mode !== "dry-run") ||
+    (verdict !== undefined && verdict !== "VALIDATED" && verdict !== "NOT_VALIDATED")
+  ) {
     throw new InvalidPlanRuntimeRpcParams();
   }
   const since = filter?.since === undefined ? undefined : normalizedInstant(filter.since);
   const until = filter?.until === undefined ? undefined : normalizedInstant(filter.until);
   return {
-    ...(filter === undefined ? {} : { filter: {
-      ...(filter.plan === undefined ? {} : { plan: filter.plan }),
-      ...(filter.procedure === undefined ? {} : { procedure: filter.procedure }),
-      ...(mode === undefined ? {} : { mode }),
-      ...(verdict === undefined ? {} : { verdict }),
-      ...(since === undefined ? {} : { since }),
-      ...(until === undefined ? {} : { until }),
-    } as NonNullable<HistoryListInput["filter"]> }),
+    ...(filter === undefined
+      ? {}
+      : {
+          filter: {
+            ...(filter.plan === undefined ? {} : { plan: filter.plan }),
+            ...(filter.procedure === undefined ? {} : { procedure: filter.procedure }),
+            ...(mode === undefined ? {} : { mode }),
+            ...(verdict === undefined ? {} : { verdict }),
+            ...(since === undefined ? {} : { since }),
+            ...(until === undefined ? {} : { until }),
+          } as NonNullable<HistoryListInput["filter"]>,
+        }),
     ...(record.cursor === undefined ? {} : { cursor: record.cursor as string }),
     ...(record.limit === undefined ? {} : { limit: record.limit as number }),
   };
 }
 
 function parseListFilter(value: unknown, keys: readonly string[]): Record<string, string> {
-  if (!isRecord(value) || Object.keys(value).some((key) => !keys.includes(key))
-    || Object.values(value).some((entry) => !boundedString(entry))) {
+  if (
+    !isRecord(value) ||
+    Object.keys(value).some((key) => !keys.includes(key)) ||
+    Object.values(value).some((entry) => !boundedString(entry))
+  ) {
     throw new InvalidPlanRuntimeRpcParams();
   }
   return value as Record<string, string>;
@@ -270,23 +288,20 @@ function parsePlanRead(value: unknown): { readonly plan: string } {
 
 function parsePlanEngagement(value: unknown): PlanEngagementParams {
   // `mode` is optional: absent means a live Plan; "dry-run" engages an operator-driven Plan.
-  const record = exactRecord(value, [
-    "contract",
-    "procedure",
-    "procedureVersion",
-    "plan",
-    "environment",
-    "rootInputs",
-  ], ["mode", "metadata"]);
+  const record = exactRecord(
+    value,
+    ["contract", "procedure", "procedureVersion", "plan", "environment", "rootInputs"],
+    ["mode", "metadata"],
+  );
   if (
-    record.contract !== "trust.plan-engagement-request@1"
-    || !boundedString(record.procedure)
-    || !boundedString(record.procedureVersion)
-    || !boundedString(record.plan)
-    || !boundedString(record.environment)
-    || (record.metadata !== undefined && !isRecord(record.metadata))
-    || !isRecord(record.rootInputs)
-    || (record.mode !== undefined && record.mode !== "live" && record.mode !== "dry-run")
+    record.contract !== "trust.plan-engagement-request@1" ||
+    !boundedString(record.procedure) ||
+    !boundedString(record.procedureVersion) ||
+    !boundedString(record.plan) ||
+    !boundedString(record.environment) ||
+    (record.metadata !== undefined && !isRecord(record.metadata)) ||
+    !isRecord(record.rootInputs) ||
+    (record.mode !== undefined && record.mode !== "live" && record.mode !== "dry-run")
   ) {
     throw new InvalidPlanRuntimeRpcParams();
   }
@@ -305,11 +320,11 @@ function parsePlanEngagement(value: unknown): PlanEngagementParams {
 function parsePlanDeclarationReplacement(value: unknown): PlanDeclarationReplacementInput {
   const record = exactRecord(value, ["contract", "plan", "expectedRevision", "declarations"]);
   if (
-    record.contract !== "trust.plan-declaration-replacement-request@1"
-    || !boundedString(record.plan)
-    || !Number.isSafeInteger(record.expectedRevision)
-    || Number(record.expectedRevision) < 1
-    || !isRecord(record.declarations)
+    record.contract !== "trust.plan-declaration-replacement-request@1" ||
+    !boundedString(record.plan) ||
+    !Number.isSafeInteger(record.expectedRevision) ||
+    Number(record.expectedRevision) < 1 ||
+    !isRecord(record.declarations)
   ) {
     throw new InvalidPlanRuntimeRpcParams();
   }
@@ -323,17 +338,25 @@ function parsePlanDeclarationReplacement(value: unknown): PlanDeclarationReplace
 
 /** Same Fact batch the runner reports over OTLP, offered at the RPC boundary for operator-driven (dry-run) Plans. */
 function parseFactBatch(value: unknown): FactBatchInput {
-  const record = exactRecord(value, ["contract", "attemptKey", "attemptHandle", "executionId", "checkUri", "recordedAt", "facts"]);
+  const record = exactRecord(value, [
+    "contract",
+    "attemptKey",
+    "attemptHandle",
+    "executionId",
+    "checkUri",
+    "recordedAt",
+    "facts",
+  ]);
   if (
-    record.contract !== "trust.fact-batch-request@1"
-    || !boundedString(record.attemptKey, 256)
-    || !boundedString(record.attemptHandle, 256)
-    || !boundedString(record.executionId, 256)
-    || !boundedString(record.checkUri, 2_048)
-    || !boundedString(record.recordedAt, 64)
-    || !Array.isArray(record.facts)
-    || record.facts.length === 0
-    || record.facts.some((fact) => !isRecord(fact))
+    record.contract !== "trust.fact-batch-request@1" ||
+    !boundedString(record.attemptKey, 256) ||
+    !boundedString(record.attemptHandle, 256) ||
+    !boundedString(record.executionId, 256) ||
+    !boundedString(record.checkUri, 2_048) ||
+    !boundedString(record.recordedAt, 64) ||
+    !Array.isArray(record.facts) ||
+    record.facts.length === 0 ||
+    record.facts.some((fact) => !isRecord(fact))
   ) {
     throw new InvalidPlanRuntimeRpcParams();
   }
@@ -349,10 +372,7 @@ function parseFactBatch(value: unknown): FactBatchInput {
 
 function parseCheckRead(value: unknown): CheckReadParams {
   const record = exactRecord(value, ["contract", "checkUri"]);
-  if (
-    record.contract !== "trust.check-read-request@1"
-    || !boundedString(record.checkUri, 2_048)
-  ) {
+  if (record.contract !== "trust.check-read-request@1" || !boundedString(record.checkUri, 2_048)) {
     throw new InvalidPlanRuntimeRpcParams();
   }
   return { contract: record.contract, checkUri: record.checkUri };
@@ -361,12 +381,12 @@ function parseCheckRead(value: unknown): CheckReadParams {
 function parseCheckAdmission(value: unknown): CheckAttemptAdmissionParams {
   const record = exactRecord(value, ["contract", "attemptKey", "checkUri"], ["reobserve", "intent", "nextIntent"]);
   if (
-    record.contract !== "trust.check-admission-request@1"
-    || !boundedString(record.attemptKey, 256)
-    || !boundedString(record.checkUri, 2_048)
-    || (record.reobserve !== undefined && typeof record.reobserve !== "boolean")
-    || (record.intent !== undefined && !boundedString(record.intent, 1_024))
-    || (record.nextIntent !== undefined && !boundedString(record.nextIntent, 1_024))
+    record.contract !== "trust.check-admission-request@1" ||
+    !boundedString(record.attemptKey, 256) ||
+    !boundedString(record.checkUri, 2_048) ||
+    (record.reobserve !== undefined && typeof record.reobserve !== "boolean") ||
+    (record.intent !== undefined && !boundedString(record.intent, 1_024)) ||
+    (record.nextIntent !== undefined && !boundedString(record.nextIntent, 1_024))
   ) {
     throw new InvalidPlanRuntimeRpcParams();
   }
@@ -382,10 +402,7 @@ function parseCheckAdmission(value: unknown): CheckAttemptAdmissionParams {
 
 function parseCheckFinalization(value: unknown): CheckAttemptFinalizationParams {
   const record = exactRecord(value, ["contract", "attemptHandle"]);
-  if (
-    record.contract !== "trust.attempt-finalization-request@1"
-    || !boundedString(record.attemptHandle, 256)
-  ) {
+  if (record.contract !== "trust.attempt-finalization-request@1" || !boundedString(record.attemptHandle, 256)) {
     throw new InvalidPlanRuntimeRpcParams();
   }
   return { contract: record.contract, attemptHandle: record.attemptHandle };
@@ -393,23 +410,26 @@ function parseCheckFinalization(value: unknown): CheckAttemptFinalizationParams 
 
 function parseCheckInterruption(value: unknown): CheckAttemptInterruptionParams {
   const record = exactRecord(value, ["contract", "attemptHandle"]);
-  if (
-    record.contract !== "trust.attempt-interruption-request@1"
-    || !boundedString(record.attemptHandle, 256)
-  ) {
+  if (record.contract !== "trust.attempt-interruption-request@1" || !boundedString(record.attemptHandle, 256)) {
     throw new InvalidPlanRuntimeRpcParams();
   }
   return { contract: record.contract, attemptHandle: record.attemptHandle };
 }
 
 function parseCheckEscalation(value: unknown): CheckEscalationInput {
-  const record = exactRecord(value, ["contract", "checkUri", "attemptHandle", "blockingReason", "forbiddenFurtherAction"]);
+  const record = exactRecord(value, [
+    "contract",
+    "checkUri",
+    "attemptHandle",
+    "blockingReason",
+    "forbiddenFurtherAction",
+  ]);
   if (
-    record.contract !== "trust.check-escalation-request@1"
-    || !boundedString(record.checkUri, 2_048)
-    || !boundedString(record.attemptHandle, 256)
-    || !boundedTrimmedString(record.blockingReason, 4_096)
-    || !boundedTrimmedString(record.forbiddenFurtherAction, 4_096)
+    record.contract !== "trust.check-escalation-request@1" ||
+    !boundedString(record.checkUri, 2_048) ||
+    !boundedString(record.attemptHandle, 256) ||
+    !boundedTrimmedString(record.blockingReason, 4_096) ||
+    !boundedTrimmedString(record.forbiddenFurtherAction, 4_096)
   ) {
     throw new InvalidPlanRuntimeRpcParams();
   }
@@ -422,13 +442,14 @@ function parseCheckEscalation(value: unknown): CheckEscalationInput {
   };
 }
 
-function exactRecord(value: unknown, keys: readonly string[], optional: readonly string[] = []): Record<string, unknown> {
+function exactRecord(
+  value: unknown,
+  keys: readonly string[],
+  optional: readonly string[] = [],
+): Record<string, unknown> {
   if (!isRecord(value)) throw new InvalidPlanRuntimeRpcParams();
   const expected = new Set([...keys, ...optional]);
-  if (
-    Object.keys(value).some((key) => !expected.has(key))
-    || keys.some((key) => !Object.hasOwn(value, key))
-  ) {
+  if (Object.keys(value).some((key) => !expected.has(key)) || keys.some((key) => !Object.hasOwn(value, key))) {
     throw new InvalidPlanRuntimeRpcParams();
   }
   return value;

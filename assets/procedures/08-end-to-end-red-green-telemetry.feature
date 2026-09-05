@@ -75,7 +75,7 @@ Feature: Validate a multi-project change through an execution-correlated Red-Gre
   @scenario:acceptance-baseline
   Scenario: Establish the clean acceptance baseline and open its ticket branch
     Given scenario "ticket-in-progress" is validated
-    Then Check "acceptance baseline" runs Operation "git.change-start"
+    Then Check "acceptance baseline" runs Operation "git.change-start@*"
         on "acceptance project" as Input "project"
         using "jira issue" as Input "branch"
         and materializes "acceptance baseline revision" from field "baseRevision"
@@ -93,7 +93,7 @@ Feature: Validate a multi-project change through an execution-correlated Red-Gre
 
   @scenario:jira-issue
   Scenario: Read the Jira defect
-    Then Check "issue" runs Operation "jira.issue-read"
+    Then Check "issue" runs Operation "jira.issue-read@*"
         on "jira issue" as Input "issue"
         and must establish "the Jira issue is ready for correction"
       """js
@@ -110,7 +110,7 @@ Feature: Validate a multi-project change through an execution-correlated Red-Gre
   @scenario:ticket-in-progress
   Scenario: Move the Jira issue into progress before repository work
     Given scenario "jira-issue" is validated
-    Then Check "start issue" runs Operation "jira.issue-transition"
+    Then Check "start issue" runs Operation "jira.issue-transition@*"
         on "jira issue" as Input "issue"
         using "todo workflow status" as Input "fromWorkflowStatus"
         using "in-progress workflow status" as Input "toWorkflowStatus"
@@ -129,7 +129,7 @@ Feature: Validate a multi-project change through an execution-correlated Red-Gre
   @scenario:code-baselines
   Scenario: Establish every clean library and runtime baseline and open its ticket branch
     Given scenario "ticket-in-progress" is validated
-    Then Check "library baseline" runs Operation "git.change-start"
+    Then Check "library baseline" runs Operation "git.change-start@*"
         on each "library project" as Input "project"
         using "jira issue" as Input "branch"
         and materializes "library baseline revision" from field "baseRevision"
@@ -144,7 +144,7 @@ Feature: Validate a multi-project change through an execution-correlated Red-Gre
         fail("a library project is not on the ticket branch")
       )
       """
-    And Check "runtime baseline" runs Operation "git.change-start"
+    And Check "runtime baseline" runs Operation "git.change-start@*"
         on each "runtime project" as Input "project"
         using "jira issue" as Input "branch"
         and materializes "runtime baseline revision" from field "baseRevision"
@@ -164,7 +164,7 @@ Feature: Validate a multi-project change through an execution-correlated Red-Gre
   Scenario: Reproduce the defect with the committed Karate change
     Given scenario "ticket-in-progress" is validated
     And scenario "acceptance-baseline" is validated
-    Then Check "red run" runs Operation "karate.change-reproduce"
+    Then Check "red run" runs Operation "karate.change-reproduce@*"
         on "test argument" as Input "testArgument"
         using "acceptance project" as Input "project"
         using "acceptance baseline revision" as Input "baseRevision"
@@ -195,7 +195,7 @@ Feature: Validate a multi-project change through an execution-correlated Red-Gre
   Scenario: Install every committed library fix with Maven
     Given scenario "red" is validated
     And scenario "code-baselines" is validated
-    Then Check "library fix installation" runs Operation "maven.change-install"
+    Then Check "library fix installation" runs Operation "maven.change-install@*"
         on each "library project" as Input "project"
         using "library baseline revision" as Input "baseRevision"
         using "jira issue" as Input "ticket"
@@ -224,7 +224,7 @@ Feature: Validate a multi-project change through an execution-correlated Red-Gre
   @scenario:dependency-alignment
   Scenario: Confirm every runtime project resolves its installed library versions
     Given scenario "library-fix-install" is validated
-    Then Check "runtime dependency alignment" runs Operation "maven.dependency-verify"
+    Then Check "runtime dependency alignment" runs Operation "maven.dependency-verify@*"
         on each "runtime dependency project" as Input "project"
         using "installed library dependency" as Input "dependency"
         and must establish "every declared runtime dependency resolves the installed library version"
@@ -244,7 +244,7 @@ Feature: Validate a multi-project change through an execution-correlated Red-Gre
     Given scenario "red" is validated
     And scenario "library-fix-install" is validated
     And scenario "dependency-alignment" is validated
-    Then Check "runtime fix verification" runs Operation "maven.change-verify"
+    Then Check "runtime fix verification" runs Operation "maven.change-verify@*"
         on each "runtime project" as Input "project"
         using "runtime baseline revision" as Input "baseRevision"
         using "jira issue" as Input "ticket"
@@ -272,7 +272,7 @@ Feature: Validate a multi-project change through an execution-correlated Red-Gre
   @scenario:deploy
   Scenario: Build, load and roll out every runtime fix on Kind
     Given scenario "runtime-fix-verify" is validated
-    Then Check "deployment" runs Operation "kind.change-deploy"
+    Then Check "deployment" runs Operation "kind.change-deploy@*"
         on each "runtime project" as Input "project"
         using "planned image" as Input "image"
         using "Kind cluster" as Input "cluster"
@@ -293,7 +293,7 @@ Feature: Validate a multi-project change through an execution-correlated Red-Gre
   Scenario: Confirm the Karate change against the deployment
     Given scenario "red" is validated
     And scenario "deploy" is validated
-    Then Check "green run" runs Operation "karate.change-verify"
+    Then Check "green run" runs Operation "karate.change-verify@*"
         on "test argument" as Input "testArgument"
         using "acceptance project" as Input "project"
         using "acceptance baseline revision" as Input "baseRevision"
@@ -314,7 +314,7 @@ Feature: Validate a multi-project change through an execution-correlated Red-Gre
   @scenario:trace
   Scenario: Confirm every runtime project in the green execution traces
     Given scenario "green" is validated
-    Then Check "green trace" runs Operation "telemetry.project-trace-read"
+    Then Check "green trace" runs Operation "telemetry.project-trace-read@*"
         on each "runtime project" as Input "project"
         using "trace" as Input "traceId"
         using "execution ID" as Input "executionId"
@@ -328,7 +328,7 @@ Feature: Validate a multi-project change through an execution-correlated Red-Gre
   Scenario: Merge every ticket branch into main
     Given scenario "green" is validated
     And scenario "trace" is validated
-    Then Check "acceptance merge" runs Operation "git.change-merge"
+    Then Check "acceptance merge" runs Operation "git.change-merge@*"
         on "acceptance project" as Input "project"
         using "jira issue" as Input "branch"
         using "jira issue" as Input "ticket"
@@ -347,7 +347,7 @@ Feature: Validate a multi-project change through an execution-correlated Red-Gre
         fail("the acceptance repository has local changes")
       )
       """
-    And Check "library merge" runs Operation "git.change-merge"
+    And Check "library merge" runs Operation "git.change-merge@*"
         on each "library project" as Input "project"
         using "jira issue" as Input "branch"
         using "jira issue" as Input "ticket"
@@ -366,7 +366,7 @@ Feature: Validate a multi-project change through an execution-correlated Red-Gre
         fail("a library project has local changes")
       )
       """
-    And Check "runtime merge" runs Operation "git.change-merge"
+    And Check "runtime merge" runs Operation "git.change-merge@*"
         on each "runtime project" as Input "project"
         using "jira issue" as Input "branch"
         using "jira issue" as Input "ticket"
@@ -389,7 +389,7 @@ Feature: Validate a multi-project change through an execution-correlated Red-Gre
   @scenario:ticket-done
   Scenario: Move the Jira issue to done after every merge
     Given scenario "merge" is validated
-    Then Check "done issue" runs Operation "jira.issue-transition"
+    Then Check "done issue" runs Operation "jira.issue-transition@*"
         on "jira issue" as Input "issue"
         using "in-progress workflow status" as Input "fromWorkflowStatus"
         using "done workflow status" as Input "toWorkflowStatus"

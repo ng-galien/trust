@@ -1,16 +1,32 @@
 import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
-
-import { checkIsActionable } from "../check/actionability.js";
-import type { Attempt, CheckSnapshot, Fact, Plan, PlanCheck, PlanEscalation, PlanMetadata, PlanMode, PlanRevision } from "../model.js";
+import type {
+  CheckView,
+  HistoryListInput,
+  HistoryView,
+  PlanCheckView,
+  PlanEscalationView,
+  PlanListInput,
+  PlanSummaryView,
+  PlanView,
+  ProcedureActionScopeView,
+  ProcedureReadInput,
+  ProcedureReadView,
+  SessionRecordView,
+  SessionView,
+} from "@trust/extension-sdk";
 import type { AttemptStore } from "../attempt/store.js";
+import { checkIsActionable } from "../check/actionability.js";
+import type { Database } from "../database/database.js";
 import type { FactStore } from "../fact/store.js";
-import type { SnapshotStore } from "../snapshot/store.js";
-import type { PlanStore } from "./store.js";
-import type { SessionStore } from "../session/store.js";
+import type { Attempt, CheckSnapshot, Plan, PlanCheck, PlanEscalation, PlanRevision } from "../model.js";
 import type { Procedures } from "../procedure/procedures.js";
+import type { SessionStore } from "../session/store.js";
+import type { SnapshotStore } from "../snapshot/store.js";
 import type { Clock } from "../time.js";
-import { completesPlanOnValidation } from "./intent.js";
+import { ancestorBlocker, readComposition } from "./children.js";
 import type { EscalationStore } from "./escalation-store.js";
+import { completesPlanOnValidation } from "./intent.js";
+import type { PlanStore } from "./store.js";
 
 const DEFAULT_PROCEDURE_PAGE_SIZE = 49_152;
 const MAX_PROCEDURE_PAGE_SIZE = 65_536;
@@ -25,25 +41,6 @@ export type ReadErrorCode =
   | "invalid-procedure-page"
   | "invalid-list-page";
 
-export interface PlanListInput {
-  readonly filter?: { readonly procedure?: string; readonly mode?: PlanMode };
-  readonly cursor?: string;
-  readonly limit?: number;
-}
-
-export interface HistoryListInput {
-  readonly filter?: {
-    readonly plan?: string;
-    readonly procedure?: string;
-    readonly mode?: PlanMode;
-    readonly verdict?: CheckSnapshot["verdict"];
-    readonly since?: string;
-    readonly until?: string;
-  };
-  readonly cursor?: string;
-  readonly limit?: number;
-}
-
 export class ReadError extends Error {
   constructor(
     readonly code: ReadErrorCode,
@@ -54,242 +51,8 @@ export class ReadError extends Error {
   }
 }
 
-export interface ProcedureReadInput {
-  readonly checkUri: string;
-  readonly cursor?: string;
-  readonly limit?: number;
-}
-
-export interface ProcedureReadView {
-  readonly source: string;
-  readonly nextCursor?: string;
-}
-
-export interface PlanView {
-  readonly plan: string;
-  readonly procedure: string;
-  readonly procedureVersion: string;
-  readonly environment: string;
-  readonly mode: PlanMode;
-  readonly intentChaining: boolean;
-  readonly intentChainState: import("../model.js").IntentChainState;
-  readonly currentIntent: string | null;
-  readonly nextIntent: string | null;
-  readonly currentIntentCheckUri: string | null;
-  readonly metadata: PlanMetadata;
-  readonly rootInputs: Readonly<Record<string, unknown>>;
-  readonly createdAt: string;
-  readonly state: "ENGAGED";
-  readonly sessionState: "OPEN" | "UNAVAILABLE";
-  readonly workState: "IN_PROGRESS" | "ESCALATED" | "COMPLETE";
-  readonly revision: number;
-  readonly declarations: Readonly<Record<string, unknown>>;
-  readonly declarationRoles: readonly {
-    readonly role: string;
-    readonly type: string;
-    readonly cardinality: string;
-    readonly optional: boolean;
-    readonly parents: readonly { readonly role: string; readonly each: boolean }[];
-  }[];
-  readonly missingDeclarations: readonly string[];
-  readonly checklistComplete: boolean;
-  readonly satisfiedChecks: number;
-  readonly openChecks: readonly string[];
-  readonly actionableChecks: readonly string[];
-  readonly blockedChecks: readonly string[];
-  readonly checks: readonly PlanCheckView[];
-  readonly latestRevisionChange: {
-    readonly fromRevision: number | null;
-    readonly toRevision: number;
-    readonly added: readonly string[];
-    readonly removed: readonly string[];
-    readonly newlySatisfied: readonly string[];
-    readonly newlyOpened: readonly string[];
-    readonly changed: readonly string[];
-    readonly unchanged: readonly string[];
-  };
-  readonly latestQualification: {
-    readonly checkUri: string;
-    readonly attemptHandle: string;
-    readonly executionId: string;
-    readonly verdict: "VALIDATED" | "NOT_VALIDATED";
-    readonly reasonCode: string;
-    readonly reason: string;
-    readonly newlySatisfied: readonly string[];
-    readonly newlyOpened: readonly string[];
-    readonly unchanged: readonly string[];
-  } | null;
-  readonly activeEscalation: PlanEscalationView | null;
-  readonly escalations: readonly PlanEscalationView[];
-  readonly revisions: readonly PlanRevisionView[];
-  readonly sessions: readonly SessionRecordView[];
-}
-
-export interface PlanSummaryView {
-  readonly plan: string;
-  readonly procedure: string;
-  readonly procedureVersion: string;
-  readonly environment: string;
-  readonly mode: PlanMode;
-  readonly intentChaining: boolean;
-  readonly intentChainState: import("../model.js").IntentChainState;
-  readonly currentIntent: string | null;
-  readonly nextIntent: string | null;
-  readonly currentIntentCheckUri: string | null;
-  readonly metadata: PlanMetadata;
-  readonly revision: number;
-  readonly createdAt: string;
-  readonly sessionState: "OPEN" | "UNAVAILABLE";
-  readonly workState: "IN_PROGRESS" | "ESCALATED" | "COMPLETE";
-  readonly satisfiedChecks: number;
-  readonly checkCount: number;
-}
-
-export interface HistoryView {
-  readonly snapshotId: string;
-  readonly calculatedAt: string;
-  readonly plan: string;
-  readonly mode: PlanMode;
-  readonly procedure: string;
-  readonly checkUri: string;
-  readonly checkName: string;
-  readonly target: CheckTargetView;
-  readonly operation: string;
-  readonly attemptHandle: string;
-  readonly verdict: CheckSnapshot["verdict"];
-  readonly reasonCode: string;
-  readonly reason: string;
-  readonly factCount: number;
-  readonly checklistDelta: CheckSnapshot["checklistDelta"];
-}
-
-export interface PlanRevisionView {
-  readonly revision: number;
-  readonly definitionDigest: string;
-  readonly source: string;
-  readonly declarations: Readonly<Record<string, unknown>>;
-  readonly roleValues: readonly unknown[];
-  readonly checkValues: readonly unknown[];
-  readonly checkUris: readonly string[];
-}
-
-export interface PlanEscalationView {
-  readonly escalationId: string;
-  readonly planRevision: number;
-  readonly snapshotPlanRevision: number;
-  readonly checkUri: string;
-  readonly snapshotId: string;
-  readonly attemptHandle: string;
-  readonly blockingReason: string;
-  readonly forbiddenFurtherAction: string;
-  readonly escalatedAt: string;
-  readonly resumedAt: string | null;
-  readonly resumeReason: string | null;
-}
-
-export interface SessionRecordView {
-  readonly id: string;
-  readonly state: "open" | "closed" | "expired";
-  readonly openedAt: string;
-  readonly expiresAt: string;
-  readonly closedAt?: string;
-}
-
-export interface PlanCheckView {
-  readonly checkUri: string;
-  readonly name: string;
-  readonly successReason: string;
-  readonly scenario: string;
-  readonly target: CheckTargetView;
-  readonly inputs: Readonly<Record<string, unknown>>;
-  readonly operation: string;
-  readonly actionScope: ProcedureActionScopeView;
-  readonly state: "OPEN" | "SATISFIED";
-  readonly actionable: boolean;
-  readonly escalatable: boolean;
-  readonly attemptHandle: string | null;
-  readonly completesPlan: boolean;
-  readonly blockedBy: readonly string[];
-  readonly latestVerdict: "VALIDATED" | "NOT_VALIDATED" | null;
-  readonly latestReasonCode: string | null;
-  readonly reason: string | null;
-}
-
-export interface ProcedureActionScopeView {
-  readonly authorized: readonly string[];
-  readonly forbidden: readonly string[];
-}
-
-export interface SessionView {
-  readonly plan: string;
-  readonly state: "OPEN" | "UNAVAILABLE";
-  readonly activeRevision: number;
-  readonly workState: "IN_PROGRESS" | "ESCALATED" | "COMPLETE";
-  readonly checklistComplete: boolean;
-  readonly satisfiedChecks: number;
-  readonly openChecks: number;
-  readonly sessions: readonly SessionRecordView[];
-}
-
-export interface CheckAttemptView {
-  readonly handle: string;
-  readonly attemptKey: string;
-  readonly executionId: string;
-  readonly sessionId: string;
-  readonly state: Attempt["state"];
-  readonly admittedAt: string;
-  readonly expiresAt: string;
-  readonly interruptedAt?: string;
-  readonly finalizedAt?: string;
-  readonly finalization?: NonNullable<Attempt["finalization"]>;
-  readonly facts: readonly Fact[];
-}
-
-export interface CheckView {
-  readonly checkUri: string;
-  readonly name: string;
-  readonly successReason: string;
-  readonly scenario: string;
-  readonly target: CheckTargetView;
-  readonly inputs: Readonly<Record<string, unknown>>;
-  readonly state: "OPEN" | "SATISFIED";
-  readonly actionable: boolean;
-  readonly escalatable: boolean;
-  readonly attemptHandle: string | null;
-  readonly blockedBy: readonly string[];
-  readonly operation: string;
-  readonly actionScope: ProcedureActionScopeView;
-  readonly context: Readonly<Record<string, unknown>>;
-  readonly scenarioDependencies: readonly string[];
-  readonly checkDependencies: readonly {
-    readonly checkName: string;
-    readonly providerCheckUri: string;
-  }[];
-  readonly latestVerdict: "VALIDATED" | "NOT_VALIDATED" | null;
-  readonly latestReasonCode: string | null;
-  readonly reason: string | null;
-  readonly history: readonly {
-    readonly snapshotId: string;
-    readonly attemptHandle: string;
-    readonly executionId: string;
-    readonly state: "open" | "satisfied";
-    readonly verdict: "VALIDATED" | "NOT_VALIDATED";
-    readonly reasonCode: string;
-    readonly reason: string;
-    readonly checklistDelta: CheckSnapshot["checklistDelta"];
-    readonly factIds: readonly string[];
-    readonly calculatedAt: string;
-  }[];
-  readonly attempts: readonly CheckAttemptView[];
-}
-
-export interface CheckTargetView {
-  readonly role: string;
-  readonly selection: "one" | "each" | "all";
-  readonly value: unknown;
-}
-
 export interface PlanReaderDependencies {
+  readonly database: Database;
   readonly clock: Clock;
   readonly attemptStore: AttemptStore;
   readonly factStore: FactStore;
@@ -301,33 +64,33 @@ export interface PlanReaderDependencies {
 }
 
 export class PlanReader {
+  readonly #database: Database;
   readonly #clock: Clock;
   readonly #attempts: AttemptStore;
   readonly #facts: FactStore;
   readonly #plans: PlanStore;
   readonly #sessions: SessionStore;
   readonly #snapshots: SnapshotStore;
-  readonly #procedures: Procedures;
   readonly #escalations: EscalationStore;
   readonly #cursorSecret = randomBytes(32);
 
   constructor({
+    database,
     attemptStore,
     factStore,
     planStore,
     sessionStore,
     snapshotStore,
-    procedures,
     escalationStore,
     clock,
   }: PlanReaderDependencies) {
+    this.#database = database;
     this.#clock = clock;
     this.#attempts = attemptStore;
     this.#facts = factStore;
     this.#plans = planStore;
     this.#sessions = sessionStore;
     this.#snapshots = snapshotStore;
-    this.#procedures = procedures;
     this.#escalations = escalationStore;
   }
 
@@ -335,10 +98,7 @@ export class PlanReader {
     const { check, plan } = await this.#resolve(input.checkUri);
     const revision = await this.#plans.readRevision(plan.slug, plan.currentRevision);
     if (!revision) {
-      throw new ReadError(
-        "revision-not-found",
-        `The active revision for Plan ${plan.slug} is unavailable`,
-      );
+      throw new ReadError("revision-not-found", `The active revision for Plan ${plan.slug} is unavailable`);
     }
     const limit = input.limit ?? DEFAULT_PROCEDURE_PAGE_SIZE;
     if (!Number.isSafeInteger(limit) || limit < 1 || limit > MAX_PROCEDURE_PAGE_SIZE) {
@@ -349,24 +109,16 @@ export class PlanReader {
     }
     const sourceDigest = digest(revision.source);
     const checkDigest = digest(check.uri);
-    const offset = input.cursor === undefined
-      ? 0
-      : this.#decodeCursor(input.cursor, sourceDigest, checkDigest);
+    const offset = input.cursor === undefined ? 0 : this.#decodeCursor(input.cursor, sourceDigest, checkDigest);
     if (offset > revision.source.length) {
-      throw new ReadError(
-        "invalid-procedure-page",
-        "Procedure cursor is outside the hosted source",
-      );
+      throw new ReadError("invalid-procedure-page", "Procedure cursor is outside the hosted source");
     }
     const maximumEnd = Math.min(offset + limit, revision.source.length);
-    const end = maximumEnd === revision.source.length
-      ? maximumEnd
-      : pageEndAtLineBoundary(revision.source, offset, maximumEnd);
+    const end =
+      maximumEnd === revision.source.length ? maximumEnd : pageEndAtLineBoundary(revision.source, offset, maximumEnd);
     return {
       source: revision.source.slice(offset, end),
-      ...(end < revision.source.length
-        ? { nextCursor: this.#encodeCursor(end, sourceDigest, checkDigest) }
-        : {}),
+      ...(end < revision.source.length ? { nextCursor: this.#encodeCursor(end, sourceDigest, checkDigest) } : {}),
     };
   }
 
@@ -375,40 +127,47 @@ export class PlanReader {
     return this.readPlanBySlug(plan.slug, true);
   }
 
-  async listPlans(input: PlanListInput = {}): Promise<{ readonly plans: readonly PlanSummaryView[]; readonly nextCursor?: string }> {
+  async listPlans(
+    input: PlanListInput = {},
+  ): Promise<{ readonly plans: readonly PlanSummaryView[]; readonly nextCursor?: string }> {
     const limit = listLimit(input.limit);
     const scope = cursorScope(input.filter);
-    const after = input.cursor === undefined
-      ? undefined
-      : this.#decodeListCursor(input.cursor, "plans", scope) as { createdAt: string; plan: string };
+    const after =
+      input.cursor === undefined
+        ? undefined
+        : (this.#decodeListCursor(input.cursor, "plans", scope) as { createdAt: string; plan: string });
     const page = await this.#plans.listPlans({
       ...(input.filter === undefined ? {} : { filter: input.filter }),
       ...(after === undefined ? {} : { after }),
       limit: limit + 1,
     });
     const plans = page.slice(0, limit);
-    const views = await Promise.all(plans.map(async (plan) => {
-      const view = await this.readPlanBySlug(plan.slug);
-      return {
-        plan: view.plan,
-        procedure: view.procedure,
-        procedureVersion: view.procedureVersion,
-        environment: view.environment,
-        mode: view.mode,
-        intentChaining: view.intentChaining,
-        intentChainState: view.intentChainState,
-        currentIntent: view.currentIntent,
-        nextIntent: view.nextIntent,
-        currentIntentCheckUri: view.currentIntentCheckUri,
-        metadata: view.metadata,
-        revision: view.revision,
-        createdAt: view.createdAt,
-        sessionState: view.sessionState,
-        workState: view.workState,
-        satisfiedChecks: view.satisfiedChecks,
-        checkCount: view.checks.length,
-      };
-    }));
+    const views = await Promise.all(
+      plans.map(async (plan) => {
+        const view = await this.readPlanBySlug(plan.slug);
+        return {
+          descendantEscalations: view.descendantEscalations,
+          parent: view.parent,
+          plan: view.plan,
+          procedure: view.procedure,
+          procedureVersion: view.procedureVersion,
+          environment: view.environment,
+          mode: view.mode,
+          intentChaining: view.intentChaining,
+          intentChainState: view.intentChainState,
+          currentIntent: view.currentIntent,
+          nextIntent: view.nextIntent,
+          currentIntentCheckUri: view.currentIntentCheckUri,
+          metadata: view.metadata,
+          revision: view.revision,
+          createdAt: view.createdAt,
+          sessionState: view.sessionState,
+          workState: view.workState,
+          satisfiedChecks: view.satisfiedChecks,
+          checkCount: view.checks.length,
+        };
+      }),
+    );
     const last = plans.at(-1);
     return {
       plans: views,
@@ -418,12 +177,15 @@ export class PlanReader {
     };
   }
 
-  async listHistory(input: HistoryListInput = {}): Promise<{ readonly snapshots: readonly HistoryView[]; readonly nextCursor?: string }> {
+  async listHistory(
+    input: HistoryListInput = {},
+  ): Promise<{ readonly snapshots: readonly HistoryView[]; readonly nextCursor?: string }> {
     const limit = listLimit(input.limit);
     const scope = cursorScope(input.filter);
-    const after = input.cursor === undefined
-      ? undefined
-      : this.#decodeListCursor(input.cursor, "history", scope) as { calculatedAt: string; snapshotId: string };
+    const after =
+      input.cursor === undefined
+        ? undefined
+        : (this.#decodeListCursor(input.cursor, "history", scope) as { calculatedAt: string; snapshotId: string });
     const page = await this.#snapshots.listHistoryPage({
       ...(input.filter === undefined ? {} : { filter: input.filter }),
       ...(after === undefined ? {} : { after }),
@@ -455,7 +217,12 @@ export class PlanReader {
     return {
       snapshots,
       ...(page.length > limit && last !== undefined
-        ? { nextCursor: this.#encodeListCursor("history", scope, { calculatedAt: last.calculatedAt, snapshotId: last.id }) }
+        ? {
+            nextCursor: this.#encodeListCursor("history", scope, {
+              calculatedAt: last.calculatedAt,
+              snapshotId: last.id,
+            }),
+          }
         : {}),
     };
   }
@@ -473,17 +240,11 @@ export class PlanReader {
     }
     const revision = await this.#plans.readRevision(plan.slug, plan.currentRevision);
     if (!revision) {
-      throw new ReadError(
-        "revision-not-found",
-        `The active revision for Plan ${plan.slug} is unavailable`,
-      );
+      throw new ReadError("revision-not-found", `The active revision for Plan ${plan.slug} is unavailable`);
     }
-    const procedure = (await this.#procedures.find(plan.procedure, plan.procedureVersion))?.procedure;
+    const procedure = revision.resolvedProcedure;
     if (!procedure) {
-      throw new ReadError(
-        "revision-not-found",
-        `The published Procedure for Plan ${plan.slug} is unavailable`,
-      );
+      throw new ReadError("revision-not-found", `The published Procedure for Plan ${plan.slug} is unavailable`);
     }
     const declarationRoles = procedure.roles
       .filter((role) => role.source.kind === "agent-declaration")
@@ -502,20 +263,18 @@ export class PlanReader {
       this.#escalations.listForPlan(plan.slug),
     ]);
     const sessionAvailable = availableSession !== undefined;
-    const planAvailable = activeEscalation === undefined;
-    const active = new Set(
-      activeQualifications.map((qualification) => qualification.checkUri),
-    );
+    const composition = await readComposition(this.#database, plan.slug);
+    const planAvailable =
+      activeEscalation === undefined && (await ancestorBlocker(this.#database, plan.slug)) === undefined;
+    const active = new Set(activeQualifications.map((qualification) => qualification.checkUri));
     const [latestByCheck, latestAttemptsByCheck] = await Promise.all([
       Promise.all(checks.map((check) => this.#snapshots.findLatest(check.uri))),
       Promise.all(checks.map((check) => this.#attempts.findLatestByCheck(check.uri))),
     ]);
-    const latestSnapshots = latestByCheck
-      .filter((snapshot): snapshot is CheckSnapshot => snapshot !== undefined);
+    const latestSnapshots = latestByCheck.filter((snapshot): snapshot is CheckSnapshot => snapshot !== undefined);
     const latestQualification = [...latestSnapshots].sort(compareSnapshots).at(-1);
-    const latestQualificationAttempt = latestQualification === undefined
-      ? undefined
-      : await this.#attempts.find(latestQualification.attemptHandle);
+    const latestQualificationAttempt =
+      latestQualification === undefined ? undefined : await this.#attempts.find(latestQualification.attemptHandle);
     if (latestQualification !== undefined && latestQualificationAttempt === undefined) {
       throw new Error(`Accepted Attempt ${latestQualification.attemptHandle} is unavailable`);
     }
@@ -527,42 +286,55 @@ export class PlanReader {
       .map((check) => check.uri)
       .sort();
     const checkViews = checks
-      .map((check, index) => checkView(
-        check,
-        checks,
-        active,
-        latestByCheck[index],
-        latestAttemptsByCheck[index],
-        sessionAvailable,
-        planAvailable,
-        actionScope(procedure.scope, check.check.name),
-        plan.intentChaining && completesPlanOnValidation({
-          procedure,
-          revision,
-          checks,
-          activeCheckUris: active,
+      .map((check, index) =>
+        checkView(
           check,
-        }),
-        plan.currentIntentCheckUri,
-      ))
+          checks,
+          active,
+          latestByCheck[index],
+          latestAttemptsByCheck[index],
+          sessionAvailable,
+          planAvailable,
+          actionScope(procedure.scope, check.check.name),
+          plan.intentChaining &&
+            completesPlanOnValidation({
+              procedure,
+              revision,
+              checks,
+              activeCheckUris: active,
+              check,
+              invocationsSatisfied:
+                procedure.invocations.every((definition) =>
+                  composition.invocations.some((value) => value.name === definition.name),
+                ) && composition.invocations.every((value) => value.state === "SATISFIED"),
+            }),
+          plan.currentIntentCheckUri,
+          composition.scenarios,
+        ),
+      )
       .sort((left, right) => left.checkUri.localeCompare(right.checkUri));
-    const actionableChecks = checkViews
-      .filter((check) => check.actionable)
-      .map((check) => check.checkUri);
+    const actionableChecks = checkViews.filter((check) => check.actionable).map((check) => check.checkUri);
     const blockedChecks = checkViews
       .filter((check) => check.state === "OPEN" && !check.actionable)
       .map((check) => check.checkUri);
-    const checklistComplete = missingDeclarations.length === 0 && openChecks.length === 0;
+    const checklistComplete = missingDeclarations.length === 0 && openChecks.length === 0 && composition.complete;
     // A historical announcement is not the next intent of the active chain.
-    const currentIntentAttempt = plan.intentChaining && plan.intentChainState === "ACTIVE"
-      ? latestAttemptsByCheck.find(attempt => attempt !== undefined
-        && attempt.attemptKey === plan.currentIntentAttemptKey
-        && attempt.checkUri === plan.currentIntentCheckUri
-        && attempt.planRevision === plan.currentRevision
-        && attempt.intent === plan.currentIntent
-        && (attempt.state === "pending" || attempt.state === "interrupted"))
-      : undefined;
+    const currentIntentAttempt =
+      plan.intentChaining && plan.intentChainState === "ACTIVE"
+        ? latestAttemptsByCheck.find(
+            (attempt) =>
+              attempt !== undefined &&
+              attempt.attemptKey === plan.currentIntentAttemptKey &&
+              attempt.checkUri === plan.currentIntentCheckUri &&
+              attempt.planRevision === plan.currentRevision &&
+              attempt.intent === plan.currentIntent &&
+              (attempt.state === "pending" || attempt.state === "interrupted"),
+          )
+        : undefined;
     return {
+      descendantEscalations: composition.descendantEscalations,
+      invocations: composition.invocations,
+      parent: composition.parent,
       plan: plan.slug,
       procedure: plan.procedure,
       procedureVersion: plan.procedureVersion,
@@ -590,19 +362,20 @@ export class PlanReader {
       blockedChecks,
       checks: checkViews,
       latestRevisionChange: await this.#revisionChange(plan.slug, revision, active),
-      latestQualification: latestQualification === undefined
-        ? null
-        : {
-            checkUri: latestQualification.checkUri,
-            attemptHandle: latestQualification.attemptHandle,
-            executionId: latestQualificationAttempt!.executionId,
-            verdict: latestQualification.verdict,
-            reasonCode: latestQualification.reasonCode,
-            reason: latestQualification.reason,
-            newlySatisfied: [...latestQualification.checklistDelta.newlySatisfied].sort(),
-            newlyOpened: [...latestQualification.checklistDelta.newlyOpened].sort(),
-            unchanged: [...latestQualification.checklistDelta.unchanged].sort(),
-          },
+      latestQualification:
+        latestQualification === undefined
+          ? null
+          : {
+              checkUri: latestQualification.checkUri,
+              attemptHandle: latestQualification.attemptHandle,
+              executionId: latestQualificationAttempt!.executionId,
+              verdict: latestQualification.verdict,
+              reasonCode: latestQualification.reasonCode,
+              reason: latestQualification.reason,
+              newlySatisfied: [...latestQualification.checklistDelta.newlySatisfied].sort(),
+              newlyOpened: [...latestQualification.checklistDelta.newlyOpened].sort(),
+              unchanged: [...latestQualification.checklistDelta.unchanged].sort(),
+            },
       activeEscalation: activeEscalation ? escalationView(activeEscalation) : null,
       escalations: escalationHistory.map(escalationView),
       revisions: (await this.#plans.listRevisions(plan.slug)).map((item) => ({
@@ -635,20 +408,23 @@ export class PlanReader {
 
   async readCheck(checkUri: string): Promise<CheckView> {
     const { check, plan } = await this.#resolve(checkUri);
-    const [history, activeQualifications, checks, availableSession, storedAttempts, activeEscalation, published] = await Promise.all([
-      this.#snapshots.listHistory(checkUri),
-      this.#snapshots.listActive(plan.slug, plan.currentRevision),
-      this.#plans.listCurrentChecks(plan.slug),
-      this.#sessions.findAvailable(plan.slug, this.#now()),
-      this.#attempts.listByCheck(checkUri),
-      this.#escalations.findActive(plan.slug),
-      this.#procedures.find(plan.procedure, plan.procedureVersion),
-    ]);
-    if (!published) throw new ReadError("revision-not-found", `The published Procedure for Plan ${plan.slug} is unavailable`);
+    const [history, activeQualifications, checks, availableSession, storedAttempts, activeEscalation, revision] =
+      await Promise.all([
+        this.#snapshots.listHistory(checkUri),
+        this.#snapshots.listActive(plan.slug, plan.currentRevision),
+        this.#plans.listCurrentChecks(plan.slug),
+        this.#sessions.findAvailable(plan.slug, this.#now()),
+        this.#attempts.listByCheck(checkUri),
+        this.#escalations.findActive(plan.slug),
+        this.#plans.readRevision(plan.slug, plan.currentRevision),
+      ]);
+    if (!revision)
+      throw new ReadError("revision-not-found", `The pinned Procedure for Plan ${plan.slug} is unavailable`);
     const latest = history.at(-1);
     const active = new Set(activeQualifications.map((qualification) => qualification.checkUri));
     const state = active.has(checkUri) ? "SATISFIED" : "OPEN";
     const sessionAvailable = availableSession !== undefined;
+    const composition = await readComposition(this.#database, plan.slug);
     const view = checkView(
       check,
       checks,
@@ -656,25 +432,28 @@ export class PlanReader {
       latest,
       storedAttempts[0],
       sessionAvailable,
-      activeEscalation === undefined,
-      actionScope(published.procedure.scope, check.check.name),
+      activeEscalation === undefined && (await ancestorBlocker(this.#database, plan.slug)) === undefined,
+      actionScope(revision.resolvedProcedure.scope, check.check.name),
       false,
       plan.currentIntentCheckUri,
+      composition.scenarios,
     );
     const storedAttemptsByHandle = new Map(storedAttempts.map((attempt) => [attempt.handle, attempt]));
-    const attempts = await Promise.all(storedAttempts.map(async (attempt) => ({
-      handle: attempt.handle,
-      attemptKey: attempt.attemptKey,
-      executionId: attempt.executionId,
-      sessionId: attempt.sessionId,
-      state: attempt.state,
-      admittedAt: attempt.admittedAt,
-      expiresAt: attempt.expiresAt,
-      ...(attempt.interruptedAt === undefined ? {} : { interruptedAt: attempt.interruptedAt }),
-      ...(attempt.finalizedAt === undefined ? {} : { finalizedAt: attempt.finalizedAt }),
-      ...(attempt.finalization === undefined ? {} : { finalization: attempt.finalization }),
-      facts: await this.#facts.list(attempt.handle),
-    })));
+    const attempts = await Promise.all(
+      storedAttempts.map(async (attempt) => ({
+        handle: attempt.handle,
+        attemptKey: attempt.attemptKey,
+        executionId: attempt.executionId,
+        sessionId: attempt.sessionId,
+        state: attempt.state,
+        admittedAt: attempt.admittedAt,
+        expiresAt: attempt.expiresAt,
+        ...(attempt.interruptedAt === undefined ? {} : { interruptedAt: attempt.interruptedAt }),
+        ...(attempt.finalizedAt === undefined ? {} : { finalizedAt: attempt.finalizedAt }),
+        ...(attempt.finalization === undefined ? {} : { finalization: attempt.finalization }),
+        facts: await this.#facts.list(attempt.handle),
+      })),
+    );
     return {
       checkUri,
       name: view.name,
@@ -722,9 +501,7 @@ export class PlanReader {
     current: PlanRevision,
     currentActive: ReadonlySet<string>,
   ): Promise<PlanView["latestRevisionChange"]> {
-    const previous = current.revision > 1
-      ? await this.#plans.readRevision(planSlug, current.revision - 1)
-      : undefined;
+    const previous = current.revision > 1 ? await this.#plans.readRevision(planSlug, current.revision - 1) : undefined;
     const previousChecks = new Map((previous?.checks ?? []).map((check) => [check.uri, check]));
     const currentChecks = new Map(current.checks.map((check) => [check.uri, check]));
     const previousActive = new Set(
@@ -743,17 +520,17 @@ export class PlanReader {
     const changed = [...currentChecks.entries()]
       .filter(([uri, check]) => {
         const prior = previousChecks.get(uri);
-        return prior !== undefined
-          && prior.compiledCheckDigest !== check.compiledCheckDigest
-          && !newlySatisfied.includes(uri)
-          && !newlyOpened.includes(uri);
+        return (
+          prior !== undefined &&
+          prior.compiledCheckDigest !== check.compiledCheckDigest &&
+          !newlySatisfied.includes(uri) &&
+          !newlyOpened.includes(uri)
+        );
       })
       .map(([uri]) => uri)
       .sort();
     const classified = new Set([...added, ...newlySatisfied, ...newlyOpened, ...changed]);
-    const unchanged = [...currentChecks.keys()]
-      .filter((uri) => previousChecks.has(uri) && !classified.has(uri))
-      .sort();
+    const unchanged = [...currentChecks.keys()].filter((uri) => previousChecks.has(uri) && !classified.has(uri)).sort();
     return {
       fromRevision: previous?.revision ?? null,
       toRevision: current.revision,
@@ -795,18 +572,14 @@ export class PlanReader {
       JSON.stringify({ v: CURSOR_VERSION, offset, sourceDigest, checkDigest }),
       "utf8",
     ).toString("base64url");
-    const signature = createHmac("sha256", this.#cursorSecret)
-      .update(payload, "utf8")
-      .digest("base64url");
+    const signature = createHmac("sha256", this.#cursorSecret).update(payload, "utf8").digest("base64url");
     return `${payload}.${signature}`;
   }
 
   #decodeCursor(cursor: string, sourceDigest: string, checkDigest: string): number {
     const [payload, signature, extra] = cursor.split(".");
     if (!payload || !signature || extra !== undefined) return this.#invalidCursor();
-    const expected = createHmac("sha256", this.#cursorSecret)
-      .update(payload, "utf8")
-      .digest();
+    const expected = createHmac("sha256", this.#cursorSecret).update(payload, "utf8").digest();
     const actual = decodeCanonicalBase64Url(signature);
     if (!actual || actual.length !== expected.length || !timingSafeEqual(actual, expected)) {
       return this.#invalidCursor();
@@ -820,13 +593,13 @@ export class PlanReader {
       return this.#invalidCursor();
     }
     if (
-      !isRecord(decoded)
-      || decoded.v !== CURSOR_VERSION
-      || !Number.isSafeInteger(decoded.offset)
-      || (decoded.offset as number) < 0
-      || decoded.sourceDigest !== sourceDigest
-      || decoded.checkDigest !== checkDigest
-      || Object.keys(decoded).length !== 4
+      !isRecord(decoded) ||
+      decoded.v !== CURSOR_VERSION ||
+      !Number.isSafeInteger(decoded.offset) ||
+      (decoded.offset as number) < 0 ||
+      decoded.sourceDigest !== sourceDigest ||
+      decoded.checkDigest !== checkDigest ||
+      Object.keys(decoded).length !== 4
     ) {
       return this.#invalidCursor();
     }
@@ -834,10 +607,7 @@ export class PlanReader {
   }
 
   #invalidCursor(): never {
-    throw new ReadError(
-      "invalid-procedure-page",
-      "Procedure cursor is invalid or no longer belongs to this Check",
-    );
+    throw new ReadError("invalid-procedure-page", "Procedure cursor is invalid or no longer belongs to this Check");
   }
 
   #encodeListCursor(kind: "plans" | "history", scope: string, key: Record<string, string>): string {
@@ -857,9 +627,15 @@ export class PlanReader {
     }
     try {
       const decoded = JSON.parse(decodedPayload.toString("utf8")) as unknown;
-      if (!isRecord(decoded) || decoded.v !== CURSOR_VERSION || decoded.kind !== kind || decoded.scope !== scope
-        || !isRecord(decoded.key) || Object.values(decoded.key).some((value) => typeof value !== "string")
-        || !validListKey(kind, decoded.key)) {
+      if (
+        !isRecord(decoded) ||
+        decoded.v !== CURSOR_VERSION ||
+        decoded.kind !== kind ||
+        decoded.scope !== scope ||
+        !isRecord(decoded.key) ||
+        Object.values(decoded.key).some((value) => typeof value !== "string") ||
+        !validListKey(kind, decoded.key)
+      ) {
         return this.#invalidListCursor();
       }
       return decoded.key as Record<string, string>;
@@ -888,7 +664,9 @@ function listLimit(value: number | undefined): number {
 }
 
 function cursorScope(filter: Readonly<Record<string, unknown>> | undefined): string {
-  return JSON.stringify(Object.fromEntries(Object.entries(filter ?? {}).sort(([left], [right]) => left.localeCompare(right))));
+  return JSON.stringify(
+    Object.fromEntries(Object.entries(filter ?? {}).sort(([left], [right]) => left.localeCompare(right))),
+  );
 }
 
 function validListKey(kind: "plans" | "history", key: Record<string, unknown>): boolean {
@@ -907,12 +685,14 @@ function checkView(
   scope: ProcedureActionScopeView,
   completesPlan = false,
   currentIntentCheckUri: string | undefined = undefined,
+  satisfiedScenarios?: ReadonlySet<string>,
 ): PlanCheckView {
   const intentAvailable = currentIntentCheckUri === undefined || currentIntentCheckUri === check.uri;
-  const baseBlockers = checkBlockers(check, checks, active, sessionAvailable, planAvailable);
-  const blockedBy = intentAvailable || active.has(check.uri)
-    ? baseBlockers
-    : Object.freeze([...baseBlockers, `current intent is bound to ${currentIntentCheckUri}`].sort());
+  const baseBlockers = checkBlockers(check, checks, active, sessionAvailable, planAvailable, satisfiedScenarios);
+  const blockedBy =
+    intentAvailable || active.has(check.uri)
+      ? baseBlockers
+      : Object.freeze([...baseBlockers, `current intent is bound to ${currentIntentCheckUri}`].sort());
   return {
     checkUri: check.uri,
     name: check.check.name,
@@ -927,12 +707,17 @@ function checkView(
     operation: check.check.operation,
     actionScope: scope,
     state: active.has(check.uri) ? "SATISFIED" : "OPEN",
-    actionable: intentAvailable && sessionAvailable && planAvailable && checkIsActionable(check, checks, (uri) => active.has(uri)),
-    escalatable: planAvailable
-      && !active.has(check.uri)
-      && latestAttempt?.state === "finalized"
-      && latestAttempt.compiledCheckDigest === check.compiledCheckDigest
-      && latestAttempt.finalization?.verdict === "NOT_VALIDATED",
+    actionable:
+      intentAvailable &&
+      sessionAvailable &&
+      planAvailable &&
+      checkIsActionable(check, checks, (uri) => active.has(uri), satisfiedScenarios),
+    escalatable:
+      planAvailable &&
+      !active.has(check.uri) &&
+      latestAttempt?.state === "finalized" &&
+      latestAttempt.compiledCheckDigest === check.compiledCheckDigest &&
+      latestAttempt.finalization?.verdict === "NOT_VALIDATED",
     attemptHandle: latestAttempt?.handle ?? null,
     completesPlan,
     blockedBy,
@@ -959,23 +744,30 @@ function checkBlockers(
   active: ReadonlySet<string>,
   sessionAvailable: boolean,
   planAvailable: boolean,
+  satisfiedScenarios?: ReadonlySet<string>,
 ): readonly string[] {
   if (active.has(check.uri)) return Object.freeze([]);
   const blockers = new Set<string>();
   for (const scenario of check.scenarioDependencies) {
     const dependencies = checks.filter((candidate) => candidate.scenario === scenario);
     if (dependencies.length === 0) {
-      blockers.add(`scenario ${scenario} has no current Check`);
+      if (!satisfiedScenarios?.has(scenario)) blockers.add(`scenario ${scenario} has no satisfied current requirement`);
       continue;
     }
     for (const dependency of dependencies) {
       if (!active.has(dependency.uri)) blockers.add(dependency.uri);
     }
+    if (
+      satisfiedScenarios &&
+      !satisfiedScenarios.has(scenario) &&
+      dependencies.every((dependency) => active.has(dependency.uri))
+    )
+      blockers.add(`Scenario ${scenario} has an incomplete invocation`);
   }
   for (const dependency of check.checkDependencies) {
     if (
-      !checks.some((candidate) => candidate.uri === dependency.providerCheckUri)
-      || !active.has(dependency.providerCheckUri)
+      !checks.some((candidate) => candidate.uri === dependency.providerCheckUri) ||
+      !active.has(dependency.providerCheckUri)
     ) {
       blockers.add(dependency.providerCheckUri);
     }

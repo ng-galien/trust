@@ -1,6 +1,7 @@
 {
   "files": [],
   "references": [
+    { "path": "./packages/trust-extension-sdk" },
     { "path": "./packages/trust-gherkin" },
     { "path": "./packages/trust-operation" },
     { "path": "./packages/trust-procedure" },

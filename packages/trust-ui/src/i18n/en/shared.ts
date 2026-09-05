@@ -1,4 +1,13 @@
 export const shared = {
+  versions: {
+    label: "Version",
+    exact: "Selected published version",
+    discardFirst: "Publish or discard changes before switching versions.",
+    immutable: "Published versions are immutable. Change the version tag to publish a new version.",
+    draft: "Unpublished draft for a new version. Changes stay in this editor until publication.",
+    publish: "Publish version",
+    publishing: "Publishing…",
+  },
   resourceHome: {
     visibleOfTotal: "{{visible}} of {{total}}",
     display: "Display",
@@ -18,7 +27,10 @@ export const shared = {
   gherkinEditor: {
     loading: "Loading editor…",
     format: "Format source",
+    wrap: "Wrap lines",
+    wrapHint: "Display only: does not change the source",
     formatHint: "Re-flow long steps onto continuation lines (Shift+Alt+F)",
     unavailable: "Language server unavailable",
+    editorUnavailable: "Editor unavailable",
   },
 } as const;

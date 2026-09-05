@@ -1,4 +1,4 @@
-import type { PlanMetadata, RuntimeJsonObject } from "../model.js";
+import type { PlanMetadata, RuntimeJsonObject } from "@trust/extension-sdk";
 
 const MAX_TITLE_LENGTH = 256;
 const MAX_LABELS = 32;
@@ -18,27 +18,42 @@ export function normalizePlanMetadata(value: RuntimeJsonObject | PlanMetadata | 
 
   const title = source.title;
   if (title !== undefined && !boundedSingleLine(title, MAX_TITLE_LENGTH)) {
-    throw new TypeError(`Plan metadata title must be a trimmed single-line string of at most ${MAX_TITLE_LENGTH} characters`);
+    throw new TypeError(
+      `Plan metadata title must be a trimmed single-line string of at most ${MAX_TITLE_LENGTH} characters`,
+    );
   }
 
   const rawLabels = source.labels ?? [];
-  if (!Array.isArray(rawLabels) || rawLabels.length > MAX_LABELS
-    || rawLabels.some((label) => typeof label !== "string" || label.length > MAX_LABEL_LENGTH || !LABEL.test(label))) {
-    throw new TypeError(`Plan metadata labels must contain at most ${MAX_LABELS} unique lowercase labels of at most ${MAX_LABEL_LENGTH} characters`);
+  if (
+    !Array.isArray(rawLabels) ||
+    rawLabels.length > MAX_LABELS ||
+    rawLabels.some((label) => typeof label !== "string" || label.length > MAX_LABEL_LENGTH || !LABEL.test(label))
+  ) {
+    throw new TypeError(
+      `Plan metadata labels must contain at most ${MAX_LABELS} unique lowercase labels of at most ${MAX_LABEL_LENGTH} characters`,
+    );
   }
   const labels = [...rawLabels] as string[];
   if (new Set(labels).size !== labels.length) {
-    throw new TypeError(`Plan metadata labels must contain at most ${MAX_LABELS} unique lowercase labels of at most ${MAX_LABEL_LENGTH} characters`);
+    throw new TypeError(
+      `Plan metadata labels must contain at most ${MAX_LABELS} unique lowercase labels of at most ${MAX_LABEL_LENGTH} characters`,
+    );
   }
 
   const rawAnnotations = source.annotations ?? {};
-  if (!isRecord(rawAnnotations) || Object.keys(rawAnnotations).length > MAX_ANNOTATIONS
-    || Object.entries(rawAnnotations).some(([key, annotation]) => (
-      key.length > MAX_ANNOTATION_KEY_LENGTH
-      || !ANNOTATION_KEY.test(key)
-      || !boundedSingleLine(annotation, MAX_ANNOTATION_VALUE_LENGTH)
-    ))) {
-    throw new TypeError(`Plan metadata annotations must contain at most ${MAX_ANNOTATIONS} bounded string entries with lowercase keys`);
+  if (
+    !isRecord(rawAnnotations) ||
+    Object.keys(rawAnnotations).length > MAX_ANNOTATIONS ||
+    Object.entries(rawAnnotations).some(
+      ([key, annotation]) =>
+        key.length > MAX_ANNOTATION_KEY_LENGTH ||
+        !ANNOTATION_KEY.test(key) ||
+        !boundedSingleLine(annotation, MAX_ANNOTATION_VALUE_LENGTH),
+    )
+  ) {
+    throw new TypeError(
+      `Plan metadata annotations must contain at most ${MAX_ANNOTATIONS} bounded string entries with lowercase keys`,
+    );
   }
 
   return Object.freeze({
@@ -49,11 +64,13 @@ export function normalizePlanMetadata(value: RuntimeJsonObject | PlanMetadata | 
 }
 
 function boundedSingleLine(value: unknown, maximum: number): value is string {
-  return typeof value === "string"
-    && value.length > 0
-    && value.length <= maximum
-    && value.trim() === value
-    && !/[\p{Cc}\p{Zl}\p{Zp}]/u.test(value);
+  return (
+    typeof value === "string" &&
+    value.length > 0 &&
+    value.length <= maximum &&
+    value.trim() === value &&
+    !/[\p{Cc}\p{Zl}\p{Zp}]/u.test(value)
+  );
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

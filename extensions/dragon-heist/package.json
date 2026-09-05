@@ -1,0 +1,23 @@
+{
+  "name": "@trust-extension/dragon-heist",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "build:server": "node build-server.mjs",
+    "build:ui": "vite build --config vite.config.ts",
+    "build": "npm run build:server && npm run build:ui",
+    "test:acceptance": "node --test acceptance/*.acceptance.test.mjs"
+  },
+  "dependencies": {
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
+  },
+  "devDependencies": {
+    "@trust/extension-sdk": "file:../../packages/trust-extension-sdk",
+    "@module-federation/vite": "^1.21.3",
+    "@vitejs/plugin-react": "^6.0.5",
+    "vite": "^8.2.1"
+  }
+}

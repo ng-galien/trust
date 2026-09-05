@@ -10,11 +10,7 @@ export class EnvironmentStore {
 
   async list(): Promise<StoredEnvironment[]> {
     const [environments, variables] = await Promise.all([
-      this.dependencies.database
-        .selectFrom("environments")
-        .select("name")
-        .orderBy("name")
-        .execute(),
+      this.dependencies.database.selectFrom("environments").select("name").orderBy("name").execute(),
       this.dependencies.database
         .selectFrom("environment_variables")
         .select(["environment", "name", "value"])
@@ -39,20 +35,19 @@ export class EnvironmentStore {
         .values({ name, created_at: updatedAt, updated_at: updatedAt })
         .onConflict((conflict) => conflict.column("name").doUpdateSet({ updated_at: updatedAt }))
         .execute();
-      await transaction
-        .deleteFrom("environment_variables")
-        .where("environment", "=", name)
-        .execute();
+      await transaction.deleteFrom("environment_variables").where("environment", "=", name).execute();
       const entries = Object.entries(values);
       if (entries.length > 0) {
         await transaction
           .insertInto("environment_variables")
-          .values(entries.map(([variable, value]) => ({
-            environment: name,
-            name: variable,
-            value,
-            updated_at: updatedAt,
-          })))
+          .values(
+            entries.map(([variable, value]) => ({
+              environment: name,
+              name: variable,
+              value,
+              updated_at: updatedAt,
+            })),
+          )
           .execute();
       }
     });

@@ -2,12 +2,7 @@ import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
-import {
-  createServer,
-  type IncomingMessage,
-  type Server,
-  type ServerResponse,
-} from "node:http";
+import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -15,7 +10,15 @@ import { promisify } from "node:util";
 import { gzipSync } from "node:zlib";
 
 import { compileOperation } from "@trust/operation";
-import { CheckClient, CheckClientError, createCheckRunner, createRunnerLogging, OtlpFactExporter, runOperation, type FactExporter } from "@trust/runner";
+import {
+  CheckClient,
+  CheckClientError,
+  createCheckRunner,
+  createRunnerLogging,
+  type FactExporter,
+  OtlpFactExporter,
+  runOperation,
+} from "@trust/runner";
 import { Client } from "pg";
 import { afterEach, describe, expect, test } from "vitest";
 
@@ -34,9 +37,7 @@ const postgresqlAcceptanceUrl = process.env.TRUST_POSTGRESQL_ACCEPTANCE_URL;
 
 afterEach(async () => {
   await Promise.all([
-    ...temporaryDirectories.splice(0).map((directory) =>
-      rm(directory, { recursive: true, force: true })
-    ),
+    ...temporaryDirectories.splice(0).map((directory) => rm(directory, { recursive: true, force: true })),
     ...httpServers.splice(0).map(closeHttpServer),
   ]);
   receivedHttpRequests.splice(0);
@@ -45,63 +46,70 @@ afterEach(async () => {
 });
 
 describe("Operation runner", () => {
-  test.runIf(postgresqlAcceptanceUrl)("lets PostgreSQL enforce one atomic claim and returns its JSONB result", async () => {
-    const schema = `trust_connector_${randomUUID().replaceAll("-", "")}`;
-    const administration = new Client(postgresqlClientConfiguration(postgresqlAcceptanceUrl!));
-    await administration.connect();
-    try {
-      await administration.query(`CREATE SCHEMA ${schema}`);
-      await administration.query(`CREATE TABLE ${schema}.trust_connector_claims (resource text PRIMARY KEY, owner text NOT NULL)`);
-      const operation = fixtureOperation("postgresql.atomic-claim.feature");
-      const databaseUrl = new URL(postgresqlAcceptanceUrl!);
-      databaseUrl.searchParams.set("options", `-csearch_path=${schema}`);
-      const configuration = {
-        postgresql: {
-          processEnvironment: {
-            PGUSER: process.env.PGUSER,
-            PGPASSWORD: process.env.PGPASSWORD,
-            PGAPPNAME: "trust-runner-acceptance",
+  test.runIf(postgresqlAcceptanceUrl)(
+    "lets PostgreSQL enforce one atomic claim and returns its JSONB result",
+    async () => {
+      const schema = `trust_connector_${randomUUID().replaceAll("-", "")}`;
+      const administration = new Client(postgresqlClientConfiguration(postgresqlAcceptanceUrl!));
+      await administration.connect();
+      try {
+        await administration.query(`CREATE SCHEMA ${schema}`);
+        await administration.query(
+          `CREATE TABLE ${schema}.trust_connector_claims (resource text PRIMARY KEY, owner text NOT NULL)`,
+        );
+        const operation = fixtureOperation("postgresql.atomic-claim.feature");
+        const databaseUrl = new URL(postgresqlAcceptanceUrl!);
+        databaseUrl.searchParams.set("options", `-csearch_path=${schema}`);
+        const configuration = {
+          postgresql: {
+            processEnvironment: {
+              PGUSER: process.env.PGUSER,
+              PGPASSWORD: process.env.PGPASSWORD,
+              PGAPPNAME: "trust-runner-acceptance",
+            },
           },
-        },
-      };
+        };
 
-      const claimed = await runOperation(
-        operation,
-        { resource: "plan-1", owner: "agent-1" },
-        { databaseUrl: databaseUrl.toString() },
-        undefined,
-        undefined,
-        configuration,
-      );
-      const busy = await runOperation(
-        operation,
-        { resource: "plan-1", owner: "agent-2" },
-        { databaseUrl: databaseUrl.toString() },
-        undefined,
-        undefined,
-        configuration,
-      );
+        const claimed = await runOperation(
+          operation,
+          { resource: "plan-1", owner: "agent-1" },
+          { databaseUrl: databaseUrl.toString() },
+          undefined,
+          undefined,
+          configuration,
+        );
+        const busy = await runOperation(
+          operation,
+          { resource: "plan-1", owner: "agent-2" },
+          { databaseUrl: databaseUrl.toString() },
+          undefined,
+          undefined,
+          configuration,
+        );
 
-      expect(claimed).toMatchObject({
-        steps: { claim: { result: { resource: "plan-1", owner: "agent-1", state: "claimed" } } },
-        produced: { resource: "plan-1", owner: "agent-1", state: "claimed" },
-      });
-      expect(busy).toMatchObject({
-        steps: { claim: { result: { resource: "plan-1", owner: "agent-1", state: "busy" } } },
-        produced: { resource: "plan-1", owner: "agent-1", state: "busy" },
-      });
-    } finally {
-      await administration.query(`DROP SCHEMA IF EXISTS ${schema} CASCADE`);
-      await administration.end();
-    }
-  });
+        expect(claimed).toMatchObject({
+          steps: { claim: { result: { resource: "plan-1", owner: "agent-1", state: "claimed" } } },
+          produced: { resource: "plan-1", owner: "agent-1", state: "claimed" },
+        });
+        expect(busy).toMatchObject({
+          steps: { claim: { result: { resource: "plan-1", owner: "agent-1", state: "busy" } } },
+          produced: { resource: "plan-1", owner: "agent-1", state: "busy" },
+        });
+      } finally {
+        await administration.query(`DROP SCHEMA IF EXISTS ${schema} CASCADE`);
+        await administration.end();
+      }
+    },
+  );
 
   test("refuses a PostgreSQL password delegated through an Operation Environment", async () => {
-    await expect(runOperation(
-      fixtureOperation("postgresql.atomic-claim.feature"),
-      { resource: "plan-1", owner: "agent-1" },
-      { databaseUrl: "postgresql://agent:secret@127.0.0.1/coordination" },
-    )).rejects.toThrow("must not contain a password");
+    await expect(
+      runOperation(
+        fixtureOperation("postgresql.atomic-claim.feature"),
+        { resource: "plan-1", owner: "agent-1" },
+        { databaseUrl: "postgresql://agent:secret@127.0.0.1/coordination" },
+      ),
+    ).rejects.toThrow("must not contain a password");
   });
 
   test("keeps the opaque Check URI separate from rotating intent query parameters", async () => {
@@ -124,8 +132,8 @@ describe("Operation runner", () => {
     });
 
     const result = await runner.run(
-      "trust://local/example@1.0.0/plan/scenario/check/domain-action"
-      + "?intent=Inspect%20the%20current%20state&nextIntent=Prepare%20the%20next%20state",
+      "trust://local/example@1.0.0/plan/scenario/check/domain-action" +
+        "?intent=Inspect%20the%20current%20state&nextIntent=Prepare%20the%20next%20state",
     );
 
     expect(result).toMatchObject({
@@ -133,15 +141,17 @@ describe("Operation runner", () => {
       result: { status: "REFUSED" },
       next: { action: "READ_PLAN" },
     });
-    expect(admissions).toEqual([[
-      "intent-attempt",
-      "trust://local/example@1.0.0/plan/scenario/check/domain-action",
-      "Inspect the current state",
-      "Prepare the next state",
-    ]]);
+    expect(admissions).toEqual([
+      [
+        "intent-attempt",
+        "trust://local/example@1.0.0/plan/scenario/check/domain-action",
+        "Inspect the current state",
+        "Prepare the next state",
+      ],
+    ]);
     await runner.run(
-      "trust://local/example@1.0.0/plan/scenario/check/domain-action"
-      + "?intent=Document%20the%20%7Bintent%7D%20field&nextIntent=Continue%20the%20documentation",
+      "trust://local/example@1.0.0/plan/scenario/check/domain-action" +
+        "?intent=Document%20the%20%7Bintent%7D%20field&nextIntent=Continue%20the%20documentation",
     );
     expect(admissions[1]).toEqual([
       "intent-attempt",
@@ -149,10 +159,11 @@ describe("Operation runner", () => {
       "Document the {intent} field",
       "Continue the documentation",
     ]);
-    await expect(runner.run(
-      "trust://local/example@1.0.0/plan/scenario/check/domain-action"
-      + "?intent={intent}&nextIntent={nextIntent}",
-    )).rejects.toThrow("Replace the intent URI template placeholders");
+    await expect(
+      runner.run(
+        "trust://local/example@1.0.0/plan/scenario/check/domain-action" + "?intent={intent}&nextIntent={nextIntent}",
+      ),
+    ).rejects.toThrow("Replace the intent URI template placeholders");
   });
 
   test("executes the Git Operation in the project named by its Input below the Environment root", async () => {
@@ -162,11 +173,11 @@ describe("Operation runner", () => {
     await execute("git", ["init", "-q"], { cwd: workspaceRoot });
     await writeFile(join(workspaceRoot, "tracked.txt"), "baseline\n", "utf8");
     await execute("git", ["add", "tracked.txt"], { cwd: workspaceRoot });
-    await execute("git", [
-      "-c", "user.name=TRUST Acceptance",
-      "-c", "user.email=trust@example.invalid",
-      "commit", "-qm", "baseline",
-    ], { cwd: workspaceRoot });
+    await execute(
+      "git",
+      ["-c", "user.name=TRUST Acceptance", "-c", "user.email=trust@example.invalid", "commit", "-qm", "baseline"],
+      { cwd: workspaceRoot },
+    );
     const { stdout: revision } = await execute("git", ["rev-parse", "HEAD"], { cwd: workspaceRoot });
     await writeFile(join(workspaceRoot, "untracked.txt"), "dirty\n", "utf8");
 
@@ -185,8 +196,9 @@ describe("Operation runner", () => {
   test("refuses a project Input that escapes or leaves the Environment root", async () => {
     const projectsRoot = await temporaryDirectory("trust-runner-git-escape-");
     for (const project of ["../outside", "missing", "a/b"]) {
-      await expect(runOperation(operation("git.head-read.feature"), { project }, { workspaceRoot: projectsRoot }))
-        .rejects.toThrow(/Input "project"|does not exist/);
+      await expect(
+        runOperation(operation("git.head-read.feature"), { project }, { workspaceRoot: projectsRoot }),
+      ).rejects.toThrow(/Input "project"|does not exist/);
     }
   });
 
@@ -197,19 +209,19 @@ describe("Operation runner", () => {
     await execute("git", ["init", "-q"], { cwd: workspaceRoot });
     await writeFile(join(workspaceRoot, "tracked.txt"), "baseline\n", "utf8");
     await execute("git", ["add", "tracked.txt"], { cwd: workspaceRoot });
-    await execute("git", [
-      "-c", "user.name=TRUST Acceptance",
-      "-c", "user.email=trust@example.invalid",
-      "commit", "-qm", "baseline",
-    ], { cwd: workspaceRoot });
+    await execute(
+      "git",
+      ["-c", "user.name=TRUST Acceptance", "-c", "user.email=trust@example.invalid", "commit", "-qm", "baseline"],
+      { cwd: workspaceRoot },
+    );
     const { stdout: baseline } = await execute("git", ["rev-parse", "HEAD"], { cwd: workspaceRoot });
     await writeFile(join(workspaceRoot, "tracked.txt"), "change\n", "utf8");
     await execute("git", ["add", "tracked.txt"], { cwd: workspaceRoot });
-    await execute("git", [
-      "-c", "user.name=TRUST Acceptance",
-      "-c", "user.email=trust@example.invalid",
-      "commit", "-qm", "change",
-    ], { cwd: workspaceRoot });
+    await execute(
+      "git",
+      ["-c", "user.name=TRUST Acceptance", "-c", "user.email=trust@example.invalid", "commit", "-qm", "change"],
+      { cwd: workspaceRoot },
+    );
 
     const result = await runOperation(
       operation("git.head-compare.feature"),
@@ -249,7 +261,11 @@ describe("Operation runner", () => {
           next: { action: "COMPLETE" as const },
         }),
       } as unknown as CheckClient,
-      facts: { export: async (trace: unknown) => { exported.push(trace); } } as FactExporter,
+      facts: {
+        export: async (trace: unknown) => {
+          exported.push(trace);
+        },
+      } as FactExporter,
       attemptKey: () => "execution-attempt",
       clock: () => new Date("2026-08-15T12:00:00.000Z"),
     });
@@ -275,10 +291,10 @@ describe("Operation runner", () => {
 
   test("interrupts an admitted Attempt when the Operation fails before Facts are exported", async () => {
     const workspaceRoot = await temporaryDirectory("trust-runner-interruption-");
-    const source = readFileSync(
-      new URL("./fixtures/shell.expected-exit.feature", import.meta.url),
-      "utf8",
-    ).replace("| 1         | Tests run:", "| 0         | Tests run:");
+    const source = readFileSync(new URL("./fixtures/shell.expected-exit.feature", import.meta.url), "utf8").replace(
+      "| 1         | Tests run:",
+      "| 0         | Tests run:",
+    );
     const interrupted: string[] = [];
     const runner = createCheckRunner({
       checkClient: {
@@ -310,8 +326,9 @@ describe("Operation runner", () => {
       clock: () => new Date("2026-08-15T12:00:00.000Z"),
     });
 
-    await expect(runner.run("trust://local/example@1.0.0/plan/scenario/check/failure"))
-      .rejects.toThrow(/unexpected exit/);
+    await expect(runner.run("trust://local/example@1.0.0/plan/scenario/check/failure")).rejects.toThrow(
+      /unexpected exit/,
+    );
     expect(interrupted).toEqual(["failed-operation-handle"]);
   });
 
@@ -348,8 +365,9 @@ describe("Operation runner", () => {
       clock: () => new Date("2026-08-15T12:00:00.000Z"),
     });
 
-    await expect(runner.run("trust://local/example@1.0.0/plan/scenario/check/export-failure"))
-      .rejects.toThrow("OTLP transport failed before acceptance");
+    await expect(runner.run("trust://local/example@1.0.0/plan/scenario/check/export-failure")).rejects.toThrow(
+      "OTLP transport failed before acceptance",
+    );
     expect(interrupted).toEqual(["failed-export-handle"]);
   });
 
@@ -400,11 +418,10 @@ describe("Operation runner", () => {
       clock: () => new Date("2026-08-15T12:00:00.000Z"),
     });
 
-    await expect(runner.run("trust://local/example@1.0.0/plan/scenario/check/lost-response"))
-      .resolves.toMatchObject({
-        result: { status: "COMPLETED", qualification: { verdict: "VALIDATED" } },
-        next: { action: "COMPLETE" },
-      });
+    await expect(runner.run("trust://local/example@1.0.0/plan/scenario/check/lost-response")).resolves.toMatchObject({
+      result: { status: "COMPLETED", qualification: { verdict: "VALIDATED" } },
+      next: { action: "COMPLETE" },
+    });
     expect(finalized).toEqual(["lost-response-handle"]);
   });
 
@@ -426,19 +443,19 @@ describe("Operation runner", () => {
     await execute("git", ["init", "-q", "--initial-branch=main"], { cwd: workspaceRoot });
     await writeFile(join(workspaceRoot, "tracked.txt"), "baseline\n", "utf8");
     await execute("git", ["add", "tracked.txt"], { cwd: workspaceRoot });
-    await execute("git", [
-      "-c", "user.name=TRUST Acceptance",
-      "-c", "user.email=trust@example.invalid",
-      "commit", "-qm", "baseline",
-    ], { cwd: workspaceRoot });
+    await execute(
+      "git",
+      ["-c", "user.name=TRUST Acceptance", "-c", "user.email=trust@example.invalid", "commit", "-qm", "baseline"],
+      { cwd: workspaceRoot },
+    );
     await execute("git", ["switch", "-qc", "TK-00012"], { cwd: workspaceRoot });
     await writeFile(join(workspaceRoot, "tracked.txt"), "change\n", "utf8");
     await execute("git", ["add", "tracked.txt"], { cwd: workspaceRoot });
-    await execute("git", [
-      "-c", "user.name=TRUST Acceptance",
-      "-c", "user.email=trust@example.invalid",
-      "commit", "-qm", "change",
-    ], { cwd: workspaceRoot });
+    await execute(
+      "git",
+      ["-c", "user.name=TRUST Acceptance", "-c", "user.email=trust@example.invalid", "commit", "-qm", "change"],
+      { cwd: workspaceRoot },
+    );
 
     const result = await runOperation(
       operation("git.change-merge.feature"),
@@ -451,10 +468,10 @@ describe("Operation runner", () => {
       branchStatus: "deleted",
       workingTree: "clean",
     });
-    expect((await execute("git", ["branch", "--show-current"], { cwd: workspaceRoot })).stdout.trim())
-      .toBe("main");
-    await expect(execute("git", ["show-ref", "--verify", "refs/heads/TK-00012"], { cwd: workspaceRoot }))
-      .rejects.toMatchObject({ code: 128 });
+    expect((await execute("git", ["branch", "--show-current"], { cwd: workspaceRoot })).stdout.trim()).toBe("main");
+    await expect(
+      execute("git", ["show-ref", "--verify", "refs/heads/TK-00012"], { cwd: workspaceRoot }),
+    ).rejects.toMatchObject({ code: 128 });
   });
 
   test("reads and decodes a JSON File inside its declared directory", async () => {
@@ -485,8 +502,9 @@ describe("Operation runner", () => {
     const workspaceRoot = await temporaryDirectory("trust-runner-file-json-");
     await writeFile(join(workspaceRoot, "package.json"), "not-json", "utf8");
 
-    await expect(runOperation(operation("file.package-read.feature"), {}, { workspaceRoot }))
-      .rejects.toThrow('File "package.json" is not valid JSON');
+    await expect(runOperation(operation("file.package-read.feature"), {}, { workspaceRoot })).rejects.toThrow(
+      'File "package.json" is not valid JSON',
+    );
   });
 
   test("refuses a File resolved outside its declared directory", async () => {
@@ -495,87 +513,81 @@ describe("Operation runner", () => {
     await writeFile(join(outside, "package.json"), JSON.stringify({ name: "outside" }), "utf8");
     await symlink(join(outside, "package.json"), join(workspaceRoot, "package.json"));
 
-    await expect(runOperation(operation("file.package-read.feature"), {}, { workspaceRoot }))
-      .rejects.toThrow("resolves outside Environment");
+    await expect(runOperation(operation("file.package-read.feature"), {}, { workspaceRoot })).rejects.toThrow(
+      "resolves outside Environment",
+    );
   });
 
   test("refuses Environment values before executing a Step", async () => {
-    await expect(runOperation(
-      operation("git.head-read.feature"),
-      { project: "trust-example" },
-      { workspaceRoot: "relative" },
-    ))
-      .rejects.toMatchObject({ values: "environment" });
+    await expect(
+      runOperation(operation("git.head-read.feature"), { project: "trust-example" }, { workspaceRoot: "relative" }),
+    ).rejects.toMatchObject({ values: "environment" });
   });
 
   test("fails when a Shell exits with a non-zero code", async () => {
     const workspaceRoot = await temporaryDirectory("trust-runner-shell-");
     await execute("git", ["init", "-q"], { cwd: workspaceRoot });
 
-    await expect(runOperation(
-      operation("git.head-read.feature"),
-      { project: "trust-example" },
-      { workspaceRoot },
-    ))
-      .rejects.toMatchObject({ name: "ShellError" });
+    await expect(
+      runOperation(operation("git.head-read.feature"), { project: "trust-example" }, { workspaceRoot }),
+    ).rejects.toMatchObject({ name: "ShellError" });
   });
 
   test("persists a failed Shell step in the runner diagnostic log", async () => {
     const workspaceRoot = await temporaryDirectory("trust-runner-shell-log-");
     const logPath = join(workspaceRoot, "runner.log");
-    const source = readFileSync(
-      new URL("./fixtures/shell.expected-exit.feature", import.meta.url),
-      "utf8",
-    ).replace("| 1         | Tests run:", "| 0         | Tests run:");
+    const source = readFileSync(new URL("./fixtures/shell.expected-exit.feature", import.meta.url), "utf8").replace(
+      "| 1         | Tests run:",
+      "| 0         | Tests run:",
+    );
     const failedOperation = compileOperation({
       source,
       sourceName: "shell.failed-log.feature",
     });
     const logging = createRunnerLogging({ TRUST_RUNNER_LOG_PATH: logPath });
     try {
-      await expect(runOperation(failedOperation, {}, { workspaceRoot }, logging.diagnostics))
-        .rejects.toThrow(/unexpected exit/);
+      await expect(runOperation(failedOperation, {}, { workspaceRoot }, logging.diagnostics)).rejects.toThrow(
+        /unexpected exit/,
+      );
     } finally {
       logging.close();
     }
 
-    const records = (await readFile(logPath, "utf8")).trim().split("\n").map((line) => JSON.parse(line)) as Array<{
+    const records = (await readFile(logPath, "utf8"))
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line)) as Array<{
       readonly level?: number;
       readonly event?: string;
       readonly error?: string;
     }>;
-    expect(records).toEqual(expect.arrayContaining([
-      expect.objectContaining({ level: 50, event: "runner.step.end" }),
-      expect.objectContaining({ level: 50, event: "runner.operation.end" }),
-    ]));
-    expect(records.find(({ event }) => event === "runner.step.end")?.error)
-      .toMatch(/unexpected exit/);
+    expect(records).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ level: 50, event: "runner.step.end" }),
+        expect.objectContaining({ level: 50, event: "runner.operation.end" }),
+      ]),
+    );
+    expect(records.find(({ event }) => event === "runner.step.end")?.error).toMatch(/unexpected exit/);
   });
 
   test("observes an explicitly accepted non-zero Shell exit", async () => {
     const workspaceRoot = await temporaryDirectory("trust-runner-expected-exit-");
 
-    const result = await runOperation(
-      fixtureOperation("shell.expected-exit.feature"),
-      {},
-      { workspaceRoot },
-    );
+    const result = await runOperation(fixtureOperation("shell.expected-exit.feature"), {}, { workspaceRoot });
 
     expect(result.produced).toEqual({ exitCode: 1 });
   });
 
   test("interrupts when a Shell exit does not contain its declared output", async () => {
     const workspaceRoot = await temporaryDirectory("trust-runner-unexpected-output-");
-    const source = readFileSync(
-      new URL("./fixtures/shell.expected-exit.feature", import.meta.url),
-      "utf8",
-    ).replace("Tests run: 1", "Compilation failed");
+    const source = readFileSync(new URL("./fixtures/shell.expected-exit.feature", import.meta.url), "utf8").replace(
+      "Tests run: 1",
+      "Compilation failed",
+    );
 
-    await expect(runOperation(
-      compileOperation({ source, sourceName: "shell.unexpected-output.feature" }),
-      {},
-      { workspaceRoot },
-    )).rejects.toMatchObject({ name: "ShellError" });
+    await expect(
+      runOperation(compileOperation({ source, sourceName: "shell.unexpected-output.feature" }), {}, { workspaceRoot }),
+    ).rejects.toMatchObject({ name: "ShellError" });
   });
 
   test("glues a literal prefix to an Input value inside one Shell argument token", async () => {
@@ -618,37 +630,35 @@ describe("Operation runner", () => {
     );
 
     expect(result.produced).toEqual({ total: 2 });
-    expect(receivedHttpRequests).toContainEqual(expect.objectContaining({
-      method: "GET",
-      url: "/issues/PAY-1/comments?limit=5&run=r1",
-    }));
+    expect(receivedHttpRequests).toContainEqual(
+      expect.objectContaining({
+        method: "GET",
+        url: "/issues/PAY-1/comments?limit=5&run=r1",
+      }),
+    );
   });
 
   test("refuses to add a query to an Environment URL that already carries one", async () => {
     const baseUrl = await startHttpServer();
 
-    await expect(runOperation(
-      fixtureOperation("http.segments-query.feature"),
-      { issue: "PAY-1", resource: "comments", run: "r1" },
-      { issuesUrl: `${baseUrl}/issues?page=2` },
-    )).rejects.toThrow("already carries a query string");
+    await expect(
+      runOperation(
+        fixtureOperation("http.segments-query.feature"),
+        { issue: "PAY-1", resource: "comments", run: "r1" },
+        { issuesUrl: `${baseUrl}/issues?page=2` },
+      ),
+    ).rejects.toThrow("already carries a query string");
     expect(receivedHttpRequests).toEqual([]);
   });
 
   test("gets and decodes JSON from a real HTTP server", async () => {
     const baseUrl = await startHttpServer();
 
-    const result = await runOperation(
-      operation("http.status-read.feature"),
-      {},
-      { serviceUrl: `${baseUrl}/status` },
-    );
+    const result = await runOperation(operation("http.status-read.feature"), {}, { serviceUrl: `${baseUrl}/status` });
 
     expect(result.produced).toEqual({ service: "ready", status: 200 });
     expect(result.steps.response).toMatchObject({ status: 200, body: { service: "ready" } });
-    expect(receivedHttpRequests).toEqual([
-      expect.objectContaining({ method: "GET", url: "/status" }),
-    ]);
+    expect(receivedHttpRequests).toEqual([expect.objectContaining({ method: "GET", url: "/status" })]);
   });
 
   test("sends the standardized HTTP QUERY method with path, query, header and JSONata content", async () => {
@@ -661,12 +671,14 @@ describe("Operation runner", () => {
     );
 
     expect(result.produced).toEqual({ result: "matched", status: 200 });
-    expect(receivedHttpRequests).toContainEqual(expect.objectContaining({
-      method: "QUERY",
-      url: "/search?limit=5",
-      headers: expect.objectContaining({ "x-api-mode": "acceptance", "content-type": "application/json" }),
-      body: JSON.stringify({ query: "status = 'open'" }),
-    }));
+    expect(receivedHttpRequests).toContainEqual(
+      expect.objectContaining({
+        method: "QUERY",
+        url: "/search?limit=5",
+        headers: expect.objectContaining({ "x-api-mode": "acceptance", "content-type": "application/json" }),
+        body: JSON.stringify({ query: "status = 'open'" }),
+      }),
+    );
   });
 
   test("does not decode representation metadata on a HEAD response without content", async () => {
@@ -686,11 +698,9 @@ describe("Operation runner", () => {
     const baseUrl = await startHttpServer();
     const server = httpServers.at(-1)!;
 
-    await expect(runOperation(
-      operation("http.status-read.feature"),
-      {},
-      { serviceUrl: `${baseUrl}/unsupported-encoding` },
-    )).rejects.toThrow('unsupported content encoding "zstd"');
+    await expect(
+      runOperation(operation("http.status-read.feature"), {}, { serviceUrl: `${baseUrl}/unsupported-encoding` }),
+    ).rejects.toThrow('unsupported content encoding "zstd"');
 
     await expect.poll(() => serverConnectionCount(server)).toBe(0);
   });
@@ -698,17 +708,15 @@ describe("Operation runner", () => {
   test("sends CONNECT with the destination authority as its request target", async () => {
     const baseUrl = await startHttpServer();
 
-    const result = await runOperation(
-      fixtureOperation("http.connect.feature"),
-      {},
-      { serviceUrl: baseUrl },
-    );
+    const result = await runOperation(fixtureOperation("http.connect.feature"), {}, { serviceUrl: baseUrl });
 
     expect(result.produced).toEqual({ status: 200 });
-    expect(receivedHttpRequests).toContainEqual(expect.objectContaining({
-      method: "CONNECT",
-      url: new URL(baseUrl).host,
-    }));
+    expect(receivedHttpRequests).toContainEqual(
+      expect.objectContaining({
+        method: "CONNECT",
+        url: new URL(baseUrl).host,
+      }),
+    );
   });
 
   test("encodes multiline query values and preserves multiline Text bodies", async () => {
@@ -722,11 +730,13 @@ describe("Operation runner", () => {
     );
 
     expect(result.produced).toEqual({ result: "accepted" });
-    expect(receivedHttpRequests).toContainEqual(expect.objectContaining({
-      method: "PUT",
-      url: "/text-content?q=line+one%0D%0Aline+two",
-      body: payload,
-    }));
+    expect(receivedHttpRequests).toContainEqual(
+      expect.objectContaining({
+        method: "PUT",
+        url: "/text-content?q=line+one%0D%0Aline+two",
+        body: payload,
+      }),
+    );
   });
 
   test("appends one encoded Input as an HTTP path segment", async () => {
@@ -761,11 +771,13 @@ describe("Operation runner", () => {
       fromWorkflowStatus: "todo",
       toWorkflowStatus: "in-progress",
     });
-    expect(receivedHttpRequests).toContainEqual(expect.objectContaining({
-      method: "POST",
-      url: "/issue/TRUST-2/transitions",
-      body: JSON.stringify({ transition: { id: "11" } }),
-    }));
+    expect(receivedHttpRequests).toContainEqual(
+      expect.objectContaining({
+        method: "POST",
+        url: "/issue/TRUST-2/transitions",
+        body: JSON.stringify({ transition: { id: "11" } }),
+      }),
+    );
   });
 
   test("reconciles a Jira transition replay when the first attempt already reached the target", async () => {
@@ -781,20 +793,24 @@ describe("Operation runner", () => {
       fromWorkflowStatus: "todo",
       toWorkflowStatus: "in-progress",
     });
-    expect(receivedHttpRequests).toContainEqual(expect.objectContaining({
-      method: "POST",
-      body: JSON.stringify({ transition: { id: "__trust_already_applied__" } }),
-    }));
+    expect(receivedHttpRequests).toContainEqual(
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ transition: { id: "__trust_already_applied__" } }),
+      }),
+    );
   });
 
   test("does not mutate Jira when the declared source workflow status is not current", async () => {
     const baseUrl = await startHttpServer();
 
-    await expect(runOperation(
-      operation("jira.issue-transition.feature"),
-      { issue: "TRUST-2", fromWorkflowStatus: "in-progress", toWorkflowStatus: "done" },
-      { jiraIssueUrl: `${baseUrl}/issue/` },
-    )).rejects.toThrow("Jira issue has neither the expected source nor target workflow status");
+    await expect(
+      runOperation(
+        operation("jira.issue-transition.feature"),
+        { issue: "TRUST-2", fromWorkflowStatus: "in-progress", toWorkflowStatus: "done" },
+        { jiraIssueUrl: `${baseUrl}/issue/` },
+      ),
+    ).rejects.toThrow("Jira issue has neither the expected source nor target workflow status");
 
     expect(receivedHttpRequests.some((request) => request.method === "POST")).toBe(false);
     expect(jiraWorkflowStatus).toBe("To Do");
@@ -828,37 +844,39 @@ describe("Operation runner", () => {
       documentRecordedAt: ["2026-08-15T11:00:00.000Z", "2026-08-15T11:05:00.000Z"],
     };
 
-    const result = await runOperation(
-      operation("healthcare.admission-record.feature"),
-      input,
-      { admissionUrl: `${baseUrl}/admissions` },
-    );
+    const result = await runOperation(operation("healthcare.admission-record.feature"), input, {
+      admissionUrl: `${baseUrl}/admissions`,
+    });
 
     expect(result.produced).toEqual({
       admission: "ADMISSION-1",
       admissionStatus: "recorded",
       admittedAt: "2026-08-15T12:00:00.000Z",
     });
-    expect(receivedHttpRequests).toContainEqual(expect.objectContaining({
-      method: "POST",
-      url: "/admissions",
-      body: JSON.stringify(input),
-    }));
+    expect(receivedHttpRequests).toContainEqual(
+      expect.objectContaining({
+        method: "POST",
+        url: "/admissions",
+        body: JSON.stringify(input),
+      }),
+    );
   });
 
   test("does not forward a posted Input through an HTTP redirect", async () => {
     const baseUrl = await startHttpServer();
 
-    await expect(runOperation(
-      operation("healthcare.admission-record.feature"),
-      {
-        patient: "PATIENT-1",
-        admission: "ADMISSION-1",
-        documents: ["DOCUMENT-1"],
-        documentRecordedAt: ["2026-08-15T11:00:00.000Z"],
-      },
-      { admissionUrl: `${baseUrl}/redirect-admissions` },
-    )).rejects.toThrow();
+    await expect(
+      runOperation(
+        operation("healthcare.admission-record.feature"),
+        {
+          patient: "PATIENT-1",
+          admission: "ADMISSION-1",
+          documents: ["DOCUMENT-1"],
+          documentRecordedAt: ["2026-08-15T11:00:00.000Z"],
+        },
+        { admissionUrl: `${baseUrl}/redirect-admissions` },
+      ),
+    ).rejects.toThrow();
 
     expect(receivedHttpRequests.some((request) => request.url === "/redirect-target")).toBe(false);
   });
@@ -882,11 +900,7 @@ describe("Operation runner", () => {
   test("gets Text from a real HTTP server", async () => {
     const baseUrl = await startHttpServer();
 
-    const result = await runOperation(
-      operation("http.text-read.feature"),
-      {},
-      { serviceUrl: `${baseUrl}/text` },
-    );
+    const result = await runOperation(operation("http.text-read.feature"), {}, { serviceUrl: `${baseUrl}/text` });
 
     expect(result.produced).toEqual({ body: "ready", status: 200 });
   });
@@ -894,11 +908,7 @@ describe("Operation runner", () => {
   test("preserves an empty HTTP Text response", async () => {
     const baseUrl = await startHttpServer();
 
-    const result = await runOperation(
-      operation("http.text-read.feature"),
-      {},
-      { serviceUrl: `${baseUrl}/empty-text` },
-    );
+    const result = await runOperation(operation("http.text-read.feature"), {}, { serviceUrl: `${baseUrl}/empty-text` });
 
     expect(result.produced).toEqual({ body: "", status: 200 });
   });
@@ -906,11 +916,9 @@ describe("Operation runner", () => {
   test("fails on a non-success HTTP status", async () => {
     const baseUrl = await startHttpServer();
 
-    await expect(runOperation(
-      operation("http.status-read.feature"),
-      {},
-      { serviceUrl: `${baseUrl}/missing` },
-    )).rejects.toMatchObject({
+    await expect(
+      runOperation(operation("http.status-read.feature"), {}, { serviceUrl: `${baseUrl}/missing` }),
+    ).rejects.toMatchObject({
       name: "HttpStatusError",
       status: 404,
     });
@@ -919,21 +927,17 @@ describe("Operation runner", () => {
   test("fails when an HTTP JSON response is invalid", async () => {
     const baseUrl = await startHttpServer();
 
-    await expect(runOperation(
-      operation("http.status-read.feature"),
-      {},
-      { serviceUrl: `${baseUrl}/invalid-json` },
-    )).rejects.toThrow("HTTP response is not valid JSON");
+    await expect(
+      runOperation(operation("http.status-read.feature"), {}, { serviceUrl: `${baseUrl}/invalid-json` }),
+    ).rejects.toThrow("HTTP response is not valid JSON");
   });
 
   test("validates values produced from an HTTP response", async () => {
     const baseUrl = await startHttpServer();
 
-    await expect(runOperation(
-      operation("http.status-read.feature"),
-      {},
-      { serviceUrl: `${baseUrl}/missing-service` },
-    )).rejects.toMatchObject({ values: "produced" });
+    await expect(
+      runOperation(operation("http.status-read.feature"), {}, { serviceUrl: `${baseUrl}/missing-service` }),
+    ).rejects.toMatchObject({ values: "produced" });
   });
 
   test("exports Facts as an OpenTelemetry trace through HTTP", async () => {
@@ -945,11 +949,13 @@ describe("Operation runner", () => {
       attemptHandle: "attempt-1",
       executionId: "01924f0e-6f6e-4d8e-8fe8-3d2a246f177c",
       checkUri: "trust://local/example@1.0.0/plan/scenario/check/target",
-      facts: [{
-        kind: "git.head",
-        observedAt: "2026-08-15T12:00:00.000Z",
-        values: { revision: "abc123" },
-      }],
+      facts: [
+        {
+          kind: "git.head",
+          observedAt: "2026-08-15T12:00:00.000Z",
+          values: { revision: "abc123" },
+        },
+      ],
       recordedAt: "2026-08-15T12:00:00.000Z",
     });
 
@@ -976,18 +982,20 @@ describe("Operation runner", () => {
     };
     const span = envelope.resourceSpans[0]?.scopeSpans[0]?.spans[0];
     expect(span?.name).toBe("trust.runner.facts");
-    expect(span?.attributes).toEqual(expect.arrayContaining([
-      { key: "trust.attempt_key", value: { stringValue: "attempt-1" } },
-      { key: "trust.attempt_handle", value: { stringValue: "attempt-1" } },
-      {
-        key: "trust.execution_id",
-        value: { stringValue: "01924f0e-6f6e-4d8e-8fe8-3d2a246f177c" },
-      },
-      {
-        key: "trust.check_uri",
-        value: { stringValue: "trust://local/example@1.0.0/plan/scenario/check/target" },
-      },
-    ]));
+    expect(span?.attributes).toEqual(
+      expect.arrayContaining([
+        { key: "trust.attempt_key", value: { stringValue: "attempt-1" } },
+        { key: "trust.attempt_handle", value: { stringValue: "attempt-1" } },
+        {
+          key: "trust.execution_id",
+          value: { stringValue: "01924f0e-6f6e-4d8e-8fe8-3d2a246f177c" },
+        },
+        {
+          key: "trust.check_uri",
+          value: { stringValue: "trust://local/example@1.0.0/plan/scenario/check/target" },
+        },
+      ]),
+    );
     expect(span?.events[0]).toMatchObject({
       name: "trust.runner.fact",
       attributes: expect.arrayContaining([
@@ -1016,8 +1024,7 @@ describe("Operation runner", () => {
     const baseUrl = await startHttpServer();
     const exporter = new OtlpFactExporter(`${baseUrl}/v1/traces`);
 
-    await expect(exporter.export(factTrace()))
-      .rejects.toThrow("OTLP export failed with HTTP 503");
+    await expect(exporter.export(factTrace())).rejects.toThrow("OTLP export failed with HTTP 503");
   });
 
   test("fails when OpenTelemetry reports rejected Facts", async () => {
@@ -1030,8 +1037,7 @@ describe("Operation runner", () => {
     const baseUrl = await startHttpServer();
     const exporter = new OtlpFactExporter(`${baseUrl}/v1/traces`);
 
-    await expect(exporter.export(factTrace()))
-      .rejects.toThrow("TRUST rejected the Facts: invalid Fact");
+    await expect(exporter.export(factTrace())).rejects.toThrow("TRUST rejected the Facts: invalid Fact");
   });
 });
 
@@ -1136,19 +1142,21 @@ async function respond(request: IncomingMessage, response: ServerResponse): Prom
     });
     const envelope = JSON.parse(body) as { id: string | number | null };
     response.writeHead(200, { "content-type": "application/json" });
-    response.end(JSON.stringify({
-      jsonrpc: "2.0",
-      id: envelope.id,
-      error: {
-        code: -32_010,
-        message: "Plan runtime rejected",
-        data: {
-          contract: "trust.plan-runtime-error@1",
-          reason: "facts-present",
-          message: "An Attempt with accepted Facts cannot be interrupted",
+    response.end(
+      JSON.stringify({
+        jsonrpc: "2.0",
+        id: envelope.id,
+        error: {
+          code: -32_010,
+          message: "Plan runtime rejected",
+          data: {
+            contract: "trust.plan-runtime-error@1",
+            reason: "facts-present",
+            message: "An Attempt with accepted Facts cannot be interrupted",
+          },
         },
-      },
-    }));
+      }),
+    );
     return;
   }
   if (request.method === "POST" && request.url === "/admissions") {
@@ -1159,10 +1167,12 @@ async function respond(request: IncomingMessage, response: ServerResponse): Prom
       body: await readRequest(request),
     });
     response.writeHead(200, { "content-type": "application/json" });
-    response.end(JSON.stringify({
-      admissionStatus: "recorded",
-      admittedAt: "2026-08-15T12:00:00.000Z",
-    }));
+    response.end(
+      JSON.stringify({
+        admissionStatus: "recorded",
+        admittedAt: "2026-08-15T12:00:00.000Z",
+      }),
+    );
     return;
   }
   if (request.method === "POST" && request.url === "/redirect-admissions") {
@@ -1184,10 +1194,12 @@ async function respond(request: IncomingMessage, response: ServerResponse): Prom
       body: await readRequest(request),
     });
     response.writeHead(200, { "content-type": "application/json" });
-    response.end(JSON.stringify({
-      admissionStatus: "recorded",
-      admittedAt: "2026-08-15T12:00:00.000Z",
-    }));
+    response.end(
+      JSON.stringify({
+        admissionStatus: "recorded",
+        admittedAt: "2026-08-15T12:00:00.000Z",
+      }),
+    );
     return;
   }
   if (request.method === "QUERY" && request.url === "/search?limit=5") {
@@ -1227,100 +1239,113 @@ async function respond(request: IncomingMessage, response: ServerResponse): Prom
     response.end("method not allowed");
     return;
   }
-    receivedHttpRequests.push({
-      method: request.method,
-      url: request.url ?? "",
-      headers: request.headers,
-      body: "",
-    });
-    if (request.url === "/status") {
-      response.writeHead(200, { "content-type": "application/json" });
-      response.end(JSON.stringify({ service: "ready" }));
-      return;
-    }
-    if (request.url === "/issue/TRUST-1") {
-      response.writeHead(200, { "content-type": "application/json" });
-      // The real Jira payload shape (also served by environments/trust-test/connectors/jira-mock).
-      response.end(JSON.stringify({
+  receivedHttpRequests.push({
+    method: request.method,
+    url: request.url ?? "",
+    headers: request.headers,
+    body: "",
+  });
+  if (request.url === "/status") {
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end(JSON.stringify({ service: "ready" }));
+    return;
+  }
+  if (request.url === "/issue/TRUST-1") {
+    response.writeHead(200, { "content-type": "application/json" });
+    // The real Jira payload shape (also served by environments/trust-test/connectors/jira-mock).
+    response.end(
+      JSON.stringify({
         key: "TRUST-1",
         fields: { summary: "Runner integration", issuetype: { name: "Defect" }, status: { name: "To Do" } },
-      }));
-      return;
-    }
-    if (request.url === "/issue/TRUST-2") {
-      response.writeHead(200, { "content-type": "application/json" });
-      response.end(JSON.stringify({
+      }),
+    );
+    return;
+  }
+  if (request.url === "/issue/TRUST-2") {
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end(
+      JSON.stringify({
         key: "TRUST-2",
         fields: { summary: "Workflow acceptance", issuetype: { name: "Defect" }, status: { name: jiraWorkflowStatus } },
-      }));
-      return;
-    }
-    if (request.url === "/issue/TRUST-2/transitions") {
-      const transitions = jiraWorkflowStatus === "To Do"
+      }),
+    );
+    return;
+  }
+  if (request.url === "/issue/TRUST-2/transitions") {
+    const transitions =
+      jiraWorkflowStatus === "To Do"
         ? [{ id: "11", name: "Start Progress", to: { name: "In Progress" } }]
         : jiraWorkflowStatus === "In Progress"
           ? [{ id: "31", name: "Done", to: { name: "Done" } }]
           : [];
-      response.writeHead(200, { "content-type": "application/json" });
-      response.end(JSON.stringify({ transitions }));
-      return;
-    }
-    if (request.url === "/traces/trace-1") {
-      response.writeHead(200, { "content-type": "application/json" });
-      response.end(JSON.stringify({
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end(JSON.stringify({ transitions }));
+    return;
+  }
+  if (request.url === "/traces/trace-1") {
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end(
+      JSON.stringify({
         batches: [
           {
             resource: { attributes: [{ key: "service.name", value: { stringValue: "payment-api" } }] },
-            scopeSpans: [{ spans: [
-              { attributes: [{ key: "trust.execution.id", value: { stringValue: "execution-green" } }] },
-              { attributes: [{ key: "trust.execution.id", value: { stringValue: "another-execution" } }] },
-            ] }],
+            scopeSpans: [
+              {
+                spans: [
+                  { attributes: [{ key: "trust.execution.id", value: { stringValue: "execution-green" } }] },
+                  { attributes: [{ key: "trust.execution.id", value: { stringValue: "another-execution" } }] },
+                ],
+              },
+            ],
           },
           {
             resource: { attributes: [{ key: "service.name", value: { stringValue: "payment-worker" } }] },
-            scopeSpans: [{ spans: [
-              { attributes: [{ key: "trust.execution.id", value: { stringValue: "execution-green" } }] },
-            ] }],
+            scopeSpans: [
+              { spans: [{ attributes: [{ key: "trust.execution.id", value: { stringValue: "execution-green" } }] }] },
+            ],
           },
         ],
-      }));
-      return;
-    }
-    if (request.url === "/issues/PAY-1/comments?limit=5&run=r1") {
-      response.writeHead(200, { "content-type": "application/json" });
-      response.end(JSON.stringify({ total: 2, comments: ["first", "second"] }));
-      return;
-    }
-    if (request.url === "/documents/DOCUMENT-1") {
-      response.writeHead(200, { "content-type": "application/json" });
-      response.end(JSON.stringify({
+      }),
+    );
+    return;
+  }
+  if (request.url === "/issues/PAY-1/comments?limit=5&run=r1") {
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end(JSON.stringify({ total: 2, comments: ["first", "second"] }));
+    return;
+  }
+  if (request.url === "/documents/DOCUMENT-1") {
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end(
+      JSON.stringify({
         documentStatus: "confirmed",
         recordedAt: "2026-08-15T11:00:00.000Z",
-      }));
-      return;
-    }
-    if (request.url === "/text") {
-      response.writeHead(200, { "content-type": "text/plain" });
-      response.end("ready");
-      return;
-    }
-    if (request.url === "/empty-text") {
-      response.writeHead(200, { "content-type": "text/plain" });
-      response.end("");
-      return;
-    }
-    if (request.url === "/invalid-json") {
-      response.writeHead(200, { "content-type": "application/json" });
-      response.end("not-json");
-      return;
-    }
-    if (request.url === "/missing-service") {
-      response.writeHead(200, { "content-type": "application/json" });
-      response.end("{}");
-      return;
-    }
-    response.writeHead(404, { "content-type": "text/html" });
-    response.end("<h1>missing</h1>");
+      }),
+    );
+    return;
+  }
+  if (request.url === "/text") {
+    response.writeHead(200, { "content-type": "text/plain" });
+    response.end("ready");
+    return;
+  }
+  if (request.url === "/empty-text") {
+    response.writeHead(200, { "content-type": "text/plain" });
+    response.end("");
+    return;
+  }
+  if (request.url === "/invalid-json") {
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end("not-json");
+    return;
+  }
+  if (request.url === "/missing-service") {
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end("{}");
+    return;
+  }
+  response.writeHead(404, { "content-type": "text/html" });
+  response.end("<h1>missing</h1>");
 }
 
 async function readRequest(request: IncomingMessage): Promise<string> {
@@ -1335,23 +1360,25 @@ function factTrace() {
     attemptHandle: "attempt-1",
     executionId: "01924f0e-6f6e-4d8e-8fe8-3d2a246f177c",
     checkUri: "trust://local/example@1.0.0/plan/scenario/check/target",
-    facts: [{
-      kind: "git.head",
-      observedAt: "2026-08-15T12:00:00.000Z",
-      values: { revision: "abc123" },
-    }],
+    facts: [
+      {
+        kind: "git.head",
+        observedAt: "2026-08-15T12:00:00.000Z",
+        values: { revision: "abc123" },
+      },
+    ],
     recordedAt: "2026-08-15T12:00:00.000Z",
   };
 }
 
 async function closeHttpServer(server: Server): Promise<void> {
   await new Promise<void>((resolve, reject) => {
-    server.close((error) => error ? reject(error) : resolve());
+    server.close((error) => (error ? reject(error) : resolve()));
   });
 }
 
 async function serverConnectionCount(server: Server): Promise<number> {
   return new Promise<number>((resolve, reject) => {
-    server.getConnections((error, count) => error ? reject(error) : resolve(count));
+    server.getConnections((error, count) => (error ? reject(error) : resolve(count)));
   });
 }

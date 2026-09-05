@@ -1,20 +1,15 @@
+import type { PublishedProcedure, RuntimeJsonObject, TrialRecord, TrialSummary } from "@trust/extension-sdk";
 import {
+  type CompiledOperation,
   compileOperation,
   OperationCompilationError,
   OperationValidationError,
   simulateOperation,
-  type CompiledOperation,
 } from "@trust/operation";
-import {
-  CatalogProcedureCompilationError,
-  type CompiledProcedure,
-} from "@trust/procedure";
-
-import type { RuntimeJsonObject } from "../model.js";
-import { OperationCatalogError, type OperationCatalog } from "../operation/catalog.js";
+import { CatalogProcedureCompilationError, type CompiledProcedure } from "@trust/procedure";
+import { type OperationCatalog, OperationCatalogError } from "../operation/catalog.js";
 import type { Procedures } from "../procedure/procedures.js";
-import { ProcedureConflictError, type PublishedProcedure } from "../procedure/store.js";
-import type { TrialRecord, TrialSummary } from "../trial/registry.js";
+import { ProcedureConflictError } from "../procedure/store.js";
 import { TrialError, type TrialService } from "../trial/service.js";
 
 export const AUTHORING_TOOL_NAMES = [
@@ -111,11 +106,13 @@ export async function callAuthoringTool(
           text: [
             "OPERATION ENVIRONMENTS",
             `Count: ${environments.length}`,
-            ...environments.map((environment) => [
-              `- ${environment.name}: ${environment.compatible ? "compatible" : "incompatible"}`,
-              `  Declared values: ${Object.keys(environment.values).sort().join(", ") || "none"}`,
-              ...(environment.missing.length === 0 ? [] : [`  Missing: ${environment.missing.join(", ")}`]),
-            ].join("\n")),
+            ...environments.map((environment) =>
+              [
+                `- ${environment.name}: ${environment.compatible ? "compatible" : "incompatible"}`,
+                `  Declared values: ${Object.keys(environment.values).sort().join(", ") || "none"}`,
+                ...(environment.missing.length === 0 ? [] : [`  Missing: ${environment.missing.join(", ")}`]),
+              ].join("\n"),
+            ),
             "",
           ].join("\n"),
         };
@@ -158,7 +155,7 @@ export async function callAuthoringTool(
       }
       case "trust_procedure_compile": {
         const input = exactSource(args, tool, false);
-        return { text: renderProcedure("PROCEDURE COMPILED", dependencies.procedures.compile(input)) };
+        return { text: renderProcedure("PROCEDURE COMPILED", await dependencies.procedures.compile(input)) };
       }
       case "trust_procedure_publish": {
         const input = exactSource(args, tool, false);
@@ -169,13 +166,13 @@ export async function callAuthoringTool(
   } catch (error) {
     if (error instanceof InvalidMcpAuthoringArguments) throw error;
     if (
-      error instanceof CatalogProcedureCompilationError
-      || error instanceof OperationCompilationError
-      || error instanceof OperationValidationError
-      || error instanceof OperationCatalogError
-      || error instanceof ProcedureConflictError
-      || error instanceof TrialError
-      || error instanceof TypeError
+      error instanceof CatalogProcedureCompilationError ||
+      error instanceof OperationCompilationError ||
+      error instanceof OperationValidationError ||
+      error instanceof OperationCatalogError ||
+      error instanceof ProcedureConflictError ||
+      error instanceof TrialError ||
+      error instanceof TypeError
     ) {
       return rejected(renderAuthoringError(tool, error));
     }
@@ -188,15 +185,16 @@ function rejected(text: string): McpAuthoringResult {
 }
 
 function renderAuthoringError(tool: AuthoringToolName, error: Error): string {
-  const location = "location" in error && isRecord(error.location)
-    && typeof error.location.line === "number"
-    ? `\nLocation: ${error.location.line}:${typeof error.location.column === "number" ? error.location.column : 1}`
-    : "";
-  const reason = "code" in error && typeof error.code === "string"
-    ? error.code
-    : "reason" in error && typeof error.reason === "string"
-      ? error.reason
-      : undefined;
+  const location =
+    "location" in error && isRecord(error.location) && typeof error.location.line === "number"
+      ? `\nLocation: ${error.location.line}:${typeof error.location.column === "number" ? error.location.column : 1}`
+      : "";
+  const reason =
+    "code" in error && typeof error.code === "string"
+      ? error.code
+      : "reason" in error && typeof error.reason === "string"
+        ? error.reason
+        : undefined;
   return `${tool} rejected the request.${reason ? `\nReason: ${reason}` : ""}\nMessage: ${error.message}${location}`;
 }
 
@@ -235,18 +233,15 @@ function renderProcedureList(procedures: readonly PublishedProcedure[]): string 
   return [
     "PROCEDURE CATALOG",
     `Count: ${procedures.length}`,
-    ...procedures.map(({ procedure, sourceName }) => (
-      `- ${procedure.procedure}@${procedure.version}: ${procedure.title} [${sourceName}]`
-    )),
+    ...procedures.map(
+      ({ procedure, sourceName }) =>
+        `- ${procedure.procedure}@${procedure.version}: ${procedure.title} [${sourceName}]`,
+    ),
     "",
   ].join("\n");
 }
 
-function renderProcedure(
-  heading: string,
-  procedure: CompiledProcedure,
-  published?: PublishedProcedure,
-): string {
+function renderProcedure(heading: string, procedure: CompiledProcedure, published?: PublishedProcedure): string {
   return [
     heading,
     `Procedure: ${procedure.procedure}@${procedure.version}`,
@@ -257,9 +252,10 @@ function renderProcedure(
     `Operations: ${procedure.operations.map((operation) => `${operation.operation}@${operation.version}`).join(", ") || "none"}`,
     `Roles: ${procedure.roles.map((role) => role.name).join(", ") || "none"}`,
     "Scenarios:",
-    ...procedure.scenarios.map((scenario) => (
-      `- ${scenario.slug}: ${scenario.title}; after ${scenario.dependencies.join(", ") || "nothing"}; ${scenario.checks.length} Check(s)`
-    )),
+    ...procedure.scenarios.map(
+      (scenario) =>
+        `- ${scenario.slug}: ${scenario.title}; after ${scenario.dependencies.join(", ") || "nothing"}; ${scenario.checks.length} Check(s)`,
+    ),
     ...(published
       ? [
           `Source name: ${published.sourceName}`,
@@ -342,13 +338,14 @@ function exactSource(
 
 function exactSimulation(args: Record<string, unknown>, tool: AuthoringToolName) {
   if (
-    !hasOnlyKeys(args, ["source", "sourceName", "input", "environment", "steps"])
-    || !bounded(args.source, 1_000_000)
-    || (args.sourceName !== undefined && !bounded(args.sourceName, 255))
-    || !isRecord(args.input)
-    || !isRecord(args.environment)
-    || !isRecord(args.steps)
-  ) invalid(tool);
+    !hasOnlyKeys(args, ["source", "sourceName", "input", "environment", "steps"]) ||
+    !bounded(args.source, 1_000_000) ||
+    (args.sourceName !== undefined && !bounded(args.sourceName, 255)) ||
+    !isRecord(args.input) ||
+    !isRecord(args.environment) ||
+    !isRecord(args.steps)
+  )
+    invalid(tool);
   return {
     source: args.source as string,
     ...(typeof args.sourceName === "string" ? { sourceName: args.sourceName } : {}),
@@ -380,14 +377,13 @@ function exactTrialStart(
   const hasSource = bounded(args.source, 1_000_000);
   const hasOperation = bounded(args.operation, 256);
   if (
-    hasSource === hasOperation
-    || !bounded(args.environment, 256)
-    || !isRecord(args.input)
-    || (hasOperation && !bounded(args.version, 64))
-  ) invalid(tool);
-  const allowed = hasSource
-    ? ["source", "environment", "input"]
-    : ["operation", "version", "environment", "input"];
+    hasSource === hasOperation ||
+    !bounded(args.environment, 256) ||
+    !isRecord(args.input) ||
+    (hasOperation && !bounded(args.version, 64))
+  )
+    invalid(tool);
+  const allowed = hasSource ? ["source", "environment", "input"] : ["operation", "version", "environment", "input"];
   if (!hasOnlyKeys(args, allowed) || (args.version !== undefined && !bounded(args.version, 64))) invalid(tool);
   return {
     ...(hasSource ? { source: args.source as string } : { operation: args.operation as string }),
@@ -398,16 +394,18 @@ function exactTrialStart(
 }
 
 function exactOptionalOperation(args: Record<string, unknown>, tool: AuthoringToolName): string | undefined {
-  if (!hasOnlyKeys(args, ["operation"]) || (args.operation !== undefined && !bounded(args.operation, 256))) invalid(tool);
+  if (!hasOnlyKeys(args, ["operation"]) || (args.operation !== undefined && !bounded(args.operation, 256)))
+    invalid(tool);
   return args.operation as string | undefined;
 }
 
 function exactTrialRead(args: Record<string, unknown>, tool: AuthoringToolName): { trial: string; after: number } {
   if (
-    !hasOnlyKeys(args, ["trial", "after"])
-    || !bounded(args.trial, 256)
-    || (args.after !== undefined && (!Number.isSafeInteger(args.after) || Number(args.after) < 0))
-  ) invalid(tool);
+    !hasOnlyKeys(args, ["trial", "after"]) ||
+    !bounded(args.trial, 256) ||
+    (args.after !== undefined && (!Number.isSafeInteger(args.after) || Number(args.after) < 0))
+  )
+    invalid(tool);
   return { trial: args.trial as string, after: typeof args.after === "number" ? args.after : 0 };
 }
 
@@ -448,22 +446,57 @@ const sourceNameProperty = {
   maxLength: 255,
   description: "Single .feature file name used in diagnostics and persistence",
 } as const;
-const operationProperty = { type: "string", minLength: 1, maxLength: 256, description: "Canonical Operation name" } as const;
-const procedureProperty = { type: "string", minLength: 1, maxLength: 256, description: "Canonical Procedure name" } as const;
+const operationProperty = {
+  type: "string",
+  minLength: 1,
+  maxLength: 256,
+  description: "Canonical Operation name",
+} as const;
+const procedureProperty = {
+  type: "string",
+  minLength: 1,
+  maxLength: 256,
+  description: "Canonical Procedure name",
+} as const;
 const versionProperty = { type: "string", minLength: 1, maxLength: 64, description: "Exact version" } as const;
 const trialProperty = { type: "string", minLength: 1, maxLength: 256, description: "Trial identifier" } as const;
 
 export function authoringTools(): readonly unknown[] {
   return [
-    noArgumentTool("trust_operation_list", "List Operations", "List the persisted Operation catalog before reading or editing an Operation."),
-    identityTool("trust_operation_read", "Read an Operation", "Read one persisted Operation, including its complete Gherkin source.", "operation"),
-    sourceTool("trust_operation_compile", "Compile an Operation", "Compile Operation Gherkin without persisting or executing it.", false),
-    sourceTool("trust_operation_save", "Save an Operation", "Compile and persist Operation Gherkin in the configured writable catalog.", true),
-    identityTool("trust_operation_remove", "Remove an Operation", "Remove one persisted Operation from the configured writable catalog.", "operation"),
+    noArgumentTool(
+      "trust_operation_list",
+      "List Operations",
+      "List the persisted Operation catalog before reading or editing an Operation.",
+    ),
+    identityTool(
+      "trust_operation_read",
+      "Read an Operation",
+      "Read one persisted Operation, including its complete Gherkin source.",
+      "operation",
+    ),
+    sourceTool(
+      "trust_operation_compile",
+      "Compile an Operation",
+      "Compile Operation Gherkin without persisting or executing it.",
+      false,
+    ),
+    sourceTool(
+      "trust_operation_save",
+      "Save an Operation",
+      "Compile and persist Operation Gherkin in the configured writable catalog.",
+      true,
+    ),
+    identityTool(
+      "trust_operation_remove",
+      "Request Operation removal",
+      "Published Operation versions cannot be removed. This request returns an explicit immutability refusal, or unknown-operation when the version does not exist.",
+      "operation",
+    ),
     {
       name: "trust_operation_simulate",
       title: "Simulate an Operation",
-      description: "Compile an Operation and evaluate its production mapping from supplied synthetic step results. This performs no external action.",
+      description:
+        "Compile an Operation and evaluate its production mapping from supplied synthetic step results. This performs no external action.",
       inputSchema: {
         type: "object",
         properties: {
@@ -480,31 +513,47 @@ export function authoringTools(): readonly unknown[] {
     {
       name: "trust_operation_environment_list",
       title: "List Operation environments",
-      description: "List environments compatible with a persisted Operation or draft Operation source before starting a Trial.",
+      description:
+        "List environments compatible with a persisted Operation or draft Operation source before starting a Trial.",
       inputSchema: {
         type: "object",
         oneOf: [
           { type: "object", properties: { source: sourceProperty }, required: ["source"], additionalProperties: false },
-          { type: "object", properties: { operation: operationProperty, version: versionProperty }, required: ["operation", "version"], additionalProperties: false },
+          {
+            type: "object",
+            properties: { operation: operationProperty, version: versionProperty },
+            required: ["operation", "version"],
+            additionalProperties: false,
+          },
         ],
       },
     },
     {
       name: "trust_operation_trial_start",
       title: "Start an Operation Trial",
-      description: "Run a persisted or draft Operation for real through the packaged runner in one declared environment. This is diagnostic execution, not a Plan Fact.",
+      description:
+        "Run a persisted or draft Operation for real through the packaged runner in one declared environment. This is diagnostic execution, not a Plan Fact.",
       inputSchema: {
         type: "object",
         oneOf: [
           {
             type: "object",
-            properties: { source: sourceProperty, environment: { type: "string", minLength: 1, maxLength: 256 }, input: { type: "object" } },
+            properties: {
+              source: sourceProperty,
+              environment: { type: "string", minLength: 1, maxLength: 256 },
+              input: { type: "object" },
+            },
             required: ["source", "environment", "input"],
             additionalProperties: false,
           },
           {
             type: "object",
-            properties: { operation: operationProperty, version: versionProperty, environment: { type: "string", minLength: 1, maxLength: 256 }, input: { type: "object" } },
+            properties: {
+              operation: operationProperty,
+              version: versionProperty,
+              environment: { type: "string", minLength: 1, maxLength: 256 },
+              input: { type: "object" },
+            },
             required: ["operation", "version", "environment", "input"],
             additionalProperties: false,
           },
@@ -523,7 +572,10 @@ export function authoringTools(): readonly unknown[] {
       description: "Read Trial state, outcome and diagnostics after an optional event cursor.",
       inputSchema: {
         type: "object",
-        properties: { trial: trialProperty, after: { type: "integer", minimum: 0, description: "Return events after this sequence" } },
+        properties: {
+          trial: trialProperty,
+          after: { type: "integer", minimum: 0, description: "Return events after this sequence" },
+        },
         required: ["trial"],
         additionalProperties: false,
       },
@@ -532,12 +584,36 @@ export function authoringTools(): readonly unknown[] {
       name: "trust_operation_trial_cancel",
       title: "Cancel an Operation Trial",
       description: "Stop a currently starting or running Operation Trial.",
-      inputSchema: { type: "object", properties: { trial: trialProperty }, required: ["trial"], additionalProperties: false },
+      inputSchema: {
+        type: "object",
+        properties: { trial: trialProperty },
+        required: ["trial"],
+        additionalProperties: false,
+      },
     },
-    noArgumentTool("trust_procedure_list", "List Procedures", "List published Procedures before reading or editing one."),
-    identityTool("trust_published_procedure_read", "Read a published Procedure", "Read one published Procedure, including its complete Gherkin source.", "procedure"),
-    sourceTool("trust_procedure_compile", "Compile a Procedure", "Compile Procedure Gherkin against the current Operation catalog without publishing it.", false),
-    sourceTool("trust_procedure_publish", "Publish a Procedure", "Compile and immutably publish Procedure Gherkin against the current Operation catalog.", false),
+    noArgumentTool(
+      "trust_procedure_list",
+      "List Procedures",
+      "List published Procedures before reading or editing one.",
+    ),
+    identityTool(
+      "trust_published_procedure_read",
+      "Read a published Procedure",
+      "Read one published Procedure, including its complete Gherkin source.",
+      "procedure",
+    ),
+    sourceTool(
+      "trust_procedure_compile",
+      "Compile a Procedure",
+      "Compile Procedure Gherkin against the current Operation catalog without publishing it.",
+      false,
+    ),
+    sourceTool(
+      "trust_procedure_publish",
+      "Publish a Procedure",
+      "Compile and immutably publish Procedure Gherkin against the current Operation catalog.",
+      false,
+    ),
   ];
 }
 
@@ -557,19 +633,17 @@ function identityTool(
     description,
     inputSchema: {
       type: "object",
-      properties: { [identity]: identity === "operation" ? operationProperty : procedureProperty, version: versionProperty },
+      properties: {
+        [identity]: identity === "operation" ? operationProperty : procedureProperty,
+        version: versionProperty,
+      },
       required: [identity, "version"],
       additionalProperties: false,
     },
   };
 }
 
-function sourceTool(
-  name: AuthoringToolName,
-  title: string,
-  description: string,
-  sourceNameRequired: boolean,
-): unknown {
+function sourceTool(name: AuthoringToolName, title: string, description: string, sourceNameRequired: boolean): unknown {
   return {
     name,
     title,

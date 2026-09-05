@@ -13,10 +13,17 @@ export function isRfc3339Instant(value: unknown): value is string {
   const offsetHour = match[8] === "Z" ? 0 : Number(match[9]);
   const offsetMinute = match[8] === "Z" ? 0 : Number(match[10]);
   if (
-    month < 1 || month > 12 || day < 1 || day > daysInMonth(year, month)
-    || hour > 23 || minute > 59 || second > 59
-    || offsetHour > 23 || offsetMinute > 59
-  ) return false;
+    month < 1 ||
+    month > 12 ||
+    day < 1 ||
+    day > daysInMonth(year, month) ||
+    hour > 23 ||
+    minute > 59 ||
+    second > 59 ||
+    offsetHour > 23 ||
+    offsetMinute > 59
+  )
+    return false;
   return Number.isFinite(Date.parse(value));
 }
 

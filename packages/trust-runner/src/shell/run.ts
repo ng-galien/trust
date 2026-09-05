@@ -3,7 +3,7 @@ import { once } from "node:events";
 import { delimiter } from "node:path";
 import type { Readable } from "node:stream";
 
-import { renderShellArgument, type OperationExecutionContext, type Shell } from "@trust/operation";
+import { type OperationExecutionContext, renderShellArgument, type Shell } from "@trust/operation";
 
 import { nullReporter, type StepReporter } from "../diagnostics/events.js";
 import type { JsonObject } from "../lib/json.js";
@@ -30,9 +30,10 @@ export interface ShellRunnerConfiguration {
 const DEFAULT_TIMEOUT_MS = 30_000;
 const FORCE_KILL_DELAY_MS = 2_000;
 /** Per-command timeout; hosts running long trials raise it through TRUST_SHELL_TIMEOUT_MS. */
-const TIMEOUT_MS = Number.parseInt(process.env.TRUST_SHELL_TIMEOUT_MS ?? "", 10) > 0
-  ? Number.parseInt(process.env.TRUST_SHELL_TIMEOUT_MS ?? "", 10)
-  : DEFAULT_TIMEOUT_MS;
+const TIMEOUT_MS =
+  Number.parseInt(process.env.TRUST_SHELL_TIMEOUT_MS ?? "", 10) > 0
+    ? Number.parseInt(process.env.TRUST_SHELL_TIMEOUT_MS ?? "", 10)
+    : DEFAULT_TIMEOUT_MS;
 const MAX_OUTPUT_BYTES = 1_048_576;
 
 export async function runShell(
@@ -53,21 +54,27 @@ export async function runShell(
   let processHandle: ReturnType<typeof spawn>;
   const ownsProcessGroup = process.platform !== "win32" && process.env.TRUST_RUNNER_PROCESS_GROUP !== "1";
   try {
-    processHandle = spawn(shell.executable, shell.arguments.map((argument) => renderShellArgument(
-      argument,
-      (name) => {
-        const value = input[name];
-        if (typeof value !== "string") throw new ShellError(`Input "${name}" must be one string Shell argument.`);
-        return value;
+    processHandle = spawn(
+      shell.executable,
+      shell.arguments.map((argument) =>
+        renderShellArgument(
+          argument,
+          (name) => {
+            const value = input[name];
+            if (typeof value !== "string") throw new ShellError(`Input "${name}" must be one string Shell argument.`);
+            return value;
+          },
+          () => execution.id,
+        ),
+      ),
+      {
+        shell: false,
+        cwd: directory,
+        env: shellEnvironment(configuration),
+        stdio: ["ignore", "pipe", "pipe"],
+        detached: ownsProcessGroup,
       },
-      () => execution.id,
-    )), {
-      shell: false,
-      cwd: directory,
-      env: shellEnvironment(configuration),
-      stdio: ["ignore", "pipe", "pipe"],
-      detached: ownsProcessGroup,
-    });
+    );
   } catch (error) {
     if (error instanceof ShellError) throw error;
     throw new ShellError(`Cannot start Shell: ${shell.executable}.`, { cause: error });
@@ -78,7 +85,10 @@ export async function runShell(
   const requestStop = (): void => {
     terminateProcessTree(processHandle, "SIGTERM", ownsProcessGroup);
     if (forceKillTimer === undefined) {
-      forceKillTimer = setTimeout(() => terminateProcessTree(processHandle, "SIGKILL", ownsProcessGroup), FORCE_KILL_DELAY_MS);
+      forceKillTimer = setTimeout(
+        () => terminateProcessTree(processHandle, "SIGKILL", ownsProcessGroup),
+        FORCE_KILL_DELAY_MS,
+      );
       forceKillTimer.unref();
     }
   };
@@ -101,10 +111,11 @@ export async function runShell(
     if (typeof exitCode !== "number") {
       throw new ShellError(`Shell ended without an exit code: ${shell.executable}.`);
     }
-    const accepted = shell.acceptedExits.some((expected) =>
-      expected.code === exitCode
-      && (expected.stdoutContains === undefined || stdout.includes(expected.stdoutContains))
-      && (expected.stderrContains === undefined || stderr.includes(expected.stderrContains))
+    const accepted = shell.acceptedExits.some(
+      (expected) =>
+        expected.code === exitCode &&
+        (expected.stdoutContains === undefined || stdout.includes(expected.stdoutContains)) &&
+        (expected.stderrContains === undefined || stderr.includes(expected.stderrContains)),
     );
     if (!accepted) {
       const detail = stderr.trim() || stdout.trim() || `exit ${exitCode}`;
@@ -121,7 +132,11 @@ export async function runShell(
   }
 }
 
-function terminateProcessTree(child: ReturnType<typeof spawn>, signal: NodeJS.Signals, ownsProcessGroup: boolean): void {
+function terminateProcessTree(
+  child: ReturnType<typeof spawn>,
+  signal: NodeJS.Signals,
+  ownsProcessGroup: boolean,
+): void {
   if (child.pid === undefined) return;
   if (ownsProcessGroup) {
     try {
@@ -141,7 +156,9 @@ function shellEnvironment(configuration: ShellRunnerConfiguration): Record<strin
     environment[name] = value;
   }
   if (configuration.additionalPath?.length) {
-    environment.PATH = [environment.PATH, ...configuration.additionalPath].filter((value): value is string => Boolean(value)).join(delimiter);
+    environment.PATH = [environment.PATH, ...configuration.additionalPath]
+      .filter((value): value is string => Boolean(value))
+      .join(delimiter);
   }
   return environment;
 }

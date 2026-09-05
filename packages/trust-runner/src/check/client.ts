@@ -1,60 +1,11 @@
-import type { CompiledOperation } from "@trust/operation";
+import type {
+  AttemptInterruptionResult,
+  CheckAttemptAdmissionResult,
+  CheckFinalizationResult,
+} from "@trust/extension-sdk";
 
 import { parseHttpJson, requestHttp } from "../http/request.js";
 import { isJsonObject, type JsonObject } from "../lib/json.js";
-
-export type CheckAdmission =
-  | {
-      readonly status: "ADMITTED";
-      readonly attemptKey: string;
-      readonly attemptHandle: string;
-      readonly executionId: string;
-      readonly checkUri: string;
-      readonly actionInput: JsonObject;
-      readonly operation: CompiledOperation;
-      readonly environment: JsonObject;
-      readonly expiresAt: string;
-    }
-  | {
-      readonly status: "REFUSED";
-      readonly attemptKey: string;
-      readonly reasonCode: string;
-      readonly reason: string;
-      readonly next: CheckContinuation;
-    };
-
-export interface CheckFinalization {
-  readonly attemptHandle: string;
-  readonly verdict: "VALIDATED" | "NOT_VALIDATED";
-  readonly reasonCode: string;
-  readonly reason: string;
-  readonly checklistDelta: {
-    readonly newlySatisfied: readonly string[];
-    readonly newlyOpened: readonly string[];
-    readonly unchanged: readonly string[];
-  };
-  readonly next: CheckContinuation;
-}
-
-export interface NextCheck {
-  readonly name: string;
-  readonly successReason: string;
-  readonly checkUri: string;
-  readonly actionScope: {
-    readonly authorized: readonly string[];
-    readonly forbidden: readonly string[];
-  };
-}
-
-export type CheckContinuation =
-  | { readonly action: "RUN_CHECKS"; readonly checks: readonly NextCheck[] }
-  | { readonly action: "RETRY_OR_ESCALATE"; readonly checks: readonly NextCheck[] }
-  | { readonly action: "COMPLETE" }
-  | { readonly action: "READ_PLAN" };
-
-export interface CheckInterruption {
-  readonly status: "INTERRUPTED";
-}
 
 export class CheckClientError extends Error {
   constructor(
@@ -82,28 +33,28 @@ export class CheckClient {
     checkUri: string,
     intent: string | undefined,
     nextIntent: string | undefined,
-  ): Promise<CheckAdmission> {
+  ): Promise<CheckAttemptAdmissionResult> {
     return this.#call("check.attempt.admit", {
       contract: "trust.check-admission-request@1",
       attemptKey,
       checkUri,
       ...(intent === undefined ? {} : { intent }),
       ...(nextIntent === undefined ? {} : { nextIntent }),
-    }) as unknown as Promise<CheckAdmission>;
+    }) as unknown as Promise<CheckAttemptAdmissionResult>;
   }
 
-  async finalize(attemptHandle: string): Promise<CheckFinalization> {
+  async finalize(attemptHandle: string): Promise<CheckFinalizationResult> {
     return this.#call("check.attempt.finalize", {
       contract: "trust.attempt-finalization-request@1",
       attemptHandle,
-    }) as unknown as Promise<CheckFinalization>;
+    }) as unknown as Promise<CheckFinalizationResult>;
   }
 
-  async interrupt(attemptHandle: string): Promise<CheckInterruption> {
+  async interrupt(attemptHandle: string): Promise<AttemptInterruptionResult> {
     return this.#call("check.attempt.interrupt", {
       contract: "trust.attempt-interruption-request@1",
       attemptHandle,
-    }) as unknown as Promise<CheckInterruption>;
+    }) as unknown as Promise<AttemptInterruptionResult>;
   }
 
   async #call(method: string, params: JsonObject): Promise<JsonObject> {
@@ -129,11 +80,12 @@ export class CheckClient {
       const failure = isJsonObject(envelope.error) ? envelope.error : undefined;
       const data = failure !== undefined && isJsonObject(failure.data) ? failure.data : undefined;
       const reason = typeof data?.reason === "string" ? data.reason : undefined;
-      const detail = typeof data?.message === "string"
-        ? data.message
-        : typeof failure?.message === "string"
-          ? failure.message
-          : `TRUST RPC ${method} failed.`;
+      const detail =
+        typeof data?.message === "string"
+          ? data.message
+          : typeof failure?.message === "string"
+            ? failure.message
+            : `TRUST RPC ${method} failed.`;
       throw new CheckClientError(method, reason, detail);
     }
     if (typeof envelope.result !== "object" || envelope.result === null || Array.isArray(envelope.result)) {

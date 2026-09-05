@@ -13,14 +13,17 @@ export class SessionStore {
   }
 
   async create(session: Session): Promise<void> {
-    await this.dependencies.database.insertInto("sessions").values({
-      session_id: session.id,
-      plan_slug: session.planSlug,
-      state: session.state,
-      opened_at: session.openedAt,
-      expires_at: session.expiresAt,
-      closed_at: session.closedAt ?? null,
-    }).execute();
+    await this.dependencies.database
+      .insertInto("sessions")
+      .values({
+        session_id: session.id,
+        plan_slug: session.planSlug,
+        state: session.state,
+        opened_at: session.openedAt,
+        expires_at: session.expiresAt,
+        closed_at: session.closedAt ?? null,
+      })
+      .execute();
   }
 
   async findOpen(planSlug: string): Promise<Session | undefined> {

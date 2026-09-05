@@ -1,4 +1,15 @@
-import { isExpressionIdentifierPart, isExpressionIdentifierStart, stepChoice, stepLiteral, stepOneOf, stepOptional, stepQuoted, stepRepeat, stepSequence, type StepGrammar } from "@trust/gherkin";
+import {
+  isExpressionIdentifierPart,
+  isExpressionIdentifierStart,
+  type StepGrammar,
+  stepChoice,
+  stepLiteral,
+  stepOneOf,
+  stepOptional,
+  stepQuoted,
+  stepRepeat,
+  stepSequence,
+} from "@trust/gherkin";
 import { operationLanguage } from "@trust/operation/language";
 
 export const procedureLanguage = {
@@ -12,7 +23,13 @@ export const procedureLanguage = {
   dslVersion: "1",
   valueTypes: operationLanguage.valueTypes,
   cardinalities: operationLanguage.cardinalities,
-  phrases: { context: "Plan context", scope: "Procedure scope", check: "Check", dependency: "scenario", operation: "runs Operation" },
+  phrases: {
+    context: "Plan context",
+    scope: "Procedure scope",
+    check: "Check",
+    dependency: "scenario",
+    operation: "runs Operation",
+  },
   qualification: {
     mediaType: "js",
     roots: { fact: "fact", context: "context", checks: "checks", math: "Math" } as const,
@@ -25,22 +42,46 @@ export const procedureLanguage = {
       arithmetic: { "+": "+", "-": "-", "*": "*", "/": "/", "%": "%" },
     } as const,
     mathFunctions: {
-      min: { arity: [1], opcode: "min", native: "min" }, max: { arity: [1], opcode: "max", native: "max" },
-      abs: { arity: [1, 1], opcode: "trust.abs", native: "abs" }, floor: { arity: [1, 1], opcode: "trust.floor", native: "floor" },
-      ceil: { arity: [1, 1], opcode: "trust.ceil", native: "ceil" }, round: { arity: [1, 1], opcode: "trust.round", native: "round" },
-      sqrt: { arity: [1, 1], opcode: "trust.sqrt", native: "sqrt" }, pow: { arity: [2, 2], opcode: "trust.pow", native: "pow" },
+      min: { arity: [1], opcode: "min", native: "min" },
+      max: { arity: [1], opcode: "max", native: "max" },
+      abs: { arity: [1, 1], opcode: "trust.abs", native: "abs" },
+      floor: { arity: [1, 1], opcode: "trust.floor", native: "floor" },
+      ceil: { arity: [1, 1], opcode: "trust.ceil", native: "ceil" },
+      round: { arity: [1, 1], opcode: "trust.round", native: "round" },
+      sqrt: { arity: [1, 1], opcode: "trust.sqrt", native: "sqrt" },
+      pow: { arity: [2, 2], opcode: "trust.pow", native: "pow" },
     } as const,
     collectionMethods: {
       includes: { opcode: "in", kind: "membership" },
-      some: { opcode: "some", kind: "predicate" }, every: { opcode: "all", kind: "predicate" },
-      filter: { opcode: "filter", kind: "filter" }, map: { opcode: "map", kind: "map" },
+      some: { opcode: "some", kind: "predicate" },
+      every: { opcode: "all", kind: "predicate" },
+      filter: { opcode: "filter", kind: "filter" },
+      map: { opcode: "map", kind: "map" },
       reduce: { opcode: "reduce", kind: "reduce" },
     } as const,
     properties: { length: { opcode: "trust.length" } } as const,
     stringMethods: {
-      startsWith: { arity: [1, 1], opcode: "trust.starts-with", native: "startsWith", result: "boolean", arguments: ["string"] },
-      endsWith: { arity: [1, 1], opcode: "trust.ends-with", native: "endsWith", result: "boolean", arguments: ["string"] },
-      substring: { arity: [1, 2], opcode: "trust.substring", native: "substring", result: "string", arguments: ["number", "number"] },
+      startsWith: {
+        arity: [1, 1],
+        opcode: "trust.starts-with",
+        native: "startsWith",
+        result: "boolean",
+        arguments: ["string"],
+      },
+      endsWith: {
+        arity: [1, 1],
+        opcode: "trust.ends-with",
+        native: "endsWith",
+        result: "boolean",
+        arguments: ["string"],
+      },
+      substring: {
+        arity: [1, 2],
+        opcode: "trust.substring",
+        native: "substring",
+        result: "string",
+        arguments: ["number", "number"],
+      },
       toLowerCase: { arity: [0, 0], opcode: "trust.lower", native: "toLowerCase", result: "string", arguments: [] },
       toUpperCase: { arity: [0, 0], opcode: "trust.upper", native: "toUpperCase", result: "string", arguments: [] },
       trim: { arity: [0, 0], opcode: "trust.trim", native: "trim", result: "string", arguments: [] },
@@ -48,8 +89,19 @@ export const procedureLanguage = {
     internalOpcodes: { variable: "var", conditional: "if", concatenate: "cat" } as const,
   },
   syntax: {
-    types: ["Check", "Plan", "Operation"] as const,
-    verbs: ["runs", "on", "using", "materializes", "establish", "validated", "declared", "optionally", "fixed"] as const,
+    types: ["Check", "Plan", "Operation", "Invocation", "Procedure"] as const,
+    verbs: [
+      "runs",
+      "version",
+      "on",
+      "using",
+      "materializes",
+      "establish",
+      "validated",
+      "declared",
+      "optionally",
+      "fixed",
+    ] as const,
   },
   template: `# language: en
 @trust-dsl:1 @procedure:domain-action @version:1.0.0
@@ -63,7 +115,7 @@ Feature: Describe what this procedure establishes
 
   @scenario:repository-status
   Scenario: Read the repository status
-    Then Check "repository status" runs Operation "git.head-read"
+    Then Check "repository status" runs Operation "git.head-read@^1.0.0"
         on "repository" as Input "project"
         and must establish "the repository has local changes"
       """js
@@ -80,6 +132,47 @@ const procedureQuoted = (slot: string, detail: string) => stepQuoted(slot, detai
 export const procedureStepGrammar: StepGrammar = {
   productions: [
     {
+      name: "invocation",
+      context: "scenario",
+      expression: stepSequence(
+        procedureLiteral("Invocation", "Child Plan invocation"),
+        procedureQuoted("check", "Invocation name"),
+        procedureLiteral("runs Procedure", "Published child Procedure"),
+        procedureQuoted("operation", "Procedure"),
+        stepOptional(
+          stepSequence(
+            procedureLiteral("on", "Target role"),
+            stepOptional(stepOneOf("target-selection", ["each", "all"], "Target selection")),
+            procedureQuoted("target-role", "Plan context role"),
+            procedureLiteral("as Input", "Child root Input binding"),
+            procedureQuoted("input", "Child root Input"),
+            stepRepeat(
+              stepChoice(
+                stepSequence(
+                  procedureLiteral("using plan as Input", "Parent Plan identifier"),
+                  procedureQuoted("plan-input", "Child root Input"),
+                ),
+                stepSequence(
+                  procedureLiteral("using", "Additional role binding"),
+                  procedureQuoted("using-role", "Plan context role"),
+                  procedureLiteral("as Input", "Child root Input binding"),
+                  procedureQuoted("using-input", "Child root Input"),
+                ),
+                stepSequence(
+                  procedureLiteral("using all", "Every role instance"),
+                  procedureQuoted("using-all-role", "Plan context role"),
+                  procedureLiteral("as Input", "Child root Input binding"),
+                  procedureQuoted("using-all-input", "Child root Input"),
+                ),
+              ),
+            ),
+          ),
+        ),
+        procedureLiteral("and must establish", "Authoritative child completion reason"),
+        procedureQuoted("reason", "Success reason"),
+      ),
+    },
+    {
       name: "scope",
       context: "background",
       expression: procedureLiteral(procedureLanguage.phrases.scope, "Mandatory Procedure action scope"),
@@ -91,16 +184,24 @@ export const procedureStepGrammar: StepGrammar = {
         stepOneOf("cardinality", procedureLanguage.cardinalities, "Role cardinality"),
         stepOneOf("value-type", procedureLanguage.valueTypes, "Role value type"),
         procedureQuoted("role", "Plan context role"),
-        stepRepeat(stepChoice(
-          stepSequence(
-            procedureLiteral("declared", "Agent-declared role", "declared"),
-            stepOptional(procedureLiteral("optionally", "Optional agent declaration", "optional")),
-            procedureLiteral("by agent", "Agent declaration"),
+        stepRepeat(
+          stepChoice(
+            stepSequence(
+              procedureLiteral("declared", "Agent-declared role", "declared"),
+              stepOptional(procedureLiteral("optionally", "Optional agent declaration", "optional")),
+              procedureLiteral("by agent", "Agent declaration"),
+            ),
+            stepSequence(
+              procedureLiteral("fixed as", "Fixed role value"),
+              procedureQuoted("fixed-value", "Fixed role value"),
+            ),
+            stepSequence(procedureLiteral("for", "Parent role"), procedureQuoted("parent-role", "Plan context role")),
+            stepSequence(
+              procedureLiteral("for each", "One instance per parent"),
+              procedureQuoted("each-parent-role", "Plan context role"),
+            ),
           ),
-          stepSequence(procedureLiteral("fixed as", "Fixed role value"), procedureQuoted("fixed-value", "Fixed role value")),
-          stepSequence(procedureLiteral("for", "Parent role"), procedureQuoted("parent-role", "Plan context role")),
-          stepSequence(procedureLiteral("for each", "One instance per parent"), procedureQuoted("each-parent-role", "Plan context role")),
-        )),
+        ),
       ),
     },
     {
@@ -125,30 +226,32 @@ export const procedureStepGrammar: StepGrammar = {
         procedureQuoted("target-role", "Plan context role"),
         procedureLiteral("as Input", "Operation Input binding"),
         procedureQuoted("input", "Operation Input"),
-        stepRepeat(stepChoice(
-          stepSequence(
-            procedureLiteral("using plan as Input", "Bind the Plan identifier"),
-            procedureQuoted("plan-input", "Operation Input"),
+        stepRepeat(
+          stepChoice(
+            stepSequence(
+              procedureLiteral("using plan as Input", "Bind the Plan identifier"),
+              procedureQuoted("plan-input", "Operation Input"),
+            ),
+            stepSequence(
+              procedureLiteral("using", "Additional role binding"),
+              procedureQuoted("using-role", "Plan context role"),
+              procedureLiteral("as Input", "Operation Input binding"),
+              procedureQuoted("using-input", "Operation Input"),
+            ),
+            stepSequence(
+              procedureLiteral("using all", "Bind every role instance"),
+              procedureQuoted("using-all-role", "Plan context role"),
+              procedureLiteral("as Input", "Operation Input binding"),
+              procedureQuoted("using-all-input", "Operation Input"),
+            ),
+            stepSequence(
+              procedureLiteral("and materializes", "Materialize a produced role"),
+              procedureQuoted("materialized-role", "Plan context role"),
+              procedureLiteral("from field", "Source produced field"),
+              procedureQuoted("field", "Produced Fact field"),
+            ),
           ),
-          stepSequence(
-            procedureLiteral("using", "Additional role binding"),
-            procedureQuoted("using-role", "Plan context role"),
-            procedureLiteral("as Input", "Operation Input binding"),
-            procedureQuoted("using-input", "Operation Input"),
-          ),
-          stepSequence(
-            procedureLiteral("using all", "Bind every role instance"),
-            procedureQuoted("using-all-role", "Plan context role"),
-            procedureLiteral("as Input", "Operation Input binding"),
-            procedureQuoted("using-all-input", "Operation Input"),
-          ),
-          stepSequence(
-            procedureLiteral("and materializes", "Materialize a produced role"),
-            procedureQuoted("materialized-role", "Plan context role"),
-            procedureLiteral("from field", "Source produced field"),
-            procedureQuoted("field", "Produced Fact field"),
-          ),
-        )),
+        ),
         procedureLiteral("and must establish", "Success reason"),
         procedureQuoted("reason", "Success reason"),
       ),
@@ -164,13 +267,32 @@ export const procedureHighlightVocabulary = {
     ...Object.keys(procedureLanguage.qualification.stringMethods),
     procedureLanguage.qualification.fail,
   ],
-  types: procedureLanguage.syntax.types,
+  types: [...procedureLanguage.syntax.types, ...procedureLanguage.valueTypes, "Input"],
   verbs: procedureLanguage.syntax.verbs,
+  cardinalities: procedureLanguage.cardinalities,
+  declarations: ["declared by agent", "declared optionally by agent"],
+  grammar: procedureStepGrammar,
+  referenceSlots: [
+    "operation",
+    "scenario",
+    "target-role",
+    "input",
+    "plan-input",
+    "using-role",
+    "using-input",
+    "using-all-role",
+    "using-all-input",
+    "parent-role",
+    "each-parent-role",
+    "materialized-role",
+    "field",
+  ],
 } as const;
 
 export function expressionMember(name: string): string {
   const [first, ...rest] = name;
-  const identifier = first !== undefined && isExpressionIdentifierStart(first) && rest.every(isExpressionIdentifierPart);
+  const identifier =
+    first !== undefined && isExpressionIdentifierStart(first) && rest.every(isExpressionIdentifierPart);
   return identifier ? `.${name}` : `[${JSON.stringify(name)}]`;
 }
 
@@ -229,7 +351,7 @@ export function qualificationCompletionPath(source: string, offset: number): Qua
     }
     const raw = path.slice(valueStart, at);
     try {
-      members.push(quote === '"' ? JSON.parse(`"${raw}"`) as string : raw.replaceAll("\\'", "'"));
+      members.push(quote === '"' ? (JSON.parse(`"${raw}"`) as string) : raw.replaceAll("\\'", "'"));
     } catch {
       return undefined;
     }

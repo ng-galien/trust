@@ -1,5 +1,5 @@
 import { Check, ChevronDown, Search, SlidersHorizontal, X } from "lucide-react";
-import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useCallback, useId, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { cx } from "../lib/format.js";
@@ -49,8 +49,11 @@ export function FilterBox({
   const root = useRef<HTMLDivElement>(null);
   const close = useCallback(() => setOpen(false), []);
   const input = useRef<HTMLInputElement>(null);
+  const inputId = useId();
 
-  const chips = groups.flatMap((group) => group.selected.map((value) => ({ group, value, option: group.options.find((option) => option.value === value) })));
+  const chips = groups.flatMap((group) =>
+    group.selected.map((value) => ({ group, value, option: group.options.find((option) => option.value === value) })),
+  );
   const activeCount = chips.length + (query ? 1 : 0);
 
   useDismiss(open, root, close);
@@ -60,7 +63,12 @@ export function FilterBox({
     const needle = query.trim().toLowerCase();
     if (!needle) return groups;
     return groups
-      .map((group) => ({ ...group, options: group.options.filter((option) => option.label.toLowerCase().includes(needle) || group.label.toLowerCase().includes(needle)) }))
+      .map((group) => ({
+        ...group,
+        options: group.options.filter(
+          (option) => option.label.toLowerCase().includes(needle) || group.label.toLowerCase().includes(needle),
+        ),
+      }))
       .filter((group) => group.options.length > 0);
   }, [groups, query]);
 
@@ -71,13 +79,19 @@ export function FilterBox({
           "flex min-h-8 flex-wrap items-center gap-1 rounded-(--radius-2) border bg-surface py-0.5 pr-1 pl-2.5 text-ui",
           open ? "border-border-focus" : "border-border",
         )}
-        onClick={() => input.current?.focus()}
       >
-        <Search size={14} className="mr-0.5 shrink-0 text-faint" />
+        <label htmlFor={inputId} aria-label={placeholder}>
+          <Search size={14} className="mr-0.5 shrink-0 text-faint" />
+        </label>
         {chips.map(({ group, value, option }) => (
-          <span key={`${group.id}:${value}`} className="inline-flex h-6 items-center gap-1.5 rounded-full border border-accent/40 bg-accent-soft pr-1 pl-2 text-body leading-none text-accent">
+          <span
+            key={`${group.id}:${value}`}
+            className="inline-flex h-6 items-center gap-1.5 rounded-full border border-accent/40 bg-accent-soft pr-1 pl-2 text-body leading-none text-accent"
+          >
             <span className="text-micro font-semibold uppercase tracking-[0.05em] opacity-70">{group.label}</span>
-            {option?.icon ? <span className="inline-flex items-center [&>svg]:h-3 [&>svg]:w-3">{option.icon}</span> : null}
+            {option?.icon ? (
+              <span className="inline-flex items-center [&>svg]:h-3 [&>svg]:w-3">{option.icon}</span>
+            ) : null}
             <span className="font-medium">{option?.label ?? value}</span>
             <button
               type="button"
@@ -93,6 +107,7 @@ export function FilterBox({
           </span>
         ))}
         <input
+          id={inputId}
           ref={input}
           value={query}
           onChange={(event) => {
@@ -101,8 +116,8 @@ export function FilterBox({
           }}
           onKeyDown={(event) => {
             if (event.key === "Backspace" && query === "" && chips.length > 0) {
-              const last = chips[chips.length - 1]!;
-              last.group.onToggle(last.value);
+              const last = chips.at(-1);
+              if (last) last.group.onToggle(last.value);
             }
           }}
           placeholder={chips.length ? t("ui.filterBox.addText") : placeholder}
@@ -110,7 +125,15 @@ export function FilterBox({
           className="h-6 min-w-32 flex-1 bg-transparent outline-none placeholder:text-faint"
         />
         {activeCount > 0 ? (
-          <button type="button" aria-label={t("ui.filterBox.clearAll")} onClick={(event) => { event.stopPropagation(); onClearAll(); }} className="inline-flex h-6 w-6 items-center justify-center rounded text-faint hover:bg-surface-3 hover:text-text">
+          <button
+            type="button"
+            aria-label={t("ui.filterBox.clearAll")}
+            onClick={(event) => {
+              event.stopPropagation();
+              onClearAll();
+            }}
+            className="inline-flex h-6 w-6 items-center justify-center rounded text-faint hover:bg-surface-3 hover:text-text"
+          >
             <X size={13} />
           </button>
         ) : null}
@@ -122,14 +145,22 @@ export function FilterBox({
             event.stopPropagation();
             setOpen((value) => !value);
           }}
-          className={cx("inline-flex h-6 items-center gap-1 rounded-(--radius-1) px-1.5 text-body hover:bg-surface-3", open ? "text-text" : "text-muted")}
+          className={cx(
+            "inline-flex h-6 items-center gap-1 rounded-(--radius-1) px-1.5 text-body hover:bg-surface-3",
+            open ? "text-text" : "text-muted",
+          )}
         >
-          <SlidersHorizontal size={13} /> {t("ui.filterBox.filters")} <ChevronDown size={12} className={cx("transition-transform", open && "rotate-180")} />
+          <SlidersHorizontal size={13} /> {t("ui.filterBox.filters")}{" "}
+          <ChevronDown size={12} className={cx("transition-transform", open && "rotate-180")} />
         </button>
       </div>
 
       {open ? (
-        <div role="dialog" aria-label={t("ui.filterBox.filters")} className="absolute top-full left-0 z-40 mt-1 w-full min-w-[520px] rounded-(--radius-3) border border-border bg-surface shadow-(--shadow-2)">
+        <div
+          role="dialog"
+          aria-label={t("ui.filterBox.filters")}
+          className="absolute top-full left-0 z-40 mt-1 w-full min-w-[520px] rounded-(--radius-3) border border-border bg-surface shadow-(--shadow-2)"
+        >
           {query.trim() ? (
             <p className="border-b border-border px-3 py-2 text-label text-muted">
               {t("ui.filterBox.matching", { query: query.trim() })}
@@ -140,7 +171,9 @@ export function FilterBox({
               <section key={group.id} className="grid grid-cols-[88px_minmax(0,1fr)] items-start gap-3 px-3 py-2">
                 <h4 className="kicker pt-1.5 leading-none">
                   {group.label}
-                  {group.selected.length ? <span className="ml-1 text-accent normal-case tracking-normal">{group.selected.length}</span> : null}
+                  {group.selected.length ? (
+                    <span className="ml-1 text-accent normal-case tracking-normal">{group.selected.length}</span>
+                  ) : null}
                 </h4>
                 <div className="flex flex-wrap gap-1">
                   {group.options.map((option) => {
@@ -162,22 +195,40 @@ export function FilterBox({
                         )}
                       >
                         {active ? <Check size={11} /> : null}
-                        {option.icon ? <span className="inline-flex items-center [&>svg]:h-3 [&>svg]:w-3">{option.icon}</span> : null}
+                        {option.icon ? (
+                          <span className="inline-flex items-center [&>svg]:h-3 [&>svg]:w-3">{option.icon}</span>
+                        ) : null}
                         <span className="min-w-0 truncate-1">{option.label}</span>
-                        {option.count !== undefined ? <span className={cx("text-meta tabular-nums", active ? "text-accent-contrast/80" : "text-faint")}>{option.count}</span> : null}
+                        {option.count !== undefined ? (
+                          <span
+                            className={cx("text-meta tabular-nums", active ? "text-accent-contrast/80" : "text-faint")}
+                          >
+                            {option.count}
+                          </span>
+                        ) : null}
                       </button>
                     );
                   })}
                 </div>
               </section>
             ))}
-            {visibleGroups.length === 0 ? <p className="px-3 py-2 text-body text-faint">{t("ui.filterBox.noMatch")}</p> : null}
+            {visibleGroups.length === 0 ? (
+              <p className="px-3 py-2 text-body text-faint">{t("ui.filterBox.noMatch")}</p>
+            ) : null}
           </div>
           <div className="flex items-center justify-between border-t border-border px-3 py-1.5 text-label text-muted">
-            <span>{activeCount ? t("ui.filterBox.activeFilter", { count: activeCount }) : t("ui.filterBox.noFilter")}</span>
+            <span>
+              {activeCount ? t("ui.filterBox.activeFilter", { count: activeCount }) : t("ui.filterBox.noFilter")}
+            </span>
             <span className="flex items-center gap-3">
-              {activeCount ? <button type="button" onClick={onClearAll} className="hover:text-text">{t("ui.filterBox.clearAllShort")}</button> : null}
-              <button type="button" onClick={() => setOpen(false)} className="hover:text-text">{t("ui.filterBox.done")}</button>
+              {activeCount ? (
+                <button type="button" onClick={onClearAll} className="hover:text-text">
+                  {t("ui.filterBox.clearAllShort")}
+                </button>
+              ) : null}
+              <button type="button" onClick={() => setOpen(false)} className="hover:text-text">
+                {t("ui.filterBox.done")}
+              </button>
             </span>
           </div>
         </div>

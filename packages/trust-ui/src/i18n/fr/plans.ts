@@ -104,8 +104,10 @@ export const plans: Translation<typeof en> = {
       resumePlaceholder: "Expliquez pourquoi le Plan peut continuer après cette escalade…",
       resumeHint: "Obligatoire. Ce texte fait partie de l'historique du Plan.",
       deleteBody: "Ses révisions, tentatives, verdicts et sessions sont effacés. Les Facts restent dans l'historique.",
-      closeBody: "Les tentatives en attente restent en l'état ; l'agent ne peut plus en admettre de nouvelles tant qu'une Session n'est pas rouverte.",
-      resetBody: "Ses révisions, tentatives et verdicts sont effacés, puis il est engagé à nouveau avec la même procédure, le même environnement et les mêmes entrées racines, à partir de la révision 1.",
+      closeBody:
+        "Les tentatives en attente restent en l'état ; l'agent ne peut plus en admettre de nouvelles tant qu'une Session n'est pas rouverte.",
+      resetBody:
+        "Ses révisions, tentatives et verdicts sont effacés, puis il est engagé à nouveau avec la même procédure, le même environnement et les mêmes entrées racines, à partir de la révision 1.",
     },
     notPublished: "Procedure non publiée",
     graphNeedsProcedure: "Le graphe nécessite la procédure publiée de ce plan.",
@@ -113,8 +115,29 @@ export const plans: Translation<typeof en> = {
   },
   session: {
     closed: "Session fermée",
-    closedHint: "La Session est fermée ou expirée : rien ne peut être admis tant que le Plan n'est pas engagé à nouveau",
+    closedHint:
+      "La Session est fermée ou expirée : rien ne peut être admis tant que le Plan n'est pas engagé à nouveau",
     closedCompleteHint: "Tous les Checks sont satisfaits et la Session est fermée",
+  },
+  children: {
+    title: "Plans enfants",
+    parent: "Plan parent",
+    open: "Ouvrir le Plan enfant : {{name}}",
+    current: "Génération courante {{generation, number}}",
+    superseded: "Génération remplacée {{generation, number}}",
+    generation: "génération {{generation, number}}",
+    history: "Générations précédentes",
+    WAITING: "En attente",
+    RUNNING: "En cours",
+    SATISFIED: "Terminé",
+  },
+  descendants: {
+    label: "Descendants",
+    count_one: "{{count}} escalade descendante",
+    count_other: "{{count}} escalades descendantes",
+    explanation:
+      "Arrêts actifs dans les Plans descendants, distincts de l’état propre de ce Plan. Ouvrez l’origine pour examiner et résoudre l’escalade.",
+    open: "Ouvrir l’origine de l’escalade : {{plan}}",
   },
   summary: {
     description: "Description",
@@ -128,7 +151,10 @@ export const plans: Translation<typeof en> = {
   },
   checklist: {
     title: "Checklist",
-    order: { forward: "Ordre de la procédure : du premier au dernier", reverse: "Ordre inversé : du dernier au premier" },
+    order: {
+      forward: "Ordre de la procédure : du premier au dernier",
+      reverse: "Ordre inversé : du dernier au premier",
+    },
     forEach: "pour chaque {{role}}",
     instances_one: "{{count, number}} instance",
     instances_other: "{{count, number}} instances",
@@ -236,7 +262,8 @@ export const plans: Translation<typeof en> = {
     title: "Simulation",
     reobserveSelected: "Observer à nouveau le Check sélectionné",
     hide: "Masquer la simulation",
-    noSession: "Le Plan n'a aucune Session active : TRUST refuse les admissions tant qu'un nouvel engagement n'en rouvre pas une.",
+    noSession:
+      "Le Plan n'a aucune Session active : TRUST refuse les admissions tant qu'un nouvel engagement n'en rouvre pas une.",
     declareStep: "Déclarer le contexte",
     missing: "{{count}} manquant(s)",
     complete: "complet",

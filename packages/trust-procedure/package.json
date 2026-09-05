@@ -7,6 +7,11 @@
     "node": ">=24.10.0"
   },
   "exports": {
+    "./match": {
+      "types": "./dist/match.d.ts",
+      "development": "./src/match.ts",
+      "import": "./dist/match.js"
+    },
     ".": {
       "types": "./dist/index.d.ts",
       "development": "./src/index.ts",

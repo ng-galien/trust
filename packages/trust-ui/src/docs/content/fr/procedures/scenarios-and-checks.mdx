@@ -10,7 +10,7 @@ Un **Scénario** regroupe des Checks et les ordonne : il est satisfait quand cha
   @scenario:verification
   Scenario: Verify the committed fix
     Given scenario "fix" is validated
-    Then Check "Maven verification" runs Operation "maven.project-verify"
+    Then Check "Maven verification" runs Operation "maven.project-verify@*"
         on "project" as Input "project"
         using "fix revision" as Input "revision"
         and must establish "the committed fix passes Maven verification"
@@ -40,7 +40,7 @@ Un **Scénario** regroupe des Checks et les ordonne : il est satisfait quand cha
 ## Check
 
 ```gherkin fragment
-Then|And Check "<name>" runs Operation "<domain.action>"
+Then|And Check "<name>" runs Operation "<domain.action>@*"
     on [each|all] "<role>" as Input "<input>"
     [using [all] "<role>" as Input "<input>" | using plan as Input "<input>"]…
     [and materializes "<role>" from field "<field>"]…
@@ -54,7 +54,7 @@ Then|And Check "<name>" runs Operation "<domain.action>"
 | --- | --- |
 | `Then` / `And` | le mot-clé d'une étape de Check |
 | `Check "<name>"` | nom libre entre guillemets, non vide, unique dans la Procédure — il nomme le Check dans les Plans, les verdicts et l'historique |
-| `runs Operation "<domain.action>"` | une Opération du catalogue, par son nom ; la version embarquée est la version courante à la publication |
+| `runs Operation "<domain.action>@*"` | une Opération du catalogue, par son nom ; la version embarquée est la version courante à la publication |
 | `on [each\|all] "<role>" as Input "<input>"` | la **cible** : un rôle lié à un Input de l'Opération. `on "r"` — un Check ; `on each "r"` — un Check par valeur d'un rôle `many` ; `on all "r"` — un Check recevant la collection entière |
 | `using [all] "<role>" as Input "<input>"` | lie un autre Input (pas de `and` avant `using`) ; `all` passe une collection. Chaque Input de l'Opération est lié **exactement une fois**, entre `on` et `using` |
 | `using plan as Input "<input>"` | lie l'**identifiant du Plan** (le slug donné à l'engagement) à un Input `string` ou `reference` de cardinalité `one`. `plan` est un nom de rôle réservé (aucun Background ne peut le déclarer) : la liaison compile en un rôle synthétisé `"plan"` de source `plan-identifier`, alimenté par le slug du Plan à l'engagement ; la valeur est fixe pendant toute la vie du Plan et ne rouvre jamais le Check. Cela permet à une Opération d'étiqueter ce qu'elle fait avec le Plan (une propriété Maven, un attribut de trace, un paramètre de query) |
@@ -69,7 +69,7 @@ Cardinalité à chaque liaison : un Input scalaire prend `on`/`using` d'un rôle
 ## `each` et `all`
 
 ```gherkin fragment title="Extrait de la Procédure d'admission d'un patient"
-    Then Check "document" runs Operation "healthcare.document-read"
+    Then Check "document" runs Operation "healthcare.document-read@*"
         on each "required document" as Input "document"
         and materializes "document record time" from field "recordedAt"
         and must establish "every admission document is confirmed"

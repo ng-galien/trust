@@ -32,7 +32,7 @@ test("the JSON-RPC boundary handles malformed input, notifications, batches and 
       { jsonrpc: "2.0", id: "unknown", method: "trust.unknown", params: {} },
     ]);
     assert.equal(batch.status, 200);
-    const responses = await batch.json() as RpcEnvelope[];
+    const responses = (await batch.json()) as RpcEnvelope[];
     assert.deepEqual(responses.map(({ id }) => id).sort(), ["catalog", "unknown"]);
     assert.equal(responses.find(({ id }) => id === "catalog")?.result !== undefined, true);
     assert.equal(responses.find(({ id }) => id === "unknown")?.error?.code, -32_601);

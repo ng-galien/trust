@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
-
+import type { JsonValue } from "@trust/operation";
 import { httpUrl, parseHttpJson, requestHttp } from "../http/request.js";
-import { isJsonObject, type JsonObject, type JsonValue } from "../lib/json.js";
+import { isJsonObject, type JsonObject } from "../lib/json.js";
 
 export type Fact = JsonObject & {
   readonly kind: string;
@@ -52,11 +52,7 @@ export class OtlpFactExporter implements FactExporter {
       const rejectedSpans = body.partialSuccess.rejectedSpans;
       if (BigInt(String(rejectedSpans ?? 0)) > 0n) {
         const errorMessage = body.partialSuccess.errorMessage;
-        throw new Error(
-          `TRUST rejected the Facts${typeof errorMessage === "string"
-            ? `: ${errorMessage}`
-            : "."}`,
-        );
+        throw new Error(`TRUST rejected the Facts${typeof errorMessage === "string" ? `: ${errorMessage}` : "."}`);
       }
     }
   }
@@ -65,34 +61,40 @@ export class OtlpFactExporter implements FactExporter {
 function otlp(trace: FactTrace): JsonObject {
   const timeUnixNano = (BigInt(Date.parse(trace.recordedAt)) * 1_000_000n).toString();
   return {
-    resourceSpans: [{
-      resource: {
-        attributes: [attribute("service.name", "trust-runner")],
+    resourceSpans: [
+      {
+        resource: {
+          attributes: [attribute("service.name", "trust-runner")],
+        },
+        scopeSpans: [
+          {
+            scope: { name: "@trust/runner" },
+            spans: [
+              {
+                traceId: digest(`trace\0${trace.attemptHandle}`).slice(0, 32),
+                spanId: digest(`span\0${trace.attemptHandle}`).slice(0, 16),
+                name: "trust.runner.facts",
+                kind: 3,
+                startTimeUnixNano: timeUnixNano,
+                endTimeUnixNano: timeUnixNano,
+                attributes: [
+                  attribute("trust.attempt_key", trace.attemptKey),
+                  attribute("trust.attempt_handle", trace.attemptHandle),
+                  attribute("trust.execution_id", trace.executionId),
+                  attribute("trust.check_uri", trace.checkUri),
+                ],
+                events: trace.facts.map((fact, index) => ({
+                  timeUnixNano,
+                  name: "trust.runner.fact",
+                  attributes: factAttributes(fact, index),
+                })),
+                status: { code: 1 },
+              },
+            ],
+          },
+        ],
       },
-      scopeSpans: [{
-        scope: { name: "@trust/runner" },
-        spans: [{
-          traceId: digest(`trace\0${trace.attemptHandle}`).slice(0, 32),
-          spanId: digest(`span\0${trace.attemptHandle}`).slice(0, 16),
-          name: "trust.runner.facts",
-          kind: 3,
-          startTimeUnixNano: timeUnixNano,
-          endTimeUnixNano: timeUnixNano,
-          attributes: [
-            attribute("trust.attempt_key", trace.attemptKey),
-            attribute("trust.attempt_handle", trace.attemptHandle),
-            attribute("trust.execution_id", trace.executionId),
-            attribute("trust.check_uri", trace.checkUri),
-          ],
-          events: trace.facts.map((fact, index) => ({
-            timeUnixNano,
-            name: "trust.runner.fact",
-            attributes: factAttributes(fact, index),
-          })),
-          status: { code: 1 },
-        }],
-      }],
-    }],
+    ],
   };
 }
 
@@ -118,9 +120,7 @@ function otlpValue(value: JsonValue): JsonObject {
   if (typeof value === "boolean") return { boolValue: value };
   if (typeof value === "number") {
     if (!Number.isFinite(value)) throw new TypeError("Fact number must be finite.");
-    return Number.isSafeInteger(value)
-      ? { intValue: String(value) }
-      : { doubleValue: value };
+    return Number.isSafeInteger(value) ? { intValue: String(value) } : { doubleValue: value };
   }
   if (Array.isArray(value)) {
     return { arrayValue: { values: value.map(otlpValue) } };

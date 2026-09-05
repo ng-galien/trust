@@ -3,9 +3,9 @@ import type { Readable, Writable } from "node:stream";
 
 import { CheckClient } from "../check/client.js";
 import { createCheckRunner } from "../check/run.js";
+import { readRunnerConfiguration } from "../cli/configuration.js";
 import { createRunnerLogging } from "../diagnostics/pino.js";
 import { OtlpFactExporter } from "../telemetry/otlp.js";
-import { readRunnerConfiguration } from "../cli/configuration.js";
 import { createMcpHandler, parseError } from "./protocol.js";
 
 export interface McpStdioOptions {
@@ -18,16 +18,13 @@ export interface McpStdioOptions {
 export async function runMcpStdio(options: McpStdioOptions = {}): Promise<void> {
   const argv = [...(options.argv ?? process.argv.slice(2))];
   const configuration = readRunnerConfiguration(argv);
-  if (argv.length !== 0) throw new TypeError("Runner MCP accepts only repeatable --path <absolute-directory> startup options");
+  if (argv.length !== 0)
+    throw new TypeError("Runner MCP accepts only repeatable --path <absolute-directory> startup options");
   const environment = options.environment ?? process.env;
   const logging = createRunnerLogging(environment);
   const runner = createCheckRunner({
-    checkClient: new CheckClient(
-      environment.TRUST_RPC_ENDPOINT ?? "http://127.0.0.1:4318/rpc",
-    ),
-    facts: new OtlpFactExporter(
-      environment.TRUST_OTLP_ENDPOINT ?? "http://127.0.0.1:4318/v1/traces",
-    ),
+    checkClient: new CheckClient(environment.TRUST_RPC_ENDPOINT ?? "http://127.0.0.1:4318/rpc"),
+    facts: new OtlpFactExporter(environment.TRUST_OTLP_ENDPOINT ?? "http://127.0.0.1:4318/v1/traces"),
     diagnostics: logging.diagnostics,
     shell: { additionalPath: configuration.additionalPath, processEnvironment: environment },
     postgresql: { processEnvironment: environment },

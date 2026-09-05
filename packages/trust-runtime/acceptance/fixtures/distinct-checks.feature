@@ -10,12 +10,12 @@ Feature: Keep distinct Checks that use the same Operation and target
 
   @scenario:reads
   Scenario: Read the repository twice for two different reasons
-    Then Check "working tree" runs Operation "git.head-read" on "repository" as Input "project" and must establish "the working tree is clean"
+    Then Check "working tree" runs Operation "git.head-read@*" on "repository" as Input "project" and must establish "the working tree is clean"
       """js
       fact.workingTree === "clean" ||
       fail("the working tree is dirty")
       """
-    And Check "head revision" runs Operation "git.head-read" on "repository" as Input "project" and must establish "the head revision exists"
+    And Check "head revision" runs Operation "git.head-read@*" on "repository" as Input "project" and must establish "the head revision exists"
       """js
       fact.workingTree === "clean" ||
       fail("the repository is dirty")

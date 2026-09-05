@@ -1,4 +1,4 @@
-import { request as requestHttp1, type IncomingHttpHeaders, type IncomingMessage } from "node:http";
+import { type IncomingHttpHeaders, type IncomingMessage, request as requestHttp1 } from "node:http";
 import { request as requestHttps } from "node:https";
 import type { Socket } from "node:net";
 import type { Readable } from "node:stream";
@@ -53,14 +53,17 @@ export async function requestHttp(request: HttpRequest): Promise<HttpResponse> {
     timeout = setTimeout(() => {
       handle.destroy(new Error("HTTP request timed out."));
     }, timeoutMs);
-    handle.on("error", (error) => finish(() => reject(new Error(
-      `requestHttp failed for ${request.method} ${url.origin}${url.pathname}.`,
-      { cause: error },
-    ))));
+    handle.on("error", (error) =>
+      finish(() =>
+        reject(new Error(`requestHttp failed for ${request.method} ${url.origin}${url.pathname}.`, { cause: error })),
+      ),
+    );
     handle.on("response", (response) => {
-      void (responseHasMessageContent(request.method, response.statusCode ?? 0)
-        ? responseBody(response, maximum)
-        : emptyResponseBody(response))
+      void (
+        responseHasMessageContent(request.method, response.statusCode ?? 0)
+          ? responseBody(response, maximum)
+          : emptyResponseBody(response)
+      )
         .then((body) => finish(() => resolve(httpResponse(response, body))))
         .catch((error: unknown) => finish(() => reject(error)));
     });
@@ -96,11 +99,7 @@ async function emptyResponseBody(response: IncomingMessage): Promise<string> {
 }
 
 function responseHasMessageContent(method: HttpMethod, status: number): boolean {
-  return method !== "HEAD"
-    && (status < 100 || status >= 200)
-    && status !== 204
-    && status !== 205
-    && status !== 304;
+  return method !== "HEAD" && (status < 100 || status >= 200) && status !== 204 && status !== 205 && status !== 304;
 }
 
 export function parseHttpJson(body: string): JsonValue {
@@ -118,11 +117,7 @@ export function httpUrl(value: string | URL): URL {
   } catch {
     throw new TypeError("HTTP URL must be absolute.");
   }
-  if (
-    (url.protocol !== "http:" && url.protocol !== "https:")
-    || url.username !== ""
-    || url.password !== ""
-  ) {
+  if ((url.protocol !== "http:" && url.protocol !== "https:") || url.username !== "" || url.password !== "") {
     throw new TypeError("HTTP URL must use HTTP(S) without embedded credentials.");
   }
   if (url.protocol === "http:" && !loopback(url.hostname)) {
@@ -153,7 +148,7 @@ async function responseBody(response: IncomingMessage, maximum: number): Promise
 
 function decodedResponse(response: IncomingMessage): Readable {
   const raw = response.headers["content-encoding"];
-  const codings = (Array.isArray(raw) ? raw.join(",") : raw ?? "")
+  const codings = (Array.isArray(raw) ? raw.join(",") : (raw ?? ""))
     .split(",")
     .map((coding) => coding.trim().toLowerCase())
     .filter((coding) => coding !== "" && coding !== "identity")
@@ -178,16 +173,20 @@ function httpResponse(response: IncomingMessage, body: string): HttpResponse {
 }
 
 function normalizeHeaders(headers: IncomingHttpHeaders): Readonly<Record<string, string>> {
-  return Object.fromEntries(Object.entries(headers).flatMap(([name, value]) =>
-    value === undefined ? [] : [[name, Array.isArray(value) ? value.join(", ") : value]]
-  ));
+  return Object.fromEntries(
+    Object.entries(headers).flatMap(([name, value]) =>
+      value === undefined ? [] : [[name, Array.isArray(value) ? value.join(", ") : value]],
+    ),
+  );
 }
 
 function loopback(hostname: string): boolean {
-  return hostname === "localhost"
-    || hostname.endsWith(".localhost")
-    || hostname === "127.0.0.1"
-    || hostname.endsWith(".127.0.0.1.nip.io")
-    || hostname === "[::1]"
-    || hostname === "::1";
+  return (
+    hostname === "localhost" ||
+    hostname.endsWith(".localhost") ||
+    hostname === "127.0.0.1" ||
+    hostname.endsWith(".127.0.0.1.nip.io") ||
+    hostname === "[::1]" ||
+    hostname === "::1"
+  );
 }

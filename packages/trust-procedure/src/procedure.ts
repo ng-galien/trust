@@ -6,6 +6,8 @@ export type ProcedureCompilationErrorCode =
   | "invalid-procedure"
   | "invalid-identifier"
   | "unknown-operation"
+  | "unknown-procedure"
+  | "duplicate-invocation"
   | "unknown-role"
   | "unknown-input"
   | "unknown-field"
@@ -31,9 +33,12 @@ export class CatalogProcedureCompilationError extends Error {
 }
 
 export interface ProcedureCompilationInput {
+  /** Resolve a selected child against one immutable catalog snapshot before validating its binding. */
+  readonly resolveProcedure?: (selected: CompiledProcedure) => CompiledProcedure;
   readonly source: string;
   readonly sourceName?: string;
   readonly operations: readonly CompiledOperation[];
+  readonly procedures?: readonly CompiledProcedure[];
 }
 
 export interface ProcedureDiagnostic {
@@ -91,11 +96,12 @@ interface CompiledExpressionReferenceType {
   readonly cardinality: "one" | "many";
 }
 
-export type CompiledExpressionReference = CompiledExpressionReferenceType & (
-  | { readonly kind: "fact"; readonly field: string }
-  | { readonly kind: "context"; readonly role: string }
-  | { readonly kind: "check"; readonly check: string; readonly field: string }
-);
+export type CompiledExpressionReference = CompiledExpressionReferenceType &
+  (
+    | { readonly kind: "fact"; readonly field: string }
+    | { readonly kind: "context"; readonly role: string }
+    | { readonly kind: "check"; readonly check: string; readonly field: string }
+  );
 
 export interface CompiledProcedureGuard {
   readonly conditionLogic: JsonLogicRule;
@@ -114,6 +120,7 @@ export interface CompiledProcedureCheck {
   readonly scenario: string;
   readonly operation: string;
   readonly operationVersion: string;
+  readonly operationSelector: string;
   readonly operationDigest: string;
   readonly target: { readonly role: string; readonly selection: "one" | "each" | "all" };
   readonly inputBindings: readonly CompiledProcedureInputBinding[];
@@ -129,7 +136,23 @@ export interface CompiledProcedureScenario {
   readonly title: string;
   readonly dependencies: readonly string[];
   readonly checks: readonly string[];
+  readonly invocations: readonly string[];
   /** Position of the Scenario line. */
+  readonly location?: CompiledSourceLocation;
+}
+
+/** An immutable child Procedure dependency, instantiated as a separate Plan. */
+export interface CompiledProcedureInvocation {
+  readonly name: string;
+  readonly scenario: string;
+  readonly procedure: string;
+  readonly procedureVersion: string;
+  readonly procedureSelector: string;
+  readonly procedureDigest: string;
+  readonly childDefinition: CompiledProcedure;
+  readonly target?: CompiledProcedureCheck["target"];
+  readonly inputBindings: readonly CompiledProcedureInputBinding[];
+  readonly successReason: string;
   readonly location?: CompiledSourceLocation;
 }
 
@@ -164,4 +187,5 @@ export interface CompiledProcedure {
   readonly roles: readonly CompiledProcedureRole[];
   readonly scenarios: readonly CompiledProcedureScenario[];
   readonly checks: readonly CompiledProcedureCheck[];
+  readonly invocations: readonly CompiledProcedureInvocation[];
 }

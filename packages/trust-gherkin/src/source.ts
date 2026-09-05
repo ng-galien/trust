@@ -35,17 +35,9 @@ export function sourceLineRange(
   };
 }
 
-export function sourceValueRange(
-  source: string,
-  located: Located,
-  value: string,
-  columnOffset = 0,
-): SourceRange {
+export function sourceValueRange(source: string, located: Located, value: string, columnOffset = 0): SourceRange {
   const lines = splitLines(source);
-  const line = Math.min(
-    Math.max(located.location?.line ?? 1, 1),
-    Math.max(lines.length - 1, 1),
-  );
+  const line = Math.min(Math.max(located.location?.line ?? 1, 1), Math.max(lines.length - 1, 1));
   const text = lines[line - 1] ?? "";
   const from = Math.max((located.location?.column ?? 1) - 1 + columnOffset, 0);
   const found = text.indexOf(value, from);
@@ -53,7 +45,8 @@ export function sourceValueRange(
     // The value may sit on one of the step's continuation lines.
     for (const index of extent(lines, line).slice(1)) {
       const at = (lines[index] ?? "").indexOf(value);
-      if (at >= 0) return { start: { line: index + 1, column: at + 1 }, end: { line: index + 1, column: at + value.length + 1 } };
+      if (at >= 0)
+        return { start: { line: index + 1, column: at + 1 }, end: { line: index + 1, column: at + value.length + 1 } };
     }
   }
   const startIndex = found >= 0 ? found : Math.min(from, text.length);

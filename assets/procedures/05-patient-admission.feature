@@ -16,7 +16,7 @@ Feature: Admit one patient with identity, coverage and consent confirmed
 
   @scenario:identity
   Scenario: Confirm patient identity and allergy recording
-    Then Check "patient record" runs Operation "healthcare.patient-read" on "patient" as Input "patient" and must establish "the patient record is ready for admission"
+    Then Check "patient record" runs Operation "healthcare.patient-read@*" on "patient" as Input "patient" and must establish "the patient record is ready for admission"
       """js
       (
         fact.identityStatus === "confirmed" ||
@@ -31,7 +31,7 @@ Feature: Admit one patient with identity, coverage and consent confirmed
   @scenario:coverage
   Scenario: Confirm active coverage
     Given scenario "identity" is validated
-    Then Check "coverage" runs Operation "healthcare.coverage-read" on "patient" as Input "patient" and must establish "the patient has active coverage"
+    Then Check "coverage" runs Operation "healthcare.coverage-read@*" on "patient" as Input "patient" and must establish "the patient has active coverage"
       """js
       fact.coverageStatus === "active" ||
       fail("the patient has no active coverage")
@@ -40,7 +40,7 @@ Feature: Admit one patient with identity, coverage and consent confirmed
   @scenario:consent
   Scenario: Confirm admission consent
     Given scenario "coverage" is validated
-    Then Check "consent" runs Operation "healthcare.consent-read" on "admission" as Input "admission" and must establish "the admission consent is signed"
+    Then Check "consent" runs Operation "healthcare.consent-read@*" on "admission" as Input "admission" and must establish "the admission consent is signed"
       """js
       fact.consentStatus === "signed" ||
       fail("the admission consent is not signed")
@@ -49,7 +49,7 @@ Feature: Admit one patient with identity, coverage and consent confirmed
   @scenario:documents
   Scenario: Confirm every admission document
     Given scenario "identity" is validated
-    Then Check "document" runs Operation "healthcare.document-read" on each "required document" as Input "document" and materializes "document record time" from field "recordedAt" and must establish "every admission document is confirmed"
+    Then Check "document" runs Operation "healthcare.document-read@*" on each "required document" as Input "document" and materializes "document record time" from field "recordedAt" and must establish "every admission document is confirmed"
       """js
       fact.documentStatus === "confirmed" ||
       fail("an admission document is not confirmed")
@@ -59,7 +59,7 @@ Feature: Admit one patient with identity, coverage and consent confirmed
   Scenario: Record the patient admission
     Given scenario "consent" is validated
     And scenario "documents" is validated
-    Then Check "admission" runs Operation "healthcare.admission-record" on "admission" as Input "admission" using "patient" as Input "patient" using all "required document" as Input "documents" using all "document record time" as Input "documentRecordedAt" and must establish "the patient admission is recorded"
+    Then Check "admission" runs Operation "healthcare.admission-record@*" on "admission" as Input "admission" using "patient" as Input "patient" using all "required document" as Input "documents" using all "document record time" as Input "documentRecordedAt" and must establish "the patient admission is recorded"
       """js
       (
         fact.admissionStatus === "recorded" ||

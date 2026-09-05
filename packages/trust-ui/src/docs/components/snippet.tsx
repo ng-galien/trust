@@ -1,5 +1,5 @@
+import { type HighlightTokenKind, highlightTokenTable } from "@trust/gherkin";
 import { Check, Copy, ExternalLink } from "lucide-react";
-import { highlightTokenTable, type HighlightTokenKind } from "@trust/gherkin";
 import { Children, isValidElement, type ReactElement, type ReactNode, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router";
@@ -62,40 +62,108 @@ function parseRanges(value: string): number[] {
   return out;
 }
 
-export function Snippet({ code, language = "text", meta = {}, className }: { code: string; language?: string; meta?: SnippetMeta; className?: string }) {
+export function Snippet({
+  code,
+  language = "text",
+  meta = {},
+  className,
+}: {
+  code: string;
+  language?: string;
+  meta?: SnippetMeta;
+  className?: string;
+}) {
   const { t } = useTranslation();
   const [copied, setCopied] = useState(false);
   const lines = highlight(code, language, meta.kind);
   const marks = new Map((meta.marks ?? []).map((line, index) => [line, index + 1]));
   const highlighted = new Set(meta.lines ?? []);
   const copy = () => {
-    void navigator.clipboard.writeText(code).then(() => { setCopied(true); window.setTimeout(() => setCopied(false), 1500); });
+    void navigator.clipboard.writeText(code).then(() => {
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1500);
+    });
   };
-  const link = meta.id && !standalone ? (meta.kind === "procedure" ? `/procedures/${encodeURIComponent(meta.id)}?tab=source` : `/operations/${encodeURIComponent(meta.id)}?tab=source`) : undefined;
+  const link =
+    meta.id && !standalone
+      ? meta.kind === "procedure"
+        ? `/procedures/${encodeURIComponent(meta.id)}?tab=source`
+        : `/operations/${encodeURIComponent(meta.id)}?tab=source`
+      : undefined;
   return (
-    <figure className={cx("docs-snippet my-4 overflow-hidden rounded-(--radius-3) border border-border bg-surface", className)}>
-      {(meta.title || link) ? (
+    <figure
+      className={cx(
+        "docs-snippet my-4 overflow-hidden rounded-(--radius-3) border border-border bg-surface",
+        className,
+      )}
+    >
+      {meta.title || link ? (
         <figcaption className="flex items-center gap-2 border-b border-border bg-surface-2 px-3 py-1.5 text-caption text-muted">
           <span className="mono truncate-1">{meta.title ?? meta.id}</span>
-          {meta.kind === "fragment" ? <span className="rounded-(--radius-1) bg-surface-3 px-1 text-micro uppercase tracking-wide">{t("docs.snippet.fragment")}</span> : null}
+          {meta.kind === "fragment" ? (
+            <span className="rounded-(--radius-1) bg-surface-3 px-1 text-micro uppercase tracking-wide">
+              {t("docs.snippet.fragment")}
+            </span>
+          ) : null}
           <span className="ml-auto" />
-          {link ? <Link to={link} className="inline-flex items-center gap-1 text-accent hover:underline"><ExternalLink size={11} /> {meta.kind === "procedure" ? t("docs.snippet.openProcedure") : t("docs.snippet.openOperation")}</Link> : null}
+          {link ? (
+            <Link to={link} className="inline-flex items-center gap-1 text-accent hover:underline">
+              <ExternalLink size={11} />{" "}
+              {meta.kind === "procedure" ? t("docs.snippet.openProcedure") : t("docs.snippet.openOperation")}
+            </Link>
+          ) : null}
         </figcaption>
       ) : null}
       <div className="relative">
-        <button type="button" onClick={copy} className="absolute top-1.5 right-1.5 z-10 inline-flex h-6 items-center gap-1 rounded-(--radius-1) border border-border bg-surface px-1.5 text-caption text-muted opacity-0 transition-opacity hover:text-text focus-visible:opacity-100 [figure:hover_&]:opacity-100" aria-label={t("docs.snippet.copy")}>
-          {copied ? <Check size={11} /> : <Copy size={11} />} {copied ? t("docs.snippet.copied") : t("docs.snippet.copy")}
+        <button
+          type="button"
+          onClick={copy}
+          className="absolute top-1.5 right-1.5 z-10 inline-flex h-6 items-center gap-1 rounded-(--radius-1) border border-border bg-surface px-1.5 text-caption text-muted opacity-0 transition-opacity hover:text-text focus-visible:opacity-100 [figure:hover_&]:opacity-100"
+          aria-label={t("docs.snippet.copy")}
+        >
+          {copied ? <Check size={11} /> : <Copy size={11} />}{" "}
+          {copied ? t("docs.snippet.copied") : t("docs.snippet.copy")}
         </button>
         <pre className="mono overflow-x-auto p-3 text-body leading-[1.55]" data-language={language}>
           <code>
             {lines.map((tokens, index) => {
               const number = index + 1;
               const mark = marks.get(number);
+              let column = 0;
+              const positioned = tokens.map((token) => {
+                const start = column;
+                column += token.text.length;
+                return { token, start };
+              });
               return (
-                <span key={number} className={cx("docs-line", highlighted.has(number) && "docs-line-highlight", mark !== undefined && "docs-line-marked")}>
-                  {marks.size ? <span className="docs-line-mark" aria-label={mark !== undefined ? t("docs.screenshot.callout", { n: String(mark) }) : undefined}>{mark ?? ""}</span> : null}
+                <span
+                  key={number}
+                  className={cx(
+                    "docs-line",
+                    highlighted.has(number) && "docs-line-highlight",
+                    mark !== undefined && "docs-line-marked",
+                  )}
+                >
+                  {marks.size ? (
+                    <span
+                      role="img"
+                      aria-hidden={mark === undefined}
+                      className="docs-line-mark"
+                      aria-label={mark !== undefined ? t("docs.screenshot.callout", { n: String(mark) }) : undefined}
+                    >
+                      {mark ?? ""}
+                    </span>
+                  ) : null}
                   {meta.numbers ? <span className="docs-line-number">{number}</span> : null}
-                  {tokens.map((token, at) => (token.cls ? <span key={at} data-token={token.cls} style={tokenStyle(token.cls)}>{token.text}</span> : token.text))}
+                  {positioned.map(({ token, start }) =>
+                    token.cls ? (
+                      <span key={start} data-token={token.cls} style={tokenStyle(token.cls)}>
+                        {token.text}
+                      </span>
+                    ) : (
+                      token.text
+                    ),
+                  )}
                   {"\n"}
                 </span>
               );
@@ -109,7 +177,9 @@ export function Snippet({ code, language = "text", meta = {}, className }: { cod
 
 /** MDX `pre` mapping: turns a fenced block into a Snippet (language and meta come from the `code` child). */
 export function MdxPre({ children }: { children?: ReactNode }) {
-  const child = Children.toArray(children).find((node): node is ReactElement<{ className?: string; meta?: string; children?: ReactNode }> => isValidElement(node));
+  const child = Children.toArray(children).find(
+    (node): node is ReactElement<{ className?: string; meta?: string; children?: ReactNode }> => isValidElement(node),
+  );
   const props = child?.props ?? {};
   const language = /language-([\w-]+)/.exec(props.className ?? "")?.[1] ?? "text";
   const code = typeof props.children === "string" ? props.children : Children.toArray(props.children).join("");

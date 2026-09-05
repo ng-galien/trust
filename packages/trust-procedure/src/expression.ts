@@ -1,16 +1,14 @@
-import jsep, { type Expression } from "jsep";
 import arrowPlugin, { type ArrowExpression } from "@jsep-plugin/arrow";
 import templatePlugin, { type TemplateLiteral } from "@jsep-plugin/template";
-
 import type { CompiledOperation, ValueSchema } from "@trust/operation";
-
+import jsep, { type Expression } from "jsep";
+import { procedureLanguage } from "./language.js";
 import type {
   CompiledExpressionReference,
   CompiledProcedureGuard,
   JsonLogicRule,
   ProcedureCompilationErrorCode,
 } from "./procedure.js";
-import { procedureLanguage } from "./language.js";
 
 jsep.plugins.register(templatePlugin, arrowPlugin);
 
@@ -73,7 +71,10 @@ export function compileQualificationExpression(input: QualificationExpressionInp
   try {
     expression = jsep(input.source);
   } catch (error) {
-    throw new QualificationExpressionError("invalid-procedure", `Qualification is not a valid JavaScript expression: ${String(error)}`);
+    throw new QualificationExpressionError(
+      "invalid-procedure",
+      `Qualification is not a valid JavaScript expression: ${String(error)}`,
+    );
   }
   const guardNodes = extractGuards(expression);
   return guardNodes.map(({ condition, reason }) => {
@@ -93,7 +94,9 @@ export function compileQualificationExpression(input: QualificationExpressionInp
   });
 }
 
-function extractGuards(expression: Expression): readonly { readonly condition: Expression; readonly reason: Expression }[] {
+function extractGuards(
+  expression: Expression,
+): readonly { readonly condition: Expression; readonly reason: Expression }[] {
   if (isBinary(expression, "&&") && containsFail(expression)) {
     return [...extractGuards(expression.left), ...extractGuards(expression.right)];
   }
@@ -104,7 +107,10 @@ function extractGuards(expression: Expression): readonly { readonly condition: E
     );
   }
   if (containsFail(expression.left)) {
-    throw new QualificationExpressionError("invalid-procedure", "fail may appear only at the end of one qualification guard");
+    throw new QualificationExpressionError(
+      "invalid-procedure",
+      "fail may appear only at the end of one qualification guard",
+    );
   }
   const args = callArguments(expression.right);
   if (args.length !== 1 || !args[0]) {
@@ -120,12 +126,16 @@ function containsFail(expression: Expression): boolean {
       const binary = expression as jsep.BinaryExpression;
       return containsFail(binary.left) || containsFail(binary.right);
     }
-    case "UnaryExpression": return containsFail((expression as jsep.UnaryExpression).argument);
+    case "UnaryExpression":
+      return containsFail((expression as jsep.UnaryExpression).argument);
     case "ConditionalExpression": {
       const conditional = expression as jsep.ConditionalExpression;
-      return containsFail(conditional.test) || containsFail(conditional.consequent) || containsFail(conditional.alternate);
+      return (
+        containsFail(conditional.test) || containsFail(conditional.consequent) || containsFail(conditional.alternate)
+      );
     }
-    case "ArrayExpression": return (expression as jsep.ArrayExpression).elements.some((item) => item !== null && containsFail(item));
+    case "ArrayExpression":
+      return (expression as jsep.ArrayExpression).elements.some((item) => item !== null && containsFail(item));
     case "CallExpression": {
       const call = expression as jsep.CallExpression;
       return containsFail(call.callee) || call.arguments.some(containsFail);
@@ -134,23 +144,35 @@ function containsFail(expression: Expression): boolean {
       const member = expression as jsep.MemberExpression;
       return containsFail(member.object) || containsFail(member.property);
     }
-    case "TemplateLiteral": return (expression as TemplateLiteral).expressions.some(containsFail);
-    case "ArrowFunctionExpression": return containsFail((expression as ArrowExpression).body);
-    default: return false;
+    case "TemplateLiteral":
+      return (expression as TemplateLiteral).expressions.some(containsFail);
+    case "ArrowFunctionExpression":
+      return containsFail((expression as ArrowExpression).body);
+    default:
+      return false;
   }
 }
 
 function compileExpression(expression: Expression, environment: CompileEnvironment): CompiledExpression {
   switch (expression.type) {
-    case "Literal": return compileLiteral(expression as jsep.Literal);
-    case "Identifier": return compileIdentifier(expression as jsep.Identifier, environment);
-    case "MemberExpression": return compileMember(expression as jsep.MemberExpression, environment);
-    case "UnaryExpression": return compileUnary(expression as jsep.UnaryExpression, environment);
-    case "BinaryExpression": return compileBinary(expression as jsep.BinaryExpression, environment);
-    case "ConditionalExpression": return compileConditional(expression as jsep.ConditionalExpression, environment);
-    case "ArrayExpression": return compileArray(expression as jsep.ArrayExpression, environment);
-    case "CallExpression": return compileCall(expression as jsep.CallExpression, environment);
-    case "TemplateLiteral": return compileTemplate(expression as TemplateLiteral, environment);
+    case "Literal":
+      return compileLiteral(expression as jsep.Literal);
+    case "Identifier":
+      return compileIdentifier(expression as jsep.Identifier, environment);
+    case "MemberExpression":
+      return compileMember(expression as jsep.MemberExpression, environment);
+    case "UnaryExpression":
+      return compileUnary(expression as jsep.UnaryExpression, environment);
+    case "BinaryExpression":
+      return compileBinary(expression as jsep.BinaryExpression, environment);
+    case "ConditionalExpression":
+      return compileConditional(expression as jsep.ConditionalExpression, environment);
+    case "ArrayExpression":
+      return compileArray(expression as jsep.ArrayExpression, environment);
+    case "CallExpression":
+      return compileCall(expression as jsep.CallExpression, environment);
+    case "TemplateLiteral":
+      return compileTemplate(expression as TemplateLiteral, environment);
     case "TaggedTemplateExpression":
       throw unsupported("Tagged templates");
     case "ArrowFunctionExpression":
@@ -166,7 +188,8 @@ function compileExpression(expression: Expression, environment: CompileEnvironme
 }
 
 function compileLiteral(expression: jsep.Literal): CompiledExpression {
-  if (expression.value === null || expression.value instanceof RegExp) throw unsupported("null and regular-expression literals");
+  if (expression.value === null || expression.value instanceof RegExp)
+    throw unsupported("null and regular-expression literals");
   if (typeof expression.value === "number" && !Number.isFinite(expression.value)) {
     throw new QualificationExpressionError("incompatible-type", "Numbers must be finite");
   }
@@ -184,10 +207,16 @@ function compileIdentifier(expression: jsep.Identifier, environment: CompileEnvi
   const local = environment.locals.get(expression.name);
   if (local) return { ...local, references: [] };
   if (Object.values(procedureLanguage.qualification.roots).includes(expression.name as never)) {
-    throw new QualificationExpressionError("invalid-procedure", `Root "${expression.name}" must be accessed through a declared property`);
+    throw new QualificationExpressionError(
+      "invalid-procedure",
+      `Root "${expression.name}" must be accessed through a declared property`,
+    );
   }
   if (expression.name === procedureLanguage.qualification.fail) {
-    throw new QualificationExpressionError("invalid-procedure", "fail may appear only as the right-hand side of a qualification guard");
+    throw new QualificationExpressionError(
+      "invalid-procedure",
+      "fail may appear only as the right-hand side of a qualification guard",
+    );
   }
   throw new QualificationExpressionError("invalid-procedure", `Identifier "${expression.name}" is not available`);
 }
@@ -195,7 +224,10 @@ function compileIdentifier(expression: jsep.Identifier, environment: CompileEnvi
 function compileMember(expression: jsep.MemberExpression, environment: CompileEnvironment): CompiledExpression {
   const rootPath = readRootPath(expression);
   const { checks } = procedureLanguage.qualification.roots;
-  if (rootPath && ((rootPath[0] === checks && rootPath.length === 3) || (rootPath[0] !== checks && rootPath.length === 2))) {
+  if (
+    rootPath &&
+    ((rootPath[0] === checks && rootPath.length === 3) || (rootPath[0] !== checks && rootPath.length === 2))
+  ) {
     return compileRootPath(rootPath, environment);
   }
 
@@ -209,46 +241,69 @@ function compileMember(expression: jsep.MemberExpression, environment: CompileEn
       references: object.references,
     };
   }
-  throw new QualificationExpressionError("incompatible-type", `Property "${property}" is not available on ${describeType(object.type)}`);
+  throw new QualificationExpressionError(
+    "incompatible-type",
+    `Property "${property}" is not available on ${describeType(object.type)}`,
+  );
 }
 
 function compileRootPath(path: readonly string[], environment: CompileEnvironment): CompiledExpression {
   const [root, first, second, ...rest] = path;
   if (!root || !first || rest.length > 0) {
-    throw new QualificationExpressionError("invalid-procedure", `Expression path "${path.join(".")}" is outside the injected contract`);
+    throw new QualificationExpressionError(
+      "invalid-procedure",
+      `Expression path "${path.join(".")}" is outside the injected contract`,
+    );
   }
   assertSafePath(path);
   const roots = procedureLanguage.qualification.roots;
   if (root === roots.fact) {
-    if (second !== undefined) throw new QualificationExpressionError("unknown-field", `Produced field "${first}" has no nested field "${second}"`);
+    if (second !== undefined)
+      throw new QualificationExpressionError(
+        "unknown-field",
+        `Produced field "${first}" has no nested field "${second}"`,
+      );
     const schema = environment.operation.produced.properties[first];
-    if (!schema) throw new QualificationExpressionError("unknown-field", `Operation "${environment.operation.operation}" produces no field "${first}"`);
+    if (!schema)
+      throw new QualificationExpressionError(
+        "unknown-field",
+        `Operation "${environment.operation.operation}" produces no field "${first}"`,
+      );
     return variable(schemaToType(schema), variablePath(environment, roots.fact, first), { kind: "fact", field: first });
   }
   if (root === roots.context) {
-    if (second !== undefined) throw new QualificationExpressionError("unknown-input", `Input "${first}" has no nested field "${second}"`);
+    if (second !== undefined)
+      throw new QualificationExpressionError("unknown-input", `Input "${first}" has no nested field "${second}"`);
     const schema = environment.contextRoles.get(first);
     if (!schema) throw new QualificationExpressionError("unknown-role", `Plan context has no role "${first}"`);
-    return variable(
-      schemaToType(schema),
-      variablePath(environment, roots.context, first),
-      { kind: "context", role: first },
-    );
+    return variable(schemaToType(schema), variablePath(environment, roots.context, first), {
+      kind: "context",
+      role: first,
+    });
   }
   if (root === roots.checks) {
-    if (!second) throw new QualificationExpressionError("unknown-field", `Check reference "${first}" must select one Produced field`);
+    if (!second)
+      throw new QualificationExpressionError(
+        "unknown-field",
+        `Check reference "${first}" must select one Produced field`,
+      );
     const provider = environment.checks.get(first);
-    if (!provider) throw new QualificationExpressionError("invalid-dependency", `Qualification references unknown Check "${first}"`);
+    if (!provider)
+      throw new QualificationExpressionError("invalid-dependency", `Qualification references unknown Check "${first}"`);
     if (!environment.canReferenceCheck(provider.scenario)) {
-      throw new QualificationExpressionError("invalid-dependency", `Check "${first}" is not in a prerequisite Scenario`);
+      throw new QualificationExpressionError(
+        "invalid-dependency",
+        `Check "${first}" is not in a prerequisite Scenario`,
+      );
     }
     const schema = provider.operation.produced.properties[second];
-    if (!schema) throw new QualificationExpressionError("unknown-field", `Check "${first}" produces no field "${second}"`);
-    return variable(
-      schemaToType(schema),
-      variablePath(environment, roots.checks, first, second),
-      { kind: "check", check: first, field: second },
-    );
+    if (!schema)
+      throw new QualificationExpressionError("unknown-field", `Check "${first}" produces no field "${second}"`);
+    return variable(schemaToType(schema), variablePath(environment, roots.checks, first, second), {
+      kind: "check",
+      check: first,
+      field: second,
+    });
   }
   throw new QualificationExpressionError("invalid-procedure", `Root "${root}" is not available`);
 }
@@ -310,7 +365,10 @@ function compileBinary(expression: jsep.BinaryExpression, environment: CompileEn
   throw unsupported(`Binary operator ${expression.operator}`);
 }
 
-function compileConditional(expression: jsep.ConditionalExpression, environment: CompileEnvironment): CompiledExpression {
+function compileConditional(
+  expression: jsep.ConditionalExpression,
+  environment: CompileEnvironment,
+): CompiledExpression {
   const test = compileExpression(expression.test, environment);
   requireType(test, "boolean", "Conditional test");
   const consequent = compileExpression(expression.consequent, environment);
@@ -320,14 +378,19 @@ function compileConditional(expression: jsep.ConditionalExpression, environment:
   }
   return {
     type: consequent.type,
-    logic: { [procedureLanguage.qualification.internalOpcodes.conditional]: [test.logic, consequent.logic, alternate.logic] },
+    logic: {
+      [procedureLanguage.qualification.internalOpcodes.conditional]: [test.logic, consequent.logic, alternate.logic],
+    },
     references: uniqueReferences([...test.references, ...consequent.references, ...alternate.references]),
   };
 }
 
 function compileArray(expression: jsep.ArrayExpression, environment: CompileEnvironment): CompiledExpression {
   if (expression.elements.length === 0 || expression.elements.some((item) => item === null)) {
-    throw new QualificationExpressionError("incompatible-type", "Array literals must be non-empty and contain no holes");
+    throw new QualificationExpressionError(
+      "incompatible-type",
+      "Array literals must be non-empty and contain no holes",
+    );
   }
   const items = expression.elements.map((item) => compileExpression(item!, environment));
   const type = items[0]!.type;
@@ -343,7 +406,10 @@ function compileArray(expression: jsep.ArrayExpression, environment: CompileEnvi
 
 function compileCall(expression: jsep.CallExpression, environment: CompileEnvironment): CompiledExpression {
   if (isFailCall(expression)) {
-    throw new QualificationExpressionError("invalid-procedure", "fail may appear only at the end of a qualification guard");
+    throw new QualificationExpressionError(
+      "invalid-procedure",
+      "fail may appear only at the end of a qualification guard",
+    );
   }
   const math = mathCall(expression);
   if (math) return compileMath(math, expression.arguments, environment);
@@ -359,7 +425,9 @@ function compileMath(method: string, args: readonly Expression[], environment: C
   if (!spec) throw unsupported(`Math.${method}`);
   assertArity(`Math.${method}`, args, spec.arity[0], spec.arity[1] ?? Number.POSITIVE_INFINITY);
   const compiled = args.map((arg) => compileExpression(arg, environment));
-  compiled.forEach((item) => requireType(item, "number", `Math.${method}`));
+  compiled.forEach((item) => {
+    requireType(item, "number", `Math.${method}`);
+  });
   return {
     type: { kind: "number" },
     logic: { [spec.opcode]: compiled.map((item) => item.logic) },
@@ -379,7 +447,11 @@ function compileMethod(
     const value = compileExpression(args[0]!, environment);
     if (receiver.type.kind === "array") assertTypeCompatible(receiver.type.item, value.type, "includes argument");
     else if (receiver.type.kind === "string") requireType(value, "string", "String includes argument");
-    else throw new QualificationExpressionError("incompatible-type", `includes is not available on ${describeType(receiver.type)}`);
+    else
+      throw new QualificationExpressionError(
+        "incompatible-type",
+        `includes is not available on ${describeType(receiver.type)}`,
+      );
     return {
       type: { kind: "boolean" },
       logic: { [collectionSpec.opcode]: [value.logic, receiver.logic] },
@@ -387,21 +459,32 @@ function compileMethod(
     };
   }
   if (collectionSpec && collectionSpec.kind !== "reduce") {
-    if (receiver.type.kind !== "array") throw new QualificationExpressionError("incompatible-type", `${method} requires an array`);
+    if (receiver.type.kind !== "array")
+      throw new QualificationExpressionError("incompatible-type", `${method} requires an array`);
     assertArity(method, args, 1, 1);
     const callback = requireArrow(args[0]!, method, 1);
     const parameter = identifierName(callback.params?.[0], `${method} callback parameter`);
-    const nested = nestedEnvironment(environment, new Map([[parameter, {
-      type: receiver.type.item,
-      logic: { [procedureLanguage.qualification.internalOpcodes.variable]: "" },
-    }]]));
+    const nested = nestedEnvironment(
+      environment,
+      new Map([
+        [
+          parameter,
+          {
+            type: receiver.type.item,
+            logic: { [procedureLanguage.qualification.internalOpcodes.variable]: "" },
+          },
+        ],
+      ]),
+    );
     const body = compileExpression(callback.body, nested);
-    if (collectionSpec.kind === "predicate" || collectionSpec.kind === "filter") requireType(body, "boolean", `${method} callback`);
-    const resultType: ExpressionType = collectionSpec.kind === "predicate"
-      ? { kind: "boolean" }
-      : collectionSpec.kind === "filter"
-        ? receiver.type
-        : { kind: "array", item: body.type };
+    if (collectionSpec.kind === "predicate" || collectionSpec.kind === "filter")
+      requireType(body, "boolean", `${method} callback`);
+    const resultType: ExpressionType =
+      collectionSpec.kind === "predicate"
+        ? { kind: "boolean" }
+        : collectionSpec.kind === "filter"
+          ? receiver.type
+          : { kind: "array", item: body.type };
     return {
       type: resultType,
       logic: { [collectionSpec.opcode]: [receiver.logic, body.logic] },
@@ -409,16 +492,29 @@ function compileMethod(
     };
   }
   if (collectionSpec?.kind === "reduce") {
-    if (receiver.type.kind !== "array") throw new QualificationExpressionError("incompatible-type", "reduce requires an array");
+    if (receiver.type.kind !== "array")
+      throw new QualificationExpressionError("incompatible-type", "reduce requires an array");
     assertArity(method, args, 2, 2);
     const callback = requireArrow(args[0]!, method, 2);
     const initial = compileExpression(args[1]!, environment);
     const accumulator = identifierName(callback.params?.[0], "reduce accumulator parameter");
     const current = identifierName(callback.params?.[1], "reduce current parameter");
-    const nested = nestedEnvironment(environment, new Map([
-      [accumulator, { type: initial.type, logic: { [procedureLanguage.qualification.internalOpcodes.variable]: "accumulator" } }],
-      [current, { type: receiver.type.item, logic: { [procedureLanguage.qualification.internalOpcodes.variable]: "current" } }],
-    ]));
+    const nested = nestedEnvironment(
+      environment,
+      new Map([
+        [
+          accumulator,
+          { type: initial.type, logic: { [procedureLanguage.qualification.internalOpcodes.variable]: "accumulator" } },
+        ],
+        [
+          current,
+          {
+            type: receiver.type.item,
+            logic: { [procedureLanguage.qualification.internalOpcodes.variable]: "current" },
+          },
+        ],
+      ]),
+    );
     const body = compileExpression(callback.body, nested);
     assertTypeCompatible(initial.type, body.type, "reduce result");
     return {
@@ -485,7 +581,8 @@ function readRootPath(expression: Expression): readonly string[] | undefined {
 
 function staticProperty(expression: jsep.MemberExpression): string {
   if (expression.optional) throw unsupported("Optional chaining");
-  if (!expression.computed && expression.property.type === "Identifier") return (expression.property as jsep.Identifier).name;
+  if (!expression.computed && expression.property.type === "Identifier")
+    return (expression.property as jsep.Identifier).name;
   if (expression.computed && expression.property.type === "Literal") {
     const value = (expression.property as jsep.Literal).value;
     if (typeof value === "string") return value;
@@ -496,7 +593,11 @@ function staticProperty(expression: jsep.MemberExpression): string {
 function mathCall(expression: jsep.CallExpression): string | undefined {
   if (expression.callee.type !== "MemberExpression") return undefined;
   const callee = expression.callee as jsep.MemberExpression;
-  if (callee.object.type !== "Identifier" || (callee.object as jsep.Identifier).name !== procedureLanguage.qualification.roots.math) return undefined;
+  if (
+    callee.object.type !== "Identifier" ||
+    (callee.object as jsep.Identifier).name !== procedureLanguage.qualification.roots.math
+  )
+    return undefined;
   return staticProperty(callee);
 }
 
@@ -505,9 +606,11 @@ function callArguments(expression: Expression): readonly Expression[] {
 }
 
 function isFailCall(expression: Expression): boolean {
-  return expression.type === "CallExpression"
-    && (expression as jsep.CallExpression).callee.type === "Identifier"
-    && ((expression as jsep.CallExpression).callee as jsep.Identifier).name === procedureLanguage.qualification.fail;
+  return (
+    expression.type === "CallExpression" &&
+    (expression as jsep.CallExpression).callee.type === "Identifier" &&
+    ((expression as jsep.CallExpression).callee as jsep.Identifier).name === procedureLanguage.qualification.fail
+  );
 }
 
 function isBinary(expression: Expression, operator: string): expression is jsep.BinaryExpression {
@@ -515,41 +618,59 @@ function isBinary(expression: Expression, operator: string): expression is jsep.
 }
 
 function requireArrow(expression: Expression, label: string, parameters: number): ArrowExpression {
-  if (expression.type !== "ArrowFunctionExpression") throw new QualificationExpressionError("invalid-procedure", `${label} requires an expression callback`);
+  if (expression.type !== "ArrowFunctionExpression")
+    throw new QualificationExpressionError("invalid-procedure", `${label} requires an expression callback`);
   const arrow = expression as ArrowExpression;
   if (arrow.async || arrow.params?.length !== parameters) {
-    throw new QualificationExpressionError("invalid-procedure", `${label} callback requires exactly ${parameters} parameter${parameters === 1 ? "" : "s"}`);
+    throw new QualificationExpressionError(
+      "invalid-procedure",
+      `${label} callback requires exactly ${parameters} parameter${parameters === 1 ? "" : "s"}`,
+    );
   }
   return arrow;
 }
 
 function identifierName(expression: Expression | null | undefined, label: string): string {
-  if (!expression || expression.type !== "Identifier") throw new QualificationExpressionError("invalid-procedure", `${label} must be an identifier`);
+  if (!expression || expression.type !== "Identifier")
+    throw new QualificationExpressionError("invalid-procedure", `${label} must be an identifier`);
   return (expression as jsep.Identifier).name;
 }
 
-function nestedEnvironment(environment: CompileEnvironment, locals: ReadonlyMap<string, LocalValue>): CompileEnvironment {
-  return { ...environment, locals: new Map([...environment.locals, ...locals]), iteratorDepth: environment.iteratorDepth + 1 };
+function nestedEnvironment(
+  environment: CompileEnvironment,
+  locals: ReadonlyMap<string, LocalValue>,
+): CompileEnvironment {
+  return {
+    ...environment,
+    locals: new Map([...environment.locals, ...locals]),
+    iteratorDepth: environment.iteratorDepth + 1,
+  };
 }
 
 function variable(type: ExpressionType, path: string, reference: ExpressionReferenceIdentity): CompiledExpression {
   const value = type.kind === "array" ? type.item : type;
   if (value.kind === "array" || value.kind === "boolean") {
-    throw new QualificationExpressionError("incompatible-type", "Injected values must use a Product Action Contract value type");
+    throw new QualificationExpressionError(
+      "incompatible-type",
+      "Injected values must use a Product Action Contract value type",
+    );
   }
   return {
     type,
     logic: { [procedureLanguage.qualification.internalOpcodes.variable]: path },
-    references: [{
-      ...reference,
-      valueType: value.kind,
-      cardinality: type.kind === "array" ? "many" : "one",
-    }],
+    references: [
+      {
+        ...reference,
+        valueType: value.kind,
+        cardinality: type.kind === "array" ? "many" : "one",
+      },
+    ],
   };
 }
 
 function variablePath(environment: CompileEnvironment, ...segments: readonly string[]): string {
-  const path = segments.map((segment) => segment.replaceAll("\\", "\\\\").replaceAll(".", "\\.").replaceAll("/", "\\/"))
+  const path = segments
+    .map((segment) => segment.replaceAll("\\", "\\\\").replaceAll(".", "\\.").replaceAll("/", "\\/"))
     .join(".");
   return environment.iteratorDepth === 0 ? path : `${"../".repeat(environment.iteratorDepth * 2)}${path}`;
 }
@@ -568,7 +689,10 @@ function requireType(expression: CompiledExpression, kind: ScalarKind, label: st
 
 function requireScalar(expression: CompiledExpression, kind: ScalarKind, label: string): void {
   if (expression.type.kind !== kind) {
-    throw new QualificationExpressionError("incompatible-type", `${label} requires ${kind}, received ${describeType(expression.type)}`);
+    throw new QualificationExpressionError(
+      "incompatible-type",
+      `${label} requires ${kind}, received ${describeType(expression.type)}`,
+    );
   }
 }
 
@@ -582,9 +706,10 @@ function assertComparable(left: CompiledExpression, right: CompiledExpression, o
 }
 
 function assertOrdered(left: CompiledExpression, right: CompiledExpression, operator: string): void {
-  const admitted = (left.type.kind === "number" && right.type.kind === "number")
-    || (left.type.kind === "instant" && right.type.kind === "instant")
-    || (left.type.kind === "string" && right.type.kind === "string");
+  const admitted =
+    (left.type.kind === "number" && right.type.kind === "number") ||
+    (left.type.kind === "instant" && right.type.kind === "instant") ||
+    (left.type.kind === "string" && right.type.kind === "string");
   if (!admitted) {
     throw new QualificationExpressionError(
       "incompatible-type",
@@ -595,14 +720,20 @@ function assertOrdered(left: CompiledExpression, right: CompiledExpression, oper
 
 function assertTypeCompatible(expected: ExpressionType, actual: ExpressionType, label: string): void {
   if (!sameType(expected, actual)) {
-    throw new QualificationExpressionError("incompatible-type", `${label} requires ${describeType(expected)}, received ${describeType(actual)}`);
+    throw new QualificationExpressionError(
+      "incompatible-type",
+      `${label} requires ${describeType(expected)}, received ${describeType(actual)}`,
+    );
   }
 }
 
 function assertEnumLiteral(typed: CompiledExpression, candidate: CompiledExpression): void {
   if (typed.type.kind !== "string" || !typed.type.enum || typeof candidate.literal !== "string") return;
   if (!typed.type.enum.includes(candidate.literal)) {
-    throw new QualificationExpressionError("incompatible-type", `Value "${candidate.literal}" is outside the declared domain`);
+    throw new QualificationExpressionError(
+      "incompatible-type",
+      `Value "${candidate.literal}" is outside the declared domain`,
+    );
   }
 }
 
@@ -624,8 +755,12 @@ function describeType(type: ExpressionType): string {
 
 function assertArity(label: string, args: readonly Expression[], min: number, max: number): void {
   if (args.length < min || args.length > max) {
-    const expected = min === max ? String(min) : max === Number.POSITIVE_INFINITY ? `at least ${min}` : `${min} to ${max}`;
-    throw new QualificationExpressionError("invalid-procedure", `${label} requires ${expected} argument${min === 1 && max === 1 ? "" : "s"}`);
+    const expected =
+      min === max ? String(min) : max === Number.POSITIVE_INFINITY ? `at least ${min}` : `${min} to ${max}`;
+    throw new QualificationExpressionError(
+      "invalid-procedure",
+      `${label} requires ${expected} argument${min === 1 && max === 1 ? "" : "s"}`,
+    );
   }
 }
 
@@ -642,7 +777,10 @@ function uniqueReferences(references: readonly CompiledExpressionReference[]): r
 }
 
 function unsupported(label: string): QualificationExpressionError {
-  return new QualificationExpressionError("invalid-procedure", `${label} is outside the closed qualification expression language`);
+  return new QualificationExpressionError(
+    "invalid-procedure",
+    `${label} is outside the closed qualification expression language`,
+  );
 }
 
 function own<const T extends object>(object: T, key: string): T[keyof T] | undefined {

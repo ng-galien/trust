@@ -1,5 +1,5 @@
 import { AstBuilder, GherkinClassicTokenMatcher, Parser } from "@cucumber/gherkin";
-import { IdGenerator, type GherkinDocument } from "@cucumber/messages";
+import { type GherkinDocument, IdGenerator } from "@cucumber/messages";
 
 import { joinContinuations } from "./continuation.js";
 
@@ -18,10 +18,7 @@ export function normalizeGherkinSource(source: string): string {
 }
 
 export function parseGherkin(source: string): GherkinDocument {
-  const parser = new Parser(
-    new AstBuilder(IdGenerator.incrementing()),
-    new GherkinClassicTokenMatcher("en"),
-  );
+  const parser = new Parser(new AstBuilder(IdGenerator.incrementing()), new GherkinClassicTokenMatcher("en"));
   try {
     return parser.parse(joinContinuations(source));
   } catch (error) {
@@ -65,6 +62,6 @@ export function hasGherkinTag(source: string, prefix: string): boolean {
 
 function record(value: unknown): Record<string, unknown> | undefined {
   return value !== null && typeof value === "object" && !Array.isArray(value)
-    ? value as Record<string, unknown>
+    ? (value as Record<string, unknown>)
     : undefined;
 }

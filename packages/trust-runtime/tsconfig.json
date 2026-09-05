@@ -8,6 +8,7 @@
   },
   "include": ["src/**/*.ts", "acceptance/**/*.ts"],
   "references": [
+    { "path": "../trust-extension-sdk" },
     { "path": "../trust-operation" },
     { "path": "../trust-procedure" },
     { "path": "../trust-language-server" }

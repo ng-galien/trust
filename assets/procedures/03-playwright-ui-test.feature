@@ -15,7 +15,7 @@ Feature: Run one Playwright user-interface test
 
   @scenario:test
   Scenario: Run the selected Playwright test
-    Then Check "Playwright test" runs Operation "playwright.test-run" on "web project" as Input "project" using "web revision" as Input "revision" using "test selector" as Input "testSelector" and must establish "the selected user-interface behavior succeeds"
+    Then Check "Playwright test" runs Operation "playwright.test-run@*" on "web project" as Input "project" using "web revision" as Input "revision" using "test selector" as Input "testSelector" and must establish "the selected user-interface behavior succeeds"
       """js
       (
         fact.testedRevision === context["web revision"] ||

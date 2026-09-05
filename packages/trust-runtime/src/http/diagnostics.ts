@@ -21,7 +21,13 @@ export function createDiagnosticsHttpHandler({ trialRegistry }: DiagnosticsHttpD
     for (const { trialId, event } of logRecords(request.body)) {
       if (trialRegistry.append(trialId, event)) accepted += 1;
     }
-    response.status(200).json(accepted === 0 ? { partialSuccess: { rejectedLogRecords: countLogRecords(request.body), errorMessage: "unknown trial" } } : {});
+    response
+      .status(200)
+      .json(
+        accepted === 0
+          ? { partialSuccess: { rejectedLogRecords: countLogRecords(request.body), errorMessage: "unknown trial" } }
+          : {},
+      );
   });
 
   router.post("/v1/traces", (request, response) => {
@@ -74,7 +80,10 @@ export function createDiagnosticsHttpHandler({ trialRegistry }: DiagnosticsHttpD
 
 /* --------------------------------------------------------------- OTLP/JSON */
 
-interface OtlpAttribute { key?: unknown; value?: unknown }
+interface OtlpAttribute {
+  key?: unknown;
+  value?: unknown;
+}
 
 function readAttributes(list: unknown): Record<string, unknown> {
   const out: Record<string, unknown> = {};
@@ -102,7 +111,9 @@ function nanosToIso(value: unknown): string {
   return new Date(Number(nanos / 1_000_000n)).toISOString();
 }
 
-function* logRecords(body: unknown): Generator<{ trialId: string; event: { type: string; at: string; [key: string]: unknown } }> {
+function* logRecords(
+  body: unknown,
+): Generator<{ trialId: string; event: { type: string; at: string; [key: string]: unknown } }> {
   const resourceLogs = (body as { resourceLogs?: unknown[] } | undefined)?.resourceLogs;
   if (!Array.isArray(resourceLogs)) return;
   for (const resourceLog of resourceLogs as Array<{ resource?: { attributes?: unknown }; scopeLogs?: unknown[] }>) {
@@ -110,16 +121,23 @@ function* logRecords(body: unknown): Generator<{ trialId: string; event: { type:
     const trialId = resource["trust.trial.id"];
     if (typeof trialId !== "string") continue;
     for (const scopeLog of (resourceLog.scopeLogs ?? []) as Array<{ logRecords?: unknown[] }>) {
-      for (const record of (scopeLog.logRecords ?? []) as Array<{ timeUnixNano?: unknown; body?: unknown; attributes?: unknown; severityText?: unknown }>) {
+      for (const record of (scopeLog.logRecords ?? []) as Array<{
+        timeUnixNano?: unknown;
+        body?: unknown;
+        attributes?: unknown;
+        severityText?: unknown;
+      }>) {
         const attributes = readAttributes(record.attributes);
         const name = attributes["event.name"];
-        const type = typeof name === "string" && name.startsWith("trust.trial.") ? name.slice("trust.trial.".length) : "log";
+        const type =
+          typeof name === "string" && name.startsWith("trust.trial.") ? name.slice("trust.trial.".length) : "log";
         const bodyText = anyValue(record.body);
         let payload: Record<string, unknown> = {};
         if (typeof bodyText === "string") {
           try {
             const parsed: unknown = JSON.parse(bodyText);
-            if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) payload = parsed as Record<string, unknown>;
+            if (parsed && typeof parsed === "object" && !Array.isArray(parsed))
+              payload = parsed as Record<string, unknown>;
             else payload = { text: bodyText };
           } catch {
             payload = { text: bodyText };
@@ -139,7 +157,9 @@ function countLogRecords(body: unknown): number {
     .reduce((count, scopeLog) => count + (scopeLog.logRecords?.length ?? 0), 0);
 }
 
-function* spans(body: unknown): Generator<{ trialId: string; event: { type: string; at: string; [key: string]: unknown } }> {
+function* spans(
+  body: unknown,
+): Generator<{ trialId: string; event: { type: string; at: string; [key: string]: unknown } }> {
   const resourceSpans = (body as { resourceSpans?: unknown[] } | undefined)?.resourceSpans;
   if (!Array.isArray(resourceSpans)) return;
   for (const resourceSpan of resourceSpans as Array<{ resource?: { attributes?: unknown }; scopeSpans?: unknown[] }>) {
@@ -147,7 +167,15 @@ function* spans(body: unknown): Generator<{ trialId: string; event: { type: stri
     const trialId = resource["trust.trial.id"];
     if (typeof trialId !== "string") continue;
     for (const scopeSpan of (resourceSpan.scopeSpans ?? []) as Array<{ spans?: unknown[] }>) {
-      for (const span of (scopeSpan.spans ?? []) as Array<{ name?: unknown; spanId?: unknown; parentSpanId?: unknown; startTimeUnixNano?: unknown; endTimeUnixNano?: unknown; attributes?: unknown; status?: { code?: unknown } }>) {
+      for (const span of (scopeSpan.spans ?? []) as Array<{
+        name?: unknown;
+        spanId?: unknown;
+        parentSpanId?: unknown;
+        startTimeUnixNano?: unknown;
+        endTimeUnixNano?: unknown;
+        attributes?: unknown;
+        status?: { code?: unknown };
+      }>) {
         yield {
           trialId,
           event: {

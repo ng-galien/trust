@@ -84,6 +84,7 @@ export const SQLITE_SCHEMA = `
   ) STRICT;
 
   CREATE TABLE IF NOT EXISTS plan_revisions (
+    resolved_procedure_json TEXT NOT NULL,
     id INTEGER PRIMARY KEY,
     plan_slug TEXT NOT NULL REFERENCES plans(plan_slug) ON DELETE CASCADE,
     revision INTEGER NOT NULL CHECK (revision >= 1),
@@ -92,9 +93,24 @@ export const SQLITE_SCHEMA = `
     declarations_json TEXT NOT NULL,
     role_values_json TEXT NOT NULL,
     check_values_json TEXT NOT NULL,
+    invocations_json TEXT NOT NULL,
     compiled_at TEXT NOT NULL,
     UNIQUE (plan_slug, revision)
   ) STRICT;
+
+  CREATE TABLE IF NOT EXISTS child_generations (
+    parent_plan TEXT NOT NULL REFERENCES plans(plan_slug),
+    invocation_id TEXT NOT NULL,
+    generation INTEGER NOT NULL CHECK (generation >= 1),
+    child_plan TEXT NOT NULL UNIQUE REFERENCES plans(plan_slug),
+    input_digest TEXT NOT NULL,
+    observed_revision INTEGER NOT NULL,
+    created_at TEXT NOT NULL,
+    superseded_at TEXT,
+    PRIMARY KEY(parent_plan, invocation_id, generation)
+  ) STRICT;
+  CREATE UNIQUE INDEX IF NOT EXISTS child_generation_current
+    ON child_generations(parent_plan, invocation_id) WHERE superseded_at IS NULL;
 
   CREATE TRIGGER IF NOT EXISTS plan_revisions_cannot_change
   BEFORE UPDATE ON plan_revisions
@@ -107,14 +123,12 @@ export const SQLITE_SCHEMA = `
   WHEN EXISTS (
     SELECT 1
       FROM plan_revisions existing_revision
-      JOIN plans existing_plan ON existing_plan.plan_slug = existing_revision.plan_slug
-      JOIN plans incoming_plan ON incoming_plan.plan_slug = NEW.plan_slug
-     WHERE existing_plan.procedure_name = incoming_plan.procedure_name
-       AND existing_plan.procedure_version = incoming_plan.procedure_version
-       AND existing_revision.definition_digest <> NEW.definition_digest
+     WHERE existing_revision.plan_slug = NEW.plan_slug
+       AND (existing_revision.definition_digest <> NEW.definition_digest
+         OR existing_revision.resolved_procedure_json <> NEW.resolved_procedure_json)
   )
   BEGIN
-    SELECT RAISE(ABORT, 'procedure version already has another definition digest');
+    SELECT RAISE(ABORT, 'Plan composition is pinned at engagement');
   END;
 
   CREATE TABLE IF NOT EXISTS compiled_checks (
@@ -150,6 +164,7 @@ export const SQLITE_SCHEMA = `
     WHERE state = 'open';
 
   CREATE TABLE IF NOT EXISTS attempts (
+    invocation_digest TEXT,
     attempt_order INTEGER PRIMARY KEY AUTOINCREMENT,
     attempt_handle TEXT NOT NULL UNIQUE,
     attempt_key TEXT NOT NULL UNIQUE,
@@ -312,8 +327,8 @@ export class IncompatibleSqliteSchemaError extends Error {
 
   constructor(actualDigest: string | undefined) {
     super(
-      "SQLite database schema is incompatible with this TRUST runtime. "
-      + "Run 'node environments/trust-test/scripts/server.ts reset' to replace and reseed the local database.",
+      "SQLite database schema is incompatible with this TRUST runtime. " +
+        "Run 'node environments/trust-test/scripts/server.ts reset' to replace and reseed the local database.",
     );
     this.name = "IncompatibleSqliteSchemaError";
     this.actualDigest = actualDigest;
@@ -357,12 +372,14 @@ type SqliteSchemaState =
   | { readonly kind: "incompatible"; readonly digest?: string };
 
 function sqliteSchemaState(sqlite: DatabaseSync): SqliteSchemaState {
-  const tables = sqlite.prepare(
-    "SELECT name FROM sqlite_schema WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name",
-  ).all() as Array<{ name: string }>;
+  const tables = sqlite
+    .prepare("SELECT name FROM sqlite_schema WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name")
+    .all() as Array<{ name: string }>;
   if (tables.length === 0) return { kind: "empty" };
   if (!tables.some(({ name }) => name === "trust_schema")) return { kind: "incompatible" };
-  const row = sqlite.prepare("SELECT digest FROM trust_schema WHERE singleton = 1").get() as { digest?: unknown } | undefined;
+  const row = sqlite.prepare("SELECT digest FROM trust_schema WHERE singleton = 1").get() as
+    | { digest?: unknown }
+    | undefined;
   const digest = typeof row?.digest === "string" ? row.digest : undefined;
   if (digest === SQLITE_SCHEMA_DIGEST) return { kind: "current" };
   return digest === undefined ? { kind: "incompatible" } : { kind: "incompatible", digest };

@@ -9,8 +9,11 @@ export function facetHelpers<Row, Filters extends { q: string }>(
   update: (patch: Partial<Filters>) => void,
 ) {
   return {
-    count: (except: keyof Filters, predicate: (row: Row) => boolean) => applyFacets(rows, filters, except).filter(predicate).length,
-    toggle: <T,>(list: T[], value: T): T[] => (list.includes(value) ? list.filter((entry) => entry !== value) : [...list, value]),
-    pick: (patch: Partial<Filters>, options?: { clearQuery?: boolean }) => update({ ...patch, ...(options?.clearQuery ? ({ q: "" } as Partial<Filters>) : {}) }),
+    count: (except: keyof Filters, predicate: (row: Row) => boolean) =>
+      applyFacets(rows, filters, except).filter(predicate).length,
+    toggle: <T>(list: T[], value: T): T[] =>
+      list.includes(value) ? list.filter((entry) => entry !== value) : [...list, value],
+    pick: (patch: Partial<Filters>, options?: { clearQuery?: boolean }) =>
+      update({ ...patch, ...(options?.clearQuery ? ({ q: "" } as Partial<Filters>) : {}) }),
   };
 }

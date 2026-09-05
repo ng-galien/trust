@@ -73,10 +73,20 @@ async function renderMermaid(code: string, dark: boolean): Promise<string> {
       labelColor: text,
       altBackground: surface2,
       // misc
-      pie1: accent, pie2: success, pie3: warning,
+      pie1: accent,
+      pie2: success,
+      pie3: warning,
     },
     flowchart: { curve: "basis", padding: 12, htmlLabels: true, nodeSpacing: 40, rankSpacing: 48 },
-    sequence: { actorMargin: 40, messageMargin: 32, mirrorActors: false, boxMargin: 8, useMaxWidth: true, wrap: true, width: 150 },
+    sequence: {
+      actorMargin: 40,
+      messageMargin: 32,
+      mirrorActors: false,
+      boxMargin: 8,
+      useMaxWidth: true,
+      wrap: true,
+      width: 150,
+    },
   });
   counter += 1;
   const { svg } = await mermaid.render(`docs-diagram-${counter}`, code);
@@ -94,22 +104,44 @@ export function Diagram({ code, caption, className }: { code: string; caption?: 
     let cancelled = false;
     setState({});
     renderMermaid(code.trim(), theme === "dark")
-      .then((svg) => { if (!cancelled) setState({ svg }); })
-      .catch((error: unknown) => { if (!cancelled) setState({ error: error instanceof Error ? error.message : String(error) }); });
-    return () => { cancelled = true; };
+      .then((svg) => {
+        if (!cancelled) setState({ svg });
+      })
+      .catch((error: unknown) => {
+        if (!cancelled) setState({ error: error instanceof Error ? error.message : String(error) });
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [code, theme]);
 
   return (
     <figure className={cx("docs-diagram my-5", className)} id={id}>
       <div className="group/visual relative overflow-x-auto rounded-(--radius-3) border border-border bg-surface p-3">
         {state.svg ? <VisualExpandButton onClick={() => setExpanded(true)} /> : null}
-        {state.svg ? <div className="docs-diagram-svg mx-auto [&>svg]:mx-auto [&>svg]:h-auto [&>svg]:max-w-full" dangerouslySetInnerHTML={{ __html: state.svg }} /> : null}
-        {state.error ? <p className="text-body text-danger">{t("docs.diagram.error", { error: state.error })}</p> : null}
-        {!state.svg && !state.error ? <p className="py-6 text-center text-body text-faint">{t("docs.diagram.loading")}</p> : null}
+        {state.svg ? (
+          <div
+            className="docs-diagram-svg mx-auto [&>svg]:mx-auto [&>svg]:h-auto [&>svg]:max-w-full"
+            // biome-ignore lint/security/noDangerouslySetInnerHtml: Only mermaid.render output under securityLevel strict reaches this boundary; Mermaid sanitizes SVG with DOMPurify before returning it.
+            dangerouslySetInnerHTML={{ __html: state.svg }}
+          />
+        ) : null}
+        {state.error ? (
+          <p className="text-body text-danger">{t("docs.diagram.error", { error: state.error })}</p>
+        ) : null}
+        {!state.svg && !state.error ? (
+          <p className="py-6 text-center text-body text-faint">{t("docs.diagram.loading")}</p>
+        ) : null}
       </div>
       {caption ? <figcaption className="mt-2 text-center text-body-lg text-muted">{caption}</figcaption> : null}
       <VisualDialog open={expanded} onClose={() => setExpanded(false)} label={caption ?? t("docs.visual.diagram")}>
-        {state.svg ? <div className="docs-diagram-svg [&>svg]:!h-auto [&>svg]:!max-h-[86vh] [&>svg]:!w-[92vw] [&>svg]:!max-w-none" dangerouslySetInnerHTML={{ __html: state.svg }} /> : null}
+        {state.svg ? (
+          <div
+            className="docs-diagram-svg [&>svg]:!h-auto [&>svg]:!max-h-[86vh] [&>svg]:!w-[92vw] [&>svg]:!max-w-none"
+            // biome-ignore lint/security/noDangerouslySetInnerHtml: The expanded view reuses the same strict-mode DOMPurify-sanitized Mermaid SVG, never raw source or HTML.
+            dangerouslySetInnerHTML={{ __html: state.svg }}
+          />
+        ) : null}
       </VisualDialog>
     </figure>
   );

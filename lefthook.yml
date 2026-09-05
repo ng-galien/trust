@@ -1,0 +1,8 @@
+# Read-only check commands; Lefthook itself hides partially staged changes.
+pre-commit:
+  parallel: true
+  commands:
+    biome:
+      run: npm run check
+    architecture:
+      run: code-moniker check .

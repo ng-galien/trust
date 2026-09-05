@@ -102,7 +102,8 @@ export const plans = {
       resumeHint: "Required. This text becomes part of the Plan history.",
       deleteBody: "Its revisions, attempts, verdicts and sessions are erased. Facts stay in history.",
       closeBody: "Pending attempts stay as they are; the agent cannot admit new ones until a Session is opened again.",
-      resetBody: "Its revisions, attempts and verdicts are erased, then it is engaged again with the same procedure, environment and root inputs, from revision 1.",
+      resetBody:
+        "Its revisions, attempts and verdicts are erased, then it is engaged again with the same procedure, environment and root inputs, from revision 1.",
     },
     notPublished: "Procedure not published",
     graphNeedsProcedure: "The graph needs the published procedure of this plan.",
@@ -112,6 +113,26 @@ export const plans = {
     closed: "Session closed",
     closedHint: "The Session is closed or expired: nothing can be admitted until the Plan is engaged again",
     closedCompleteHint: "Every Check is satisfied and the Session is closed",
+  },
+  children: {
+    title: "Child Plans",
+    parent: "Parent Plan",
+    open: "Open child Plan: {{name}}",
+    current: "Current generation {{generation, number}}",
+    superseded: "Superseded generation {{generation, number}}",
+    generation: "generation {{generation, number}}",
+    history: "Previous generations",
+    WAITING: "Waiting",
+    RUNNING: "In progress",
+    SATISFIED: "Complete",
+  },
+  descendants: {
+    label: "Descendants",
+    count_one: "{{count}} descendant escalation",
+    count_other: "{{count}} descendant escalations",
+    explanation:
+      "Active stops in descendant Plans, separate from this Plan's own state. Open the origin to review and resolve it.",
+    open: "Open escalation origin: {{plan}}",
   },
   summary: {
     description: "Description",

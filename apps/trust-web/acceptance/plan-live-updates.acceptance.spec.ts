@@ -1,4 +1,4 @@
-import { expect, test, type APIRequestContext } from "@playwright/test";
+import { type APIRequestContext, expect, test } from "@playwright/test";
 
 import { runtimeRpc } from "./support/runtime.js";
 
@@ -66,11 +66,13 @@ async function observeRepository(
     executionId: admission.executionId,
     checkUri: admission.checkUri,
     recordedAt: now,
-    facts: [{
-      kind: admission.operation.operation,
-      observedAt: now,
-      values: { headRevision: `${workingTree}-revision`, workingTree },
-    }],
+    facts: [
+      {
+        kind: admission.operation.operation,
+        observedAt: now,
+        values: { headRevision: `${workingTree}-revision`, workingTree },
+      },
+    ],
   });
   await runtimeRpc(request, "check.attempt.finalize", {
     contract: "trust.attempt-finalization-request@1",

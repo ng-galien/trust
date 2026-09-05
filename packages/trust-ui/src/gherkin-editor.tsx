@@ -1,12 +1,16 @@
 import * as monaco from "@codingame/monaco-vscode-editor-api";
-import { highlightTokenTable, type HighlightTokenTone } from "@trust/gherkin";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { type HighlightTokenTone, highlightTokenTable } from "@trust/gherkin";
 import { WrapText } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-
+import { EditorResourceNavigation } from "./editor-resource-navigation.js";
 import { TrustMonacoEditor } from "./monaco-editor.js";
-import { ensureTrustLanguageClient, initializeTrustMonaco, subscribeTrustLanguageServerStatus } from "./monaco-stack.js";
-import { IconButton } from "./ui/button.js";
+import {
+  ensureTrustLanguageClient,
+  initializeTrustMonaco,
+  subscribeTrustLanguageServerStatus,
+} from "./monaco-stack.js";
+import { Button } from "./ui/button.js";
 
 type LanguageKind = "operation" | "procedure";
 
@@ -38,20 +42,37 @@ interface GherkinEditorProps {
 }
 
 const markerOwner = "trust";
-export function GherkinEditor({ kind, value, onChange, theme, languageServerUrl, readOnly, markers = [], decorations = [], fontSize = 13, onSave }: GherkinEditorProps) {
+export function GherkinEditor({
+  kind,
+  value,
+  onChange,
+  theme,
+  languageServerUrl,
+  readOnly,
+  markers = [],
+  decorations = [],
+  fontSize = 13,
+  onSave,
+}: GherkinEditorProps) {
   const { t } = useTranslation();
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | undefined>(undefined);
-  const decorationsRef = useRef<monaco.editor.IEditorDecorationsCollection | null>(null);
   const documentUri = useRef(`inmemory://trust/${kind}/${crypto.randomUUID()}.feature`);
   const currentValue = useRef(value);
   currentValue.current = value;
-  const [mountedAt, setMountedAt] = useState(0);
+  const [editor, setEditor] = useState<monaco.editor.IStandaloneCodeEditor>();
   const [editorReady, setEditorReady] = useState(false);
-  const [languageServerStatus, setLanguageServerStatus] = useState<"connecting" | "ready" | "unavailable">("connecting");
+  const [editorFailed, setEditorFailed] = useState(false);
+  const [wordWrap, setWordWrap] = useState(false);
+  const [languageServerStatus, setLanguageServerStatus] = useState<"connecting" | "ready" | "unavailable">(
+    "connecting",
+  );
   const saveRef = useRef(onSave);
   saveRef.current = onSave;
   const language = `trust-${kind}`;
-  const options = useMemo(() => editorOptions(readOnly, fontSize), [fontSize, readOnly]);
+  const options = useMemo(
+    () => ({ ...editorOptions(readOnly, fontSize), wordWrap: wordWrap ? ("on" as const) : ("off" as const) }),
+    [fontSize, readOnly, wordWrap],
+  );
 
   useEffect(() => {
     if (!languageServerUrl) return;
@@ -65,14 +86,20 @@ export function GherkinEditor({ kind, value, onChange, theme, languageServerUrl,
 
   // Themes are rebuilt from the token layer whenever the theme flips.
   useEffect(() => {
-    void initializeTrustMonaco().then(() => {
-      defineThemes(monaco);
-      monaco.editor.setTheme(`trust-${theme}`);
-    });
+    void initializeTrustMonaco()
+      .then(() => {
+        defineThemes(monaco);
+        monaco.editor.setTheme(`trust-${theme}`);
+        setEditorFailed(false);
+      })
+      .catch((error: unknown) => {
+        console.error("TRUST editor theme initialization failed", error);
+        setEditorFailed(true);
+      });
   }, [theme]);
 
   useEffect(() => {
-    const model = editorRef.current?.getModel();
+    const model = editor?.getModel();
     if (!model) return;
     monaco.editor.setModelMarkers(
       model,
@@ -91,86 +118,134 @@ export function GherkinEditor({ kind, value, onChange, theme, languageServerUrl,
         endColumn: Math.max(marker.column + 1, model.getLineMaxColumn(Math.min(marker.line, model.getLineCount()))),
       })),
     );
-  }, [markers, mountedAt]);
+    return () => {
+      if (!model.isDisposed()) monaco.editor.setModelMarkers(model, markerOwner, []);
+    };
+  }, [markers, editor]);
 
   // Hydration decorations: whole-line tone + inline note; re-applied whenever they change (or the editor mounts).
   useEffect(() => {
-    const instance = editorRef.current;
+    const instance = editor;
     const model = instance?.getModel();
     if (!instance || !model) return;
-    decorationsRef.current ??= instance.createDecorationsCollection();
-    decorationsRef.current.set(decorations.filter((entry) => entry.line >= 1 && entry.line <= model.getLineCount()).map((entry) => ({
-      range: { startLineNumber: entry.line, startColumn: 1, endLineNumber: entry.line, endColumn: model.getLineMaxColumn(entry.line) },
-      options: {
-        isWholeLine: true,
-        className: `trust-line-${entry.tone}`,
-        linesDecorationsClassName: `trust-gutter-${entry.tone}`,
-        ...(entry.text ? { after: { content: `  ${entry.text}`, inlineClassName: `trust-inline-${entry.tone}` } } : {}),
-      },
-    })));
-  }, [decorations, mountedAt]);
+    const collection = instance.createDecorationsCollection();
+    collection.set(
+      decorations
+        .filter((entry) => entry.line >= 1 && entry.line <= model.getLineCount())
+        .map((entry) => ({
+          range: {
+            startLineNumber: entry.line,
+            startColumn: 1,
+            endLineNumber: entry.line,
+            endColumn: model.getLineMaxColumn(entry.line),
+          },
+          options: {
+            isWholeLine: true,
+            className: `trust-line-${entry.tone}`,
+            linesDecorationsClassName: `trust-gutter-${entry.tone}`,
+            ...(entry.text
+              ? { after: { content: `  ${entry.text}`, inlineClassName: `trust-inline-${entry.tone}` } }
+              : {}),
+          },
+        })),
+    );
+    return () => {
+      if (!model.isDisposed()) collection.clear();
+    };
+  }, [decorations, editor]);
 
   const mounted = (instance: monaco.editor.IStandaloneCodeEditor) => {
     editorRef.current = instance;
-    setMountedAt((count) => count + 1);
+    setEditor(instance);
     setEditorReady(true);
     defineThemes(monaco);
     monaco.editor.setTheme(`trust-${theme}`);
     monaco.languages.setLanguageConfiguration(language, {
       comments: { lineComment: "#" },
-      brackets: [["{", "}"], ["[", "]"], ["(", ")"]],
-      autoClosingPairs: [{ open: "{", close: "}" }, { open: "[", close: "]" }, { open: "(", close: ")" }, { open: '"', close: '"' }],
+      brackets: [
+        ["{", "}"],
+        ["[", "]"],
+        ["(", ")"],
+      ],
+      autoClosingPairs: [
+        { open: "{", close: "}" },
+        { open: "[", close: "]" },
+        { open: "(", close: ")" },
+        { open: '"', close: '"' },
+      ],
     });
     instance.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => saveRef.current?.());
   };
 
   return (
     <div className="relative h-full" data-doc="editor">
-    {languageServerUrl && languageServerStatus === "unavailable" ? (
-      <div role="status" className="absolute top-2 left-14 z-10 rounded-(--radius-1) bg-danger-soft px-2 py-1 text-caption text-danger">
-        {t("shared.gherkinEditor.unavailable")}
+      <EditorResourceNavigation />
+      {editorFailed || (languageServerUrl && languageServerStatus === "unavailable") ? (
+        <div
+          role="status"
+          className="absolute top-2 left-14 z-10 rounded-(--radius-1) bg-danger-soft px-2 py-1 text-caption text-danger"
+        >
+          {t(editorFailed ? "shared.gherkinEditor.editorUnavailable" : "shared.gherkinEditor.unavailable")}
+        </div>
+      ) : null}
+      <div className="absolute top-2 right-4 z-10 flex gap-2" data-doc="editor.format">
+        <Button
+          size="sm"
+          aria-pressed={wordWrap}
+          title={t("shared.gherkinEditor.wrapHint")}
+          icon={<WrapText size={14} />}
+          onClick={() => setWordWrap((current) => !current)}
+        >
+          {t("shared.gherkinEditor.wrap")}
+        </Button>
+        {!readOnly ? (
+          <Button
+            size="sm"
+            title={t("shared.gherkinEditor.formatHint")}
+            onClick={() => void editorRef.current?.getAction("editor.action.formatDocument")?.run()}
+          >
+            {t("shared.gherkinEditor.format")}
+          </Button>
+        ) : null}
       </div>
-    ) : null}
-    {!readOnly ? (
-      <div className="absolute top-2 right-4 z-10" data-doc="editor.format">
-        <IconButton size="sm" label={t("shared.gherkinEditor.format")} title={t("shared.gherkinEditor.formatHint")} onClick={() => void editorRef.current?.getAction("editor.action.formatDocument")?.run()}>
-          <WrapText size={14} />
-        </IconButton>
-      </div>
-    ) : null}
-    {!editorReady ? <div className="absolute inset-0 p-4 text-body text-muted">{t("shared.gherkinEditor.loading")}</div> : null}
-    <TrustMonacoEditor
-      className="h-full"
-      value={value}
-      language={language}
-      uri={documentUri.current}
-      options={options}
-      onReady={mounted}
-      onChange={(modified) => {
-        if (modified !== currentValue.current) onChange(modified);
-      }}
-      onError={(error) => {
-        console.error("TRUST Monaco initialization failed", error);
-        setLanguageServerStatus("unavailable");
-      }}
-      onDispose={() => {
-        editorRef.current = undefined;
-        decorationsRef.current = null;
-        setEditorReady(false);
-      }}
-    />
+      {!editorReady ? (
+        <div className="absolute inset-0 p-4 text-body text-muted">{t("shared.gherkinEditor.loading")}</div>
+      ) : null}
+      <TrustMonacoEditor
+        className="h-full"
+        value={value}
+        language={language}
+        uri={documentUri.current}
+        options={options}
+        onReady={mounted}
+        onChange={(modified) => {
+          if (modified !== currentValue.current) onChange(modified);
+        }}
+        onError={(error) => {
+          console.error("TRUST Monaco initialization failed", error);
+          setEditorFailed(true);
+        }}
+        onDispose={() => {
+          editorRef.current = undefined;
+          setEditor(undefined);
+          setEditorReady(false);
+        }}
+      />
     </div>
   );
 }
 
-function editorOptions(readOnly: boolean | undefined, fontSize: number): monaco.editor.IStandaloneEditorConstructionOptions {
+function editorOptions(
+  readOnly: boolean | undefined,
+  fontSize: number,
+): monaco.editor.IStandaloneEditorConstructionOptions {
   return {
     readOnly: readOnly ?? false,
     minimap: { enabled: false },
     fontFamily: "JetBrains Mono Variable, ui-monospace, monospace",
     fontSize,
     lineHeight: Math.round(fontSize * 1.65),
-    padding: { top: 14, bottom: 14 },
+    padding: { top: 44, bottom: 14 },
     scrollBeyondLastLine: false,
     wordWrap: "off",
     quickSuggestions: true,
@@ -190,7 +265,9 @@ function editorOptions(readOnly: boolean | undefined, fontSize: number): monaco.
 /* Read the token layer so Monaco follows the active theme without duplicating colours. */
 function token(name: string, fallback: string) {
   const value = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
-  return value || fallback;
+  const color = value || fallback;
+  // CSS minification produces #rgb/#rgba, but Monaco token colors require full hex.
+  return /^#[\da-f]{3,4}$/i.test(color) ? `#${[...color.slice(1)].map((digit) => digit + digit).join("")}` : color;
 }
 
 function hex(value: string) {
@@ -210,6 +287,8 @@ export function defineThemes(monacoApi: typeof monaco) {
     number: ["--color-editor-number", "A2620B"],
     "table-line": ["--color-editor-table-line", "C3C9D2"],
     "table-header": ["--color-editor-table-header", "5B6472"],
+    reference: ["--color-editor-reference", "245B91"],
+    property: ["--color-editor-property", "735526"],
   };
   const define = (name: string, base: "vs" | "vs-dark") =>
     monacoApi.editor.defineTheme(name, {
@@ -232,7 +311,7 @@ export function defineThemes(monacoApi: typeof monaco) {
         "editorSuggestWidget.background": token("--color-surface", "#ffffff"),
         "editorSuggestWidget.border": token("--color-border", "#dfe3e8"),
         "editorSuggestWidget.selectedBackground": token("--color-surface-3", "#e9ecf1"),
-        "focusBorder": token("--color-border-focus", "#2f6feb"),
+        focusBorder: token("--color-border-focus", "#2f6feb"),
       },
     });
   define("trust-light", "vs");

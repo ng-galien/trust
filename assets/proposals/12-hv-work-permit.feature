@@ -33,7 +33,7 @@ Feature: Run one high-voltage intervention under lockout-tagout with ordered pro
 
   @scenario:source-inventory
   Scenario: Confirm the declared isolation scheme covers the registered sources
-    Then Check "registry" runs Operation "energy.installation-read"
+    Then Check "registry" runs Operation "energy.installation-read@*"
         on "installation" as Input "installation"
         and must establish "every registered energy source of the installation was declared"
       """js
@@ -44,7 +44,7 @@ Feature: Run one high-voltage intervention under lockout-tagout with ordered pro
   @scenario:isolation
   Scenario: Confirm every energy source is locked
     Given scenario "source-inventory" is validated
-    Then Check "lock" runs Operation "energy.isolation-read"
+    Then Check "lock" runs Operation "energy.isolation-read@*"
         on each "energy source" as Input "source"
         and materializes "isolation time" from field "isolatedAt"
         and must establish "every energy source of the scheme is locked"
@@ -62,7 +62,7 @@ Feature: Run one high-voltage intervention under lockout-tagout with ordered pro
   @scenario:zero-energy
   Scenario: Confirm the zero-energy verification of every source after its isolation
     Given scenario "isolation" is validated
-    Then Check "verification" runs Operation "energy.zero-energy-read"
+    Then Check "verification" runs Operation "energy.zero-energy-read@*"
         on each "energy source" as Input "source"
         and materializes "verification time" from field "verifiedAt"
         and must establish "every source is verified at zero energy after its isolation"
@@ -80,7 +80,7 @@ Feature: Run one high-voltage intervention under lockout-tagout with ordered pro
   @scenario:permit
   Scenario: Confirm the work permit was issued after every verification
     Given scenario "zero-energy" is validated
-    Then Check "permit issue" runs Operation "energy.permit-read"
+    Then Check "permit issue" runs Operation "energy.permit-read@*"
         on "permit" as Input "permit"
         using "intervention" as Input "intervention"
         and must establish "the work permit was issued after every zero-energy verification"
@@ -102,7 +102,7 @@ Feature: Run one high-voltage intervention under lockout-tagout with ordered pro
   @scenario:work
   Scenario: Confirm the intervention is completed
     Given scenario "permit" is validated
-    Then Check "completion" runs Operation "energy.intervention-read"
+    Then Check "completion" runs Operation "energy.intervention-read@*"
         on "intervention" as Input "intervention"
         and materializes "work completion time" from field "completedAt"
         and must establish "the intervention is completed"
@@ -114,7 +114,7 @@ Feature: Run one high-voltage intervention under lockout-tagout with ordered pro
   @scenario:deconsignation
   Scenario: Confirm every lock was removed after the work and the permit closed
     Given scenario "work" is validated
-    Then Check "lock removal" runs Operation "energy.lock-removal-read"
+    Then Check "lock removal" runs Operation "energy.lock-removal-read@*"
         on each "energy source" as Input "source"
         and must establish "every lock was removed after the work completion"
       """js
@@ -127,7 +127,7 @@ Feature: Run one high-voltage intervention under lockout-tagout with ordered pro
         fail("a lock was removed before the work ended")
       )
       """
-    And Check "permit closure" runs Operation "energy.permit-read"
+    And Check "permit closure" runs Operation "energy.permit-read@*"
         on "permit" as Input "permit"
         using "intervention" as Input "intervention"
         and must establish "the permit was closed after the work completion"
@@ -145,7 +145,7 @@ Feature: Run one high-voltage intervention under lockout-tagout with ordered pro
   @scenario:re-energization
   Scenario: Confirm the installation was re-energized after the permit closure
     Given scenario "deconsignation" is validated
-    Then Check "re-energization" runs Operation "energy.installation-read"
+    Then Check "re-energization" runs Operation "energy.installation-read@*"
         on "installation" as Input "installation"
         and must establish "the installation was re-energized after the permit closure"
       """js

@@ -23,7 +23,7 @@ The compiler either returns a compiled Operation or **one diagnostic**: a code, 
 
 ### Identity and tags
 - `Operation "…" must use the canonical <domain>.<action> form` — two lower-case dot-separated segments, hyphens allowed.
-- `Operation version "…" must be semantic` — `x.y.z`, digits only.
+- `Operation version "…" must be semantic` — a valid exact SemVer version.
 - `TRUST DSL version "…" is unsupported; expected "1"` · `Operation must declare exactly one Operation tag` / `… version tag` / `… TRUST DSL version tag`.
 - `Classification tag "…" must use the @x-<key>:<value> form (lower-case key, value without spaces or colons)`.
 - `Tag "…" is outside the closed Operation grammar` — any tag that is not one of the three identity tags or an `@x-` tag.

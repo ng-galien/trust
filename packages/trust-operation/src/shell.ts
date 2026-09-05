@@ -1,3 +1,5 @@
+import { matchShellArgument } from "./match.js";
+
 /** A directory Environment, optionally narrowed to one sub-directory named by a string Input
     (the Environment is the place where all projects live; the Input picks the project). */
 export interface EnvironmentPath {
@@ -19,11 +21,11 @@ export function renderShellArgument(
     throw new TypeError("Operation Execution context is unavailable.");
   },
 ): string {
-  if (argument.kind === "literal") return argument.value;
-  const value = argument.kind === "input"
-    ? resolveInput(argument.input)
-    : resolveExecution(argument.field);
-  return `${argument.prefix ?? ""}${value}`;
+  return matchShellArgument(argument, {
+    literal: (value) => value.value,
+    input: (value) => `${value.prefix ?? ""}${resolveInput(value.input)}`,
+    execution: (value) => `${value.prefix ?? ""}${resolveExecution(value.field)}`,
+  });
 }
 
 export interface AcceptedShellExit {

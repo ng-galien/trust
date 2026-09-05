@@ -16,7 +16,17 @@ interface TrustMonacoEditorProps {
 }
 
 /** Thin React ownership adapter around the stable Monaco/VS Code editor services. */
-export function TrustMonacoEditor({ value, language, uri, options, className, onChange, onReady, onDispose, onError }: TrustMonacoEditorProps) {
+export function TrustMonacoEditor({
+  value,
+  language,
+  uri,
+  options,
+  className,
+  onChange,
+  onReady,
+  onDispose,
+  onError,
+}: TrustMonacoEditorProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | undefined>(undefined);
   const modelRef = useRef<monaco.editor.ITextModel | undefined>(undefined);
@@ -38,20 +48,22 @@ export function TrustMonacoEditor({ value, language, uri, options, className, on
   useEffect(() => {
     let active = true;
     let changeSubscription: monaco.IDisposable | undefined;
-    void initializeTrustMonaco().then(() => {
-      if (!active || !containerRef.current) return;
-      if (!monaco.languages.getLanguages().some((entry) => entry.id === languageRef.current)) {
-        monaco.languages.register({ id: languageRef.current });
-      }
-      const model = monaco.editor.createModel(valueRef.current, languageRef.current, monaco.Uri.parse(uri));
-      const editor = monaco.editor.create(containerRef.current, { ...optionsRef.current, model });
-      modelRef.current = model;
-      editorRef.current = editor;
-      changeSubscription = model.onDidChangeContent(() => onChangeRef.current?.(model.getValue()));
-      onReadyRef.current?.(editor);
-    }).catch((error: unknown) => {
-      onErrorRef.current?.(error instanceof Error ? error : new Error(String(error)));
-    });
+    void initializeTrustMonaco()
+      .then(() => {
+        if (!active || !containerRef.current) return;
+        if (!monaco.languages.getLanguages().some((entry) => entry.id === languageRef.current)) {
+          monaco.languages.register({ id: languageRef.current });
+        }
+        const model = monaco.editor.createModel(valueRef.current, languageRef.current, monaco.Uri.parse(uri));
+        const editor = monaco.editor.create(containerRef.current, { ...optionsRef.current, model });
+        modelRef.current = model;
+        editorRef.current = editor;
+        changeSubscription = model.onDidChangeContent(() => onChangeRef.current?.(model.getValue()));
+        onReadyRef.current?.(editor);
+      })
+      .catch((error: unknown) => {
+        onErrorRef.current?.(error instanceof Error ? error : new Error(String(error)));
+      });
 
     return () => {
       active = false;

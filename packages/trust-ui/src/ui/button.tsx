@@ -28,7 +28,15 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   ref?: Ref<HTMLButtonElement>;
 }
 
-export function Button({ variant = "secondary", size = "md", icon, className, children, type = "button", ...rest }: ButtonProps) {
+export function Button({
+  variant = "secondary",
+  size = "md",
+  icon,
+  className,
+  children,
+  type = "button",
+  ...rest
+}: ButtonProps) {
   return (
     <button type={type} className={cx(base, variants[variant], sizes[size], className)} {...rest}>
       {icon}
@@ -43,7 +51,15 @@ export interface IconButtonProps extends ButtonHTMLAttributes<HTMLButtonElement>
   active?: boolean;
 }
 
-export function IconButton({ label, size = "md", active, className, children, type = "button", ...rest }: IconButtonProps) {
+export function IconButton({
+  label,
+  size = "md",
+  active,
+  className,
+  children,
+  type = "button",
+  ...rest
+}: IconButtonProps) {
   return (
     <button
       type={type}

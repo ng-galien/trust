@@ -1,5 +1,5 @@
-import type { EnvironmentPath } from "./shell.js";
 import type { JsonValue } from "./json.js";
+import type { EnvironmentPath } from "./shell.js";
 
 export type FileFormat = "text" | "json";
 

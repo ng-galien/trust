@@ -1,11 +1,11 @@
 import { execFile } from "node:child_process";
-import { readFileSync, readdirSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 
-import { compileOperation, type CompiledOperation } from "@trust/operation";
+import { type CompiledOperation, compileOperation } from "@trust/operation";
 import { compileProcedure } from "@trust/procedure";
 import { runOperation } from "@trust/runner";
 import { afterEach, describe, expect, test } from "vitest";
@@ -16,9 +16,7 @@ const procedureCatalog = new URL("../../../assets/procedures/", import.meta.url)
 const temporaryDirectories: string[] = [];
 
 afterEach(async () => {
-  await Promise.all(temporaryDirectories.splice(0).map((directory) =>
-    rm(directory, { recursive: true, force: true })
-  ));
+  await Promise.all(temporaryDirectories.splice(0).map((directory) => rm(directory, { recursive: true, force: true })));
 });
 
 describe("Compiled Procedure runner boundary", () => {
@@ -40,11 +38,11 @@ describe("Compiled Procedure runner boundary", () => {
     await execute("git", ["init", "-q"], { cwd: workspaceRoot });
     await writeFile(join(workspaceRoot, "tracked.txt"), "baseline\n", "utf8");
     await execute("git", ["add", "tracked.txt"], { cwd: workspaceRoot });
-    await execute("git", [
-      "-c", "user.name=TRUST Acceptance",
-      "-c", "user.email=trust@example.invalid",
-      "commit", "-qm", "baseline",
-    ], { cwd: workspaceRoot });
+    await execute(
+      "git",
+      ["-c", "user.name=TRUST Acceptance", "-c", "user.email=trust@example.invalid", "commit", "-qm", "baseline"],
+      { cwd: workspaceRoot },
+    );
     await writeFile(join(workspaceRoot, "untracked.txt"), "dirty\n", "utf8");
 
     const result = await runOperation(
@@ -54,10 +52,12 @@ describe("Compiled Procedure runner boundary", () => {
     );
 
     expect(result.produced.workingTree).toBe("dirty");
-    expect(check?.qualification.guards).toContainEqual(expect.objectContaining({
-      conditionLogic: { "===": [{ var: "fact.workingTree" }, "dirty"] },
-      failureReasonLogic: "the repository has no local changes",
-    }));
+    expect(check?.qualification.guards).toContainEqual(
+      expect.objectContaining({
+        conditionLogic: { "===": [{ var: "fact.workingTree" }, "dirty"] },
+        failureReasonLogic: "the repository has no local changes",
+      }),
+    );
   });
 });
 
@@ -65,8 +65,10 @@ function operations(): CompiledOperation[] {
   return readdirSync(operationCatalog)
     .filter((file) => file.endsWith(".feature"))
     .sort()
-    .map((file) => compileOperation({
-      source: readFileSync(new URL(file, operationCatalog), "utf8"),
-      sourceName: file,
-    }));
+    .map((file) =>
+      compileOperation({
+        source: readFileSync(new URL(file, operationCatalog), "utf8"),
+        sourceName: file,
+      }),
+    );
 }

@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
+import { cp, mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -10,24 +10,22 @@ const runtimePort = 4390;
 const webPort = 4174;
 const stateDirectory = await mkdtemp(path.join(tmpdir(), "trust-web-acceptance-"));
 const children = [];
+const operationDirectory = path.join(stateDirectory, "operations");
+await cp(path.join(repositoryRoot, "assets/operations"), operationDirectory, { recursive: true });
 
-const runtime = spawn(
-  process.execPath,
-  [path.join(repositoryRoot, "packages/trust-runtime/dist/src/index.js")],
-  {
-    cwd: repositoryRoot,
-    env: {
-      ...process.env,
-      TRUST_HOST: "127.0.0.1",
-      TRUST_PORT: String(runtimePort),
-      TRUST_DATABASE_PATH: path.join(stateDirectory, "runtime.sqlite"),
-      TRUST_OPERATIONS_DIRECTORY: path.join(repositoryRoot, "assets/operations"),
-      TRUST_SKILL_POLICY: "local",
-    },
-    // Never leave runtime output unread: a full child pipe blocks the seeded public RPC boundary.
-    stdio: ["ignore", "inherit", "inherit"],
+const runtime = spawn(process.execPath, [path.join(repositoryRoot, "packages/trust-runtime/dist/src/index.js")], {
+  cwd: repositoryRoot,
+  env: {
+    ...process.env,
+    TRUST_HOST: "127.0.0.1",
+    TRUST_PORT: String(runtimePort),
+    TRUST_DATABASE_PATH: path.join(stateDirectory, "runtime.sqlite"),
+    TRUST_OPERATIONS_DIRECTORY: operationDirectory,
+    TRUST_SKILL_POLICY: "local",
   },
-);
+  // Never leave runtime output unread: a full child pipe blocks the seeded public RPC boundary.
+  stdio: ["ignore", "inherit", "inherit"],
+});
 children.push(runtime);
 await waitFor(`http://127.0.0.1:${runtimePort}/health`);
 await seedRuntime();

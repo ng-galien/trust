@@ -9,7 +9,7 @@ the reason returned when it fails. TRUST parses and types this source, compiles 
 evaluates the compiled rules; it never executes JavaScript.
 
 ```gherkin fragment
-    Then Check "fix" runs Operation "git.head-compare"
+    Then Check "fix" runs Operation "git.head-compare@*"
         on "project" as Input "project"
         using "baseline revision" as Input "baseRevision"
         and must establish "the fix is committed after the baseline"

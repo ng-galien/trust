@@ -3,6 +3,7 @@ export const operations = {
     shell: "Shell",
     http: "HTTP",
     fileRead: "File",
+    postgresql: "PostgreSQL",
   },
   natures: {
     observe: "Observes",
@@ -81,7 +82,9 @@ export const operations = {
     backToList: "Back to Operations",
     simulate: "Simulate",
     run: "Run",
-    editSource: "Edit source",
+    editSource: "Open source",
+    unsavedChanges: "Unsaved changes",
+    discardChanges: "Discard changes",
     deleteTitle: "Delete {{operation}}?",
     deleteBody: "The source file is removed from the runtime catalog.",
     tabs: {
@@ -131,6 +134,8 @@ export const operations = {
       formatText: "text",
       formatJson: "JSON",
       fileRead: "reads <path>{{path}}</path> ({{format}}) below <env>{{root}}</env>",
+      postgresql:
+        "executes SQL on PostgreSQL through Environment <env>{{environment}}</env>, with Input as JSONB parameter $1",
     },
     stepsSection: "Steps",
     projectionSection: "Projection",

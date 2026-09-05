@@ -7,8 +7,5 @@
     "tsBuildInfoFile": "dist/.tsbuildinfo"
   },
   "include": ["src/**/*.ts"],
-  "references": [
-    { "path": "../trust-gherkin" },
-    { "path": "../trust-operation" }
-  ]
+  "references": [{ "path": "../trust-gherkin" }, { "path": "../trust-operation" }]
 }

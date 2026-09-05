@@ -1,7 +1,8 @@
+import type { PlanSummaryView, PublishedProcedure, RuntimeJsonObject } from "@trust/extension-sdk";
+import type { CompiledProcedure } from "@trust/procedure";
 import { procedureLanguage } from "@trust/procedure/language";
-
 import { i18next } from "../../i18n/index.js";
-import type { CompiledProcedure, JsonObject, PlanSummary, PublishedProcedure } from "../../types.js";
+import { catalogIdentities } from "../../lib/catalog-versions.js";
 import { type Family, familyOf, otherFamily } from "../operations/classification.js";
 
 type ViewMode = "cards" | "list";
@@ -21,14 +22,18 @@ export interface ProcedureRow {
   inputs: string[];
   scenarioCount: number;
   checkCount: number;
-  plans: PlanSummary[];
-  activePlans: PlanSummary[];
+  plans: PlanSummaryView[];
+  activePlans: PlanSummaryView[];
   publishedAt: string;
   publishedBy: string;
 }
 
-export function toRows(procedures: PublishedProcedure[], plans: PlanSummary[]): ProcedureRow[] {
-  return procedures.map((published) => {
+export function toRows(procedures: PublishedProcedure[], plans: PlanSummaryView[]): ProcedureRow[] {
+  return catalogIdentities(
+    procedures,
+    (value) => value.procedure.procedure,
+    (value) => value.procedure.version,
+  ).map((published) => {
     const procedure = published.procedure;
     const operations = Array.from(new Set(procedure.operations.map((used) => used.operation))).sort();
     const domains = Array.from(new Set(operations.map((operation) => operation.split(".")[0] ?? "").filter(Boolean)));
@@ -43,7 +48,7 @@ export function toRows(procedures: PublishedProcedure[], plans: PlanSummary[]): 
       operations,
       domains,
       family: dominantFamily(operations, procedure),
-      inputs: procedure.roles.filter((role) => (role.source as { kind?: string }).kind === "plan-input").map((role) => role.name),
+      inputs: procedure.roles.filter((role) => role.source.kind === "plan-input").map((role) => role.name),
       scenarioCount: procedure.scenarios.length,
       checkCount: procedure.checks.length,
       plans: executing,
@@ -104,7 +109,12 @@ export function writeFilters(filters: Filters, base: URLSearchParams): URLSearch
   return next;
 }
 
-export const emptyFilters: Pick<Filters, "q" | "family" | "operations" | "plans"> = { q: "", family: "", operations: [], plans: "" };
+export const emptyFilters: Pick<Filters, "q" | "family" | "operations" | "plans"> = {
+  q: "",
+  family: "",
+  operations: [],
+  plans: "",
+};
 
 function matchesQuery(row: ProcedureRow, needle: string): boolean {
   if (!needle) return true;
@@ -134,8 +144,16 @@ export function applyFacets(rows: ProcedureRow[], filters: Filters, except?: key
     (row) =>
       (except === "q" || matchesQuery(row, needle)) &&
       (except === "family" || !filters.family || row.family.id === filters.family) &&
-      (except === "operations" || filters.operations.length === 0 || filters.operations.some((operation) => row.operations.includes(operation))) &&
-      (except === "plans" || !filters.plans || (filters.plans === "active" ? row.activePlans.length > 0 : filters.plans === "any" ? row.plans.length > 0 : row.plans.length === 0)),
+      (except === "operations" ||
+        filters.operations.length === 0 ||
+        filters.operations.some((operation) => row.operations.includes(operation))) &&
+      (except === "plans" ||
+        !filters.plans ||
+        (filters.plans === "active"
+          ? row.activePlans.length > 0
+          : filters.plans === "any"
+            ? row.plans.length > 0
+            : row.plans.length === 0)),
   );
 }
 
@@ -144,12 +162,16 @@ export function applyFilters(rows: ProcedureRow[], filters: Filters): ProcedureR
     name: (a, b) => a.id.localeCompare(b.id),
     published: (a, b) => b.publishedAt.localeCompare(a.publishedAt),
     checks: (a, b) => b.checkCount - a.checkCount || a.id.localeCompare(b.id),
-    plans: (a, b) => b.activePlans.length - a.activePlans.length || b.plans.length - a.plans.length || a.id.localeCompare(b.id),
+    plans: (a, b) =>
+      b.activePlans.length - a.activePlans.length || b.plans.length - a.plans.length || a.id.localeCompare(b.id),
   };
   return applyFacets(rows, filters).sort(compare[filters.sort]);
 }
 
-export function groupRows(rows: ProcedureRow[], group: GroupKey): Array<{ key: string; label: string; rows: ProcedureRow[] }> {
+export function groupRows(
+  rows: ProcedureRow[],
+  group: GroupKey,
+): Array<{ key: string; label: string; rows: ProcedureRow[] }> {
   if (group === "none") return [{ key: "all", label: "", rows }];
   const map = new Map<string, { key: string; label: string; rows: ProcedureRow[] }>();
   for (const row of rows) {
@@ -163,7 +185,7 @@ export function groupRows(rows: ProcedureRow[], group: GroupKey): Array<{ key: s
 /** Scenarios in dependency order (topological, stable on source order). */
 export function orderedScenarios(procedure: CompiledProcedure): CompiledProcedure["scenarios"] {
   const done = new Set<string>();
-  const ordered: CompiledProcedure["scenarios"] = [];
+  const ordered: Array<CompiledProcedure["scenarios"][number]> = [];
   let remaining = [...procedure.scenarios];
   while (remaining.length) {
     const ready = remaining.filter((scenario) => scenario.dependencies.every((dependency) => done.has(dependency)));
@@ -185,9 +207,10 @@ export const procedureTemplate = procedureLanguage.template;
 export function hasIntentChaining(source: string): boolean {
   const lines = source.split(/\r?\n/);
   const featureLine = lines.findIndex((line) => /^[ \t]*Feature:/.test(line));
-  return featureLine >= 0 && lines.slice(0, featureLine).some((line) => (
-    tagTokens(line).includes(procedureLanguage.tags.intentChaining)
-  ));
+  return (
+    featureLine >= 0 &&
+    lines.slice(0, featureLine).some((line) => tagTokens(line).includes(procedureLanguage.tags.intentChaining))
+  );
 }
 
 export function setIntentChaining(source: string, enabled: boolean): string {
@@ -205,9 +228,9 @@ export function setIntentChaining(source: string, enabled: boolean): string {
     lines[index] = `${indentation}${tokens.filter((token) => token !== tag).join(" ")}`;
   }
   if (enabled && !present) {
-    const dslLine = lines.slice(0, featureLine).findLastIndex((line) => (
-      tagTokens(line).some((token) => token.startsWith(procedureLanguage.tags.dsl))
-    ));
+    const dslLine = lines
+      .slice(0, featureLine)
+      .findLastIndex((line) => tagTokens(line).some((token) => token.startsWith(procedureLanguage.tags.dsl)));
     if (dslLine >= 0) lines[dslLine] = `${lines[dslLine]!.trimEnd()} ${tag}`;
     else lines.splice(featureLine, 0, tag);
   }

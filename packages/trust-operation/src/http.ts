@@ -1,4 +1,5 @@
 import type { JsonValue } from "./json.js";
+import { matchHttpPathSegment, matchHttpValueSource } from "./match.js";
 
 /** Registered HTTP methods that represent application requests. `PRI` and the reserved `*` token
     are protocol control values, not methods an Operation can send. */
@@ -44,7 +45,7 @@ export const HTTP_METHODS = [
   "VERSION-CONTROL",
 ] as const;
 
-export type HttpMethod = typeof HTTP_METHODS[number];
+export type HttpMethod = (typeof HTTP_METHODS)[number];
 export type HttpFormat = "text" | "json" | "none";
 
 export type HttpValueSource =
@@ -94,10 +95,15 @@ export function renderHttpUrl(
 ): string {
   const url = new URL(base);
   if (http.query.length > 0 && url.search !== "") {
-    throw new TypeError(`HTTP Environment "${http.url.environment}" already carries a query string; the step declares its own query.`);
+    throw new TypeError(
+      `HTTP Environment "${http.url.environment}" already carries a query string; the step declares its own query.`,
+    );
   }
   for (const segment of http.path) {
-    const value = segment.kind === "literal" ? segment.value : resolveInput(segment.input);
+    const value = matchHttpPathSegment(segment, {
+      literal: (value) => value.value,
+      input: (value) => resolveInput(value.input),
+    });
     if (value === "") throw new TypeError("HTTP path segments must be non-empty.");
     url.pathname = `${url.pathname.endsWith("/") ? url.pathname : `${url.pathname}/`}${encodeURIComponent(value)}`;
   }
@@ -112,8 +118,11 @@ export function renderHttpValue(
   resolveInput: (input: string) => string,
   resolveEnvironment: (environment: string) => string,
 ): string {
-  if (source.kind === "literal") return source.value;
-  return source.kind === "input" ? resolveInput(source.input) : resolveEnvironment(source.environment);
+  return matchHttpValueSource(source, {
+    literal: (value) => value.value,
+    input: (value) => resolveInput(value.input),
+    environment: (value) => resolveEnvironment(value.environment),
+  });
 }
 
 export interface HttpTextResult {

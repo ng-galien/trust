@@ -10,7 +10,7 @@ Feature: Hand the Plan identifier to an Operation Input
 
   @scenario:comparison
   Scenario: Compare the project with a revision named after the Plan
-    Then Check "comparison" runs Operation "git.head-compare" on "project" as Input "project" using plan as Input "baseRevision" and must establish "the project is ahead of the Plan revision"
+    Then Check "comparison" runs Operation "git.head-compare@*" on "project" as Input "project" using plan as Input "baseRevision" and must establish "the project is ahead of the Plan revision"
       """js
       fact.commitsAhead >= 1 ||
       fail("the project is not ahead of the Plan")

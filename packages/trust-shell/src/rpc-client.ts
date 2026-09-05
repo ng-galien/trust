@@ -30,11 +30,7 @@ export class TrustRpcError extends Error {
   }
 }
 
-export async function callTrustRpc(
-  options: TrustRpcClientOptions,
-  method: string,
-  params: unknown,
-): Promise<unknown> {
+export async function callTrustRpc(options: TrustRpcClientOptions, method: string, params: unknown): Promise<unknown> {
   const endpoint = rpcEndpoint(options.url);
   const id = `trust-cli:${method}`;
   let response: Response;
@@ -54,7 +50,7 @@ export async function callTrustRpc(
 
   let envelope: unknown;
   try {
-    envelope = await response.json() as unknown;
+    envelope = (await response.json()) as unknown;
   } catch {
     throw new Error("TRUST server returned an invalid JSON-RPC response");
   }
@@ -81,11 +77,13 @@ function isRpcEnvelope(value: unknown, id: string): value is JsonRpcSuccess | Js
   if (hasResult === hasError) return false;
   if (hasResult) return true;
   const error = record.error;
-  return typeof error === "object"
-    && error !== null
-    && !Array.isArray(error)
-    && typeof (error as Record<string, unknown>).code === "number"
-    && typeof (error as Record<string, unknown>).message === "string";
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    !Array.isArray(error) &&
+    typeof (error as Record<string, unknown>).code === "number" &&
+    typeof (error as Record<string, unknown>).message === "string"
+  );
 }
 
 function rpcEndpoint(value: string): URL {
@@ -95,9 +93,7 @@ function rpcEndpoint(value: string): URL {
   } catch {
     throw new TypeError(`Invalid TRUST_URL: ${value}`);
   }
-  if ((base.protocol !== "http:" && base.protocol !== "https:")
-    || base.username !== ""
-    || base.password !== "") {
+  if ((base.protocol !== "http:" && base.protocol !== "https:") || base.username !== "" || base.password !== "") {
     throw new TypeError("TRUST_URL must be an HTTP(S) URL without embedded credentials");
   }
   base.pathname = "/rpc";

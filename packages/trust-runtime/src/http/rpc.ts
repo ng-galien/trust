@@ -1,55 +1,37 @@
-import express, {
-  type ErrorRequestHandler,
-  type RequestHandler,
-  type Router,
-} from "express";
-import {
-  CatalogProcedureCompilationError,
-  type ProcedureCompilationErrorCode,
-} from "@trust/procedure";
 import {
   compileOperation,
   OperationCompilationError,
   OperationValidationError,
   simulateOperation,
 } from "@trust/operation";
-
-import {
-  ReadError,
-  type PlanReader,
-} from "../plan/read.js";
+import { CatalogProcedureCompilationError, type ProcedureCompilationErrorCode } from "@trust/procedure";
+import express, { type ErrorRequestHandler, type RequestHandler, type Router } from "express";
+import type { CredentialService } from "../credential/service.js";
+import type { EnvironmentService } from "../environment/service.js";
+import { EnvironmentConfigurationError } from "../environment/validation.js";
+import { type OperationCatalog, OperationCatalogError } from "../operation/catalog.js";
+import { type PlanReader, ReadError } from "../plan/read.js";
+import { type PlanRuntime, PlanRuntimeError } from "../plan/runtime.js";
 import type { Procedures } from "../procedure/procedures.js";
 import { ProcedureConflictError } from "../procedure/store.js";
-import {
-  PlanRuntimeError,
-  type PlanRuntime,
-} from "../plan/runtime.js";
-import type { EnvironmentService } from "../environment/service.js";
-import type { CredentialService } from "../credential/service.js";
-import { EnvironmentConfigurationError } from "../environment/validation.js";
-import { OperationCatalogError, type OperationCatalog } from "../operation/catalog.js";
 import { RegistryError, type RegistryErrorCode, type RegistryService } from "../registry/service.js";
 import { TrialError, type TrialService } from "../trial/service.js";
-import { executeTrialRpc, InvalidTrialRpcParams, isTrialRpcMethod, TRIAL_ERROR_CONTRACT, type TrialFailureData } from "./trial.js";
-import {
-  PLAN_RUNTIME_ERROR_CONTRACT,
-  type PlanRuntimeFailureData,
-} from "./plan.js";
+import { executeConfigurationRpc, InvalidConfigurationRpcParams, isConfigurationRpcMethod } from "./configuration.js";
 import {
   executePlanRuntimeRpc,
   InvalidPlanRuntimeRpcParams,
   isPlanRuntimeRpcMethod,
+  PLAN_RUNTIME_ERROR_CONTRACT,
+  type PlanRuntimeFailureData,
 } from "./plan.js";
+import { executeRegistryRpc, InvalidRegistryRpcParams, isRegistryRpcMethod } from "./registry.js";
 import {
-  executeConfigurationRpc,
-  InvalidConfigurationRpcParams,
-  isConfigurationRpcMethod,
-} from "./configuration.js";
-import {
-  executeRegistryRpc,
-  InvalidRegistryRpcParams,
-  isRegistryRpcMethod,
-} from "./registry.js";
+  executeTrialRpc,
+  InvalidTrialRpcParams,
+  isTrialRpcMethod,
+  TRIAL_ERROR_CONTRACT,
+  type TrialFailureData,
+} from "./trial.js";
 
 const PROCEDURE_COMPILE_METHOD = "procedure.compile" as const;
 const PROCEDURE_PUBLISH_METHOD = "procedure.publish" as const;
@@ -61,10 +43,8 @@ const OPERATION_READ_METHOD = "operation.read" as const;
 const OPERATION_SIMULATE_METHOD = "operation.simulate" as const;
 const OPERATION_SAVE_METHOD = "operation.save" as const;
 const OPERATION_REMOVE_METHOD = "operation.remove" as const;
-const PROCEDURE_COMPILATION_ERROR_CONTRACT =
-  "trust.procedure-compilation-error@1" as const;
-const OPERATION_COMPILATION_ERROR_CONTRACT =
-  "trust.operation-compilation-error@1" as const;
+const PROCEDURE_COMPILATION_ERROR_CONTRACT = "trust.procedure-compilation-error@1" as const;
+const OPERATION_COMPILATION_ERROR_CONTRACT = "trust.operation-compilation-error@1" as const;
 
 type JsonRpcId = string | number | null;
 
@@ -84,9 +64,7 @@ interface JsonRpcSuccess<Result = unknown> {
   readonly result: Result;
 }
 
-type JsonRpcResponse<Result = unknown, ErrorData = unknown> =
-  | JsonRpcSuccess<Result>
-  | JsonRpcFailure<ErrorData>;
+type JsonRpcResponse<Result = unknown, ErrorData = unknown> = JsonRpcSuccess<Result> | JsonRpcFailure<ErrorData>;
 
 interface ProcedureCompileParams {
   readonly source: string;
@@ -170,8 +148,7 @@ type RpcErrorData =
   | RegistryFailureData;
 type RpcResult = JsonRpcResponse<unknown, RpcErrorData>;
 
-const hasOwn = (value: object, key: PropertyKey): boolean =>
-  Object.prototype.hasOwnProperty.call(value, key);
+const hasOwn = (value: object, key: PropertyKey): boolean => Object.hasOwn(value, key);
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
@@ -184,12 +161,7 @@ const hasOnlyKeys = (value: Record<string, unknown>, allowed: readonly string[])
 const isJsonRpcId = (value: unknown): value is JsonRpcId =>
   value === null || typeof value === "string" || typeof value === "number";
 
-const failure = <Data = unknown>(
-  id: JsonRpcId,
-  code: number,
-  message: string,
-  data?: Data,
-): JsonRpcFailure<Data> => ({
+const failure = <Data = unknown>(id: JsonRpcId, code: number, message: string, data?: Data): JsonRpcFailure<Data> => ({
   jsonrpc: "2.0",
   id,
   error: {
@@ -214,11 +186,12 @@ const compileParams = (value: unknown): ProcedureCompileParams | undefined => {
 const readParams = (value: unknown): ProcedureReadParams | undefined => {
   if (!isRecord(value) || !hasOnlyKeys(value, ["procedure", "version"])) return undefined;
   if (
-    typeof value.procedure !== "string"
-    || value.procedure.length === 0
-    || typeof value.version !== "string"
-    || value.version.length === 0
-  ) return undefined;
+    typeof value.procedure !== "string" ||
+    value.procedure.length === 0 ||
+    typeof value.version !== "string" ||
+    value.version.length === 0
+  )
+    return undefined;
   return { procedure: value.procedure, version: value.version };
 };
 
@@ -231,31 +204,26 @@ const listParams = (value: unknown): { readonly summary: boolean } | undefined =
 const operationReadParams = (value: unknown): OperationReadParams | undefined => {
   if (!isRecord(value) || !hasOnlyKeys(value, ["operation", "version"])) return undefined;
   if (
-    typeof value.operation !== "string"
-    || value.operation.length === 0
-    || typeof value.version !== "string"
-    || value.version.length === 0
-  ) return undefined;
+    typeof value.operation !== "string" ||
+    value.operation.length === 0 ||
+    typeof value.version !== "string" ||
+    value.version.length === 0
+  )
+    return undefined;
   return { operation: value.operation, version: value.version };
 };
 
-const operationSimulationParams = (
-  value: unknown,
-): OperationSimulationParams | undefined => {
-  if (!isRecord(value) || !hasOnlyKeys(value, [
-    "source",
-    "sourceName",
-    "input",
-    "environment",
-    "steps",
-  ])) return undefined;
+const operationSimulationParams = (value: unknown): OperationSimulationParams | undefined => {
+  if (!isRecord(value) || !hasOnlyKeys(value, ["source", "sourceName", "input", "environment", "steps"]))
+    return undefined;
   if (
-    typeof value.source !== "string"
-    || !Object.hasOwn(value, "input")
-    || !Object.hasOwn(value, "environment")
-    || !Object.hasOwn(value, "steps")
-    || (Object.hasOwn(value, "sourceName") && typeof value.sourceName !== "string")
-  ) return undefined;
+    typeof value.source !== "string" ||
+    !Object.hasOwn(value, "input") ||
+    !Object.hasOwn(value, "environment") ||
+    !Object.hasOwn(value, "steps") ||
+    (Object.hasOwn(value, "sourceName") && typeof value.sourceName !== "string")
+  )
+    return undefined;
   return {
     source: value.source,
     ...(typeof value.sourceName === "string" ? { sourceName: value.sourceName } : {}),
@@ -265,13 +233,9 @@ const operationSimulationParams = (
   };
 };
 
-const sourceNameFrom = (params: ProcedureCompileParams): string =>
-  params.sourceName ?? "<procedure>";
+const sourceNameFrom = (params: ProcedureCompileParams): string => params.sourceName ?? "<procedure>";
 
-const processMessage = async (
-  message: unknown,
-  dependencies: RpcHttpDependencies,
-): Promise<RpcResult | undefined> => {
+const processMessage = async (message: unknown, dependencies: RpcHttpDependencies): Promise<RpcResult | undefined> => {
   if (!isRecord(message)) return failure(null, INVALID_REQUEST, "Invalid Request");
 
   const hasId = hasOwn(message, "id");
@@ -314,12 +278,16 @@ const processMessage = async (
         return respond(failure(id, INVALID_PARAMS, "Invalid params"));
       }
       if (error instanceof EnvironmentConfigurationError) {
-        return respond(failure(id, INVALID_PARAMS, "Invalid params", {
-          contract: "trust.environment-configuration-error@1",
-          message: error.message,
-        } satisfies EnvironmentConfigurationFailureData));
+        return respond(
+          failure(id, INVALID_PARAMS, "Invalid params", {
+            contract: "trust.environment-configuration-error@1",
+            message: error.message,
+          } satisfies EnvironmentConfigurationFailureData),
+        );
       }
-      process.stderr.write(`configuration rpc ${message.method} failed: ${error instanceof Error ? (error.stack ?? error.message) : String(error)}\n`);
+      process.stderr.write(
+        `configuration rpc ${message.method} failed: ${error instanceof Error ? (error.stack ?? error.message) : String(error)}\n`,
+      );
       return respond(failure(id, INTERNAL_ERROR, "Internal error"));
     }
   }
@@ -333,15 +301,19 @@ const processMessage = async (
         return respond(failure(id, INVALID_PARAMS, "Invalid params"));
       }
       if (error instanceof RegistryError) {
-        return respond(failure(id, REGISTRY_ERROR, "Registry request rejected", {
-          contract: "trust.registry-error@1",
-          reason: error.reason,
-          message: error.message,
-          ...(error.artifact === undefined ? {} : { artifact: error.artifact }),
-          summary: error.summary ?? { imported: 0, unchanged: 0, failed: 1 },
-        } satisfies RegistryFailureData));
+        return respond(
+          failure(id, REGISTRY_ERROR, "Registry request rejected", {
+            contract: "trust.registry-error@1",
+            reason: error.reason,
+            message: error.message,
+            ...(error.artifact === undefined ? {} : { artifact: error.artifact }),
+            summary: error.summary ?? { imported: 0, unchanged: 0, failed: 1 },
+          } satisfies RegistryFailureData),
+        );
       }
-      process.stderr.write(`registry rpc ${message.method} failed: ${error instanceof Error ? (error.stack ?? error.message) : String(error)}\n`);
+      process.stderr.write(
+        `registry rpc ${message.method} failed: ${error instanceof Error ? (error.stack ?? error.message) : String(error)}\n`,
+      );
       return respond(failure(id, INTERNAL_ERROR, "Internal error"));
     }
   }
@@ -361,7 +333,9 @@ const processMessage = async (
         };
         return respond(failure(id, TRIAL_ERROR, "Trial rejected", data));
       }
-      process.stderr.write(`trial rpc ${message.method} failed: ${error instanceof Error ? (error.stack ?? error.message) : String(error)}\n`);
+      process.stderr.write(
+        `trial rpc ${message.method} failed: ${error instanceof Error ? (error.stack ?? error.message) : String(error)}\n`,
+      );
       return respond(failure(id, INTERNAL_ERROR, "Internal error"));
     }
   }
@@ -384,9 +358,11 @@ const processMessage = async (
     const params = operationReadParams(message.params);
     if (!params) return respond(failure(id, INVALID_PARAMS, "Invalid params"));
     const operation = dependencies.operationCatalog.find(params.operation, params.version);
-    return respond(operation === undefined
-      ? failure(id, PROCEDURE_COMPILATION_ERROR, "Operation not found")
-      : { jsonrpc: "2.0", id, result: operation });
+    return respond(
+      operation === undefined
+        ? failure(id, PROCEDURE_COMPILATION_ERROR, "Operation not found")
+        : { jsonrpc: "2.0", id, result: operation },
+    );
   }
 
   if (message.method === OPERATION_SAVE_METHOD) {
@@ -404,13 +380,15 @@ const processMessage = async (
       });
     } catch (error) {
       if (error instanceof OperationCompilationError || error instanceof OperationCatalogError) {
-        return respond(failure(id, PROCEDURE_COMPILATION_ERROR, "Operation save rejected", {
-          contract: OPERATION_COMPILATION_ERROR_CONTRACT,
-          reason: error instanceof OperationCompilationError ? error.code : error.reason,
-          message: error.message,
-          sourceName: params.sourceName,
-          location: error instanceof OperationCompilationError ? error.location ?? null : null,
-        } satisfies OperationCompilationFailureData));
+        return respond(
+          failure(id, PROCEDURE_COMPILATION_ERROR, "Operation save rejected", {
+            contract: OPERATION_COMPILATION_ERROR_CONTRACT,
+            reason: error instanceof OperationCompilationError ? error.code : error.reason,
+            message: error.message,
+            sourceName: params.sourceName,
+            location: error instanceof OperationCompilationError ? (error.location ?? null) : null,
+          } satisfies OperationCompilationFailureData),
+        );
       }
       return respond(failure(id, INTERNAL_ERROR, "Internal error"));
     }
@@ -424,17 +402,24 @@ const processMessage = async (
       return respond({
         jsonrpc: "2.0",
         id,
-        result: { contract: "trust.removed-operation@1", operation: params.operation, version: params.version, removed: true },
+        result: {
+          contract: "trust.removed-operation@1",
+          operation: params.operation,
+          version: params.version,
+          removed: true,
+        },
       });
     } catch (error) {
       if (error instanceof OperationCatalogError) {
-        return respond(failure(id, PROCEDURE_COMPILATION_ERROR, "Operation removal rejected", {
-          contract: OPERATION_COMPILATION_ERROR_CONTRACT,
-          reason: error.reason,
-          message: error.message,
-          sourceName: "<operation>",
-          location: null,
-        } satisfies OperationCompilationFailureData));
+        return respond(
+          failure(id, PROCEDURE_COMPILATION_ERROR, "Operation removal rejected", {
+            contract: OPERATION_COMPILATION_ERROR_CONTRACT,
+            reason: error.reason,
+            message: error.message,
+            sourceName: "<operation>",
+            location: null,
+          } satisfies OperationCompilationFailureData),
+        );
       }
       return respond(failure(id, INTERNAL_ERROR, "Internal error"));
     }
@@ -447,13 +432,15 @@ const processMessage = async (
       return respond({ jsonrpc: "2.0", id, result: compileOperation(params) });
     } catch (error) {
       if (error instanceof OperationCompilationError) {
-        return respond(failure(id, PROCEDURE_COMPILATION_ERROR, "Operation rejected", {
-          contract: OPERATION_COMPILATION_ERROR_CONTRACT,
-          reason: error.code,
-          message: error.message,
-          sourceName: error.sourceName ?? params.sourceName ?? "<operation>",
-          location: error.location ?? null,
-        } satisfies OperationCompilationFailureData));
+        return respond(
+          failure(id, PROCEDURE_COMPILATION_ERROR, "Operation rejected", {
+            contract: OPERATION_COMPILATION_ERROR_CONTRACT,
+            reason: error.code,
+            message: error.message,
+            sourceName: error.sourceName ?? params.sourceName ?? "<operation>",
+            location: error.location ?? null,
+          } satisfies OperationCompilationFailureData),
+        );
       }
       return respond(failure(id, INTERNAL_ERROR, "Internal error"));
     }
@@ -466,22 +453,26 @@ const processMessage = async (
       return respond({ jsonrpc: "2.0", id, result: await simulateOperation(params) });
     } catch (error) {
       if (error instanceof OperationCompilationError) {
-        return respond(failure(id, PROCEDURE_COMPILATION_ERROR, "Operation rejected", {
-          contract: OPERATION_COMPILATION_ERROR_CONTRACT,
-          reason: error.code,
-          message: error.message,
-          sourceName: error.sourceName ?? params.sourceName ?? "<operation>",
-          location: error.location ?? null,
-        } satisfies OperationCompilationFailureData));
+        return respond(
+          failure(id, PROCEDURE_COMPILATION_ERROR, "Operation rejected", {
+            contract: OPERATION_COMPILATION_ERROR_CONTRACT,
+            reason: error.code,
+            message: error.message,
+            sourceName: error.sourceName ?? params.sourceName ?? "<operation>",
+            location: error.location ?? null,
+          } satisfies OperationCompilationFailureData),
+        );
       }
       if (error instanceof OperationValidationError || error instanceof TypeError) {
-        return respond(failure(id, INVALID_PARAMS, "Operation simulation rejected", {
-          contract: OPERATION_COMPILATION_ERROR_CONTRACT,
-          reason: "invalid-simulation",
-          message: error.message,
-          sourceName: params.sourceName ?? "<operation>",
-          location: null,
-        } satisfies OperationCompilationFailureData));
+        return respond(
+          failure(id, INVALID_PARAMS, "Operation simulation rejected", {
+            contract: OPERATION_COMPILATION_ERROR_CONTRACT,
+            reason: "invalid-simulation",
+            message: error.message,
+            sourceName: params.sourceName ?? "<operation>",
+            location: null,
+          } satisfies OperationCompilationFailureData),
+        );
       }
       return respond(failure(id, INTERNAL_ERROR, "Internal error"));
     }
@@ -500,7 +491,7 @@ const processMessage = async (
           procedures: params.summary ? procedures.map(procedureSummary) : procedures,
         },
       });
-    } catch (error) {
+    } catch {
       return respond(failure(id, INTERNAL_ERROR, "Internal error"));
     }
   }
@@ -509,7 +500,7 @@ const processMessage = async (
     const params = compileParams(message.params);
     if (!params) return respond(failure(id, INVALID_PARAMS, "Invalid params"));
     try {
-      const result = dependencies.procedures.compile(params);
+      const result = await dependencies.procedures.compile(params);
       return respond({ jsonrpc: "2.0", id, result });
     } catch (error) {
       if (error instanceof CatalogProcedureCompilationError) {
@@ -520,9 +511,7 @@ const processMessage = async (
           sourceName: error.sourceName ?? sourceNameFrom(params),
           location: error.location ?? null,
         };
-        return respond(
-          failure(id, PROCEDURE_COMPILATION_ERROR, "Procedure rejected", data),
-        );
+        return respond(failure(id, PROCEDURE_COMPILATION_ERROR, "Procedure rejected", data));
       }
       return respond(failure(id, INTERNAL_ERROR, "Internal error"));
     }
@@ -556,13 +545,15 @@ const processMessage = async (
         return respond(failure(id, PROCEDURE_COMPILATION_ERROR, "Procedure definition rejected", data));
       }
       if (error instanceof ProcedureConflictError) {
-        return respond(failure(id, PROCEDURE_COMPILATION_ERROR, "Procedure publication rejected", {
-          contract: PROCEDURE_COMPILATION_ERROR_CONTRACT,
-          reason: "invalid-procedure",
-          message: error.message,
-          sourceName: sourceNameFrom(params),
-          location: null,
-        } satisfies ProcedureCompilationFailureData));
+        return respond(
+          failure(id, PROCEDURE_COMPILATION_ERROR, "Procedure publication rejected", {
+            contract: PROCEDURE_COMPILATION_ERROR_CONTRACT,
+            reason: "invalid-procedure",
+            message: error.message,
+            sourceName: sourceNameFrom(params),
+            location: null,
+          } satisfies ProcedureCompilationFailureData),
+        );
       }
       return respond(failure(id, INTERNAL_ERROR, "Internal error"));
     }
@@ -585,7 +576,7 @@ const processMessage = async (
           publishedAt: published.publishedAt,
         },
       });
-    } catch (error) {
+    } catch {
       return respond(failure(id, INTERNAL_ERROR, "Internal error"));
     }
   }
@@ -613,7 +604,9 @@ const processMessage = async (
       };
       return respond(failure(id, PLAN_RUNTIME_ERROR, "Plan runtime rejected", data));
     }
-    process.stderr.write(`plan runtime rpc ${message.method} failed: ${error instanceof Error ? (error.stack ?? error.message) : String(error)}\n`);
+    process.stderr.write(
+      `plan runtime rpc ${message.method} failed: ${error instanceof Error ? (error.stack ?? error.message) : String(error)}\n`,
+    );
     return respond(failure(id, INTERNAL_ERROR, "Internal error"));
   }
 };
@@ -653,11 +646,9 @@ const dispatch = async (
     return await processMessage(body, dependencies);
   }
   if (body.length === 0) return failure(null, INVALID_REQUEST, "Invalid Request");
-  const responses = (await Promise.all(body
-    .map((message) =>
-      processMessage(message, dependencies),
-    )))
-    .filter((response): response is RpcResult => response !== undefined);
+  const responses = (await Promise.all(body.map((message) => processMessage(message, dependencies)))).filter(
+    (response): response is RpcResult => response !== undefined,
+  );
   return responses.length > 0 ? responses : undefined;
 };
 

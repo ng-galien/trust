@@ -1,17 +1,13 @@
+import type { Fact, RuntimeJsonObject } from "@trust/extension-sdk";
 import { validateOperationProduced } from "@trust/operation";
 import {
+  type CompiledExpressionReference,
   evaluateQualificationCondition,
   evaluateQualificationRule,
   procedureLanguage,
-  type CompiledExpressionReference,
 } from "@trust/procedure";
-
-import type {
-  CheckValues,
-  Fact,
-  PlanCheck,
-  RuntimeJsonObject,
-} from "../model.js";
+import { matchExpressionReference } from "@trust/procedure/match";
+import type { CheckValues, PlanCheck } from "../model.js";
 
 export interface ValidatedFacts {
   readonly values: RuntimeJsonObject;
@@ -28,10 +24,10 @@ export function validateFacts(check: PlanCheck, facts: readonly Fact[]): Validat
   const values: Record<string, unknown> = {};
   for (const fact of facts) {
     if (
-      fact.checkUri !== check.uri
-      || fact.compiledCheckDigest !== check.compiledCheckDigest
-      || fact.operation !== check.check.operation
-      || fact.operationDigest !== check.check.operationDigest
+      fact.checkUri !== check.uri ||
+      fact.compiledCheckDigest !== check.compiledCheckDigest ||
+      fact.operation !== check.check.operation ||
+      fact.operationDigest !== check.check.operationDigest
     ) {
       throw new TypeError("Fact does not belong to the admitted Check and Operation");
     }
@@ -82,9 +78,13 @@ function expressionData(
   const referencedChecks = new Set(
     check.check.qualification.guards
       .flatMap((guard) => guard.references)
-      .filter((reference): reference is Extract<CompiledExpressionReference, { readonly kind: "check" }> =>
-        reference.kind === "check")
-      .map((reference) => reference.check),
+      .flatMap((reference) =>
+        matchExpressionReference<readonly string[]>(reference, {
+          fact: () => [],
+          context: () => [],
+          check: ({ check }) => [check],
+        }),
+      ),
   );
   const checks: Record<string, RuntimeJsonObject> = {};
   for (const checkName of referencedChecks) {
@@ -93,9 +93,8 @@ function expressionData(
         .filter((dependency) => dependency.checkName === checkName)
         .map((dependency) => dependency.providerCheckUri),
     );
-    const candidates = available.filter((item) =>
-      item.checkName === checkName
-      && (providers.size === 0 || providers.has(item.providerCheckUri))
+    const candidates = available.filter(
+      (item) => item.checkName === checkName && (providers.size === 0 || providers.has(item.providerCheckUri)),
     );
     if (candidates.length !== 1) {
       throw new TypeError(`Check "${checkName}" does not provide one unambiguous value`);
@@ -117,15 +116,16 @@ function normalizeInstants(
   const normalized = cloneJson(data) as Record<string, unknown>;
   for (const reference of references) {
     if (reference.valueType !== "instant") continue;
-    const path = reference.kind === "fact"
-      ? [roots.fact, reference.field]
-      : reference.kind === "context"
-        ? [roots.context, reference.role]
-        : [roots.checks, reference.check, reference.field];
+    const path = matchExpressionReference(reference, {
+      fact: ({ field }) => [roots.fact, field],
+      context: ({ role }) => [roots.context, role],
+      check: ({ check, field }) => [roots.checks, check, field],
+    });
     const value = readPath(normalized, path);
-    const converted = reference.cardinality === "many"
-      ? requireArray(value, path).map((item) => instant(item, path))
-      : instant(value, path);
+    const converted =
+      reference.cardinality === "many"
+        ? requireArray(value, path).map((item) => instant(item, path))
+        : instant(value, path);
     writePath(normalized, path, converted);
   }
   return Object.freeze(normalized);
@@ -163,8 +163,10 @@ function writePath(value: Record<string, unknown>, path: readonly string[], repl
 function canonicalJson(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
   if (value !== null && typeof value === "object") {
-    return `{${Object.entries(value).sort(([left], [right]) => left.localeCompare(right))
-      .map(([key, item]) => `${JSON.stringify(key)}:${canonicalJson(item)}`).join(",")}}`;
+    return `{${Object.entries(value)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, item]) => `${JSON.stringify(key)}:${canonicalJson(item)}`)
+      .join(",")}}`;
   }
   return JSON.stringify(value);
 }

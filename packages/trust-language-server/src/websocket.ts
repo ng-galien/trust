@@ -1,15 +1,11 @@
 import {
+  type Connection,
   createConnection,
   createProtocolConnection,
   ProposedFeatures,
-  type Connection,
   type WatchDog,
 } from "vscode-languageserver";
-import {
-  WebSocketMessageReader,
-  WebSocketMessageWriter,
-  type IWebSocket,
-} from "vscode-ws-jsonrpc";
+import { type IWebSocket, WebSocketMessageReader, WebSocketMessageWriter } from "vscode-ws-jsonrpc";
 
 import type { TrustLanguageServerOptions } from "./server.js";
 import { startTrustLanguageServer } from "./server.js";

@@ -2,11 +2,7 @@ export function otlpFactAttributes(
   fact: Readonly<Record<string, unknown>>,
   index: number,
 ): readonly Readonly<Record<string, unknown>>[] {
-  if (
-    typeof fact.kind !== "string"
-    || typeof fact.observedAt !== "string"
-    || !isRecord(fact.values)
-  ) {
+  if (typeof fact.kind !== "string" || typeof fact.observedAt !== "string" || !isRecord(fact.values)) {
     throw new TypeError("Fact must contain kind, observedAt and values.");
   }
   return [
@@ -22,9 +18,7 @@ function otlpValue(value: unknown): Readonly<Record<string, unknown>> {
   if (typeof value === "string") return { stringValue: value };
   if (typeof value === "boolean") return { boolValue: value };
   if (typeof value === "number" && Number.isFinite(value)) {
-    return Number.isSafeInteger(value)
-      ? { intValue: String(value) }
-      : { doubleValue: value };
+    return Number.isSafeInteger(value) ? { intValue: String(value) } : { doubleValue: value };
   }
   if (Array.isArray(value)) {
     return { arrayValue: { values: value.map(otlpValue) } };

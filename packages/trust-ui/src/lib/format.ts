@@ -18,7 +18,26 @@ export function relativeTime(value: string) {
 export function plural(count: number, noun: keyof CountNouns) {
   return i18next.t(`common.count.${noun}`, { count });
 }
-type CountNouns = { check: 0; checkCap: 0; plan: 0; dryRun: 0; operation: 0; procedure: 0; value: 0; credential: 0; verdict: 0; step: 0; scenario: 0; environment: 0; fact: 0; runnableOperation: 0; producedField: 0; otherCheck: 0; missingDeclaration: 0; line: 0 };
+type CountNouns = {
+  check: 0;
+  checkCap: 0;
+  plan: 0;
+  dryRun: 0;
+  operation: 0;
+  procedure: 0;
+  value: 0;
+  credential: 0;
+  verdict: 0;
+  step: 0;
+  scenario: 0;
+  environment: 0;
+  fact: 0;
+  runnableOperation: 0;
+  producedField: 0;
+  otherCheck: 0;
+  missingDeclaration: 0;
+  line: 0;
+};
 
 export function cx(...parts: Array<string | false | null | undefined>) {
   return parts.filter(Boolean).join(" ");

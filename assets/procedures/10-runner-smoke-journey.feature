@@ -16,7 +16,7 @@ Feature: Complete a controlled runner journey with operator escalation
 
   @scenario:initial-signal
   Scenario: Confirm the initial signal
-    Then Check "initial signal" runs Operation "file.smoke-signal-read"
+    Then Check "initial signal" runs Operation "file.smoke-signal-read@*"
         on "initial expected signal" as Input "expectedSignal"
         and must establish "the initial smoke signal is ready"
       """js
@@ -27,7 +27,7 @@ Feature: Complete a controlled runner journey with operator escalation
   @scenario:approval-signal
   Scenario: Confirm the operator-approved signal
     Given scenario "initial-signal" is validated
-    Then Check "approval signal" runs Operation "file.smoke-signal-read"
+    Then Check "approval signal" runs Operation "file.smoke-signal-read@*"
         on "approval expected signal" as Input "expectedSignal"
         and must establish "the operator-approved smoke signal is available"
       """js
@@ -38,7 +38,7 @@ Feature: Complete a controlled runner journey with operator escalation
   @scenario:completion-signal
   Scenario: Confirm the completion signal
     Given scenario "approval-signal" is validated
-    Then Check "completion signal" runs Operation "file.smoke-signal-read"
+    Then Check "completion signal" runs Operation "file.smoke-signal-read@*"
         on "completion expected signal" as Input "expectedSignal"
         and must establish "the completion smoke signal is available"
       """js

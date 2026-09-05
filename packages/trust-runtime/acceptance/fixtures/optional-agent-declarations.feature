@@ -14,7 +14,7 @@ Feature: Create Checks only for agent declarations that are present
 
   @scenario:workspace
   Scenario: Read the workspace
-    Then Check "workspace head" runs Operation "git.head-read"
+    Then Check "workspace head" runs Operation "git.head-read@*"
         on "workspace" as Input "project"
         and must establish "the workspace head is readable"
       """js
@@ -24,7 +24,7 @@ Feature: Create Checks only for agent declarations that are present
 
   @scenario:optional-project
   Scenario: Read the optional project
-    Then Check "optional project head" runs Operation "git.head-read"
+    Then Check "optional project head" runs Operation "git.head-read@*"
         on "optional project" as Input "project"
         and must establish "the optional project head is readable"
       """js
@@ -34,7 +34,7 @@ Feature: Create Checks only for agent declarations that are present
 
   @scenario:optional-materialization
   Scenario: Materialize a role only when its optional parent exists
-    Then Check "optional materialization" runs Operation "git.head-read"
+    Then Check "optional materialization" runs Operation "git.head-read@*"
         on "workspace" as Input "project"
         and materializes "optional revision" from field "headRevision"
         and must establish "the optional revision is readable"
@@ -45,7 +45,7 @@ Feature: Create Checks only for agent declarations that are present
 
   @scenario:optional-targets
   Scenario: Read every optional target
-    Then Check "optional target head" runs Operation "git.head-read"
+    Then Check "optional target head" runs Operation "git.head-read@*"
         on each "optional target" as Input "project"
         and must establish "the optional target head is readable"
       """js
@@ -56,7 +56,7 @@ Feature: Create Checks only for agent declarations that are present
   @scenario:after-optional-targets
   Scenario: Continue when the optional target branch is absent or validated
     Given scenario "optional-targets" is validated
-    Then Check "after optional targets" runs Operation "git.head-read"
+    Then Check "after optional targets" runs Operation "git.head-read@*"
         on "workspace" as Input "project"
         and must establish "the optional target branch no longer blocks the Plan"
       """js
@@ -66,7 +66,7 @@ Feature: Create Checks only for agent declarations that are present
 
   @scenario:optional-qualification
   Scenario: Read context only when the optional declaration exists
-    Then Check "optional qualification" runs Operation "git.head-read"
+    Then Check "optional qualification" runs Operation "git.head-read@*"
         on "workspace" as Input "project"
         and must establish "the optional project is available to the qualification"
       """js
@@ -77,7 +77,7 @@ Feature: Create Checks only for agent declarations that are present
   @scenario:optional-check-observation
   Scenario: Read a Check observation only when its optional provider exists
     Given scenario "optional-project" is validated
-    Then Check "optional observed head" runs Operation "git.head-read"
+    Then Check "optional observed head" runs Operation "git.head-read@*"
         on "workspace" as Input "project"
         and must establish "the optional project Check is available to the qualification"
       """js
@@ -88,7 +88,7 @@ Feature: Create Checks only for agent declarations that are present
   @scenario:optional-transitive-observation
   Scenario: Read a Check observation only when its transitive optional provider exists
     Given scenario "optional-check-observation" is validated
-    Then Check "optional transitive head" runs Operation "git.head-read"
+    Then Check "optional transitive head" runs Operation "git.head-read@*"
         on "workspace" as Input "project"
         and must establish "the transitive optional Check is available to the qualification"
       """js
@@ -99,7 +99,7 @@ Feature: Create Checks only for agent declarations that are present
   @scenario:after-optional-check-observation
   Scenario: Continue when the transitively optional Check branch is absent or validated
     Given scenario "optional-check-observation" is validated
-    Then Check "after optional check observation" runs Operation "git.head-read"
+    Then Check "after optional check observation" runs Operation "git.head-read@*"
         on "workspace" as Input "project"
         and must establish "the optional Check branch no longer blocks the Plan"
       """js

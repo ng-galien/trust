@@ -1,22 +1,21 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { lazy, Suspense, useMemo } from "react";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router";
-
-import { OverviewHome } from "./resources/overview/overview-home.js";
-import { SettingsHome } from "./resources/settings/settings-home.js";
+import { ExtensionPage, ExtensionsHome } from "./extensions/extensions.js";
+import { RuntimeContext } from "./lib/runtime-context.js";
 import { EnvironmentOverlay, EnvironmentsHome } from "./resources/environments/environments-home.js";
 import { HistoryHome } from "./resources/history/history-home.js";
-import { RuntimeContext } from "./lib/runtime-context.js";
 import { OperationOverlay } from "./resources/operations/operation-overlay.js";
 import { OperationsHome } from "./resources/operations/operations-home.js";
+import { OverviewHome } from "./resources/overview/overview-home.js";
 import { PlanOverlay } from "./resources/plans/plan-overlay.js";
 import { PlansHome } from "./resources/plans/plans-home.js";
 import { ProcedureOverlay } from "./resources/procedures/procedure-overlay.js";
 import { ProceduresHome } from "./resources/procedures/procedures-home.js";
+import { SettingsHome } from "./resources/settings/settings-home.js";
 import { TrustRuntimeClient } from "./runtime.js";
-import { LoadingState } from "./ui/states.js";
 import { AppShell } from "./shell/app-shell.js";
-import { ExtensionsHome, ExtensionPage } from "./extensions/extensions.js";
+import { LoadingState } from "./ui/states.js";
 
 // The documentation (MDX pages, mermaid) is its own chunk, loaded on first visit.
 const DocsArea = lazy(() => import("./docs/docs-area.js").then((module) => ({ default: module.DocsArea })));
@@ -57,7 +56,14 @@ export function TrustApplication({ runtimeUrl }: { runtimeUrl: string }) {
               <Route path="/settings" element={<SettingsHome />} />
               <Route path="/extensions" element={<ExtensionsHome />} />
               <Route path="/extensions/:extension" element={<ExtensionPage />} />
-              <Route path="/docs/*" element={<Suspense fallback={<LoadingState />}><DocsArea /></Suspense>} />
+              <Route
+                path="/docs/*"
+                element={
+                  <Suspense fallback={<LoadingState />}>
+                    <DocsArea />
+                  </Suspense>
+                }
+              />
               <Route path="*" element={<Navigate to="/overview" replace />} />
             </Route>
           </Routes>

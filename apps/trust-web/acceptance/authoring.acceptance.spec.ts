@@ -1,6 +1,55 @@
-import { expect, test, type Locator, type Page } from "@playwright/test";
+import { expect, type Locator, type Page, test } from "@playwright/test";
 
 const modifier = process.platform === "darwin" ? "Meta" : "Control";
+
+test("Procedure display wrapping leaves source unchanged and draft changes can be discarded", async ({ page }) => {
+  await page.goto("/procedures/git-status?tab=source");
+  const editor = page.locator(".monaco-editor");
+  await expect(editor.locator(".view-lines")).toContainText("Feature:", { timeout: 15_000 });
+  const publish = page.getByRole("button", { name: "Publish version", exact: true });
+  const wrap = page.getByRole("button", { name: "Wrap lines", exact: true });
+  await expect(publish).toBeDisabled();
+  await wrap.click();
+  await expect(wrap).toHaveAttribute("aria-pressed", "true");
+  await expect(publish).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Discard changes", exact: true })).toBeHidden();
+  await wrap.click();
+  await expect(wrap).toHaveAttribute("aria-pressed", "false");
+  const chaining = page.getByRole("switch", { name: "Intent chaining" });
+  await chaining.click();
+  await expect(page.getByText("Unpublished changes", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Discard changes", exact: true }).click();
+  await expect(chaining).toHaveAttribute("aria-checked", "false");
+  await expect(editor).not.toContainText("@intent-chaining");
+  await expect(publish).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Discard changes", exact: true })).toBeHidden();
+});
+
+test("minified theme colors preserve the editor and real LSP completion", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  page.on("console", (message) => {
+    if (message.type() === "error") errors.push(message.text());
+  });
+  // Production CSS minifies six-digit hex values to their equivalent shorthand.
+  await page.addInitScript(() => {
+    document.addEventListener("DOMContentLoaded", () => {
+      document.documentElement.style.setProperty("--color-editor-bg", "#fff");
+      document.documentElement.style.setProperty("--color-text", "#123");
+    });
+  });
+  await page.goto("/operations/git.head-read?tab=source");
+  const editor = page.locator(".monaco-editor");
+  await expect(editor.locator(".view-lines")).toContainText("steps.head.stdout", { timeout: 15_000 });
+  await expect(page.getByText("Language server unavailable")).toBeHidden();
+  await expect(page.getByText("Editor unavailable")).toBeHidden();
+  expect(errors).toEqual([]);
+  const line = editor.locator(".view-line").filter({ hasText: "$trim(steps.head.stdout)" });
+  await placeCursorAfterDot(page, line, "steps");
+  await page.keyboard.press("Control+Space");
+  await expect(page.locator(".suggest-widget")).toContainText("head");
+  expect(errors).toEqual([]);
+});
 
 test("the Procedure editor toggles intent chaining in the canonical source", async ({ page }) => {
   await page.goto("/procedures/git-status?tab=source");
@@ -32,13 +81,13 @@ Feature: Toggle an invalid draft
 
   @scenario:invalid
   Scenario: Invalid draft
-    Then Check "invalid" runs Operation "missing.operation" on "repository" as Input "project" and must establish "the draft is invalid"
+    Then Check "invalid" runs Operation "missing.operation@*" on "repository" as Input "project" and must establish "the draft is invalid"
       """js
       true
       """
 `);
   await expect(toggle).toHaveAttribute("aria-checked", "true");
-  await expect(page.getByText(/references unknown Operation "missing.operation"/)).toBeVisible();
+  await expect(page.getByText(/requires one Operation matching "missing.operation@\*"/)).toBeVisible();
   await toggle.click();
   await expect(toggle).toHaveAttribute("aria-checked", "false");
   await expect(editor).not.toContainText("@intent-chaining");
@@ -58,7 +107,7 @@ Feature: Keep an intent marker in a comment
 
   @scenario:comment
   Scenario: Ignore the comment marker
-    Then Check "comment" runs Operation "missing.operation" on "repository" as Input "project" and must establish "the comment is ignored"
+    Then Check "comment" runs Operation "missing.operation@*" on "repository" as Input "project" and must establish "the comment is ignored"
       """js
       true
       """
@@ -80,7 +129,6 @@ test("the Procedure editor is backed by the LSP and understands its JS qualifica
   const jsLine = editor.locator(".view-line").filter({ hasText: "fact.workingTree" });
   await expect(jsLine).toBeVisible();
   await expect(jsLine.getByText("===", { exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "Edit source" }).click();
 
   await placeCursorAfterDot(page, jsLine, "fact");
   await page.keyboard.press("Control+Space");
@@ -113,8 +161,7 @@ test("the Operation editor embeds JSONata and completes its typed step context",
   await expect(functionToken).toBeVisible();
   await expectTokenTone(page, functionToken, "--color-editor-keyword-control");
   await expectTokenTone(page, jsonataLine.getByText("steps", { exact: true }), "--color-editor-keyword");
-  await expectTokenTone(page, jsonataLine.getByText("head", { exact: true }), "--color-editor-number");
-  await page.getByRole("button", { name: "Edit source" }).click();
+  await expectTokenTone(page, jsonataLine.getByText("head", { exact: true }), "--color-editor-property");
 
   await placeCursorAfterDot(page, jsonataLine, "steps");
   await page.keyboard.press("Control+Space");
@@ -137,7 +184,6 @@ test("the editor reconnects its LSP session after a transport interruption", asy
   languageServerAvailable = true;
   await expect(page.getByText("Language server unavailable")).toBeHidden();
 
-  await page.getByRole("button", { name: "Edit source" }).click();
   const jsonataLine = editor.locator(".view-line").filter({ hasText: "$trim(steps.head.stdout)" });
   await placeCursorAfterDot(page, jsonataLine, "steps");
   await page.keyboard.press("Control+Space");
@@ -157,7 +203,6 @@ test("the Operation editor synchronizes the LSP when client-side navigation reus
   await expect(page).toHaveURL(/operations\/aviation\.aircraft-read/);
   const aircraftLine = editor.locator(".view-line").filter({ hasText: "steps.aircraft.body.maintenanceStatus" });
   await expect(aircraftLine).toBeVisible();
-  await page.getByRole("button", { name: "Edit source" }).click();
 
   await placeCursorAfterDot(page, aircraftLine, "steps");
   await page.keyboard.press("Control+Space");
@@ -192,7 +237,6 @@ test("leaving an editor closes its LSP connection without stopping the runtime",
   const editor = page.locator(".monaco-editor");
   await expect(editor).toBeVisible();
   await expect(page.getByText("Language server unavailable")).toBeHidden();
-  await page.getByRole("button", { name: "Edit source" }).click();
   const aircraftLine = editor.locator(".view-line").filter({ hasText: "steps.aircraft.body.maintenanceStatus" });
   await placeCursorAfterDot(page, aircraftLine, "steps");
   await page.keyboard.press("Control+Space");

@@ -1,5 +1,6 @@
+import type { PlanCheckView, PlanMode, PlanSummaryView, PublishedProcedure } from "@trust/extension-sdk";
+import type { CompiledProcedure } from "@trust/procedure";
 import { i18next } from "../../i18n/index.js";
-import type { CompiledProcedure, PlanCheck, PlanMode, PlanSummary, PublishedProcedure } from "../../types.js";
 import { orderedScenarios } from "../procedures/model.js";
 
 /* Plans as list rows: one engaged Plan (live or dry-run) of a published Procedure on an environment. */
@@ -12,31 +13,33 @@ type StateFilter = "" | "running" | "escalated" | "complete" | "unavailable";
 export interface PlanRow {
   id: string;
   title: string;
-  labels: string[];
-  annotations: Record<string, string>;
+  labels: readonly string[];
+  annotations: Readonly<Record<string, string>>;
   procedure: string;
   procedureVersion: string;
   procedureTitle: string;
   environment: string;
   mode: PlanMode;
   intentChaining: boolean;
-  intentChainState: PlanSummary["intentChainState"];
+  intentChainState: PlanSummaryView["intentChainState"];
   currentIntent: string | null;
   currentIntentCheckUri: string | null;
   revision: number;
   createdAt: string;
-  sessionState: PlanSummary["sessionState"];
-  workState: PlanSummary["workState"];
+  sessionState: PlanSummaryView["sessionState"];
+  workState: PlanSummaryView["workState"];
   satisfied: number;
   total: number;
   progress: number;
-  summary: PlanSummary;
+  summary: PlanSummaryView;
 }
 
-export function toRows(plans: PlanSummary[], procedures: PublishedProcedure[]): PlanRow[] {
+export function toRows(plans: PlanSummaryView[], procedures: PublishedProcedure[]): PlanRow[] {
   return plans.map((plan) => {
-    const published = procedures.find(({ procedure }) => procedure.procedure === plan.procedure && procedure.version === plan.procedureVersion)
-      ?? procedures.find(({ procedure }) => procedure.procedure === plan.procedure);
+    const published =
+      procedures.find(
+        ({ procedure }) => procedure.procedure === plan.procedure && procedure.version === plan.procedureVersion,
+      ) ?? procedures.find(({ procedure }) => procedure.procedure === plan.procedure);
     const procedureTitle = published?.procedure.title ?? plan.procedure;
     return {
       id: plan.plan,
@@ -65,14 +68,19 @@ export function toRows(plans: PlanSummary[], procedures: PublishedProcedure[]): 
 }
 
 /** Plan Checks in procedure order — scenarios topologically, Checks as written, then each expansion — the same order as the graph. */
-export function orderedChecks(checks: readonly PlanCheck[], compiled: CompiledProcedure | undefined): PlanCheck[] {
+export function orderedChecks(
+  checks: readonly PlanCheckView[],
+  compiled: CompiledProcedure | undefined,
+): PlanCheckView[] {
   if (!compiled) return [...checks];
   const index = new Map<string, number>();
   let position = 0;
   for (const scenario of orderedScenarios(compiled)) for (const name of scenario.checks) index.set(name, position++);
-  return [...checks].sort((a, b) =>
-    (index.get(a.name) ?? Number.MAX_SAFE_INTEGER) - (index.get(b.name) ?? Number.MAX_SAFE_INTEGER)
-    || String(a.target.value).localeCompare(String(b.target.value)));
+  return [...checks].sort(
+    (a, b) =>
+      (index.get(a.name) ?? Number.MAX_SAFE_INTEGER) - (index.get(b.name) ?? Number.MAX_SAFE_INTEGER) ||
+      String(a.target.value).localeCompare(String(b.target.value)),
+  );
 }
 
 export interface Filters {
@@ -117,18 +125,28 @@ export function writeFilters(filters: Filters, base: URLSearchParams): URLSearch
   return next;
 }
 
-export const emptyFilters: Pick<Filters, "q" | "procedures" | "environments" | "mode" | "state"> = { q: "", procedures: [], environments: [], mode: "", state: "" };
+export const emptyFilters: Pick<Filters, "q" | "procedures" | "environments" | "mode" | "state"> = {
+  q: "",
+  procedures: [],
+  environments: [],
+  mode: "",
+  state: "",
+};
 
 function matchesQuery(row: PlanRow, needle: string): boolean {
   if (!needle) return true;
-  return `${row.id} ${row.title} ${row.labels.join(" ")} ${Object.entries(row.annotations).flat().join(" ")} ${row.currentIntent ?? ""} ${row.procedure} ${row.procedureTitle} ${row.environment} ${row.mode}`.toLowerCase().includes(needle);
+  return `${row.id} ${row.title} ${row.labels.join(" ")} ${Object.entries(row.annotations).flat().join(" ")} ${row.currentIntent ?? ""} ${row.procedure} ${row.procedureTitle} ${row.environment} ${row.mode}`
+    .toLowerCase()
+    .includes(needle);
 }
 
 export function matchReason(row: PlanRow, q: string): string | undefined {
   const needle = q.trim().toLowerCase();
   if (!needle || row.id.toLowerCase().includes(needle)) return undefined;
-  if (row.procedureTitle.toLowerCase().includes(needle) || row.procedure.toLowerCase().includes(needle)) return i18next.t("plans.match.procedure", { procedure: row.procedure });
-  if (row.environment.toLowerCase().includes(needle)) return i18next.t("plans.match.environment", { environment: row.environment });
+  if (row.procedureTitle.toLowerCase().includes(needle) || row.procedure.toLowerCase().includes(needle))
+    return i18next.t("plans.match.procedure", { procedure: row.procedure });
+  if (row.environment.toLowerCase().includes(needle))
+    return i18next.t("plans.match.environment", { environment: row.environment });
   return undefined;
 }
 
@@ -139,11 +157,15 @@ function stateOf(row: PlanRow): StateFilter {
 }
 
 export function applyFacets(rows: PlanRow[], filters: Filters, except?: keyof Filters): PlanRow[] {
-  return rows.filter((row) =>
-    (except === "procedures" || filters.procedures.length === 0 || filters.procedures.includes(row.procedure))
-    && (except === "environments" || filters.environments.length === 0 || filters.environments.includes(row.environment))
-    && (except === "mode" || !filters.mode || row.mode === filters.mode)
-    && (except === "state" || !filters.state || stateOf(row) === filters.state));
+  return rows.filter(
+    (row) =>
+      (except === "procedures" || filters.procedures.length === 0 || filters.procedures.includes(row.procedure)) &&
+      (except === "environments" ||
+        filters.environments.length === 0 ||
+        filters.environments.includes(row.environment)) &&
+      (except === "mode" || !filters.mode || row.mode === filters.mode) &&
+      (except === "state" || !filters.state || stateOf(row) === filters.state),
+  );
 }
 
 export function applyFilters(rows: PlanRow[], filters: Filters): PlanRow[] {

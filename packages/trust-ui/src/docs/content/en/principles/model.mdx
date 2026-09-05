@@ -132,7 +132,7 @@ Feature: Confirm the weather for one flight
 
   @scenario:weather
   Scenario: Accept the flight weather
-    Then Check "weather" runs Operation "aviation.weather-read"
+    Then Check "weather" runs Operation "aviation.weather-read@*"
       on "flight" as Input "flight"
       and must establish "the flight weather is accepted"
       """js

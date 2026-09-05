@@ -9,7 +9,10 @@ import { expect, type Locator, type Page, test } from "@playwright/test";
    `<id>.<theme>.<language>.png` (1.5× pixel ratio) plus a JSON sidecar with the boxes (in % of the image)
    of the elements marked `data-doc="…"` the documentation annotates. The pages then draw the callouts. */
 
-const captures = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../../packages/trust-ui/src/docs/captures");
+const captures = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "../../../../packages/trust-ui/src/docs/captures",
+);
 const themes = ["light", "dark"] as const;
 const languages = ["en", "fr"] as const;
 const runtimeUrl = "http://127.0.0.1:4390";
@@ -31,19 +34,33 @@ const shots: Shot[] = [
     id: "operations-catalog",
     path: "/operations",
     callouts: ["home.header", "home.filters", "home.display", "home.card", "operations.runnable", "shell.environment"],
-    prepare: async (page) => { await expect(page.locator("[data-doc='home.card']").first()).toBeVisible(); },
+    prepare: async (page) => {
+      await expect(page.locator("[data-doc='home.card']").first()).toBeVisible();
+    },
   },
   {
     id: "operation-overview",
     path: "/operations/git.head-read",
-    callouts: ["overlay.header", "overlay.actions", "overlay.tabs", "overlay.status", "operation.summary", "overlay.inspector"],
-    prepare: async (page) => { await expect(page.locator("[data-doc='operation.summary']")).toBeVisible(); },
+    callouts: [
+      "overlay.header",
+      "overlay.actions",
+      "overlay.tabs",
+      "overlay.status",
+      "operation.summary",
+      "overlay.inspector",
+    ],
+    prepare: async (page) => {
+      await expect(page.locator("[data-doc='operation.summary']")).toBeVisible();
+    },
   },
   {
     id: "operation-source",
     path: "/operations/git.head-read?tab=source",
     callouts: ["editor", "editor.format", "overlay.status"],
-    prepare: async (page) => { await expect(page.locator(".monaco-editor .view-lines")).toBeVisible(); await page.waitForTimeout(600); },
+    prepare: async (page) => {
+      await expect(page.locator(".monaco-editor .view-lines")).toBeVisible();
+      await page.waitForTimeout(600);
+    },
   },
   {
     id: "operation-simulate",
@@ -70,7 +87,14 @@ const shots: Shot[] = [
     callouts: ["run.environment", "run.input", "run.start", "run.recent", "run.report"],
     prepare: async (page) => {
       // One real run so the report is not empty (the seeded `local` Environment points at the workspace root).
-      const response = await page.request.post(`${runtimeUrl}/rpc`, { data: { jsonrpc: "2.0", id: 1, method: "operation.trial.start", params: { operation: "git.head-read", version: "1.0.0", environment: "local", input: { project: "trust" } } } });
+      const response = await page.request.post(`${runtimeUrl}/rpc`, {
+        data: {
+          jsonrpc: "2.0",
+          id: 1,
+          method: "operation.trial.start",
+          params: { operation: "git.head-read", version: "1.0.0", environment: "local", input: { project: "trust" } },
+        },
+      });
       expect(response.ok()).toBeTruthy();
       await page.waitForTimeout(2500);
       await page.reload();
@@ -84,13 +108,24 @@ const shots: Shot[] = [
     id: "procedures-catalog",
     path: "/procedures",
     callouts: ["home.header", "home.filters", "home.display", "home.card"],
-    prepare: async (page) => { await expect(page.locator("[data-doc='home.card']").first()).toBeVisible(); },
+    prepare: async (page) => {
+      await expect(page.locator("[data-doc='home.card']").first()).toBeVisible();
+    },
   },
   {
     id: "procedure-overview",
     path: "/procedures/patient-admission",
-    callouts: ["overlay.header", "overlay.actions", "overlay.tabs", "overlay.status", "procedure.summary", "overlay.inspector"],
-    prepare: async (page) => { await expect(page.locator("[data-doc='procedure.summary']")).toBeVisible(); },
+    callouts: [
+      "overlay.header",
+      "overlay.actions",
+      "overlay.tabs",
+      "overlay.status",
+      "procedure.summary",
+      "overlay.inspector",
+    ],
+    prepare: async (page) => {
+      await expect(page.locator("[data-doc='procedure.summary']")).toBeVisible();
+    },
   },
   {
     id: "procedure-graph",
@@ -105,7 +140,10 @@ const shots: Shot[] = [
     id: "procedure-source",
     path: "/procedures/patient-admission?tab=source",
     callouts: ["editor", "editor.format", "overlay.status"],
-    prepare: async (page) => { await expect(page.locator(".monaco-editor .view-lines")).toBeVisible(); await page.waitForTimeout(600); },
+    prepare: async (page) => {
+      await expect(page.locator(".monaco-editor .view-lines")).toBeVisible();
+      await page.waitForTimeout(600);
+    },
   },
   {
     id: "procedure-walk",
@@ -121,31 +159,48 @@ const shots: Shot[] = [
     id: "environments-catalog",
     path: "/environments",
     callouts: ["home.header", "home.filters", "home.card", "shell.environment"],
-    prepare: async (page) => { await expect(page.locator("[data-doc='home.card']").first()).toBeVisible(); },
+    prepare: async (page) => {
+      await expect(page.locator("[data-doc='home.card']").first()).toBeVisible();
+    },
   },
   {
     id: "environment-page",
     path: "/environments/local",
-    callouts: ["overlay.header", "overlay.actions", "environment.values", "environment.credentials", "environment.coverage", "overlay.inspector"],
-    prepare: async (page) => { await expect(page.locator("[data-doc='environment.coverage'] table")).toBeVisible(); },
+    callouts: [
+      "overlay.header",
+      "overlay.actions",
+      "environment.values",
+      "environment.credentials",
+      "environment.coverage",
+      "overlay.inspector",
+    ],
+    prepare: async (page) => {
+      await expect(page.locator("[data-doc='environment.coverage'] table")).toBeVisible();
+    },
   },
   {
     id: "shell",
     path: "/overview",
     callouts: ["shell.sidebar", "shell.search", "shell.environment", "shell.density"],
-    prepare: async (page) => { await page.waitForTimeout(800); },
+    prepare: async (page) => {
+      await page.waitForTimeout(800);
+    },
   },
   {
     id: "history",
     path: "/history",
     callouts: ["home.filters", "home.display", "home.content"],
-    prepare: async (page) => { await page.waitForTimeout(800); },
+    prepare: async (page) => {
+      await page.waitForTimeout(800);
+    },
   },
   {
     id: "plan-engage",
     path: "/dry-runs/new",
     callouts: ["overlay.header", "engage.form"],
-    prepare: async (page) => { await expect(page.locator("[data-doc='engage.form']")).toBeVisible(); },
+    prepare: async (page) => {
+      await expect(page.locator("[data-doc='engage.form']")).toBeVisible();
+    },
   },
   {
     id: "plan-page",
@@ -173,11 +228,30 @@ const shots: Shot[] = [
     path: "/dry-runs/rehearsal-docs",
     callouts: ["cockpit", "cockpit.todo", "cockpit.workbench", "cockpit.submit"],
     prepare: async (page) => {
-      const response = await page.request.post(`${runtimeUrl}/rpc`, { data: { jsonrpc: "2.0", id: 1, method: "plan.engage", params: { contract: "trust.plan-engagement-request@1", procedure: "mono-project-change", procedureVersion: "1.0.0", plan: "rehearsal-docs", environment: "local", rootInputs: { "jira issue": "PAY-42", project: "payment-api" }, mode: "dry-run" } } });
+      const response = await page.request.post(`${runtimeUrl}/rpc`, {
+        data: {
+          jsonrpc: "2.0",
+          id: 1,
+          method: "plan.engage",
+          params: {
+            contract: "trust.plan-engagement-request@1",
+            procedure: "mono-project-change",
+            procedureVersion: "1.0.0",
+            plan: "rehearsal-docs",
+            environment: "local",
+            rootInputs: { "jira issue": "PAY-42", project: "payment-api" },
+            mode: "dry-run",
+          },
+        },
+      });
       expect(response.ok()).toBeTruthy();
       await page.reload();
       await expect(page.locator("[data-doc='cockpit.workbench']")).toBeVisible({ timeout: 15_000 });
-      await page.locator("[data-doc='cockpit.workbench'] button").first().click().catch(() => undefined);
+      await page
+        .locator("[data-doc='cockpit.workbench'] button")
+        .first()
+        .click()
+        .catch(() => undefined);
       await page.waitForTimeout(500);
     },
   },
@@ -187,59 +261,98 @@ async function ensureEscalatedPlan(page: Page) {
   const read = await page.request.post(`${runtimeUrl}/rpc`, {
     data: { jsonrpc: "2.0", id: "docs-escalation-read", method: "plan.read", params: { plan: "docs-escalation" } },
   });
-  const existing = await read.json() as { result?: { workState?: string } };
+  const existing = (await read.json()) as { result?: { workState?: string } };
   if (existing.result?.workState === "ESCALATED") return;
 
   const engagement = await page.request.post(`${runtimeUrl}/rpc`, {
-    data: { jsonrpc: "2.0", id: "docs-escalation-engage", method: "plan.engage", params: {
-      contract: "trust.plan-engagement-request@1",
-      procedure: "git-status",
-      procedureVersion: "2.0.0",
-      plan: "docs-escalation",
-      environment: "local",
-      rootInputs: { repository: "trust" },
-      mode: "dry-run",
-    } },
+    data: {
+      jsonrpc: "2.0",
+      id: "docs-escalation-engage",
+      method: "plan.engage",
+      params: {
+        contract: "trust.plan-engagement-request@1",
+        procedure: "git-status",
+        procedureVersion: "2.0.0",
+        plan: "docs-escalation",
+        environment: "local",
+        rootInputs: { repository: "trust" },
+        mode: "dry-run",
+      },
+    },
   });
   expect(engagement.ok()).toBeTruthy();
   const planResponse = await page.request.post(`${runtimeUrl}/rpc`, {
     data: { jsonrpc: "2.0", id: "docs-escalation-plan", method: "plan.read", params: { plan: "docs-escalation" } },
   });
-  const plan = await planResponse.json() as { result: { actionableChecks: string[] } };
+  const plan = (await planResponse.json()) as { result: { actionableChecks: string[] } };
   const admissionResponse = await page.request.post(`${runtimeUrl}/rpc`, {
-    data: { jsonrpc: "2.0", id: "docs-escalation-admit", method: "check.attempt.admit", params: {
-      contract: "trust.check-admission-request@1",
-      attemptKey: "docs-escalation-attempt",
-      checkUri: plan.result.actionableChecks[0],
-    } },
+    data: {
+      jsonrpc: "2.0",
+      id: "docs-escalation-admit",
+      method: "check.attempt.admit",
+      params: {
+        contract: "trust.check-admission-request@1",
+        attemptKey: "docs-escalation-attempt",
+        checkUri: plan.result.actionableChecks[0],
+      },
+    },
   });
-  const admission = await admissionResponse.json() as { result: { attemptKey: string; attemptHandle: string; executionId: string; checkUri: string; operation: { operation: string } } };
+  const admission = (await admissionResponse.json()) as {
+    result: {
+      attemptKey: string;
+      attemptHandle: string;
+      executionId: string;
+      checkUri: string;
+      operation: { operation: string };
+    };
+  };
   const observedAt = "2026-09-02T10:00:00.000Z";
   await page.request.post(`${runtimeUrl}/rpc`, {
-    data: { jsonrpc: "2.0", id: "docs-escalation-facts", method: "check.attempt.facts", params: {
-      contract: "trust.fact-batch-request@1",
-      attemptKey: admission.result.attemptKey,
-      attemptHandle: admission.result.attemptHandle,
-      executionId: admission.result.executionId,
-      checkUri: admission.result.checkUri,
-      recordedAt: observedAt,
-      facts: [{ kind: admission.result.operation.operation, observedAt, values: { headRevision: "e9c4fae", workingTree: "clean" } }],
-    } },
+    data: {
+      jsonrpc: "2.0",
+      id: "docs-escalation-facts",
+      method: "check.attempt.facts",
+      params: {
+        contract: "trust.fact-batch-request@1",
+        attemptKey: admission.result.attemptKey,
+        attemptHandle: admission.result.attemptHandle,
+        executionId: admission.result.executionId,
+        checkUri: admission.result.checkUri,
+        recordedAt: observedAt,
+        facts: [
+          {
+            kind: admission.result.operation.operation,
+            observedAt,
+            values: { headRevision: "e9c4fae", workingTree: "clean" },
+          },
+        ],
+      },
+    },
   });
   await page.request.post(`${runtimeUrl}/rpc`, {
-    data: { jsonrpc: "2.0", id: "docs-escalation-finalize", method: "check.attempt.finalize", params: {
-      contract: "trust.attempt-finalization-request@1",
-      attemptHandle: admission.result.attemptHandle,
-    } },
+    data: {
+      jsonrpc: "2.0",
+      id: "docs-escalation-finalize",
+      method: "check.attempt.finalize",
+      params: {
+        contract: "trust.attempt-finalization-request@1",
+        attemptHandle: admission.result.attemptHandle,
+      },
+    },
   });
   await page.request.post(`${runtimeUrl}/rpc`, {
-    data: { jsonrpc: "2.0", id: "docs-escalation-stop", method: "check.escalate", params: {
-      contract: "trust.check-escalation-request@1",
-      checkUri: admission.result.checkUri,
-      attemptHandle: admission.result.attemptHandle,
-      blockingReason: "The repository does not contain the expected local change. The working tree is clean.",
-      forbiddenFurtherAction: "Modify the repository merely to manufacture the expected status.",
-    } },
+    data: {
+      jsonrpc: "2.0",
+      id: "docs-escalation-stop",
+      method: "check.escalate",
+      params: {
+        contract: "trust.check-escalation-request@1",
+        checkUri: admission.result.checkUri,
+        attemptHandle: admission.result.attemptHandle,
+        blockingReason: "The repository does not contain the expected local change. The working tree is clean.",
+        forbiddenFurtherAction: "Modify the repository merely to manufacture the expected status.",
+      },
+    },
   });
 }
 
@@ -250,10 +363,17 @@ for (const shot of shots) {
   for (const theme of themes) {
     for (const language of languages) {
       test(`${shot.id} · ${theme} · ${language}`, async ({ page }) => {
-        await page.addInitScript(
-          (value) => localStorage.setItem("trust.ui.preferences", JSON.stringify(value)),
-          { state: { theme, language, density: shot.density ?? "operator", environment: "local", docsNavOpen: true, inspectorOpen: true }, version: 0 },
-        );
+        await page.addInitScript((value) => localStorage.setItem("trust.ui.preferences", JSON.stringify(value)), {
+          state: {
+            theme,
+            language,
+            density: shot.density ?? "operator",
+            environment: "local",
+            docsNavOpen: true,
+            inspectorOpen: true,
+          },
+          version: 0,
+        });
         await page.goto(shot.path);
         await page.locator("main").waitFor();
         await shot.prepare?.(page);
@@ -263,10 +383,19 @@ for (const shot of shots) {
         const name = `${shot.id}.${theme}.${language}`;
         const region = shot.clip ? await shot.clip(page).boundingBox() : { x: 0, y: 0, width: 1440, height: 900 };
         if (!region) throw new Error(`No region for ${shot.id}`);
-        await page.screenshot({ path: path.join(captures, `${name}.png`), clip: region, animations: "disabled", caret: "hide" });
+        await page.screenshot({
+          path: path.join(captures, `${name}.png`),
+          clip: region,
+          animations: "disabled",
+          caret: "hide",
+        });
         const callouts: Array<{ key: string; x: number; y: number; w: number; h: number }> = [];
         for (const key of shot.callouts) {
-          const raw = await page.locator(`[data-doc='${key}']`).first().boundingBox().catch(() => null);
+          const raw = await page
+            .locator(`[data-doc='${key}']`)
+            .first()
+            .boundingBox()
+            .catch(() => null);
           if (!raw) continue;
           // Keep the visible part only (a scrolled panel may push a marker partly out of the picture).
           const left = Math.max(raw.x, region.x);
@@ -282,7 +411,10 @@ for (const shot of shots) {
             h: round(((bottom - top) / region.height) * 100),
           });
         }
-        await writeFile(path.join(captures, `${name}.json`), `${JSON.stringify({ width: region.width * 1.5, height: region.height * 1.5, density: shot.density ?? "operator", callouts }, null, 2)}\n`);
+        await writeFile(
+          path.join(captures, `${name}.json`),
+          `${JSON.stringify({ width: region.width * 1.5, height: region.height * 1.5, density: shot.density ?? "operator", callouts }, null, 2)}\n`,
+        );
       });
     }
   }

@@ -10,12 +10,12 @@ Feature: Carry one agent intent across independent Checks
 
   @scenario:observations
   Scenario: Read the repository for two independent purposes
-    Then Check "working tree observation" runs Operation "git.head-read" on "repository" as Input "project" and must establish "the working tree was observed"
+    Then Check "working tree observation" runs Operation "git.head-read@*" on "repository" as Input "project" and must establish "the working tree was observed"
       """js
       fact.workingTree === "clean" ||
       fail("the working tree is not clean")
       """
-    And Check "revision observation" runs Operation "git.head-read" on "repository" as Input "project" and must establish "the revision was observed"
+    And Check "revision observation" runs Operation "git.head-read@*" on "repository" as Input "project" and must establish "the revision was observed"
       """js
       fact.workingTree === "clean" ||
       fail("the working tree is not clean")

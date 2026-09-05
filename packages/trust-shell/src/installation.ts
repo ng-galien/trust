@@ -14,9 +14,10 @@ export interface TrustInstallation {
 }
 
 export function resolveTrustInstallation(explicitRoot?: string): TrustInstallation {
-  const candidates = explicitRoot === undefined
-    ? ancestors(process.cwd()).concat(ancestors(packageRoot))
-    : [absolutePath(explicitRoot, "TRUST installation root")];
+  const candidates =
+    explicitRoot === undefined
+      ? ancestors(process.cwd()).concat(ancestors(packageRoot))
+      : [absolutePath(explicitRoot, "TRUST installation root")];
   const seen = new Set<string>();
   for (const candidate of candidates) {
     const root = path.resolve(candidate);
@@ -43,11 +44,13 @@ export function trustInstallationAt(root: string): TrustInstallation {
 }
 
 function isInstallation(value: TrustInstallation): boolean {
-  return existsSync(value.runtimeEntry)
-    && existsSync(path.join(value.webDirectory, "index.html"))
-    && existsSync(path.join(value.operationsDirectory, "git.head-read.feature"))
-    && existsSync(path.join(value.runnerSkillSource, "SKILL.md"))
-    && existsSync(path.join(value.runnerPackageRoot, "scripts/run.ts"));
+  return (
+    existsSync(value.runtimeEntry) &&
+    existsSync(path.join(value.webDirectory, "index.html")) &&
+    existsSync(path.join(value.operationsDirectory, "git.head-read.feature")) &&
+    existsSync(path.join(value.runnerSkillSource, "SKILL.md")) &&
+    existsSync(path.join(value.runnerPackageRoot, "scripts/run.ts"))
+  );
 }
 
 function ancestors(start: string): string[] {

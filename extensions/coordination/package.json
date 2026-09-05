@@ -17,6 +17,7 @@
     "mermaid": "^11.16.1"
   },
   "devDependencies": {
+    "@trust/extension-sdk": "file:../../packages/trust-extension-sdk",
     "esbuild": "^0.28.2",
     "@module-federation/vite": "^1.21.3",
     "@vitejs/plugin-react": "^6.0.5",

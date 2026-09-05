@@ -51,7 +51,7 @@ Feature: Validate a multi-project change through a traced Red-Green deployment c
 
   @scenario:acceptance-baseline
   Scenario: Establish the clean acceptance baseline and open its ticket branch
-    Then Check "acceptance baseline" runs Operation "git.change-start"
+    Then Check "acceptance baseline" runs Operation "git.change-start@*"
         on "acceptance project" as Input "project"
         using "jira issue" as Input "branch"
         and materializes "acceptance baseline revision" from field "baseRevision"
@@ -70,7 +70,7 @@ Feature: Validate a multi-project change through a traced Red-Green deployment c
   @scenario:jira-issue
   Scenario: Read the Jira defect
     Given scenario "acceptance-baseline" is validated
-    Then Check "issue" runs Operation "jira.issue-read"
+    Then Check "issue" runs Operation "jira.issue-read@*"
         on "jira issue" as Input "issue"
         and must establish "the Jira issue is ready for correction"
       """js
@@ -87,7 +87,7 @@ Feature: Validate a multi-project change through a traced Red-Green deployment c
   @scenario:code-baselines
   Scenario: Establish every clean code baseline and open its ticket branch
     Given scenario "jira-issue" is validated
-    Then Check "code baseline" runs Operation "git.change-start"
+    Then Check "code baseline" runs Operation "git.change-start@*"
         on each "affected project" as Input "project"
         using "jira issue" as Input "branch"
         and materializes "code baseline revision" from field "baseRevision"
@@ -106,7 +106,7 @@ Feature: Validate a multi-project change through a traced Red-Green deployment c
   @scenario:red
   Scenario: Reproduce the defect with the committed Karate change
     Given scenario "jira-issue" is validated
-    Then Check "red run" runs Operation "karate.change-reproduce"
+    Then Check "red run" runs Operation "karate.change-reproduce@*"
         on "test argument" as Input "testArgument"
         using "acceptance project" as Input "project"
         using "acceptance baseline revision" as Input "baseRevision"
@@ -137,7 +137,7 @@ Feature: Validate a multi-project change through a traced Red-Green deployment c
   Scenario: Verify every committed fix with Maven
     Given scenario "red" is validated
     And scenario "code-baselines" is validated
-    Then Check "fix verification" runs Operation "maven.change-verify"
+    Then Check "fix verification" runs Operation "maven.change-verify@*"
         on each "affected project" as Input "project"
         using "code baseline revision" as Input "baseRevision"
         using "jira issue" as Input "ticket"
@@ -165,7 +165,7 @@ Feature: Validate a multi-project change through a traced Red-Green deployment c
   @scenario:deploy
   Scenario: Build, load and roll out every fix on Kind
     Given scenario "fix-verify" is validated
-    Then Check "deployment" runs Operation "kind.change-deploy"
+    Then Check "deployment" runs Operation "kind.change-deploy@*"
         on each "affected project" as Input "project"
         using "planned image" as Input "image"
         using "Kind cluster" as Input "cluster"
@@ -186,7 +186,7 @@ Feature: Validate a multi-project change through a traced Red-Green deployment c
   Scenario: Confirm the Karate change against the deployment
     Given scenario "red" is validated
     And scenario "deploy" is validated
-    Then Check "green run" runs Operation "karate.change-verify"
+    Then Check "green run" runs Operation "karate.change-verify@*"
         on "test argument" as Input "testArgument"
         using "acceptance project" as Input "project"
         using "acceptance baseline revision" as Input "baseRevision"
@@ -207,7 +207,7 @@ Feature: Validate a multi-project change through a traced Red-Green deployment c
   @scenario:trace
   Scenario: Confirm the green run trace
     Given scenario "green" is validated
-    Then Check "green trace" runs Operation "telemetry.trace-read"
+    Then Check "green trace" runs Operation "telemetry.trace-read@*"
         on "trace" as Input "traceId"
         and must establish "the green run trace was recorded"
       """js
@@ -219,7 +219,7 @@ Feature: Validate a multi-project change through a traced Red-Green deployment c
   Scenario: Merge every ticket branch into main
     Given scenario "green" is validated
     And scenario "trace" is validated
-    Then Check "acceptance merge" runs Operation "git.change-merge"
+    Then Check "acceptance merge" runs Operation "git.change-merge@*"
         on "acceptance project" as Input "project"
         using "jira issue" as Input "branch"
         using "jira issue" as Input "ticket"
@@ -238,7 +238,7 @@ Feature: Validate a multi-project change through a traced Red-Green deployment c
         fail("the acceptance repository has local changes")
       )
       """
-    And Check "fix merge" runs Operation "git.change-merge"
+    And Check "fix merge" runs Operation "git.change-merge@*"
         on each "affected project" as Input "project"
         using "jira issue" as Input "branch"
         using "jira issue" as Input "ticket"

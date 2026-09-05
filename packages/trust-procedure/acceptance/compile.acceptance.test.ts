@@ -1,6 +1,6 @@
-import { readFileSync, readdirSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 
-import { compileOperation, type CompiledOperation } from "@trust/operation";
+import { type CompiledOperation, compileOperation } from "@trust/operation";
 import {
   CatalogProcedureCompilationError,
   compileProcedure,
@@ -15,10 +15,12 @@ function operations(): CompiledOperation[] {
   return readdirSync(operationCatalog)
     .filter((file) => file.endsWith(".feature"))
     .sort()
-    .map((file) => compileOperation({
-      source: readFileSync(new URL(file, operationCatalog), "utf8"),
-      sourceName: file,
-    }));
+    .map((file) =>
+      compileOperation({
+        source: readFileSync(new URL(file, operationCatalog), "utf8"),
+        sourceName: file,
+      }),
+    );
 }
 
 function source(file: string): string {
@@ -27,7 +29,9 @@ function source(file: string): string {
 
 describe("Procedure compiler", () => {
   test("compiles the complete Procedure catalog", () => {
-    const files = readdirSync(procedureCatalog).filter((file) => file.endsWith(".feature")).sort();
+    const files = readdirSync(procedureCatalog)
+      .filter((file) => file.endsWith(".feature"))
+      .sort();
 
     expect(files).toEqual([
       "00-git-status.feature",
@@ -41,6 +45,7 @@ describe("Procedure compiler", () => {
       "08-end-to-end-red-green-telemetry.feature",
       "09-runner-smoke.feature",
       "10-runner-smoke-journey.feature",
+      "agent-delegation.feature",
     ]);
 
     const catalog = operations();
@@ -59,19 +64,21 @@ describe("Procedure compiler", () => {
       operations: operations(),
     });
 
-    expect(compiled.roles).toEqual(expect.arrayContaining([
-      expect.objectContaining({
-        name: "execution ID",
-        cardinality: "one",
-        source: { kind: "agent-declaration" },
-      }),
-      expect.objectContaining({
-        name: "trace",
-        cardinality: "one",
-        parents: [{ role: "runtime project", each: true }],
-        source: { kind: "agent-declaration" },
-      }),
-    ]));
+    expect(compiled.roles).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: "execution ID",
+          cardinality: "one",
+          source: { kind: "agent-declaration" },
+        }),
+        expect.objectContaining({
+          name: "trace",
+          cardinality: "one",
+          parents: [{ role: "runtime project", each: true }],
+          source: { kind: "agent-declaration" },
+        }),
+      ]),
+    );
     expect(compiled.checks.find((check) => check.name === "green trace")).toMatchObject({
       operation: "telemetry.project-trace-read",
       target: { role: "runtime project", selection: "each" },
@@ -130,10 +137,12 @@ describe("Procedure compiler", () => {
       operation: "git.head-read",
       inputBindings: [{ input: "project", role: "repository", selection: "one" }],
       qualification: {
-        guards: [{
-          conditionLogic: { "===": [{ var: "fact.workingTree" }, "dirty"] },
-          failureReasonLogic: "the repository has no local changes",
-        }],
+        guards: [
+          {
+            conditionLogic: { "===": [{ var: "fact.workingTree" }, "dirty"] },
+            failureReasonLogic: "the repository has no local changes",
+          },
+        ],
       },
     });
   });
@@ -150,9 +159,11 @@ describe("Procedure compiler", () => {
       cardinality: "one",
       source: { kind: "agent-declaration", optional: true },
     });
-    expect(compiled.roles.filter((role) => role.name !== "repository").every((role) => (
-      role.source.kind !== "agent-declaration" || role.source.optional !== true
-    ))).toBe(true);
+    expect(
+      compiled.roles
+        .filter((role) => role.name !== "repository")
+        .every((role) => role.source.kind !== "agent-declaration" || role.source.optional !== true),
+    ).toBe(true);
 
     expectCompilationError(
       source("00-git-status.feature").replace(
@@ -235,23 +246,19 @@ describe("Procedure compiler", () => {
       ),
       "invalid-procedure",
     );
-    expectCompilationError(
-      procedureSource.replace("| all   |", "| unknown Check |"),
-      "invalid-procedure",
-    );
-    expectCompilationError(
-      procedureSource.replace('Check "repository status"', 'Check "all"'),
-      "invalid-procedure",
-    );
+    expectCompilationError(procedureSource.replace("| all   |", "| unknown Check |"), "invalid-procedure");
+    expectCompilationError(procedureSource.replace('Check "repository status"', 'Check "all"'), "invalid-procedure");
   });
 
   test("keeps source presentation outside semantic identity", () => {
     const catalog = operations();
     const procedureSource = source("00-git-status.feature");
     const baseline = compileProcedure({ source: procedureSource, operations: catalog });
-    const formattedCatalog = catalog.map((operation) => operation.operation === "git.head-read"
-      ? compileOperation({ source: `# editorial comment\n${operation.source}` })
-      : operation);
+    const formattedCatalog = catalog.map((operation) =>
+      operation.operation === "git.head-read"
+        ? compileOperation({ source: `# editorial comment\n${operation.source}` })
+        : operation,
+    );
     const formatted = compileProcedure({
       source: `# editorial comment\n${procedureSource}`,
       operations: formattedCatalog,
@@ -265,12 +272,13 @@ describe("Procedure compiler", () => {
   test("keeps JSONata presentation outside Operation identity", () => {
     const catalog = operations();
     const baseline = compileProcedure({ source: source("00-git-status.feature"), operations: catalog });
-    const formattedCatalog = catalog.map((operation) => operation.operation === "git.head-read"
-      ? compileOperation({ source: operation.source.replace(
-          "$trim(steps.head.stdout)",
-          "$trim( steps.head.stdout )",
-        ) })
-      : operation);
+    const formattedCatalog = catalog.map((operation) =>
+      operation.operation === "git.head-read"
+        ? compileOperation({
+            source: operation.source.replace("$trim(steps.head.stdout)", "$trim( steps.head.stdout )"),
+          })
+        : operation,
+    );
     const formatted = compileProcedure({
       source: source("00-git-status.feature"),
       operations: formattedCatalog,
@@ -287,21 +295,23 @@ describe("Procedure compiler", () => {
       operations: operations(),
     });
 
-    expect(compiled.roles).toEqual(expect.arrayContaining([
-      expect.objectContaining({
-        name: "required document",
-        cardinality: "many",
-        parents: [{ role: "admission", each: false }],
-        source: { kind: "agent-declaration" },
-      }),
-      expect.objectContaining({
-        name: "document record time",
-        type: "instant",
-        cardinality: "many",
-        parents: [{ role: "required document", each: true }],
-        source: { kind: "operation-field", check: "document", field: "recordedAt" },
-      }),
-    ]));
+    expect(compiled.roles).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: "required document",
+          cardinality: "many",
+          parents: [{ role: "admission", each: false }],
+          source: { kind: "agent-declaration" },
+        }),
+        expect.objectContaining({
+          name: "document record time",
+          type: "instant",
+          cardinality: "many",
+          parents: [{ role: "required document", each: true }],
+          source: { kind: "operation-field", check: "document", field: "recordedAt" },
+        }),
+      ]),
+    );
     expect(compiled.checks.find((check) => check.name === "admission")).toMatchObject({
       inputBindings: expect.arrayContaining([
         { input: "documents", role: "required document", selection: "all" },
@@ -309,12 +319,12 @@ describe("Procedure compiler", () => {
       ]),
       qualification: {
         guards: expect.arrayContaining([
-        expect.objectContaining({
-          conditionLogic: { ">": [{ var: "fact.admittedAt" }, { var: "checks.consent.signedAt" }] },
-          references: expect.arrayContaining([
-            expect.objectContaining({ kind: "check", check: "consent", field: "signedAt", valueType: "instant" }),
-          ]),
-        }),
+          expect.objectContaining({
+            conditionLogic: { ">": [{ var: "fact.admittedAt" }, { var: "checks.consent.signedAt" }] },
+            references: expect.arrayContaining([
+              expect.objectContaining({ kind: "check", check: "consent", field: "signedAt", valueType: "instant" }),
+            ]),
+          }),
         ]),
       },
     });
@@ -337,7 +347,7 @@ Feature: Exercise the closed qualification expression surface
 
   @scenario:surface
   Scenario: Qualify the comparison
-    Then Check "surface" runs Operation "git.head-compare"
+    Then Check "surface" runs Operation "git.head-compare@*"
         on "project" as Input "project"
         using "baseline revision" as Input "baseRevision"
         and must establish "the expression surface is satisfied"
@@ -368,7 +378,11 @@ Feature: Exercise the closed qualification expression surface
       fail(\`Expression failed for \${fact.workingTree} at \${fact.commitsAhead}\`)
       """
 `;
-    const compiled = compileProcedure({ source: procedure, sourceName: "expression-surface.feature", operations: operations() });
+    const compiled = compileProcedure({
+      source: procedure,
+      sourceName: "expression-surface.feature",
+      operations: operations(),
+    });
     const guard = compiled.checks[0]?.qualification.guards[0];
     expect(guard).toBeDefined();
     expect(JSON.stringify(guard?.conditionLogic)).toContain("trust.substring");
@@ -377,10 +391,17 @@ Feature: Exercise the closed qualification expression surface
     expect(guard?.failureReasonLogic).toEqual({
       cat: ["Expression failed for ", { var: "fact.workingTree" }, " at ", { var: "fact.commitsAhead" }],
     });
-    expect(guard?.references).toEqual(expect.arrayContaining([
-      expect.objectContaining({ kind: "context", role: "limits", valueType: "number", cardinality: "many" }),
-      expect.objectContaining({ kind: "context", role: "baseline revision", valueType: "reference", cardinality: "one" }),
-    ]));
+    expect(guard?.references).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ kind: "context", role: "limits", valueType: "number", cardinality: "many" }),
+        expect.objectContaining({
+          kind: "context",
+          role: "baseline revision",
+          valueType: "reference",
+          cardinality: "one",
+        }),
+      ]),
+    );
   });
 
   test("binds the Plan identifier to one string Input with using plan through the synthesised plan role", () => {
@@ -397,14 +418,18 @@ Feature: Pass the Plan identifier to an Operation
 
   @scenario:comparison
   Scenario: Compare with the baseline, tagged with the Plan
-    Then Check "comparison" runs Operation "git.head-compare" on "project" as Input "project" using plan as Input "baseRevision" and must establish "the revision is ahead"
+    Then Check "comparison" runs Operation "git.head-compare@*" on "project" as Input "project" using plan as Input "baseRevision" and must establish "the revision is ahead"
       """js
       fact.commitsAhead >= 1 ||
       fail("the revision is behind")
       """
 `;
 
-    const compiled = compileProcedure({ source: procedure, sourceName: "plan-identifier.feature", operations: operations() });
+    const compiled = compileProcedure({
+      source: procedure,
+      sourceName: "plan-identifier.feature",
+      operations: operations(),
+    });
 
     expect(compiled.checks[0]?.inputBindings).toEqual([
       { input: "project", role: "project", selection: "one" },
@@ -477,7 +502,7 @@ Feature: Bind the Plan identifier to a number Input
 
   @scenario:count
   Scenario: Count
-    Then Check "count" runs Operation "shell.count-read" on "project" as Input "project" using plan as Input "count" and must establish "the project is echoed"
+    Then Check "count" runs Operation "shell.count-read@*" on "project" as Input "project" using plan as Input "count" and must establish "the project is echoed"
       """js
       fact.project === context.project ||
       fail("another project answered")
@@ -557,7 +582,7 @@ Feature: Compare a role before its provider Scenario
 
   @scenario:baseline
   Scenario: Read the baseline
-    Then Check "baseline" runs Operation "git.head-read" on "project" as Input "project" and materializes "baseline revision" from field "headRevision" and must establish "the baseline exists"
+    Then Check "baseline" runs Operation "git.head-read@*" on "project" as Input "project" and materializes "baseline revision" from field "headRevision" and must establish "the baseline exists"
       """js
       fact.workingTree === "clean" ||
       fail("the project is dirty")
@@ -565,7 +590,7 @@ Feature: Compare a role before its provider Scenario
 
   @scenario:comparison
   Scenario: Compare without a dependency
-    Then Check "comparison" runs Operation "git.head-read" on "project" as Input "project" and must establish "the revision matches"
+    Then Check "comparison" runs Operation "git.head-read@*" on "project" as Input "project" and must establish "the revision matches"
       """js
       fact.headRevision === context["baseline revision"] ||
       fail("the revision does not match")
@@ -601,9 +626,9 @@ Feature: Compare a role before its provider Scenario
     try {
       compileProcedure({
         source: source("00-git-status.feature"),
-        operations: catalog.map((operation) => operation === git
-          ? { ...operation, title: "Altered compiled Operation" }
-          : operation),
+        operations: catalog.map((operation) =>
+          operation === git ? { ...operation, title: "Altered compiled Operation" } : operation,
+        ),
       });
     } catch (error) {
       thrown = error;

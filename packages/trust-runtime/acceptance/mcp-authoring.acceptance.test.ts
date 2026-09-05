@@ -37,27 +37,42 @@ test("MCP exposes the UI Operation and Procedure authoring lifecycle through run
     const listedTools = await mcpRequest(runtime.endpoint, "tools/list", {});
     const tools = (listedTools.result as { tools: Array<{ name: string; inputSchema: unknown }> }).tools;
     for (const name of expectedAuthoringTools) {
-      assert.ok(tools.some((tool) => tool.name === name), `${name} is missing from tools/list`);
+      assert.ok(
+        tools.some((tool) => tool.name === name),
+        `${name} is missing from tools/list`,
+      );
     }
-    assert.ok(tools.some((tool) => tool.name === "trust_procedure_read"), "the Check-scoped Procedure reader must remain available");
+    assert.ok(
+      tools.some((tool) => tool.name === "trust_procedure_read"),
+      "the Check-scoped Procedure reader must remain available",
+    );
 
     const source = operationSource("test.mcp-authoring");
-    assert.match(await mcpTool(runtime.endpoint, "trust_operation_compile", { source, sourceName: "draft.feature" }), /OPERATION COMPILED\nOperation: test\.mcp-authoring@1\.0\.0/);
+    assert.match(
+      await mcpTool(runtime.endpoint, "trust_operation_compile", { source, sourceName: "draft.feature" }),
+      /OPERATION COMPILED\nOperation: test\.mcp-authoring@1\.0\.0/,
+    );
     const closedSchema = await mcpRequest(runtime.endpoint, "tools/call", {
       name: "trust_operation_compile",
       arguments: { source, unexpected: true },
     });
     assert.equal(closedSchema.error?.code, -32_602);
 
-    assert.match(await mcpTool(runtime.endpoint, "trust_operation_save", {
-      source,
-      sourceName: "test.mcp-authoring.feature",
-    }), /OPERATION SAVED/);
+    assert.match(
+      await mcpTool(runtime.endpoint, "trust_operation_save", {
+        source,
+        sourceName: "test.mcp-authoring.feature",
+      }),
+      /OPERATION SAVED/,
+    );
     assert.match(await mcpTool(runtime.endpoint, "trust_operation_list", {}), /test\.mcp-authoring@1\.0\.0/);
-    assert.match(await mcpTool(runtime.endpoint, "trust_operation_read", {
-      operation: "test.mcp-authoring",
-      version: "1.0.0",
-    }), /SOURCE\n# language: en/);
+    assert.match(
+      await mcpTool(runtime.endpoint, "trust_operation_read", {
+        operation: "test.mcp-authoring",
+        version: "1.0.0",
+      }),
+      /SOURCE\n# language: en/,
+    );
 
     const simulation = await mcpTool(runtime.endpoint, "trust_operation_simulate", {
       source,
@@ -80,14 +95,20 @@ test("MCP exposes the UI Operation and Procedure authoring lifecycle through run
     assert.equal(invalidEnvironmentScope.error?.code, -32_602);
 
     const procedure = procedureSource();
-    assert.match(await mcpTool(runtime.endpoint, "trust_procedure_compile", {
-      source: procedure,
-      sourceName: "draft-procedure.feature",
-    }), /PROCEDURE COMPILED\nProcedure: test-mcp-procedure@1\.0\.0/);
-    assert.match(await mcpTool(runtime.endpoint, "trust_procedure_publish", {
-      source: procedure,
-      sourceName: "test.mcp-procedure.feature",
-    }), /PROCEDURE PUBLISHED/);
+    assert.match(
+      await mcpTool(runtime.endpoint, "trust_procedure_compile", {
+        source: procedure,
+        sourceName: "draft-procedure.feature",
+      }),
+      /PROCEDURE COMPILED\nProcedure: test-mcp-procedure@1\.0\.0/,
+    );
+    assert.match(
+      await mcpTool(runtime.endpoint, "trust_procedure_publish", {
+        source: procedure,
+        sourceName: "test.mcp-procedure.feature",
+      }),
+      /PROCEDURE PUBLISHED/,
+    );
     assert.match(await mcpTool(runtime.endpoint, "trust_procedure_list", {}), /test-mcp-procedure@1\.0\.0/);
     const published = await mcpTool(runtime.endpoint, "trust_published_procedure_read", {
       procedure: "test-mcp-procedure",
@@ -96,16 +117,25 @@ test("MCP exposes the UI Operation and Procedure authoring lifecycle through run
     assert.match(published, /Published by: mcp-agent/);
     assert.match(published, /SOURCE\n# language: en/);
 
-    const removable = operationSource("test.mcp-removable");
+    const retained = operationSource("test.mcp-retained");
     await mcpTool(runtime.endpoint, "trust_operation_save", {
-      source: removable,
-      sourceName: "test.mcp-removable.feature",
+      source: retained,
+      sourceName: "test.mcp-retained.feature",
     });
-    assert.match(await mcpTool(runtime.endpoint, "trust_operation_remove", {
-      operation: "test.mcp-removable",
-      version: "1.0.0",
-    }), /OPERATION REMOVED/);
-    assert.doesNotMatch(await mcpTool(runtime.endpoint, "trust_operation_list", {}), /test\.mcp-removable/);
+    const refusal = await mcpRequest(runtime.endpoint, "tools/call", {
+      name: "trust_operation_remove",
+      arguments: { operation: "test.mcp-retained", version: "1.0.0" },
+    });
+    assert.match(JSON.stringify(refusal), /immutable-operation/);
+    assert.match(
+      await mcpTool(runtime.endpoint, "trust_operation_read", { operation: "test.mcp-retained", version: "1.0.0" }),
+      /test\.mcp-retained/,
+    );
+    const unknownRemoval = await mcpRequest(runtime.endpoint, "tools/call", {
+      name: "trust_operation_remove",
+      arguments: { operation: "test.mcp-missing", version: "1.0.0" },
+    });
+    assert.match(JSON.stringify(unknownRemoval), /unknown-operation/);
 
     const invalidTrialAlternative = await mcpRequest(runtime.endpoint, "tools/call", {
       name: "trust_operation_trial_start",
@@ -129,11 +159,20 @@ test("MCP exposes the UI Operation and Procedure authoring lifecycle through run
     assert.ok(trial);
     activeTrial = trial;
     assert.match(started, /Started by: mcp-agent/);
-    assert.match(await mcpTool(runtime.endpoint, "trust_operation_trial_list", {
-      operation: "test.mcp-authoring",
-    }), new RegExp(`Trial: ${escapeRegExp(trial)}`));
-    assert.match(await mcpTool(runtime.endpoint, "trust_operation_trial_read", { trial, after: 0 }), /Status: (starting|running)/);
-    assert.match(await mcpTool(runtime.endpoint, "trust_operation_trial_cancel", { trial }), /OPERATION TRIAL CANCELLED/);
+    assert.match(
+      await mcpTool(runtime.endpoint, "trust_operation_trial_list", {
+        operation: "test.mcp-authoring",
+      }),
+      new RegExp(`Trial: ${escapeRegExp(trial)}`),
+    );
+    assert.match(
+      await mcpTool(runtime.endpoint, "trust_operation_trial_read", { trial, after: 0 }),
+      /Status: (starting|running)/,
+    );
+    assert.match(
+      await mcpTool(runtime.endpoint, "trust_operation_trial_cancel", { trial }),
+      /OPERATION TRIAL CANCELLED/,
+    );
     const completed = await waitForTrial(runtime.endpoint, trial);
     assert.match(completed, /Status: aborted/);
     assert.match(completed, /trial\.completed/);
@@ -192,7 +231,7 @@ Feature: Exercise MCP Procedure authoring
 
   @scenario:execute
   Scenario: Execute the Operation
-    Then Check "completion" runs Operation "test.mcp-authoring" on "request" as Input "request" and must establish "the Operation completed"
+    Then Check "completion" runs Operation "test.mcp-authoring@*" on "request" as Input "request" and must establish "the Operation completed"
       """js
       fact.completed === "yes" || fail("the Operation did not complete")
       """

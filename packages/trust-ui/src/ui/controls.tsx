@@ -18,11 +18,19 @@ export function SegmentedControl<T extends string>({
   ariaLabel: string;
 }) {
   return (
-    <div role="tablist" aria-label={ariaLabel} className={cx("inline-flex rounded-(--radius-2) border border-border bg-surface p-0.5", size === "sm" ? "h-7" : "h-8")}>
+    <div
+      role="tablist"
+      aria-label={ariaLabel}
+      className={cx(
+        "inline-flex rounded-(--radius-2) border border-border bg-surface p-0.5",
+        size === "sm" ? "h-7" : "h-8",
+      )}
+    >
       {options.map((option) => {
         const active = option.value === value;
         return (
           <button
+            type="button"
             key={option.value}
             role="tab"
             aria-selected={active}
@@ -42,10 +50,23 @@ export function SegmentedControl<T extends string>({
 }
 
 /** Labelled form row: label · optional hint, then the control(s). */
-export function Field({ label, hint, children, className }: { label: string; hint?: string; children: ReactNode; className?: string }) {
+export function Field({
+  label,
+  hint,
+  children,
+  className,
+}: {
+  label: string;
+  hint?: string;
+  children: ReactNode;
+  className?: string;
+}) {
   return (
     <div className={cx("flex flex-col gap-1", className)}>
-      <div className="flex items-baseline gap-2"><span className="text-body-lg font-medium">{label}</span>{hint ? <span className="text-caption text-faint">{hint}</span> : null}</div>
+      <div className="flex items-baseline gap-2">
+        <span className="text-body-lg font-medium">{label}</span>
+        {hint ? <span className="text-caption text-faint">{hint}</span> : null}
+      </div>
       {children}
     </div>
   );
@@ -69,7 +90,6 @@ export function SearchInput({
   placeholder,
   size = "md",
   className,
-  autoFocus,
   ariaLabel,
 }: {
   value: string;
@@ -77,7 +97,6 @@ export function SearchInput({
   placeholder: string;
   size?: "sm" | "md";
   className?: string;
-  autoFocus?: boolean;
   ariaLabel?: string;
 }) {
   const { t } = useTranslation();
@@ -87,7 +106,6 @@ export function SearchInput({
       <input
         aria-label={ariaLabel ?? placeholder}
         value={value}
-        autoFocus={autoFocus}
         onChange={(event) => onChange(event.target.value)}
         placeholder={placeholder}
         className={cx(
@@ -96,7 +114,12 @@ export function SearchInput({
         )}
       />
       {value ? (
-        <button aria-label={t("ui.controls.clear")} onClick={() => onChange("")} className="absolute right-1.5 rounded p-0.5 text-faint hover:text-text">
+        <button
+          type="button"
+          aria-label={t("ui.controls.clear")}
+          onClick={() => onChange("")}
+          className="absolute right-1.5 rounded p-0.5 text-faint hover:text-text"
+        >
           <X size={13} />
         </button>
       ) : null}
@@ -105,11 +128,21 @@ export function SearchInput({
 }
 
 export function Kbd({ children }: { children: ReactNode }) {
-  return <kbd className="rounded-(--radius-1) border border-border bg-surface-2 px-1 text-micro text-muted">{children}</kbd>;
+  return (
+    <kbd className="rounded-(--radius-1) border border-border bg-surface-2 px-1 text-micro text-muted">{children}</kbd>
+  );
 }
 
 /** Hover / focus tooltip for icon-only controls. */
-export function Tooltip({ label, side = "right", children }: { label: string; side?: "right" | "bottom"; children: ReactNode }) {
+export function Tooltip({
+  label,
+  side = "right",
+  children,
+}: {
+  label: string;
+  side?: "right" | "bottom";
+  children: ReactNode;
+}) {
   return (
     <span className="group/tip relative inline-flex">
       {children}

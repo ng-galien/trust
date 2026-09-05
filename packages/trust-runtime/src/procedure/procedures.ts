@@ -1,18 +1,17 @@
+import type { PublishedProcedure } from "@trust/extension-sdk";
+import { normalizeGherkinSource } from "@trust/gherkin";
+import type { CompiledOperation } from "@trust/operation";
 import {
-  compileProcedure,
+  CatalogProcedureCompilationError,
   type CompiledProcedure,
+  compileProcedure,
   type ProcedureCompilationInput,
 } from "@trust/procedure";
-import type { CompiledOperation } from "@trust/operation";
-
-import type { Clock } from "../time.js";
 import type { OperationCatalog } from "../operation/catalog.js";
-import {
-  ProcedureStore,
-  type PublishedProcedure,
-} from "./store.js";
+import type { Clock } from "../time.js";
+import type { ProcedureStore } from "./store.js";
 
-export type ProcedureSource = Omit<ProcedureCompilationInput, "operations">;
+export type ProcedureSource = Omit<ProcedureCompilationInput, "operations" | "procedures" | "resolveProcedure">;
 
 export interface ProceduresDependencies {
   readonly clock: Clock;
@@ -31,15 +30,19 @@ export class Procedures {
     this.#store = procedureStore;
   }
 
-  compile(
+  async compile(
     input: ProcedureSource,
     operations: readonly CompiledOperation[] = this.#operations.list(),
-  ): CompiledProcedure {
-    return compileProcedure({ ...input, operations });
+  ): Promise<CompiledProcedure> {
+    const procedures = (await this.#store.list()).map((published) => published.procedure);
+    return compileProcedure({ ...input, operations, procedures });
   }
 
   async publish(input: ProcedureSource, publisher: string): Promise<PublishedProcedure> {
-    const procedure = this.compile(input);
+    const source = normalizeGherkinSource(input.source);
+    const existing = (await this.#store.list()).find((value) => value.procedure.source === source);
+    if (existing) return existing;
+    const procedure = await this.compile(input);
     return this.#store.publish(
       procedure,
       input.sourceName ?? "<procedure>",
@@ -54,6 +57,47 @@ export class Procedures {
 
   async list(): Promise<readonly PublishedProcedure[]> {
     return this.#store.list();
+  }
+
+  /** Resolve once for a new root engagement. Published definitions are never rewritten. */
+  async resolve(procedure: string, version: string): Promise<CompiledProcedure | undefined> {
+    let operations: readonly CompiledOperation[];
+    let procedures: readonly CompiledProcedure[];
+    let after: readonly CompiledOperation[];
+    // The file-backed Operation catalog is atomic but independent of SQLite. Retry a
+    // catalog read if it changed while the one-statement Procedure snapshot was read.
+    do {
+      operations = this.#operations.list();
+      procedures = (await this.#store.list()).map((value) => value.procedure);
+      after = this.#operations.list();
+    } while (operations.length !== after.length || operations.some((operation, index) => operation !== after[index]));
+    const root = procedures.find((value) => value.procedure === procedure && value.version === version);
+    if (!root) return undefined;
+    const resolved = new Map<string, CompiledProcedure>();
+    const visiting = new Set<string>();
+    const resolve = (selected: CompiledProcedure): CompiledProcedure => {
+      const identity = `${selected.procedure}@${selected.version}`;
+      if (visiting.has(identity))
+        throw new CatalogProcedureCompilationError(
+          "dependency-cycle",
+          `Procedure invocation cycle contains "${identity}"`,
+          identity,
+        );
+      const cached = resolved.get(identity);
+      if (cached) return cached;
+      visiting.add(identity);
+      const compiled = compileProcedure({
+        source: selected.source,
+        sourceName: identity,
+        operations,
+        procedures,
+        resolveProcedure: resolve,
+      });
+      visiting.delete(identity);
+      resolved.set(identity, compiled);
+      return compiled;
+    };
+    return resolve(root);
   }
 
   async findOperation(

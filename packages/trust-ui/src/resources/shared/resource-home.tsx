@@ -15,7 +15,10 @@ import { EmptyState, ErrorBox, LoadingState } from "../../ui/states.js";
 
 type ViewMode = "cards" | "list";
 
-interface DisplayOption<T extends string> { value: T; label: string }
+interface DisplayOption<T extends string> {
+  value: T;
+  label: string;
+}
 
 export interface DisplayState<G extends string, S extends string> {
   view: ViewMode;
@@ -28,7 +31,11 @@ export interface DisplayState<G extends string, S extends string> {
   onSort: (sort: S) => void;
 }
 
-export interface ResourceGroup<Row> { key: string; label: string; rows: Row[] }
+export interface ResourceGroup<Row> {
+  key: string;
+  label: string;
+  rows: Row[];
+}
 
 export function ResourceHome<Row, G extends string, S extends string>({
   crumbs,
@@ -78,19 +85,32 @@ export function ResourceHome<Row, G extends string, S extends string>({
   const filtered = visible !== total;
   return (
     <div className="relative h-full">
-      <div className="flex h-full flex-col overflow-hidden" inert={overlayOpen || undefined} aria-hidden={overlayOpen || undefined}>
+      <div
+        className="flex h-full flex-col overflow-hidden"
+        inert={overlayOpen || undefined}
+        aria-hidden={overlayOpen || undefined}
+      >
         <div className="shrink-0 border-b border-border bg-surface px-6 pt-4 pb-3" data-doc="home.header">
           <Breadcrumb items={crumbs} className="mb-2" />
           <div className="flex items-end justify-between gap-6">
             <div>
               <h1 className="flex items-center gap-2 text-heading font-semibold tracking-tight">
                 {title}
-                <span className="text-lead font-normal text-muted">· {filtered ? t("shared.resourceHome.visibleOfTotal", { visible: String(visible), total: String(total) }) : total}</span>
+                <span className="text-lead font-normal text-muted">
+                  ·{" "}
+                  {filtered
+                    ? t("shared.resourceHome.visibleOfTotal", { visible: String(visible), total: String(total) })
+                    : total}
+                </span>
               </h1>
               {subtitle ? <p className="mt-0.5 text-body-lg text-muted">{subtitle}</p> : null}
             </div>
             {createTo ? (
-              <Link to={createTo} data-doc="home.create" className="inline-flex h-8 items-center gap-1.5 rounded-(--radius-2) bg-accent px-3 text-ui font-medium text-accent-contrast hover:bg-accent-hover">
+              <Link
+                to={createTo}
+                data-doc="home.create"
+                className="inline-flex h-8 items-center gap-1.5 rounded-(--radius-2) bg-accent px-3 text-ui font-medium text-accent-contrast hover:bg-accent-hover"
+              >
                 <Plus size={15} /> {createLabel ?? t("common.actions.new")}
               </Link>
             ) : null}
@@ -98,22 +118,48 @@ export function ResourceHome<Row, G extends string, S extends string>({
         </div>
 
         <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-border bg-surface px-6 py-2.5">
-          <div className="min-w-[420px] flex-1" data-doc="home.filters">{filterBox}</div>
-          <span data-doc="home.display"><DisplayMenu display={display} /></span>
+          <div className="min-w-[420px] flex-1" data-doc="home.filters">
+            {filterBox}
+          </div>
+          <span data-doc="home.display">
+            <DisplayMenu display={display} />
+          </span>
         </div>
 
-        <div className={cx("min-h-0 flex-1 overflow-y-auto", display.view === "cards" ? "px-6 py-4" : "")} data-doc="home.content">
+        <div
+          className={cx("min-h-0 flex-1 overflow-y-auto", display.view === "cards" ? "px-6 py-4" : "")}
+          data-doc="home.content"
+        >
           {loading ? <LoadingState /> : null}
-          {error ? <div className="p-4"><ErrorBox message={error} /></div> : null}
+          {error ? (
+            <div className="p-4">
+              <ErrorBox message={error} />
+            </div>
+          ) : null}
           {!loading && !error && visible === 0 ? (
             <div className={display.view === "cards" ? "" : "p-6"}>
-              <EmptyState title={emptyTitle} {...(emptyBody ? { body: emptyBody } : {})} action={filtered && onClearFilters ? <Button size="sm" onClick={onClearFilters}>{t("common.actions.clearFilters")}</Button> : undefined} />
+              <EmptyState
+                title={emptyTitle}
+                {...(emptyBody ? { body: emptyBody } : {})}
+                action={
+                  filtered && onClearFilters ? (
+                    <Button size="sm" onClick={onClearFilters}>
+                      {t("common.actions.clearFilters")}
+                    </Button>
+                  ) : undefined
+                }
+              />
             </div>
           ) : null}
           {groups.map((group) => (
             <section key={group.key} className={display.view === "cards" ? "mb-6 last:mb-0" : ""}>
               {group.label ? (
-                <h2 className={cx("flex items-center gap-2 text-ui font-semibold", display.view === "cards" ? "mb-2" : "border-b border-border bg-surface-2 px-4 py-1.5")}>
+                <h2
+                  className={cx(
+                    "flex items-center gap-2 text-ui font-semibold",
+                    display.view === "cards" ? "mb-2" : "border-b border-border bg-surface-2 px-4 py-1.5",
+                  )}
+                >
                   {group.label}
                   <span className="text-label font-normal text-muted">{group.rows.length}</span>
                 </h2>
@@ -139,11 +185,18 @@ function DisplayMenu<G extends string, S extends string>({ display }: { display:
     <Popover
       panelClassName="w-64 p-1.5"
       trigger={({ open, toggle }) => (
-        <Button icon={<SlidersHorizontal size={14} />} onClick={toggle} aria-expanded={open} className={cx(open && "bg-surface-2")}>
+        <Button
+          icon={<SlidersHorizontal size={14} />}
+          onClick={toggle}
+          aria-expanded={open}
+          className={cx(open && "bg-surface-2")}
+        >
           {t("shared.resourceHome.display")}
           <span className="ml-1 text-caption font-normal text-muted">
             {display.view === "cards" ? t("shared.resourceHome.cards") : t("shared.resourceHome.list")}
-            {display.group !== defaultGroup && groupLabel ? ` · ${t("shared.resourceHome.byGroup", { group: groupLabel.toLowerCase() })}` : ""}
+            {display.group !== defaultGroup && groupLabel
+              ? ` · ${t("shared.resourceHome.byGroup", { group: groupLabel.toLowerCase() })}`
+              : ""}
             {display.sort !== defaultSort && sortLabel ? ` · ${sortLabel.toLowerCase()}` : ""}
           </span>
           <ChevronDown size={12} className={cx("text-muted transition-transform", open && "rotate-180")} />
@@ -158,8 +211,22 @@ function DisplayMenu<G extends string, S extends string>({ display }: { display:
             value={display.view}
             onChange={display.onView}
             options={[
-              { value: "cards", label: <><LayoutGrid size={13} /> {t("shared.resourceHome.cards")}</> },
-              { value: "list", label: <><List size={13} /> {t("shared.resourceHome.list")}</> },
+              {
+                value: "cards",
+                label: (
+                  <>
+                    <LayoutGrid size={13} /> {t("shared.resourceHome.cards")}
+                  </>
+                ),
+              },
+              {
+                value: "list",
+                label: (
+                  <>
+                    <List size={13} /> {t("shared.resourceHome.list")}
+                  </>
+                ),
+              },
             ]}
           />
         </div>
@@ -167,13 +234,25 @@ function DisplayMenu<G extends string, S extends string>({ display }: { display:
       {display.groupOptions.length > 1 ? (
         <DisplaySection title={t("shared.resourceHome.groupBy")}>
           {display.groupOptions.map((option) => (
-            <OptionRow key={option.value} active={display.group === option.value} onSelect={() => display.onGroup(option.value)}>{option.label}</OptionRow>
+            <OptionRow
+              key={option.value}
+              active={display.group === option.value}
+              onSelect={() => display.onGroup(option.value)}
+            >
+              {option.label}
+            </OptionRow>
           ))}
         </DisplaySection>
       ) : null}
       <DisplaySection title={t("shared.resourceHome.sortBy")}>
         {display.sortOptions.map((option) => (
-          <OptionRow key={option.value} active={display.sort === option.value} onSelect={() => display.onSort(option.value)}>{option.label}</OptionRow>
+          <OptionRow
+            key={option.value}
+            active={display.sort === option.value}
+            onSelect={() => display.onSort(option.value)}
+          >
+            {option.label}
+          </OptionRow>
         ))}
       </DisplaySection>
     </Popover>

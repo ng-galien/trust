@@ -2,6 +2,54 @@ import { expect, test } from "@playwright/test";
 
 import { runtimeRpc } from "./support/runtime.js";
 
+test("search icon focuses its input and the cockpit separator supports keyboard and pointer resizing", async ({
+  page,
+  request,
+}) => {
+  await page.goto("/operations");
+  const search = page.getByPlaceholder("Search name, title or field, or pick filters…");
+  await expect(search).toBeVisible();
+  const inputId = await search.getAttribute("id");
+  await page.locator(`label[for="${inputId}"]`).click();
+  await expect(search).toBeFocused();
+
+  await runtimeRpc(request, "plan.engage", {
+    contract: "trust.plan-engagement-request@1",
+    procedure: "git-status",
+    procedureVersion: "2.0.0",
+    plan: "accessible-cockpit",
+    environment: "local",
+    rootInputs: { repository: "trust" },
+    mode: "dry-run",
+  });
+  await page.goto("/dry-runs/accessible-cockpit");
+  await expect(page.locator("#plan-title")).toBeVisible();
+  const grip = page.getByRole("separator", { name: "Drag to resize · double-click to reset" });
+  await expect(grip).toBeVisible();
+  await grip.focus();
+  for (const [key, width] of [
+    ["Home", 300],
+    ["ArrowLeft", 332],
+    ["End", 720],
+    ["ArrowRight", 688],
+    ["Enter", 400],
+  ] as const) {
+    await grip.press(key);
+    await expect(grip).toHaveAttribute("aria-valuenow", String(width));
+  }
+  const bounds = await grip.boundingBox();
+  expect(bounds).not.toBeNull();
+  if (!bounds) throw new Error("Cockpit separator has no rendered geometry");
+  expect(bounds.height).toBeGreaterThan(100);
+  await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(bounds.x + bounds.width / 2 - 50, bounds.y + bounds.height / 2);
+  await page.mouse.up();
+  await expect(grip).toHaveAttribute("aria-valuenow", "450");
+  await grip.dblclick();
+  await expect(grip).toHaveAttribute("aria-valuenow", "400");
+});
+
 /* The interface keeps Operations, Procedures, Plans and Checks connected, in operator mode (default) and expert mode. */
 
 test("the interface keeps Operations, Procedures, Plans and Checks connected", async ({ page }) => {
@@ -20,7 +68,10 @@ test("the interface keeps Operations, Procedures, Plans and Checks connected", a
 
   await page.goto("/plans/interface-acceptance");
   await expect(page.locator("#plan-title")).toHaveText("Establish whether a Git repository has local changes");
-  await page.getByRole("button", { name: /repository status/ }).first().click();
+  await page
+    .getByRole("button", { name: /repository status/ })
+    .first()
+    .click();
   await expect(page).toHaveURL(/sel=check/);
   await expect(page.getByRole("region", { name: "Details of repository status" })).toBeVisible();
 
@@ -72,19 +123,27 @@ test("the procedure picker does not make the engagement form scroll", async ({ p
 
   await page.getByRole("button", { name: "Procedure", exact: true }).click();
   await expect(page.getByRole("listbox", { name: "Procedure" })).toBeVisible();
-  await expect.poll(() => form.evaluate(({ scrollHeight, scrollTop }) => ({ scrollHeight, scrollTop }))).toEqual(before);
+  await expect
+    .poll(() => form.evaluate(({ scrollHeight, scrollTop }) => ({ scrollHeight, scrollTop })))
+    .toEqual(before);
 
   await page.getByRole("option", { name: /Prepare and release one aircraft/ }).click();
   await expect(page.getByRole("listbox", { name: "Procedure" })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Procedure", exact: true })).toContainText("Prepare and release one aircraft");
+  await expect(page.getByRole("button", { name: "Procedure", exact: true })).toContainText(
+    "Prepare and release one aircraft",
+  );
 });
 
 test("the Operation views render the unified HTTP request contract", async ({ page }) => {
   await page.goto("/operations/jira.issue-transition");
-  await expect(page.locator("#operation-title")).toHaveText("Transition one Jira issue between two exact workflow statuses");
+  await expect(page.locator("#operation-title")).toHaveText(
+    "Transition one Jira issue between two exact workflow statuses",
+  );
   const summary = page.locator('[data-doc="operation.summary"]');
   await expect(summary).toContainText(/sends GET to environment\.jiraIssueUrl\/\{input\.issue\}/);
-  await expect(summary).toContainText(/sends POST to environment\.jiraIssueUrl\/\{input\.issue\}\/\{literal "transitions"\} and reads no body with JSONata/);
+  await expect(summary).toContainText(
+    /sends POST to environment\.jiraIssueUrl\/\{input\.issue\}\/\{literal "transitions"\} and reads no body with JSONata/,
+  );
 
   await page.getByRole("tab", { name: "Expert" }).click();
   await page.getByRole("button", { name: "Steps" }).click();
@@ -106,7 +165,7 @@ Feature: Show an optional agent declaration
 
   @scenario:workspace
   Scenario: Read the workspace
-    Then Check "workspace head" runs Operation "git.head-read"
+    Then Check "workspace head" runs Operation "git.head-read@*"
         on "workspace" as Input "project"
         and must establish "the workspace head is readable"
       """js
@@ -116,7 +175,7 @@ Feature: Show an optional agent declaration
 
   @scenario:optional-projects
   Scenario: Read every optional project
-    Then Check "optional project head" runs Operation "git.head-read"
+    Then Check "optional project head" runs Operation "git.head-read@*"
         on each "optional project" as Input "project"
         and must establish "every optional project head is readable"
       """js
@@ -135,7 +194,9 @@ Feature: Show an optional agent declaration
   });
 
   await page.goto("/plans/optional-ui-declaration?tab=source");
-  const optionalLine = page.locator(".monaco-editor .view-line").filter({ hasText: 'many reference "optional project"' });
+  const optionalLine = page
+    .locator(".monaco-editor .view-line")
+    .filter({ hasText: 'many reference "optional project"' });
   await expect(optionalLine).toContainText("optional — not declared");
   await expect(optionalLine).not.toContainText("waits for its parent");
 
@@ -169,7 +230,8 @@ Feature: Show an optional agent declaration
 test("the operator resumes an escalated Plan from the interface", async ({ page, request }) => {
   const externalImageRequests: string[] = [];
   page.on("request", (browserRequest) => {
-    if (browserRequest.url() === "https://example.invalid/escalation.png") externalImageRequests.push(browserRequest.url());
+    if (browserRequest.url() === "https://example.invalid/escalation.png")
+      externalImageRequests.push(browserRequest.url());
   });
   await runtimeRpc(request, "plan.engage", {
     contract: "trust.plan-engagement-request@1",
@@ -202,11 +264,13 @@ test("the operator resumes an escalated Plan from the interface", async ({ page,
     executionId: admission.executionId,
     checkUri: admission.checkUri,
     recordedAt: observedAt,
-    facts: [{
-      kind: admission.operation.operation,
-      observedAt,
-      values: { headRevision: "abc123", workingTree: "clean" },
-    }],
+    facts: [
+      {
+        kind: admission.operation.operation,
+        observedAt,
+        values: { headRevision: "abc123", workingTree: "clean" },
+      },
+    ],
   });
   await runtimeRpc(request, "check.attempt.finalize", {
     contract: "trust.attempt-finalization-request@1",
@@ -216,8 +280,10 @@ test("the operator resumes an escalated Plan from the interface", async ({ page,
     contract: "trust.check-escalation-request@1",
     checkUri: admission.checkUri,
     attemptHandle: admission.attemptHandle,
-    blockingReason: "The repository does not contain the **expected local change**.\n\n- The worktree is clean.\n- The required change is absent.\n\n![untrusted image](https://example.invalid/escalation.png)",
-    forbiddenFurtherAction: "Modify the repository or run `git reset --hard` merely to manufacture the expected status.",
+    blockingReason:
+      "The repository does not contain the **expected local change**.\n\n- The worktree is clean.\n- The required change is absent.\n\n![untrusted image](https://example.invalid/escalation.png)",
+    forbiddenFurtherAction:
+      "Modify the repository or run `git reset --hard` merely to manufacture the expected status.",
   });
 
   await page.goto("/dry-runs?state=escalated&view=list");
@@ -249,14 +315,20 @@ test("the operator resumes an escalated Plan from the interface", async ({ page,
         body: JSON.stringify({
           jsonrpc: "2.0",
           id: payload.id,
-          error: { code: -32_000, message: "Plan resumption refused", data: { message: "The escalation changed before the Plan could resume." } },
+          error: {
+            code: -32_000,
+            message: "Plan resumption refused",
+            data: { message: "The escalation changed before the Plan could resume." },
+          },
         }),
       });
       return;
     }
     if (equalizeHistoryTimes && payload.method === "plan.read") {
       const response = await route.fetch();
-      const body = await response.json() as { result?: { plan?: string; escalations?: Array<{ escalatedAt: string; resumedAt: string | null }> } };
+      const body = (await response.json()) as {
+        result?: { plan?: string; escalations?: Array<{ escalatedAt: string; resumedAt: string | null }> };
+      };
       if (body.result?.plan === "ui-escalation") {
         for (const escalation of body.result.escalations ?? []) {
           escalation.escalatedAt = "2026-08-27T10:00:00.000Z";
@@ -271,22 +343,35 @@ test("the operator resumes an escalated Plan from the interface", async ({ page,
   await page.getByRole("button", { name: "Resume", exact: true }).click();
   const resumeDialog = page.getByRole("alertdialog");
   await expect(resumeDialog.getByRole("button", { name: "Resume", exact: true })).toBeDisabled();
-  await resumeDialog.getByRole("textbox", { name: "Resume reason", exact: true }).fill("The operator reviewed the blocker and authorized another observation within the Procedure scope.");
+  await resumeDialog
+    .getByRole("textbox", { name: "Resume reason", exact: true })
+    .fill("The operator reviewed the blocker and authorized another observation within the Procedure scope.");
   await resumeDialog.getByRole("button", { name: "Resume", exact: true }).click();
-  await expect(resumeDialog.getByText("The escalation changed before the Plan could resume.", { exact: true })).toBeVisible();
+  await expect(
+    resumeDialog.getByText("The escalation changed before the Plan could resume.", { exact: true }),
+  ).toBeVisible();
   await resumeDialog.getByRole("button", { name: "Resume", exact: true }).click();
   await expect(page.getByText("Procedure stopped by escalation")).toHaveCount(0);
-  await expect.poll(async () => (
-    await runtimeRpc<{ workState: string }>(request, "plan.read", { plan: "ui-escalation" })
-  ).workState).toBe("IN_PROGRESS");
+  await expect
+    .poll(
+      async () => (await runtimeRpc<{ workState: string }>(request, "plan.read", { plan: "ui-escalation" })).workState,
+    )
+    .toBe("IN_PROGRESS");
   equalizeHistoryTimes = true;
   await page.reload();
   await page.getByRole("tab", { name: "History", exact: true }).click();
   const escalationHistory = page.getByRole("region", { name: "Escalation history", exact: true });
   await expect(escalationHistory.getByText("Resumed", { exact: true })).toBeVisible();
-  await expect(escalationHistory.getByText("The operator reviewed the blocker and authorized another observation within the Procedure scope.", { exact: true })).toBeVisible();
+  await expect(
+    escalationHistory.getByText(
+      "The operator reviewed the blocker and authorized another observation within the Procedure scope.",
+      { exact: true },
+    ),
+  ).toBeVisible();
   await expect(escalationHistory.getByText("Escalated", { exact: true })).toBeVisible();
-  await expect(escalationHistory.getByText("The repository does not contain the expected local change.", { exact: true })).toBeVisible();
+  await expect(
+    escalationHistory.getByText("The repository does not contain the expected local change.", { exact: true }),
+  ).toBeVisible();
   expect(await escalationHistory.locator(":scope > ol > li").allTextContents()).toEqual([
     expect.stringContaining("Resumed"),
     expect.stringContaining("Escalated"),

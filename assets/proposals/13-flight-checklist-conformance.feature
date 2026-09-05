@@ -35,7 +35,7 @@ Feature: Establish from flight telemetry that every required checklist was actua
 
   @scenario:flight-record
   Scenario: Confirm the flight is closed with complete telemetry
-    Then Check "flight" runs Operation "flightops.flight-read"
+    Then Check "flight" runs Operation "flightops.flight-read@*"
         on "flight" as Input "flight"
         using "aircraft" as Input "aircraft"
         and must establish "the flight is closed and its telemetry is complete"
@@ -57,7 +57,7 @@ Feature: Establish from flight telemetry that every required checklist was actua
   @scenario:required-checklists
   Scenario: Read the checklists required on this flight from the operations configuration
     Given scenario "flight-record" is validated
-    Then Check "ops configuration" runs Operation "flightops.checklist-requirements-read"
+    Then Check "ops configuration" runs Operation "flightops.checklist-requirements-read@*"
         on "flight" as Input "flight"
         using "aircraft" as Input "aircraft"
         and materializes "required checklist" from field "requiredChecklists"
@@ -70,7 +70,7 @@ Feature: Establish from flight telemetry that every required checklist was actua
   @scenario:phase-gates
   Scenario: Locate the phase gate of every required checklist in the telemetry
     Given scenario "required-checklists" is validated
-    Then Check "phase gate" runs Operation "flightops.phase-event-read"
+    Then Check "phase gate" runs Operation "flightops.phase-event-read@*"
         on each "required checklist" as Input "checklist"
         using "flight" as Input "flight"
         and materializes "phase gate time" from field "gateAt"
@@ -83,7 +83,7 @@ Feature: Establish from flight telemetry that every required checklist was actua
   @scenario:checklist-log
   Scenario: Confirm the electronic checklist log against the phase gates
     Given scenario "phase-gates" is validated
-    Then Check "log entry" runs Operation "flightops.checklist-log-read"
+    Then Check "log entry" runs Operation "flightops.checklist-log-read@*"
         on each "required checklist" as Input "checklist"
         using "flight" as Input "flight"
         and must establish "every required checklist was logged complete before its phase gate"
@@ -101,7 +101,7 @@ Feature: Establish from flight telemetry that every required checklist was actua
   @scenario:telemetry-evidence
   Scenario: Recompute every declared telemetry signature on the telemetry store
     Given scenario "phase-gates" is validated
-    Then Check "signature" runs Operation "flightops.telemetry-signature-read"
+    Then Check "signature" runs Operation "flightops.telemetry-signature-read@*"
         on each "telemetry evidence" as Input "segment"
         using "flight" as Input "flight"
         and must establish "every declared segment proves its checklist in the flight telemetry"
@@ -128,7 +128,7 @@ Feature: Establish from flight telemetry that every required checklist was actua
   Scenario: Confirm every finding is investigated and recorded at the safety office
     Given scenario "telemetry-evidence" is validated
     And scenario "checklist-log" is validated
-    Then Check "finding" runs Operation "flightops.finding-read"
+    Then Check "finding" runs Operation "flightops.finding-read@*"
         on each "finding" as Input "finding"
         and must establish "every finding has an identified cause and reached the safety office"
       """js
@@ -153,7 +153,7 @@ Feature: Establish from flight telemetry that every required checklist was actua
     # ("matched telemetry signature OR recorded finding"), and Checks only conjoin. The
     # disjunction is therefore computed by the assessment system and observed as one count.
     # Expressing it in the language would need an "either Check A or Check B" form.
-    Then Check "assessment" runs Operation "flightops.assessment-read"
+    Then Check "assessment" runs Operation "flightops.assessment-read@*"
         on "flight" as Input "flight"
         and must establish "no required checklist is left without evidence or finding"
       """js

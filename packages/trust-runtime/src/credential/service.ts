@@ -1,25 +1,19 @@
-import type { Clock } from "../time.js";
-import {
-  assertEnvironmentName,
-  assertValueName,
-  EnvironmentConfigurationError,
-} from "../environment/validation.js";
-import type { CredentialStore } from "./store.js";
+import type { CredentialReference } from "@trust/extension-sdk";
 import type { EnvironmentStore } from "../environment/store.js";
-
-export interface CredentialReference {
-  readonly environment: string;
-  readonly name: string;
-}
+import { assertEnvironmentName, assertValueName, EnvironmentConfigurationError } from "../environment/validation.js";
+import type { Clock } from "../time.js";
+import type { CredentialStore } from "./store.js";
 
 export class CredentialService {
   readonly #credentials = new Map<string, Map<string, string>>();
 
-  constructor(private readonly dependencies: {
-    readonly credentialStore: CredentialStore;
-    readonly environmentStore: EnvironmentStore;
-    readonly clock: Clock;
-  }) {}
+  constructor(
+    private readonly dependencies: {
+      readonly credentialStore: CredentialStore;
+      readonly environmentStore: EnvironmentStore;
+      readonly clock: Clock;
+    },
+  ) {}
 
   async initialize(): Promise<void> {
     this.#credentials.clear();
@@ -32,10 +26,12 @@ export class CredentialService {
     if (environment !== undefined) assertEnvironmentName(environment);
     return [...this.#credentials]
       .filter(([environmentName]) => environment === undefined || environmentName === environment)
-      .flatMap(([environmentName, credentials]) => [...credentials.keys()].map((name) => ({
-        environment: environmentName,
-        name,
-      })))
+      .flatMap(([environmentName, credentials]) =>
+        [...credentials.keys()].map((name) => ({
+          environment: environmentName,
+          name,
+        })),
+      )
       .sort((left, right) => `${left.environment}/${left.name}`.localeCompare(`${right.environment}/${right.name}`));
   }
 
@@ -49,15 +45,10 @@ export class CredentialService {
     if (value.length === 0 || value.includes("\0")) {
       throw new EnvironmentConfigurationError("Credential value must be a non-empty string");
     }
-    if (!await this.dependencies.environmentStore.exists(environment)) {
+    if (!(await this.dependencies.environmentStore.exists(environment))) {
       throw new EnvironmentConfigurationError(`Environment "${environment}" is not configured`);
     }
-    await this.dependencies.credentialStore.save(
-      environment,
-      name,
-      value,
-      this.dependencies.clock.now().toISOString(),
-    );
+    await this.dependencies.credentialStore.save(environment, name, value, this.dependencies.clock.now().toISOString());
     this.#environment(environment).set(name, value);
     return { environment, name };
   }

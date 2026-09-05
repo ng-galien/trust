@@ -11,7 +11,7 @@ export async function runtimeRpc<Result = unknown>(
   const response = await request.post(runtimeRpcUrl, {
     data: { jsonrpc: "2.0", id: method, method, params },
   });
-  const payload = await response.json() as { result?: Result; error?: { message: string } };
+  const payload = (await response.json()) as { result?: Result; error?: { message: string } };
   if (payload.error) throw new Error(`${method}: ${payload.error.message}`);
   return payload.result as Result;
 }

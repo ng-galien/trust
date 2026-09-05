@@ -1,18 +1,17 @@
-import { readFileSync, readdirSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 
 import {
   analyzeOperation,
-  compileOperation,
   CompiledOperationValidationError,
+  compileOperation,
   HTTP_METHODS,
   OperationCompilationError,
-  validateCompiledOperation,
   type OperationCompilationErrorCode,
+  validateCompiledOperation,
 } from "@trust/operation";
 import { describe, expect, test } from "vitest";
 
-const fixture = (path: string): string =>
-  readFileSync(new URL(`./fixtures/${path}`, import.meta.url), "utf8");
+const fixture = (path: string): string => readFileSync(new URL(`./fixtures/${path}`, import.meta.url), "utf8");
 
 const invalidDirectory = new URL("./fixtures/invalid/", import.meta.url);
 const invalidCases = Object.entries(
@@ -59,7 +58,8 @@ describe("Operation compiler", () => {
 
     const analysis = analyzeOperation({ source, sourceName: "http-unknown-environment.feature" });
 
-    expect(analysis.diagnostics).toEqual([{
+    expect(analysis.diagnostics).toEqual([
+      {
         code: "unknown-environment",
         message: 'HTTP "response" uses undeclared Environment "otherUrl"',
         sourceName: "http-unknown-environment.feature",
@@ -67,7 +67,8 @@ describe("Operation compiler", () => {
           start: { line: 14, column: 5 },
           end: { line: 14, column: 78 },
         },
-      }]);
+      },
+    ]);
     expect(analysis.document).toMatchObject({
       operation: "http.invalid",
       environment: [{ name: "serviceUrl" }],
@@ -84,14 +85,16 @@ describe("Operation compiler", () => {
       sourceName: "postgresql.atomic-claim.feature",
     });
 
-    expect(compiled.steps).toEqual([{
-      name: "claim",
-      type: "postgresql",
-      postgresql: {
-        connection: { environment: "databaseUrl" },
-        statement: expect.stringContaining("INSERT INTO trust_connector_claims"),
+    expect(compiled.steps).toEqual([
+      {
+        name: "claim",
+        type: "postgresql",
+        postgresql: {
+          connection: { environment: "databaseUrl" },
+          statement: expect.stringContaining("INSERT INTO trust_connector_claims"),
+        },
       },
-    }]);
+    ]);
     expect(compiled.produce.expression).toContain("steps.claim.result.state");
     expect(() => validateCompiledOperation(JSON.parse(JSON.stringify(compiled)))).not.toThrow();
   });
@@ -103,18 +106,22 @@ describe("Operation compiler", () => {
       sourceName: "postgresql-wrong-environment.feature",
     });
     const missingStatement = analyzeOperation({
-      source: source.replace(/\n      \"\"\"\n      WITH inserted AS \([\s\S]*?\n      \"\"\"/, ""),
+      source: source.replace(/\n {6}"""\n {6}WITH inserted AS \([\s\S]*?\n {6}"""/, ""),
       sourceName: "postgresql-missing-statement.feature",
     });
 
-    expect(wrongEnvironment.diagnostics).toEqual([expect.objectContaining({
-      code: "invalid-operation",
-      message: 'PostgreSQL "claim" requires Environment "databaseUrl" to be a string',
-    })]);
-    expect(missingStatement.diagnostics).toEqual([expect.objectContaining({
-      code: "unknown-step",
-      message: "PostgreSQL requires one SQL DocString and no table",
-    })]);
+    expect(wrongEnvironment.diagnostics).toEqual([
+      expect.objectContaining({
+        code: "invalid-operation",
+        message: 'PostgreSQL "claim" requires Environment "databaseUrl" to be a string',
+      }),
+    ]);
+    expect(missingStatement.diagnostics).toEqual([
+      expect.objectContaining({
+        code: "unknown-step",
+        message: "PostgreSQL requires one SQL DocString and no table",
+      }),
+    ]);
   });
 
   test("analyzes invalid Gherkin at the parser error location", () => {
@@ -159,9 +166,7 @@ describe("Operation compiler", () => {
       );
     }
     if (feature === "http.status-read.feature" || feature === "http.text-read.feature") {
-      expect(source).toBe(
-        readFileSync(new URL(`../../../assets/operations/${feature}`, import.meta.url), "utf8"),
-      );
+      expect(source).toBe(readFileSync(new URL(`../../../assets/operations/${feature}`, import.meta.url), "utf8"));
     }
   });
 
@@ -172,7 +177,12 @@ describe("Operation compiler", () => {
 
     expect(compiled.steps[0]).toMatchObject({
       type: "http",
-      http: { method: "GET", url: { environment: "jiraIssueUrl" }, path: [{ kind: "input", input: "issue" }], format: "json" },
+      http: {
+        method: "GET",
+        url: { environment: "jiraIssueUrl" },
+        path: [{ kind: "input", input: "issue" }],
+        format: "json",
+      },
     });
     expect(compiled.steps[0]).not.toHaveProperty("http.appendInputs");
   });
@@ -192,11 +202,13 @@ describe("Operation compiler", () => {
       type: "shell",
       shell: {
         executable: "mvn",
-        arguments: expect.arrayContaining([{
-          kind: "execution",
-          field: "id",
-          prefix: "-Dtrust.execution.id=",
-        }]),
+        arguments: expect.arrayContaining([
+          {
+            kind: "execution",
+            field: "id",
+            prefix: "-Dtrust.execution.id=",
+          },
+        ]),
       },
     });
   });
@@ -217,7 +229,10 @@ describe("Operation compiler", () => {
   });
 
   test("compiles fixed filters over an HTTP trace body", () => {
-    const source = readFileSync(new URL("../../../assets/operations/telemetry.project-trace-read.feature", import.meta.url), "utf8");
+    const source = readFileSync(
+      new URL("../../../assets/operations/telemetry.project-trace-read.feature", import.meta.url),
+      "utf8",
+    );
 
     const compiled = compileOperation({ source, sourceName: "telemetry.project-trace-read.feature" });
 
@@ -242,23 +257,31 @@ describe("Operation compiler", () => {
       sourceName: "http-query-before-appending.feature",
     });
 
-    expect(analysis.diagnostics).toEqual([expect.objectContaining({
-      code: "unknown-step",
-      message: expect.stringContaining('expected with query or with header or with Input as JSON body or with JSONata body or with Text body or and reads before "appending"'),
-    })]);
+    expect(analysis.diagnostics).toEqual([
+      expect.objectContaining({
+        code: "unknown-step",
+        message: expect.stringContaining(
+          'expected with query or with header or with Input as JSON body or with JSONata body or with Text body or and reads before "appending"',
+        ),
+      }),
+    ]);
     expect(analysis.document?.steps).toEqual([expect.objectContaining({ name: "comments", type: "http" })]);
   });
 
   test("reports a semantic capture rejected after the Step Grammar matched", () => {
-    const source = fixture("valid/http.status-read.feature")
-      .replace('to Environment "serviceUrl" and reads', 'to Environment "serviceUrl" appending literal "" and reads');
+    const source = fixture("valid/http.status-read.feature").replace(
+      'to Environment "serviceUrl" and reads',
+      'to Environment "serviceUrl" appending literal "" and reads',
+    );
 
     const analysis = analyzeOperation({ source, sourceName: "http-empty-segment.feature" });
 
-    expect(analysis.diagnostics).toEqual([expect.objectContaining({
-      code: "unknown-step",
-      message: expect.stringContaining('appending literal expects a non-empty "<segment>"'),
-    })]);
+    expect(analysis.diagnostics).toEqual([
+      expect.objectContaining({
+        code: "unknown-step",
+        message: expect.stringContaining('appending literal expects a non-empty "<segment>"'),
+      }),
+    ]);
     expect(analysis.document?.steps).toEqual([expect.objectContaining({ name: "response", type: "http" })]);
   });
 
@@ -306,18 +329,22 @@ Feature: Send ${method}
   test("refuses interim informational statuses as accepted terminal responses", () => {
     const source = fixture("valid/http.status-read.feature").replace(
       "    Then Produce with JSONata",
-      "    And HTTP \"response\" accepts statuses\n      | status |\n      | 103    |\n    Then Produce with JSONata",
+      '    And HTTP "response" accepts statuses\n      | status |\n      | 103    |\n    Then Produce with JSONata',
     );
 
-    expect(() => compileOperation({ source, sourceName: "http.interim-status.feature" }))
-      .toThrow(/must be terminal: 101 or an integer from 200 to 599/);
+    expect(() => compileOperation({ source, sourceName: "http.interim-status.feature" })).toThrow(
+      /must be terminal: 101 or an integer from 200 to 599/,
+    );
   });
 
   test("exposes the free-text Feature description without touching the executable contract", () => {
     const source = fixture("valid/git.head-read.described.feature");
 
     const described = compileOperation({ source, sourceName: "git.head-read.described.feature" });
-    const plain = compileOperation({ source: fixture("valid/git.head-read.feature"), sourceName: "git.head-read.feature" });
+    const plain = compileOperation({
+      source: fixture("valid/git.head-read.feature"),
+      sourceName: "git.head-read.feature",
+    });
     const analysis = analyzeOperation({ source, sourceName: "git.head-read.described.feature" });
 
     expect(described.description).toBe(
@@ -358,8 +385,9 @@ Feature: Send ${method}
       sourceName: "git.head-read.feature",
     });
 
-    expect(() => validateCompiledOperation({ ...compiled, contract: "other" }))
-      .toThrow(CompiledOperationValidationError);
+    expect(() => validateCompiledOperation({ ...compiled, contract: "other" })).toThrow(
+      CompiledOperationValidationError,
+    );
   });
 
   test("the error manifest lists every invalid fixture", () => {

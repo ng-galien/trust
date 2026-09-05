@@ -34,7 +34,14 @@ export function ResourceCard({
   className?: string;
 }) {
   return (
-    <Link to={to} data-doc="home.card" className={cx("card-link min-w-0 flex flex-col rounded-(--radius-3) border border-border bg-surface transition-[border-color,box-shadow]", className)}>
+    <Link
+      to={to}
+      data-doc="home.card"
+      className={cx(
+        "card-link min-w-0 flex flex-col rounded-(--radius-3) border border-border bg-surface transition-[border-color,box-shadow]",
+        className,
+      )}
+    >
       <div className="flex items-center gap-1.5 px-4 pt-3.5">
         {marks}
         {version ? <span className="mono ml-auto text-caption text-faint">v{version}</span> : null}
@@ -42,7 +49,11 @@ export function ResourceCard({
       <div className="px-4 pt-2.5 pb-3">
         <div className="flex items-start gap-1.5">
           <h3 className="clamp-2 min-w-0 flex-1 text-subhead leading-snug font-semibold">{title}</h3>
-          {description ? <InfoBadge title={title} className="mt-0.5 shrink-0">{description}</InfoBadge> : null}
+          {description ? (
+            <InfoBadge title={title} className="mt-0.5 shrink-0">
+              {description}
+            </InfoBadge>
+          ) : null}
         </div>
         <p className="mono mt-1 truncate-1 text-label text-muted">{id}</p>
         {note ? <p className="mt-1 text-caption text-accent">{note}</p> : null}
@@ -72,7 +83,11 @@ function FactRow({ label, value }: { label: string; value: ReactNode }) {
 }
 
 export function CardGrid({ children, min = 300 }: { children: ReactNode; min?: number }) {
-  return <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(auto-fill, minmax(${min}px, 1fr))` }}>{children}</div>;
+  return (
+    <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(auto-fill, minmax(${min}px, 1fr))` }}>
+      {children}
+    </div>
+  );
 }
 
 /** Mono list of names, truncated with +n. */

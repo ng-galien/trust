@@ -10,19 +10,19 @@ Feature: Qualify a four-Check dry-run independently of a submitted response
 
   @scenario:observations
   Scenario: Qualify the current checklist
-    Then Check "first observation" runs Operation "git.head-read" on "repository" as Input "project" and must establish "the first observation is qualified"
+    Then Check "first observation" runs Operation "git.head-read@*" on "repository" as Input "project" and must establish "the first observation is qualified"
       """js
       fact.workingTree === "clean" || fail("The observation is not clean")
       """
-    And Check "second observation" runs Operation "git.head-read" on "repository" as Input "project" and must establish "the second observation is qualified"
+    And Check "second observation" runs Operation "git.head-read@*" on "repository" as Input "project" and must establish "the second observation is qualified"
       """js
       fact.workingTree === "clean" || fail("The observation is not clean")
       """
-    And Check "third observation" runs Operation "git.head-read" on "repository" as Input "project" and must establish "the third observation is qualified"
+    And Check "third observation" runs Operation "git.head-read@*" on "repository" as Input "project" and must establish "the third observation is qualified"
       """js
       fact.workingTree === "clean" || fail("The observation is not clean")
       """
-    And Check "observe completion" runs Operation "git.head-read" on "repository" as Input "project" and must establish "the final observation is qualified"
+    And Check "observe completion" runs Operation "git.head-read@*" on "repository" as Input "project" and must establish "the final observation is qualified"
       """js
       fact.workingTree === "clean" || fail("The observation is not clean")
       """

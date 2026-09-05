@@ -1,10 +1,10 @@
-import { Activity, FlaskConical, GitBranch, History, LayoutDashboard, Server, TerminalSquare } from "lucide-react";
 import type { ParseKeys } from "i18next";
+import { Activity, FlaskConical, GitBranch, History, LayoutDashboard, Server, TerminalSquare } from "lucide-react";
 import type { ComponentType } from "react";
 import { useTranslation } from "react-i18next";
 
 import { plural } from "../lib/format.js";
-import { useRemoveEnvironment, useRemoveOperation, useRemovePlan } from "../lib/mutations.js";
+import { useRemoveEnvironment, useRemovePlan } from "../lib/mutations.js";
 import { useEnvironments, useOperations, usePlans, useProcedures } from "../lib/runtime-context.js";
 
 export type AnchorId = "operations" | "procedures" | "environments" | "plans" | "dry-runs" | "history";
@@ -53,12 +53,48 @@ export const resourceAnchors: ResourceAnchor[] = [
     managementNote: "shell.managementNote.procedures",
   },
   // Environments: where Plans run — named contexts with their values and credential references (never the secrets).
-  { id: "environments", label: "shell.nav.environments", singular: "shell.singular.environment", icon: Server, to: "/environments", section: "run", explorable: true, createTo: "/environments/new" },
+  {
+    id: "environments",
+    label: "shell.nav.environments",
+    singular: "shell.singular.environment",
+    icon: Server,
+    to: "/environments",
+    section: "run",
+    explorable: true,
+    createTo: "/environments/new",
+  },
   // Live Plans are driven by agents; the interface can engage one but never acts on its Checks.
-  { id: "plans", label: "shell.nav.plans", singular: "shell.singular.plan", icon: Activity, to: "/plans", section: "run", explorable: true, createTo: "/plans/new", managementNote: "shell.managementNote.plans" },
+  {
+    id: "plans",
+    label: "shell.nav.plans",
+    singular: "shell.singular.plan",
+    icon: Activity,
+    to: "/plans",
+    section: "run",
+    explorable: true,
+    createTo: "/plans/new",
+    managementNote: "shell.managementNote.plans",
+  },
   // Dry-runs are Plans rehearsed by the operator: same object, same rules, kept apart from live Plans.
-  { id: "dry-runs", label: "shell.nav.dryRuns", singular: "shell.singular.dryRun", icon: FlaskConical, to: "/dry-runs", section: "run", explorable: true, createTo: "/dry-runs/new" },
-  { id: "history", label: "shell.nav.history", singular: "shell.singular.history", icon: History, to: "/history", section: "run", explorable: false },
+  {
+    id: "dry-runs",
+    label: "shell.nav.dryRuns",
+    singular: "shell.singular.dryRun",
+    icon: FlaskConical,
+    to: "/dry-runs",
+    section: "run",
+    explorable: true,
+    createTo: "/dry-runs/new",
+  },
+  {
+    id: "history",
+    label: "shell.nav.history",
+    singular: "shell.singular.history",
+    icon: History,
+    to: "/history",
+    section: "run",
+    explorable: false,
+  },
 ];
 
 export const sections: Array<{ id: Section; label: TranslationKey }> = [
@@ -93,7 +129,6 @@ export function useAnchorItems(anchor: AnchorId): AnchorItems {
   const procedures = useProcedures();
   const plans = usePlans();
   const environments = useEnvironments();
-  const removeOperation = useRemoveOperation();
   const removePlan = useRemovePlan();
   const removeEnvironment = useRemoveEnvironment();
 
@@ -102,18 +137,17 @@ export function useAnchorItems(anchor: AnchorId): AnchorItems {
       return {
         loading: operations.isLoading,
         error: operations.error?.message,
-        items: (operations.data ?? [])
+        items: catalogIdentities(
+          operations.data ?? [],
+          (value) => value.operation,
+          (value) => value.version,
+        )
           .map((operation) => ({
             id: operation.operation,
             label: operation.operation,
             to: `/operations/${encodeURIComponent(operation.operation)}`,
             meta: `v${operation.version}`,
-            duplicateTo: `/operations/new?from=${encodeURIComponent(operation.operation)}`,
-            remove: {
-              ...(procedures.data?.some(({ procedure }) => procedure.operations.some((used) => used.operation === operation.operation)) ? { blocked: t("shell.items.operationUsedByProcedure") } : {}),
-              body: t("shell.items.removeOperationBody"),
-              run: () => removeOperation.mutateAsync({ operation: operation.operation, version: operation.version }),
-            },
+            duplicateTo: `/operations/new?from=${encodeURIComponent(operation.operation)}&fromVersion=${encodeURIComponent(operation.version)}`,
           }))
           .sort(byId),
       };
@@ -121,13 +155,17 @@ export function useAnchorItems(anchor: AnchorId): AnchorItems {
       return {
         loading: procedures.isLoading,
         error: procedures.error?.message,
-        items: (procedures.data ?? [])
+        items: catalogIdentities(
+          procedures.data ?? [],
+          (value) => value.procedure.procedure,
+          (value) => value.procedure.version,
+        )
           .map(({ procedure }) => ({
             id: procedure.procedure,
             label: procedure.procedure,
             to: `/procedures/${encodeURIComponent(procedure.procedure)}`,
             meta: `v${procedure.version}`,
-            duplicateTo: `/procedures/new?from=${encodeURIComponent(procedure.procedure)}`,
+            duplicateTo: `/procedures/new?from=${encodeURIComponent(procedure.procedure)}&fromVersion=${encodeURIComponent(procedure.version)}`,
           }))
           .sort(byId),
       };
@@ -135,13 +173,18 @@ export function useAnchorItems(anchor: AnchorId): AnchorItems {
       return {
         loading: environments.isLoading,
         error: environments.error?.message,
-        items: (environments.data ?? []).map((environment) => ({
-          id: environment.name,
-          label: environment.name,
-          to: `/environments/${encodeURIComponent(environment.name)}`,
-          meta: plural(Object.keys(environment.values).length, "value"),
-          remove: { body: t("shell.items.removeEnvironmentBody"), run: () => removeEnvironment.mutateAsync(environment.name) },
-        })).sort(byId),
+        items: (environments.data ?? [])
+          .map((environment) => ({
+            id: environment.name,
+            label: environment.name,
+            to: `/environments/${encodeURIComponent(environment.name)}`,
+            meta: plural(Object.keys(environment.values).length, "value"),
+            remove: {
+              body: t("shell.items.removeEnvironmentBody"),
+              run: () => removeEnvironment.mutateAsync(environment.name),
+            },
+          }))
+          .sort(byId),
       };
     case "plans":
     case "dry-runs":
@@ -156,11 +199,17 @@ export function useAnchorItems(anchor: AnchorId): AnchorItems {
             to: `/${anchor}/${encodeURIComponent(plan.plan)}`,
             meta: `${plan.satisfiedChecks}/${plan.checkCount}`,
             state: plan.workState,
-            ...(plan.mode === "dry-run" ? { remove: { body: t("shell.items.removeDryRunBody"), run: () => removePlan.mutateAsync(plan.plan) } } : {}),
+            ...(plan.mode === "dry-run"
+              ? { remove: { body: t("shell.items.removeDryRunBody"), run: () => removePlan.mutateAsync(plan.plan) } }
+              : {}),
             group: {
               id: plan.procedure,
-              label: procedures.data?.find(({ procedure }) => procedure.procedure === plan.procedure)?.procedure.title ?? plan.procedure,
-              to: `/procedures/${encodeURIComponent(plan.procedure)}`,
+              label:
+                procedures.data?.find(
+                  ({ procedure }) =>
+                    procedure.procedure === plan.procedure && procedure.version === plan.procedureVersion,
+                )?.procedure.title ?? plan.procedure,
+              to: `/procedures/${encodeURIComponent(plan.procedure)}?version=${encodeURIComponent(plan.procedureVersion)}`,
             },
           }))
           .sort((a, b) => a.group.label.localeCompare(b.group.label) || byId(a, b)),
@@ -173,3 +222,5 @@ export function useAnchorItems(anchor: AnchorId): AnchorItems {
 function byId(a: { id: string }, b: { id: string }) {
   return a.id.localeCompare(b.id);
 }
+
+import { catalogIdentities } from "../lib/catalog-versions.js";

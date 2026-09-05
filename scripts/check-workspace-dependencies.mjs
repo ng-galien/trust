@@ -3,12 +3,7 @@ import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
-const dependencySections = [
-  "dependencies",
-  "devDependencies",
-  "optionalDependencies",
-  "peerDependencies",
-];
+const dependencySections = ["dependencies", "devDependencies", "optionalDependencies", "peerDependencies"];
 
 const rootManifest = await readManifest(join(root, "package.json"));
 const workspacePatterns = rootManifest.content.workspaces;
@@ -22,12 +17,12 @@ for (const pattern of workspacePatterns) {
     workspaceManifestPaths.add(join(root, path));
   }
 }
-const manifests = [
-  rootManifest,
-  ...await Promise.all([...workspaceManifestPaths].sort().map(readManifest)),
-];
+const manifests = [rootManifest, ...(await Promise.all([...workspaceManifestPaths].sort().map(readManifest)))];
 const workspaceNames = new Set(
-  manifests.slice(1).map(({ content }) => content.name).filter((name) => typeof name === "string"),
+  manifests
+    .slice(1)
+    .map(({ content }) => content.name)
+    .filter((name) => typeof name === "string"),
 );
 const usesByDependency = new Map();
 

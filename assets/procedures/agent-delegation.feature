@@ -20,7 +20,7 @@ Feature: Delegate a bounded mission and observe the agent response
 
   @scenario:creation
   Scenario: Persist the mission before dispatch
-    Then Check "create mission" runs Operation "coordination.mission-create"
+    Then Check "create mission" runs Operation "coordination.mission-create@*"
       on "mission" as Input "mission"
       using plan as Input "plan"
       using "assignee" as Input "assignee"
@@ -38,7 +38,7 @@ Feature: Delegate a bounded mission and observe the agent response
   @scenario:claim
   Scenario: Take responsibility for the mission
     Given scenario "creation" is validated
-    Then Check "claim mission" runs Operation "coordination.mission-claim"
+    Then Check "claim mission" runs Operation "coordination.mission-claim@*"
       on "mission" as Input "mission"
       using "assignee" as Input "actor"
       and must establish "the assigned agent owns the mission"
@@ -50,7 +50,7 @@ Feature: Delegate a bounded mission and observe the agent response
   @scenario:response
   Scenario: Persist the agent response
     Given scenario "claim" is validated
-    Then Check "submit response" runs Operation "coordination.mission-submit"
+    Then Check "submit response" runs Operation "coordination.mission-submit@*"
       on "mission" as Input "mission"
       using "assignee" as Input "actor"
       using "response" as Input "response"
@@ -64,7 +64,7 @@ Feature: Delegate a bounded mission and observe the agent response
   @scenario:completion
   Scenario: Observe the declared completion
     Given scenario "response" is validated
-    Then Check "observe completion" runs Operation "coordination.mission-read"
+    Then Check "observe completion" runs Operation "coordination.mission-read@*"
       on "mission" as Input "mission"
       and must establish "the assigned agent returned a completed response"
       """js

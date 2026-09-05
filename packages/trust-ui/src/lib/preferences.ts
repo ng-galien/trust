@@ -67,7 +67,11 @@ const storage = createJSONStorage<Preferences>(() => ({
 }));
 
 export const usePreferencesStore = create<Preferences>()(
-  persist(() => defaults, { name: storageKey, storage, merge: (persisted, current) => ({ ...current, ...(persisted as Partial<Preferences>) }) }),
+  persist(() => defaults, {
+    name: storageKey,
+    storage,
+    merge: (persisted, current) => ({ ...current, ...(persisted as Partial<Preferences>) }),
+  }),
 );
 
 export function usePreferences(): Preferences {
@@ -87,7 +91,9 @@ export function toggleAnchor(anchor: string, expanded?: boolean) {
   const has = expandedAnchors.includes(anchor);
   const next = expanded ?? !has;
   if (next === has) return;
-  usePreferencesStore.setState({ expandedAnchors: next ? [...expandedAnchors, anchor] : expandedAnchors.filter((entry) => entry !== anchor) });
+  usePreferencesStore.setState({
+    expandedAnchors: next ? [...expandedAnchors, anchor] : expandedAnchors.filter((entry) => entry !== anchor),
+  });
 }
 
 const systemDark = typeof window !== "undefined" ? window.matchMedia("(prefers-color-scheme: dark)") : null;

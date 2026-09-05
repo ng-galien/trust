@@ -2,8 +2,8 @@ import assert from "node:assert/strict";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 
 import { startPublicRuntime } from "./support/runtime-process.js";
 
@@ -49,24 +49,30 @@ test("environments and credential references persist without exposing credential
         name: "temporaryToken",
         value: "temporary-secret",
       });
-      assert.deepEqual(await rpc(first.endpoint, "credential.remove", {
-        environment: "local",
-        name: "temporaryToken",
-      }), {
-        contract: "trust.credential-removal@1",
-        environment: "local",
-        name: "temporaryToken",
-        removed: true,
-      });
-      assert.deepEqual(await rpc(first.endpoint, "credential.remove", {
-        environment: "local",
-        name: "temporaryToken",
-      }), {
-        contract: "trust.credential-removal@1",
-        environment: "local",
-        name: "temporaryToken",
-        removed: false,
-      });
+      assert.deepEqual(
+        await rpc(first.endpoint, "credential.remove", {
+          environment: "local",
+          name: "temporaryToken",
+        }),
+        {
+          contract: "trust.credential-removal@1",
+          environment: "local",
+          name: "temporaryToken",
+          removed: true,
+        },
+      );
+      assert.deepEqual(
+        await rpc(first.endpoint, "credential.remove", {
+          environment: "local",
+          name: "temporaryToken",
+        }),
+        {
+          contract: "trust.credential-removal@1",
+          environment: "local",
+          name: "temporaryToken",
+          removed: false,
+        },
+      );
     } finally {
       await first.close();
     }
@@ -79,10 +85,12 @@ test("environments and credential references persist without exposing credential
       const environments = await rpc(second.endpoint, "environment.list", {});
       assert.deepEqual(environments, {
         contract: "trust.environment-catalog@1",
-        environments: [{
-          name: "local",
-          values: { workspaceRoot: path.dirname(repositoryRoot) },
-        }],
+        environments: [
+          {
+            name: "local",
+            values: { workspaceRoot: path.dirname(repositoryRoot) },
+          },
+        ],
       });
 
       const credentials = await rpc(second.endpoint, "credential.list", { environment: "local" });
@@ -92,18 +100,25 @@ test("environments and credential references persist without exposing credential
       });
       assert.equal(JSON.stringify(credentials).includes(credentialValue), false);
 
-      const operationEnvironments = await rpc(second.endpoint, "operation.environments", {}) as {
-        operations: Array<{ operation: string; environments: Array<{ name: string; compatible: boolean; missing: string[] }> }>;
+      const operationEnvironments = (await rpc(second.endpoint, "operation.environments", {})) as {
+        operations: Array<{
+          operation: string;
+          environments: Array<{ name: string; compatible: boolean; missing: string[] }>;
+        }>;
       };
-      const gitEnvironment = operationEnvironments.operations.find(({ operation }) => operation === "git.head-read")
+      const gitEnvironment = operationEnvironments.operations
+        .find(({ operation }) => operation === "git.head-read")
         ?.environments.find(({ name }) => name === "local");
       assert.deepEqual(gitEnvironment, { name: "local", compatible: true, missing: [] });
 
-      const scopedEnvironments = await rpc(second.endpoint, "environment.list", {
+      const scopedEnvironments = (await rpc(second.endpoint, "environment.list", {
         operation: "git.head-read",
         version: "1.0.0",
-      }) as { environments: Array<{ name: string; compatible: boolean }> };
-      assert.deepEqual(scopedEnvironments.environments.map(({ name, compatible }) => [name, compatible]), [["local", true]]);
+      })) as { environments: Array<{ name: string; compatible: boolean }> };
+      assert.deepEqual(
+        scopedEnvironments.environments.map(({ name, compatible }) => [name, compatible]),
+        [["local", true]],
+      );
 
       for (const invalidScope of [
         { operation: "git.head-read", source: "not allowed together" },
@@ -113,12 +128,12 @@ test("environments and credential references persist without exposing credential
         assert.equal((await rpcEnvelope(second.endpoint, "environment.list", invalidScope)).error?.code, -32_602);
       }
 
-      const started = await rpc(second.endpoint, "operation.trial.start", {
+      const started = (await rpc(second.endpoint, "operation.trial.start", {
         operation: "git.head-read",
         version: "1.0.0",
         environment: "local",
         input: { project: path.basename(repositoryRoot) },
-      }) as { trial: { id: string } };
+      })) as { trial: { id: string } };
       assert.equal((await waitForTrial(second.endpoint, started.trial.id)).status, "succeeded");
 
       const invalid = await rpcEnvelope(second.endpoint, "environment.save", {
@@ -168,7 +183,7 @@ interface TrialView {
 async function waitForTrial(endpoint: string, trial: string): Promise<TrialView> {
   const deadline = Date.now() + 10_000;
   while (Date.now() < deadline) {
-    const result = await rpc(endpoint, "operation.trial.read", { trial }) as { trial: TrialView };
+    const result = (await rpc(endpoint, "operation.trial.read", { trial })) as { trial: TrialView };
     if (result.trial.status !== "starting" && result.trial.status !== "running") return result.trial;
     await new Promise((resolve) => setTimeout(resolve, 25));
   }

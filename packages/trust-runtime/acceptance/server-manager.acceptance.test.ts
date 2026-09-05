@@ -3,19 +3,16 @@ import { execFile } from "node:child_process";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { createServer as createHttpServer } from "node:http";
 import { createServer as createNetServer } from "node:net";
-import { DatabaseSync } from "node:sqlite";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { WebSocket } from "ws";
 
 const execute = promisify(execFile);
-const repositoryRoot = path.resolve(
-  path.dirname(fileURLToPath(import.meta.url)),
-  "../../../..",
-);
+const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../..");
 
 test("the server manager refuses a stale SQLite schema before starting tmux", async () => {
   const stateDirectory = await mkdtemp(path.join(tmpdir(), "trust-stale-schema-"));
@@ -25,24 +22,21 @@ test("the server manager refuses a stale SQLite schema before starting tmux", as
   database.close();
   try {
     await assert.rejects(
-      execute(
-        process.execPath,
-        [path.join(repositoryRoot, "environments/trust-test/scripts/server.ts"), "start"],
-        {
-          cwd: repositoryRoot,
-          env: {
-            ...process.env,
-            TRUST_SERVER_STATE_DIRECTORY: stateDirectory,
-            TRUST_SERVER_TMUX_SESSION: session,
-            TRUST_SERVER_PORT: String(await availablePort()),
-          },
-          timeout: 30_000,
+      execute(process.execPath, [path.join(repositoryRoot, "environments/trust-test/scripts/server.ts"), "start"], {
+        cwd: repositoryRoot,
+        env: {
+          ...process.env,
+          TRUST_SERVER_STATE_DIRECTORY: stateDirectory,
+          TRUST_SERVER_TMUX_SESSION: session,
+          TRUST_SERVER_PORT: String(await availablePort()),
         },
-      ),
+        timeout: 30_000,
+      }),
       (error: unknown) => {
-        const output = error instanceof Error
-          ? `${error.message}\n${String((error as Error & { stderr?: unknown }).stderr ?? "")}`
-          : String(error);
+        const output =
+          error instanceof Error
+            ? `${error.message}\n${String((error as Error & { stderr?: unknown }).stderr ?? "")}`
+            : String(error);
         assert.match(output, /SQLite database schema is incompatible/);
         assert.match(output, /node environments\/trust-test\/scripts\/server\.ts reset/);
         return true;
@@ -59,7 +53,8 @@ test("the server manager refuses a healthy runtime owned outside its tmux sessio
   const stateDirectory = await mkdtemp(path.join(tmpdir(), "trust-foreign-runtime-"));
   const session = `trust-foreign-${process.pid}-${Date.now().toString(36)}`;
   const foreignRuntime = createHttpServer((request, response) => {
-    if (request.url === "/health") response.writeHead(200, { "content-type": "application/json" }).end('{"status":"ok"}');
+    if (request.url === "/health")
+      response.writeHead(200, { "content-type": "application/json" }).end('{"status":"ok"}');
     else response.writeHead(404).end();
   });
   await new Promise<void>((resolve, reject) => {
@@ -72,25 +67,21 @@ test("the server manager refuses a healthy runtime owned outside its tmux sessio
   const port = typeof address === "object" && address !== null ? address.port : 0;
   try {
     await assert.rejects(
-      execute(
-        process.execPath,
-        [path.join(repositoryRoot, "environments/trust-test/scripts/server.ts"), "start"],
-        {
-          cwd: repositoryRoot,
-          env: {
-            ...process.env,
-            TRUST_SERVER_STATE_DIRECTORY: stateDirectory,
-            TRUST_SERVER_TMUX_SESSION: session,
-            TRUST_SERVER_PORT: String(port),
-          },
-          timeout: 30_000,
+      execute(process.execPath, [path.join(repositoryRoot, "environments/trust-test/scripts/server.ts"), "start"], {
+        cwd: repositoryRoot,
+        env: {
+          ...process.env,
+          TRUST_SERVER_STATE_DIRECTORY: stateDirectory,
+          TRUST_SERVER_TMUX_SESSION: session,
+          TRUST_SERVER_PORT: String(port),
         },
-      ),
+        timeout: 30_000,
+      }),
       /already owned outside tmux session/,
     );
     await assert.rejects(execute("tmux", ["has-session", "-t", session]));
   } finally {
-    await new Promise<void>((resolve, reject) => foreignRuntime.close((error) => error ? reject(error) : resolve()));
+    await new Promise<void>((resolve, reject) => foreignRuntime.close((error) => (error ? reject(error) : resolve())));
     await execute("tmux", ["kill-session", "-t", session]).catch(() => undefined);
     await rm(stateDirectory, { recursive: true, force: true });
   }
@@ -151,11 +142,11 @@ test("the Node server manager resets and reuses separate backend and live-reload
 
     const starts = occurrences(await pane(backendSession, "backend"), "TRUST runtime listening on 127.0.0.1:");
 
-    await execute(
-      "npm",
-      ["run", "build", "--workspace=@trust/runtime"],
-      { cwd: repositoryRoot, env: environment, timeout: 120_000 },
-    );
+    await execute("npm", ["run", "build", "--workspace=@trust/runtime"], {
+      cwd: repositoryRoot,
+      env: environment,
+      timeout: 120_000,
+    });
     await waitForHealth(port);
     assert.equal((await fetch(`http://127.0.0.1:${port}/health`)).status, 200);
     await new Promise((resolve) => setTimeout(resolve, 1_000));
@@ -164,7 +155,6 @@ test("the Node server manager resets and reuses separate backend and live-reload
       starts,
       "building dist must not restart the source runtime",
     );
-
   } finally {
     await rm(liveReloadFile, { force: true });
     await execute("tmux", ["kill-session", "-t", backendSession]).catch(() => undefined);
@@ -183,40 +173,21 @@ async function availablePort(): Promise<number> {
   assert.notEqual(address, null);
   assert.equal(typeof address, "object");
   const port = typeof address === "object" && address !== null ? address.port : 0;
-  await new Promise<void>((resolve, reject) => server.close((error) => (
-    error ? reject(error) : resolve()
-  )));
+  await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
   return port;
 }
 
 async function pane(session: string, window: string): Promise<string> {
-  return (await execute("tmux", [
-    "capture-pane",
-    "-pt",
-    `${session}:${window}`,
-    "-S",
-    "-2000",
-  ])).stdout;
+  return (await execute("tmux", ["capture-pane", "-pt", `${session}:${window}`, "-S", "-2000"])).stdout;
 }
 
 async function paneStartCommand(session: string, window: string): Promise<string> {
-  return (await execute("tmux", [
-    "display-message",
-    "-p",
-    "-t",
-    `${session}:${window}`,
-    "#{pane_start_command}",
-  ])).stdout;
+  return (await execute("tmux", ["display-message", "-p", "-t", `${session}:${window}`, "#{pane_start_command}"]))
+    .stdout;
 }
 
 async function paneId(session: string, window: string): Promise<string> {
-  return (await execute("tmux", [
-    "display-message",
-    "-p",
-    "-t",
-    `${session}:${window}`,
-    "#{pane_id}",
-  ])).stdout.trim();
+  return (await execute("tmux", ["display-message", "-p", "-t", `${session}:${window}`, "#{pane_id}"])).stdout.trim();
 }
 
 async function observeFrontendLiveReload(webPort: number, file: string, publicPath: string): Promise<void> {
@@ -257,7 +228,10 @@ function waitForWebSocketOpen(socket: WebSocket): Promise<void> {
 
 function waitForViteUpdate(socket: WebSocket, publicPath: string): Promise<void> {
   return new Promise((resolve, reject) => {
-    const timeout = setTimeout(() => reject(new Error(`Vite did not live-reload ${publicPath} within 15 seconds`)), 15_000);
+    const timeout = setTimeout(
+      () => reject(new Error(`Vite did not live-reload ${publicPath} within 15 seconds`)),
+      15_000,
+    );
     socket.on("message", (data) => {
       const message = data.toString();
       if (!message.includes(publicPath)) return;

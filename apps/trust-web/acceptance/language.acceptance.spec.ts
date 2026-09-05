@@ -6,12 +6,18 @@ const preferences = (language: "en" | "fr") => ({ state: { language, theme: "lig
 
 for (const language of ["en", "fr"] as const) {
   test(`the same operation URL opens the same tab in ${language}`, async ({ page }) => {
-    await page.addInitScript((value) => localStorage.setItem("trust.ui.preferences", JSON.stringify(value)), preferences(language));
+    await page.addInitScript(
+      (value) => localStorage.setItem("trust.ui.preferences", JSON.stringify(value)),
+      preferences(language),
+    );
     await page.goto("/operations/git.head-read?tab=run");
     await expect(page.locator("#operation-title")).toHaveText("Read Git HEAD and working tree");
     await expect(page).toHaveURL(/tab=run/);
     // The tab labels are translated, the URL is not.
-    await expect(page.getByRole("tab", { name: language === "fr" ? "Exécuter" : "Run" })).toHaveAttribute("aria-selected", "true");
+    await expect(page.getByRole("tab", { name: language === "fr" ? "Exécuter" : "Run" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
     await page.getByRole("tab", { name: "Source" }).click();
     await expect(page).toHaveURL(/tab=source/);
   });
@@ -28,7 +34,10 @@ test("switching the language keeps the address untouched", async ({ page }) => {
 });
 
 test("the header actions switch tabs in French too", async ({ page }) => {
-  await page.addInitScript((value) => localStorage.setItem("trust.ui.preferences", JSON.stringify(value)), preferences("fr"));
+  await page.addInitScript(
+    (value) => localStorage.setItem("trust.ui.preferences", JSON.stringify(value)),
+    preferences("fr"),
+  );
   await page.goto("/operations/aviation.aircraft-read");
   await expect(page.locator("#operation-title")).toHaveText("Read simulated aircraft release data");
   const header = page.locator("#operation-title").locator("xpath=ancestor::header");

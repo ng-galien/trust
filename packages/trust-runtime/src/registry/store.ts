@@ -29,11 +29,7 @@ export class RegistrySourceStore {
   constructor(private readonly dependencies: { readonly database: Database }) {}
 
   async list(): Promise<RegistrySource[]> {
-    const rows = await this.dependencies.database
-      .selectFrom("registry_sources")
-      .selectAll()
-      .orderBy("name")
-      .execute();
+    const rows = await this.dependencies.database.selectFrom("registry_sources").selectAll().orderBy("name").execute();
     return rows.map(toRegistrySource);
   }
 
@@ -53,16 +49,18 @@ export class RegistrySourceStore {
         name: source.name,
         kind: source.kind,
         url: source.url,
-        reference: source.kind === "git" ? source.reference ?? null : null,
+        reference: source.kind === "git" ? (source.reference ?? null) : null,
         created_at: updatedAt,
         updated_at: updatedAt,
       })
-      .onConflict((conflict) => conflict.column("name").doUpdateSet({
-        kind: source.kind,
-        url: source.url,
-        reference: source.kind === "git" ? source.reference ?? null : null,
-        updated_at: updatedAt,
-      }))
+      .onConflict((conflict) =>
+        conflict.column("name").doUpdateSet({
+          kind: source.kind,
+          url: source.url,
+          reference: source.kind === "git" ? (source.reference ?? null) : null,
+          updated_at: updatedAt,
+        }),
+      )
       .execute();
     const saved = await this.find(source.name);
     if (saved === undefined) throw new Error(`Registry source ${source.name} cannot be read back`);

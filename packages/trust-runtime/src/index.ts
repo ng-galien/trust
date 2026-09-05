@@ -1,7 +1,7 @@
-import { startRuntime } from "./server.js";
 import { normalizeAuthority } from "./check/uri.js";
 import { createRuntimeLogging } from "./logging.js";
 import { DEFAULT_SESSION_DURATION_MS } from "./plan/runtime.js";
+import { startRuntime } from "./server.js";
 import { DEFAULT_TRIAL_TIMEOUT_MS } from "./trial/service.js";
 
 const instance = process.env.TRUST_RUNTIME_INSTANCE;
@@ -26,29 +26,24 @@ try {
   const rawPort = process.env.TRUST_PORT ?? "4318";
   const port = Number(rawPort);
   const databasePath = process.env.TRUST_DATABASE_PATH ?? ".trust/trust.sqlite";
-  const semanticAuthority = normalizeAuthority(
-    process.env.TRUST_SEMANTIC_AUTHORITY ?? "localhost:4318",
-  );
+  const semanticAuthority = normalizeAuthority(process.env.TRUST_SEMANTIC_AUTHORITY ?? "localhost:4318");
   const operationsDirectory = process.env.TRUST_OPERATIONS_DIRECTORY;
-  const sessionDurationMs = durationFromEnvironment(
-    "TRUST_SESSION_DURATION_MS",
-    DEFAULT_SESSION_DURATION_MS,
-  );
-  const trialTimeoutMs = durationFromEnvironment(
-    "TRUST_TRIAL_TIMEOUT_MS",
-    DEFAULT_TRIAL_TIMEOUT_MS,
-  );
+  const sessionDurationMs = durationFromEnvironment("TRUST_SESSION_DURATION_MS", DEFAULT_SESSION_DURATION_MS);
+  const trialTimeoutMs = durationFromEnvironment("TRUST_TRIAL_TIMEOUT_MS", DEFAULT_TRIAL_TIMEOUT_MS);
   if (!Number.isInteger(port) || port < 0 || port > 65_535) {
     throw new Error(`Invalid TRUST_PORT '${rawPort}'.`);
   }
 
-  logger.info({
-    event: "runtime.starting",
-    component: "process",
-    host,
-    port,
-    databasePath,
-  }, "TRUST runtime starting");
+  logger.info(
+    {
+      event: "runtime.starting",
+      component: "process",
+      host,
+      port,
+      databasePath,
+    },
+    "TRUST runtime starting",
+  );
   runtime = await startRuntime({
     ...(process.env.TRUST_EXTENSIONS_FILE ? { extensionsFile: process.env.TRUST_EXTENSIONS_FILE } : {}),
     host,
@@ -63,12 +58,15 @@ try {
     ...(process.env.TRUST_RUNNER_TRIAL_SCRIPT ? { runnerTrialScript: process.env.TRUST_RUNNER_TRIAL_SCRIPT } : {}),
     logger,
   });
-  logger.info({
-    event: "runtime.started",
-    component: "process",
-    host: runtime.host,
-    port: runtime.port,
-  }, "TRUST runtime started");
+  logger.info(
+    {
+      event: "runtime.started",
+      component: "process",
+      host: runtime.host,
+      port: runtime.port,
+    },
+    "TRUST runtime started",
+  );
   process.stdout.write(`TRUST runtime listening on ${runtime.host}:${runtime.port}\n`);
 } catch (error) {
   logger.fatal({ err: error, event: "runtime.start_failed", component: "process" }, "TRUST runtime failed to start");
@@ -86,7 +84,10 @@ const shutdown = async (signal: NodeJS.Signals): Promise<void> => {
     logger.info({ event: "runtime.shutdown_completed", component: "process", signal }, "TRUST runtime stopped");
     process.exitCode = 0;
   } catch (error) {
-    logger.fatal({ err: error, event: "runtime.shutdown_failed", component: "process", signal }, "TRUST runtime shutdown failed");
+    logger.fatal(
+      { err: error, event: "runtime.shutdown_failed", component: "process", signal },
+      "TRUST runtime shutdown failed",
+    );
     process.exitCode = 1;
   } finally {
     logging.close();

@@ -17,7 +17,7 @@ Feature: Fix one Jira defect in one Maven project
 
   @scenario:issue
   Scenario: Read the Jira defect
-    Then Check "issue" runs Operation "jira.issue-read" on "jira issue" as Input "issue" and must establish "the Jira issue is ready for correction"
+    Then Check "issue" runs Operation "jira.issue-read@*" on "jira issue" as Input "issue" and must establish "the Jira issue is ready for correction"
       """js
       (
         fact.issueType === "defect" ||
@@ -32,7 +32,7 @@ Feature: Fix one Jira defect in one Maven project
   @scenario:baseline
   Scenario: Establish the project baseline
     Given scenario "issue" is validated
-    Then Check "baseline" runs Operation "git.head-read" on "project" as Input "project" and materializes "baseline revision" from field "headRevision" and must establish "the project baseline is clean"
+    Then Check "baseline" runs Operation "git.head-read@*" on "project" as Input "project" and materializes "baseline revision" from field "headRevision" and must establish "the project baseline is clean"
       """js
       fact.workingTree === "clean" ||
       fail("the project has uncommitted changes")
@@ -41,7 +41,7 @@ Feature: Fix one Jira defect in one Maven project
   @scenario:fix
   Scenario: Establish the committed fix
     Given scenario "baseline" is validated
-    Then Check "fix" runs Operation "git.head-compare" on "project" as Input "project" using "baseline revision" as Input "baseRevision" and materializes "fix revision" from field "headRevision" and must establish "the fix is committed after the baseline"
+    Then Check "fix" runs Operation "git.head-compare@*" on "project" as Input "project" using "baseline revision" as Input "baseRevision" and materializes "fix revision" from field "headRevision" and must establish "the fix is committed after the baseline"
       """js
       (
         fact.comparedBaseRevision === context["baseline revision"] ||
@@ -60,7 +60,7 @@ Feature: Fix one Jira defect in one Maven project
   @scenario:verification
   Scenario: Verify the committed fix
     Given scenario "fix" is validated
-    Then Check "Maven verification" runs Operation "maven.project-verify" on "project" as Input "project" using "fix revision" as Input "revision" and must establish "the committed fix passes Maven verification"
+    Then Check "Maven verification" runs Operation "maven.project-verify@*" on "project" as Input "project" using "fix revision" as Input "revision" and must establish "the committed fix passes Maven verification"
       """js
       (
         fact.verifiedRevision === context["fix revision"] ||

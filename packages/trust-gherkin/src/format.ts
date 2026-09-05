@@ -5,7 +5,26 @@ import { continuationLineIndexes, splitLines } from "./continuation.js";
    value. Tables, doc strings, comments and short steps are left untouched; formatting is idempotent. */
 
 const STEP_LINE = /^(\s*)((?:Given|When|Then|And|But|\*)\s+)(.*)$/u;
-const CONNECTIVES = new Set(["with", "from", "and", "where", "on", "as", "into", "then", "for", "in", "of", "when", "using", "to", "at", "over", "through", "under"]);
+const CONNECTIVES = new Set([
+  "with",
+  "from",
+  "and",
+  "where",
+  "on",
+  "as",
+  "into",
+  "then",
+  "for",
+  "in",
+  "of",
+  "when",
+  "using",
+  "to",
+  "at",
+  "over",
+  "through",
+  "under",
+]);
 
 export interface FormatOptions {
   /** Maximum width of a physical line before a step is broken (default 88). */

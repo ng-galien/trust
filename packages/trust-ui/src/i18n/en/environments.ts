@@ -26,7 +26,8 @@ export const environments = {
     unnamed: "unnamed",
     unknown: "Environment “{{name}}” is unknown",
     deleteTitle: "Delete environment {{name}}?",
-    deleteBodyReferenced: "{{plans}} reference it; they keep the name but nothing can be admitted on it any more. Its credentials are removed too.",
+    deleteBodyReferenced:
+      "{{plans}} reference it; they keep the name but nothing can be admitted on it any more. Its credentials are removed too.",
     deleteBodyPlain: "Its values and credentials are removed from the runtime.",
     tabOverview: "Overview",
     plansOnIt: "Plans on it",

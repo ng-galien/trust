@@ -1,0 +1,29 @@
+{
+  "contract": "trust.extension@1",
+  "id": "dragon-heist",
+  "title": "Dragon Heist",
+  "version": "1.0.0",
+  "server": "./bundle/server.mjs",
+  "configuration": {
+    "dataDirectory": { "type": "string", "required": true },
+    "trustBaseUrl": { "type": "string", "required": true }
+  },
+  "requestedCapabilities": ["plans.read", "plans.subscribe"],
+  "mcp": {
+    "description": "Read the recorded Dragon Heist game table. Game moves require the configured Runner credential and an admitted Check in the bound Plan tree; this extension never qualifies TRUST Checks.",
+    "commands": [
+      { "name": "game.create", "description": "Create one game bound to an existing Dragon Heist root Plan. Repeating the same identity preserves recorded play.", "readOnly": false,
+        "inputSchema": { "type": "object", "additionalProperties": false, "required": ["game", "plan"], "properties": { "game": { "type": "string", "minLength": 1, "maxLength": 80 }, "plan": { "type": "string", "minLength": 1, "maxLength": 200 } } } },
+      { "name": "game.read", "description": "Read one game or list up to 30 recently changed games. Recorded game completion is separate from TRUST Plan qualification.", "readOnly": true,
+        "inputSchema": { "type": "object", "additionalProperties": false, "properties": { "game": { "type": "string", "minLength": 1, "maxLength": 80 } } } },
+      { "name": "game.move", "description": "Execute the one named external game move authorized by the current admitted Check. Only the configured Runner credential may act; recorded dice never reroll on retry.", "readOnly": false,
+        "inputSchema": { "type": "object", "additionalProperties": false, "required": ["game", "move", "plan", "choice", "token"], "properties": {
+          "game": { "type": "string", "minLength": 1, "maxLength": 80 }, "plan": { "type": "string", "minLength": 1, "maxLength": 200 },
+          "move": { "type": "string", "enum": ["scout", "equip", "inspect-vault", "turn-runes", "open-lock", "open-vault", "take-hoard", "escape", "distract", "score"] },
+          "choice": { "type": "string", "enum": ["", "pick", "charm", "force", "listen", "song", "lure"] },
+          "token": { "type": "string", "minLength": 16, "maxLength": 256 }
+        } } }
+    ]
+  },
+  "ui": { "name": "trust_dragon_heist", "entry": "remoteEntry.js", "module": "./Page", "assets": "./dist" }
+}

@@ -41,7 +41,12 @@ export function Overlay({
   }, [onClose]);
 
   return (
-    <div className="absolute inset-0 z-30 flex items-stretch justify-center bg-[var(--color-overlay-backdrop)] p-2 md:p-3" onPointerDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+    <div
+      className="absolute inset-0 z-30 flex items-stretch justify-center bg-[var(--color-overlay-backdrop)] p-2 md:p-3"
+      onPointerDown={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+    >
       <section
         ref={panel}
         tabIndex={-1}
@@ -56,8 +61,12 @@ export function Overlay({
         <div className="flex h-8 shrink-0 items-center justify-between gap-4 border-b border-border px-3">
           <div className="min-w-0 text-label text-muted">{breadcrumb}</div>
           <div className="flex items-center gap-3">
-            <span className="hidden items-center gap-1 text-caption text-faint sm:inline-flex"><Kbd>Esc</Kbd> {t("ui.overlay.escToClose")}</span>
-            <IconButton size="sm" label={t("common.actions.close")} onClick={onClose}><X size={15} /></IconButton>
+            <span className="hidden items-center gap-1 text-caption text-faint sm:inline-flex">
+              <Kbd>Esc</Kbd> {t("ui.overlay.escToClose")}
+            </span>
+            <IconButton size="sm" label={t("common.actions.close")} onClick={onClose}>
+              <X size={15} />
+            </IconButton>
           </div>
         </div>
         {children}

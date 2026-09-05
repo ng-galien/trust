@@ -17,7 +17,7 @@ Feature: Read Git HEAD and working tree
 | Tag | Rule |
 | --- | --- |
 | `@operation:<domain>.<action>` | exactly one. Two lower-case segments separated by one dot; each segment is alphanumeric with optional hyphens (`git.head-compare`, `docker.image-build`). The domain groups the catalog; the action names what is done |
-| `@version:<major>.<minor>.<patch>` | exactly one, semantic, numeric only (`1.0.0`; no `1.0`, no `-rc1`) |
+| `@version:<major>.<minor>.<patch>` | exactly one, a valid SemVer version; prerelease and build metadata follow SemVer rules |
 | `@trust-dsl:1` | exactly one, value `1` — the version of the language |
 | anything else | must be an `@x-` classification tag; otherwise `Tag "…" is outside the closed Operation grammar` |
 
@@ -36,12 +36,13 @@ The catalog screen uses `family` and `nature` for its facets; anything else is y
 ## Versions
 
 - The identity of a catalog entry is `name@version` (`git.head-read@1.0.0`). The catalog is a directory of `.feature` files, one entry per file; the same `name@version` in two files is refused.
-- The interface saves an Operation into `<name>.feature`. Raising `@version` and saving replaces that file: the catalog then holds the new version. Two versions of one Operation coexist only as two files with different names.
-- A Procedure names an Operation by name **and** version, and embeds the exact compiled form it was published with. Changing or removing an Operation in the catalog does not touch a published Procedure. The interface refuses to delete an Operation a published Procedure uses.
+- The interface publishes a new Operation version into `<name>@<version>.feature`, preserving earlier versions. An existing identity/version or source file cannot be overwritten. Published versions cannot be deleted; unpublished draft edits can be discarded.
+- A Procedure references an Operation or child Procedure with `name@selector`: an exact version or a standard node-semver range such as `^1.2.3` or `~1.2.3`. The highest matching candidate must pass the existing compatibility checks; TRUST does not silently fall back to an older candidate. Tags such as `latest` are not supported.
+- A new Plan resolves and pins the complete recursive composition. Later publications do not change its Checks, delayed children, resumed execution or replacement child generations. The catalog groups each identity once; the detail view selects its exact version.
 - Runnable marks (✓ on the catalog, on the Environment screen) are computed per catalog entry against the values each Environment declares.
 
 <Callout kind="rule">
-  A published Procedure revision is autonomous: it carries the compiled Operations it needs. The catalog is where you author; the Procedure is where the Operation lives once published.
+  Published versions are immutable. A floating reference can select a newer version for a new Plan, but the composition of an engaged Plan remains fixed.
 </Callout>
 
 <Details title="Compiled Operation and digest" expert>

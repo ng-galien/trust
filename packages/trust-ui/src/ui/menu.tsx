@@ -43,11 +43,12 @@ export function Menu({
             align === "end" ? "right-0" : "left-0",
           )}
         >
-          {items.map((item, index) =>
+          {items.map((item) =>
             item.separator ? (
-              <div key={`sep-${index}`} className="my-1 h-px bg-border" />
+              <div key={`separator-${item.label}`} className="my-1 h-px bg-border" />
             ) : (
               <button
+                type="button"
                 key={item.label}
                 role="menuitem"
                 disabled={item.disabled}
@@ -63,7 +64,9 @@ export function Menu({
               >
                 {item.icon ? <span className="text-muted">{item.icon}</span> : null}
                 <span className="flex-1">{item.label}</span>
-                {item.disabled && item.disabledReason ? <span className="text-micro text-faint">{item.disabledReason}</span> : null}
+                {item.disabled && item.disabledReason ? (
+                  <span className="text-micro text-faint">{item.disabledReason}</span>
+                ) : null}
               </button>
             ),
           )}
@@ -126,27 +129,54 @@ export function Popover({
   return (
     <div ref={root} className={cx("relative inline-flex", className)}>
       {trigger({ open, toggle: () => setOpen((value) => !value) })}
-      {open ? createPortal(
-        <div ref={panel} style={position} className={cx("z-50 rounded-(--radius-2) border border-border bg-surface shadow-(--shadow-2)", panelClassName)}>
-          {typeof children === "function" ? children(() => setOpen(false)) : children}
-        </div>,
-        document.body,
-      ) : null}
+      {open
+        ? createPortal(
+            <div
+              ref={panel}
+              style={position}
+              className={cx(
+                "z-50 rounded-(--radius-2) border border-border bg-surface shadow-(--shadow-2)",
+                panelClassName,
+              )}
+            >
+              {typeof children === "function" ? children(() => setOpen(false)) : children}
+            </div>,
+            document.body,
+          )
+        : null}
     </div>
   );
 }
 
 /** Radio-like option row for popover panels. */
-export function OptionRow({ active, onSelect, children, meta }: { active: boolean; onSelect: () => void; children: ReactNode; meta?: ReactNode }) {
+export function OptionRow({
+  active,
+  onSelect,
+  children,
+  meta,
+}: {
+  active: boolean;
+  onSelect: () => void;
+  children: ReactNode;
+  meta?: ReactNode;
+}) {
   return (
     <button
       type="button"
       role="menuitemradio"
       aria-checked={active}
       onClick={onSelect}
-      className={cx("flex w-full items-center gap-2 rounded-(--radius-1) px-2 py-1.5 text-left text-body-lg hover:bg-surface-2", active ? "text-text" : "text-muted")}
+      className={cx(
+        "flex w-full items-center gap-2 rounded-(--radius-1) px-2 py-1.5 text-left text-body-lg hover:bg-surface-2",
+        active ? "text-text" : "text-muted",
+      )}
     >
-      <span className={cx("inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full border", active ? "border-accent" : "border-border-strong")}>
+      <span
+        className={cx(
+          "inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full border",
+          active ? "border-accent" : "border-border-strong",
+        )}
+      >
         {active ? <span className="h-1.5 w-1.5 rounded-full bg-accent" /> : null}
       </span>
       <span className="flex-1">{children}</span>

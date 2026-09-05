@@ -1,46 +1,8 @@
 import { randomUUID } from "node:crypto";
-
-import type { RuntimeJsonObject } from "../model.js";
+import type { RuntimeJsonObject, TrialEvent, TrialRecord, TrialStatus, TrialSummary } from "@trust/extension-sdk";
 
 /* Trials are diagnostic runs of one Operation, kept in memory only:
    never Facts, never Plans, gone on restart. The last N are kept so operators can compare and copy reports. */
-
-export type TrialStatus = "starting" | "running" | "succeeded" | "failed" | "aborted";
-
-export interface TrialEvent {
-  readonly sequence: number;
-  readonly type: string;
-  readonly at: string;
-  readonly [key: string]: unknown;
-}
-
-export interface TrialRecord {
-  readonly id: string;
-  readonly operation: string;
-  readonly version: string;
-  readonly environment: string;
-  readonly input: RuntimeJsonObject;
-  readonly startedAt: string;
-  readonly startedBy: string;
-  status: TrialStatus;
-  endedAt?: string;
-  outcome?: RuntimeJsonObject;
-  error?: string;
-  events: TrialEvent[];
-}
-
-export interface TrialSummary {
-  readonly id: string;
-  readonly operation: string;
-  readonly version: string;
-  readonly environment: string;
-  readonly startedAt: string;
-  readonly startedBy: string;
-  readonly status: TrialStatus;
-  readonly endedAt?: string;
-  readonly error?: string;
-  readonly eventCount: number;
-}
 
 export type TrialListener = (event: TrialEvent) => void;
 
@@ -56,7 +18,14 @@ export class TrialRegistry {
     this.#eventCapacity = eventCapacity;
   }
 
-  create(input: { operation: string; version: string; environment: string; input: RuntimeJsonObject; startedBy: string; startedAt: string }): TrialRecord {
+  create(input: {
+    operation: string;
+    version: string;
+    environment: string;
+    input: RuntimeJsonObject;
+    startedBy: string;
+    startedAt: string;
+  }): TrialRecord {
     const record: TrialRecord = { id: randomUUID(), ...input, status: "starting", events: [] };
     this.#trials.set(record.id, record);
     this.#lastSequence.set(record.id, 0);
@@ -94,11 +63,21 @@ export class TrialRegistry {
     const sequenced: TrialEvent = { ...rest, type, at, sequence };
     trial.events.push(sequenced);
     if (trial.status === "starting" && sequenced.type !== "trial.started") trial.status = "running";
-    this.#listeners.get(id)?.forEach((listener) => listener(sequenced));
+    this.#listeners.get(id)?.forEach((listener) => {
+      listener(sequenced);
+    });
     return sequenced;
   }
 
-  complete(id: string, outcome: { status: Exclude<TrialStatus, "starting" | "running">; endedAt: string; outcome?: RuntimeJsonObject; error?: string }): void {
+  complete(
+    id: string,
+    outcome: {
+      status: Exclude<TrialStatus, "starting" | "running">;
+      endedAt: string;
+      outcome?: RuntimeJsonObject;
+      error?: string;
+    },
+  ): void {
     const trial = this.#trials.get(id);
     if (!trial) return;
     if (trial.status !== "starting" && trial.status !== "running") return;
@@ -106,7 +85,12 @@ export class TrialRegistry {
     trial.endedAt = outcome.endedAt;
     if (outcome.outcome) trial.outcome = outcome.outcome;
     if (outcome.error) trial.error = outcome.error;
-    this.append(id, { type: "trial.completed", at: outcome.endedAt, status: outcome.status, ...(outcome.error ? { error: outcome.error } : {}) });
+    this.append(id, {
+      type: "trial.completed",
+      at: outcome.endedAt,
+      status: outcome.status,
+      ...(outcome.error ? { error: outcome.error } : {}),
+    });
   }
 
   subscribe(id: string, listener: TrialListener): () => void {

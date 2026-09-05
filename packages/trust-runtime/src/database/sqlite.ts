@@ -1,7 +1,7 @@
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { DatabaseSync, type SQLInputValue } from "node:sqlite";
-import { Kysely, SqliteDialect, type SqliteDatabase } from "kysely";
+import { Kysely, type SqliteDatabase, SqliteDialect } from "kysely";
 
 import type { Database, TrustDatabase } from "./database.js";
 import { initializeSqliteSchema } from "./sqlite-schema.js";
@@ -53,11 +53,11 @@ function kyselySqliteDatabase(sqlite: DatabaseSync): SqliteDatabase {
 function sqliteParameters(parameters: ReadonlyArray<unknown>): SQLInputValue[] {
   return parameters.map((parameter) => {
     if (
-      parameter === null
-      || typeof parameter === "string"
-      || typeof parameter === "number"
-      || typeof parameter === "bigint"
-      || parameter instanceof Uint8Array
+      parameter === null ||
+      typeof parameter === "string" ||
+      typeof parameter === "number" ||
+      typeof parameter === "bigint" ||
+      parameter instanceof Uint8Array
     ) {
       return parameter;
     }

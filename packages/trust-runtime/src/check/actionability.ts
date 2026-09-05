@@ -5,21 +5,23 @@ export function checkDependenciesSatisfied(
   check: PlanCheck,
   planChecks: readonly PlanCheck[],
   isSatisfied: (checkUri: string) => boolean,
+  satisfiedScenarios?: ReadonlySet<string>,
 ): boolean {
   if (check.currentContextDigest === undefined) return false;
   for (const scenario of check.scenarioDependencies) {
+    if (satisfiedScenarios !== undefined) {
+      if (!satisfiedScenarios.has(scenario)) return false;
+      continue;
+    }
     const dependencies = planChecks.filter((candidate) => candidate.scenario === scenario);
-    if (
-      dependencies.length === 0
-      || dependencies.some((candidate) => !isSatisfied(candidate.uri))
-    ) {
+    if (dependencies.length === 0 || dependencies.some((candidate) => !isSatisfied(candidate.uri))) {
       return false;
     }
   }
   for (const dependency of check.checkDependencies) {
     if (
-      !planChecks.some((candidate) => candidate.uri === dependency.providerCheckUri)
-      || !isSatisfied(dependency.providerCheckUri)
+      !planChecks.some((candidate) => candidate.uri === dependency.providerCheckUri) ||
+      !isSatisfied(dependency.providerCheckUri)
     ) {
       return false;
     }
@@ -32,7 +34,7 @@ export function checkIsActionable(
   check: PlanCheck,
   planChecks: readonly PlanCheck[],
   isSatisfied: (checkUri: string) => boolean,
+  satisfiedScenarios?: ReadonlySet<string>,
 ): boolean {
-  return !isSatisfied(check.uri)
-    && checkDependenciesSatisfied(check, planChecks, isSatisfied);
+  return !isSatisfied(check.uri) && checkDependenciesSatisfied(check, planChecks, isSatisfied, satisfiedScenarios);
 }

@@ -8,7 +8,10 @@ import { expect, test } from "@playwright/test";
 /* The integrated documentation: every Gherkin snippet marked `operation` / `procedure` compiles on the real runtime,
    every referenced screenshot exists, and the documentation area behaves (tree, search, glossary, expert blocks). */
 
-const contentRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../packages/trust-ui/src/docs/content");
+const contentRoot = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "../../../packages/trust-ui/src/docs/content",
+);
 const capturesRoot = path.resolve(contentRoot, "../captures");
 const runtimeUrl = "http://127.0.0.1:4390";
 
@@ -22,7 +25,13 @@ async function mdxFiles(dir: string): Promise<string[]> {
   return out.sort();
 }
 
-interface Fence { file: string; line: number; language: string; meta: string; code: string }
+interface Fence {
+  file: string;
+  line: number;
+  language: string;
+  meta: string;
+  code: string;
+}
 
 async function fences(): Promise<Fence[]> {
   const out: Fence[] = [];
@@ -31,7 +40,13 @@ async function fences(): Promise<Fence[]> {
     const pattern = /^```(\w+)([^\n]*)\n([\s\S]*?)^```/gm;
     for (const match of text.matchAll(pattern)) {
       const line = text.slice(0, match.index).split("\n").length;
-      out.push({ file: path.relative(contentRoot, file), line, language: match[1]!, meta: match[2]!.trim(), code: match[3]! });
+      out.push({
+        file: path.relative(contentRoot, file),
+        line,
+        language: match[1]!,
+        meta: match[2]!.trim(),
+        code: match[3]!,
+      });
     }
   }
   return out;
@@ -43,13 +58,21 @@ async function rpc(request: Parameters<Parameters<typeof test>[2]>[0]["request"]
 }
 
 test("every complete Gherkin snippet of the documentation compiles", async ({ request }) => {
-  const complete = (await fences()).filter((fence) => fence.language === "gherkin" && /\b(operation|procedure)\b/.test(fence.meta));
+  const complete = (await fences()).filter(
+    (fence) => fence.language === "gherkin" && /\b(operation|procedure)\b/.test(fence.meta),
+  );
   expect(complete.length).toBeGreaterThan(5);
   const failures: string[] = [];
   for (const fence of complete) {
     const method = /\boperation\b/.test(fence.meta) ? "operation.compile" : "procedure.compile";
-    const payload = await rpc(request, method, { source: fence.code, sourceName: `${fence.file}:${fence.line}.feature` });
-    if (payload.error) failures.push(`${fence.file}:${fence.line} — ${payload.error.message} ${JSON.stringify(payload.error.data ?? "")}`);
+    const payload = await rpc(request, method, {
+      source: fence.code,
+      sourceName: `${fence.file}:${fence.line}.feature`,
+    });
+    if (payload.error)
+      failures.push(
+        `${fence.file}:${fence.line} — ${payload.error.message} ${JSON.stringify(payload.error.data ?? "")}`,
+      );
   }
   expect(failures, failures.join("\n")).toEqual([]);
 });
@@ -62,10 +85,14 @@ test("every screenshot the documentation references has been captured, with its 
       const id = match[1]!;
       const png = path.join(capturesRoot, `${id}.light.en.png`);
       const sidecar = path.join(capturesRoot, `${id}.light.en.json`);
-      if (!existsSync(png) || !existsSync(sidecar)) { missing.push(`${path.relative(contentRoot, file)}: ${id}`); continue; }
+      if (!existsSync(png) || !existsSync(sidecar)) {
+        missing.push(`${path.relative(contentRoot, file)}: ${id}`);
+        continue;
+      }
       const capture = JSON.parse(await readFile(sidecar, "utf8")) as { callouts: Array<{ key: string }> };
       for (const key of Array.from(match[2]!.matchAll(/"([\w.]+)":/g)).map((entry) => entry[1]!)) {
-        if (!capture.callouts.some((callout) => callout.key === key)) missing.push(`${path.relative(contentRoot, file)}: ${id} has no box for "${key}"`);
+        if (!capture.callouts.some((callout) => callout.key === key))
+          missing.push(`${path.relative(contentRoot, file)}: ${id} has no box for "${key}"`);
       }
     }
   }
@@ -76,19 +103,26 @@ test("every English page has a French translation with the same structure", asyn
   const problems: string[] = [];
   const shape = (text: string) => ({
     fences: (text.match(/^```/gm) ?? []).length,
-    components: (text.match(/<(Screenshot|Details|Callout|Step|Term|PageCards|Compare|Legend|Figure|Diagram)\b/g) ?? []).length,
+    components: (text.match(/<(Screenshot|Details|Callout|Step|Term|PageCards|Compare|Legend|Figure|Diagram)\b/g) ?? [])
+      .length,
     // Fenced sources must be byte-identical (they compile, they are the language) — mermaid labels excepted.
     sources: Array.from(text.matchAll(/^```(?!mermaid)\w*[^\n]*\n([\s\S]*?)^```/gm)).map((match) => match[1]),
   });
   for (const file of await mdxFiles(path.join(contentRoot, "en"))) {
     const relative = path.relative(path.join(contentRoot, "en"), file);
     const french = path.join(contentRoot, "fr", relative);
-    if (!existsSync(french)) { problems.push(`${relative}: no French page`); continue; }
+    if (!existsSync(french)) {
+      problems.push(`${relative}: no French page`);
+      continue;
+    }
     const en = shape(await readFile(file, "utf8"));
     const fr = shape(await readFile(french, "utf8"));
     if (en.fences !== fr.fences) problems.push(`${relative}: ${en.fences} fences in English, ${fr.fences} in French`);
-    if (en.components !== fr.components) problems.push(`${relative}: ${en.components} components in English, ${fr.components} in French`);
-    en.sources.forEach((source, index) => { if (fr.sources[index] !== source) problems.push(`${relative}: fenced source #${index + 1} differs`); });
+    if (en.components !== fr.components)
+      problems.push(`${relative}: ${en.components} components in English, ${fr.components} in French`);
+    en.sources.forEach((source, index) => {
+      if (fr.sources[index] !== source) problems.push(`${relative}: fenced source #${index + 1} differs`);
+    });
   }
   expect(problems, problems.join("\n")).toEqual([]);
 });
@@ -97,7 +131,10 @@ test("the documentation area: tree, page, search, glossary and expert blocks", a
   test.setTimeout(90_000); // several navigations and a reload; the docs chunk is large
   await page.goto("/docs/principles/model");
   await expect(page.locator("article h1")).toHaveText("Definitions and execution records");
-  await page.getByRole("navigation", { name: "Documentation contents" }).getByRole("link", { name: "Operations" }).click();
+  await page
+    .getByRole("navigation", { name: "Documentation contents" })
+    .getByRole("link", { name: "Operations" })
+    .click();
   await expect(page).toHaveURL(/\/docs\/operations$/);
   await expect(page.locator("article h1")).toHaveText("Operations");
   // Glossary term opens its definition in place.
@@ -113,7 +150,9 @@ test("the documentation area: tree, page, search, glossary and expert blocks", a
   await expect(expertBlock.getByRole("button")).toHaveAttribute("aria-expanded", "false");
   await page.getByRole("tab", { name: "Expert" }).click();
   await page.reload();
-  await expect(page.locator(".docs-details").filter({ hasText: "Diagnostics specific to Shell steps" }).getByRole("button")).toHaveAttribute("aria-expanded", "true");
+  await expect(
+    page.locator(".docs-details").filter({ hasText: "Diagnostics specific to Shell steps" }).getByRole("button"),
+  ).toHaveAttribute("aria-expanded", "true");
   // The URL does not depend on the language.
   await page.getByRole("tab", { name: "Operator" }).click();
 });
@@ -121,22 +160,32 @@ test("the documentation area: tree, page, search, glossary and expert blocks", a
 test("documentation code and visuals remain readable", async ({ page }) => {
   await page.setViewportSize({ width: 576, height: 900 });
   await page.goto("/docs/principles/model");
-  const narrowWidth = await page.evaluate(() => ({ client: document.documentElement.clientWidth, scroll: document.documentElement.scrollWidth }));
-  expect(narrowWidth.scroll, `documentation overflows at 576px: ${JSON.stringify(narrowWidth)}`).toBeLessThanOrEqual(narrowWidth.client);
+  const narrowWidth = await page.evaluate(() => ({
+    client: document.documentElement.clientWidth,
+    scroll: document.documentElement.scrollWidth,
+  }));
+  expect(narrowWidth.scroll, `documentation overflows at 576px: ${JSON.stringify(narrowWidth)}`).toBeLessThanOrEqual(
+    narrowWidth.client,
+  );
 
   await page.setViewportSize({ width: 1920, height: 1080 });
   await page.goto("/docs/procedures/context");
   expect((await page.locator("[data-doc-page]").boundingBox())?.width).toBeGreaterThan(900);
-  const tokenCounts = await page.locator('pre[data-language="gherkin"]').evaluateAll((snippets) => snippets.map((snippet) => snippet.querySelectorAll("[data-token]").length));
+  const tokenCounts = await page
+    .locator('pre[data-language="gherkin"]')
+    .evaluateAll((snippets) => snippets.map((snippet) => snippet.querySelectorAll("[data-token]").length));
   expect(tokenCounts.length).toBeGreaterThan(1);
-  expect(tokenCounts.every((count) => count > 0), `coloured token counts: ${tokenCounts.join(", ")}`).toBe(true);
+  expect(
+    tokenCounts.every((count) => count > 0),
+    `coloured token counts: ${tokenCounts.join(", ")}`,
+  ).toBe(true);
 
   await page.goto("/docs/language");
   await expect(page.locator(".docs-cards").getByRole("link")).toHaveCount(2);
   await expect(page.locator(".docs-cards")).toContainText("Operation grammar");
   await expect(page.locator(".docs-cards")).toContainText("Procedure grammar");
   const continued = page.locator(".docs-snippet").first();
-  await expect(continued.locator('.docs-line').nth(1).locator('[data-token="verb"]')).toContainText("on");
+  await expect(continued.locator(".docs-line").nth(1).locator('[data-token="verb"]')).toContainText("on");
   const procedureShape = page.locator(".docs-snippet").nth(2);
   await expect(procedureShape.locator('[data-token="keyword"]').filter({ hasText: "Then" })).toHaveCount(1);
   await expect(procedureShape.locator('[data-token="type"]').filter({ hasText: "Check" })).toHaveCount(1);
@@ -180,7 +229,9 @@ test("the Runner is introduced only by the technical architecture page", async (
   for (const language of ["en", "fr"]) {
     const earlyPages = [
       path.join(contentRoot, language, "index.mdx"),
-      ...(await mdxFiles(path.join(contentRoot, language, "principles"))).filter((file) => !file.endsWith("architecture.mdx")),
+      ...(await mdxFiles(path.join(contentRoot, language, "principles"))).filter(
+        (file) => !file.endsWith("architecture.mdx"),
+      ),
     ];
     for (const file of earlyPages) {
       expect(await readFile(file, "utf8"), path.relative(contentRoot, file)).not.toMatch(/\bRunner\b/);

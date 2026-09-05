@@ -23,3 +23,4 @@ dist-docs/
 trust-docs.zip
 @mf-types/
 .mf/
+/extensions/*/bundle/

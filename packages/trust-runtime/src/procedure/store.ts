@@ -1,16 +1,10 @@
+import type { PublishedProcedure } from "@trust/extension-sdk";
 import type { CompiledProcedure } from "@trust/procedure";
 import type { Selectable } from "kysely";
 
 import type { Database, PublishedProcedureTable } from "../database/database.js";
 
 type ProcedureRow = Selectable<PublishedProcedureTable>;
-
-export interface PublishedProcedure {
-  readonly procedure: CompiledProcedure;
-  readonly sourceName: string;
-  readonly publishedBy: string;
-  readonly publishedAt: string;
-}
 
 export class ProcedureStore {
   constructor(private readonly dependencies: { readonly database: Database }) {}
@@ -31,8 +25,8 @@ export class ProcedureStore {
       if (existingRow) {
         const existing = toPublishedProcedure(existingRow);
         if (
-          existing.procedure.definitionDigest !== procedure.definitionDigest
-          || existing.procedure.source !== procedure.source
+          existing.procedure.definitionDigest !== procedure.definitionDigest ||
+          existing.procedure.source !== procedure.source
         ) {
           throw new ProcedureConflictError(
             `Procedure ${procedure.procedure}@${procedure.version} is already published with another immutable definition`,
@@ -41,16 +35,19 @@ export class ProcedureStore {
         return existing;
       }
 
-      await transaction.insertInto("published_procedures").values({
-        procedure_name: procedure.procedure,
-        procedure_version: procedure.version,
-        definition_digest: procedure.definitionDigest,
-        source_name: sourceName,
-        source: procedure.source,
-        compiled_procedure_json: JSON.stringify(procedure),
-        published_by: publishedBy,
-        published_at: publishedAt,
-      }).execute();
+      await transaction
+        .insertInto("published_procedures")
+        .values({
+          procedure_name: procedure.procedure,
+          procedure_version: procedure.version,
+          definition_digest: procedure.definitionDigest,
+          source_name: sourceName,
+          source: procedure.source,
+          compiled_procedure_json: JSON.stringify(procedure),
+          published_by: publishedBy,
+          published_at: publishedAt,
+        })
+        .execute();
 
       const published = await transaction
         .selectFrom("published_procedures")
@@ -103,10 +100,10 @@ export class ProcedureStore {
 function toPublishedProcedure(row: ProcedureRow): PublishedProcedure {
   const compiled = JSON.parse(row.compiled_procedure_json) as CompiledProcedure;
   if (
-    compiled.procedure !== row.procedure_name
-    || compiled.version !== row.procedure_version
-    || compiled.definitionDigest !== row.definition_digest
-    || compiled.source !== row.source
+    compiled.procedure !== row.procedure_name ||
+    compiled.version !== row.procedure_version ||
+    compiled.definitionDigest !== row.definition_digest ||
+    compiled.source !== row.source
   ) {
     throw new Error("Persisted Procedure is inconsistent");
   }

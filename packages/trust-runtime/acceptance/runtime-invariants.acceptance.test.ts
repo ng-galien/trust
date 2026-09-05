@@ -3,9 +3,8 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
-
-import { startPublicRuntime } from "./support/runtime-process.js";
 import { otlpFactAttributes } from "./support/otlp-fact.js";
+import { startPublicRuntime } from "./support/runtime-process.js";
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../..");
 const operationsDirectory = path.join(repositoryRoot, "assets/operations");
@@ -13,20 +12,17 @@ const operationsDirectory = path.join(repositoryRoot, "assets/operations");
 test("a Plan engages before future agent declarations exist", async () => {
   const runtime = await startRuntime("trust-future-declarations-");
   try {
-    const procedureFile = path.join(
-      repositoryRoot,
-      "assets/procedures/04-end-to-end-red-green.feature",
-    );
+    const procedureFile = path.join(repositoryRoot, "assets/procedures/04-end-to-end-red-green.feature");
     const procedureSource = await readFile(procedureFile, "utf8");
     await publish(runtime.endpoint, procedureFile);
-    const engagement = await rpc(runtime.endpoint, "plan.engage", {
+    const engagement = (await rpc(runtime.endpoint, "plan.engage", {
       contract: "trust.plan-engagement-request@1",
       procedure: "end-to-end-red-green",
       procedureVersion: "3.2.0",
       plan: "future-declarations",
       environment: "local",
       rootInputs: { "jira issue": "TK-100" },
-    }) as { revision: number; checkUris: readonly string[] };
+    })) as { revision: number; checkUris: readonly string[] };
 
     assert.equal(engagement.revision, 1);
     assert.equal(engagement.checkUris.length, 3);
@@ -41,7 +37,7 @@ test("a Plan engages before future agent declarations exist", async () => {
     assert.match(plan, /Run 1 actionable Check with the TRUST Skill/);
     assert.match(plan, /Declare 5 missing declaration roles with trust_plan_declarations_replace/);
     assert.match(plan, /- affected project: many reference; parent: jira issue/);
-    assert.match(plan, /- trace: one reference\n  Value shape: <reference>/);
+    assert.match(plan, /- trace: one reference\n {2}Value shape: <reference>/);
     assert.doesNotMatch(plan, /Declaration roles: \[/);
 
     const firstPageText = await mcpTool(runtime.endpoint, "trust_procedure_read", {
@@ -53,9 +49,7 @@ test("a Plan engages before future agent declarations exist", async () => {
     assert.equal(firstPage.complete, false);
     assert.ok(firstPage.nextCursor);
 
-    const alteredCursor = `${firstPage.nextCursor.slice(0, -1)}${
-      firstPage.nextCursor.endsWith("a") ? "b" : "a"
-    }`;
+    const alteredCursor = `${firstPage.nextCursor.slice(0, -1)}${firstPage.nextCursor.endsWith("a") ? "b" : "a"}`;
     assert.match(
       await mcpToolFailure(runtime.endpoint, "trust_procedure_read", {
         checkUri: engagement.checkUris[0],
@@ -76,11 +70,13 @@ test("a Plan engages before future agent declarations exist", async () => {
     let reconstructed = firstPage.source;
     let cursor: string | undefined = firstPage.nextCursor;
     while (cursor !== undefined) {
-      const page = parseProcedurePage(await mcpTool(runtime.endpoint, "trust_procedure_read", {
-        checkUri: engagement.checkUris[0],
-        cursor,
-        limit: 900,
-      }));
+      const page = parseProcedurePage(
+        await mcpTool(runtime.endpoint, "trust_procedure_read", {
+          checkUri: engagement.checkUris[0],
+          cursor,
+          limit: 900,
+        }),
+      );
       reconstructed += page.source;
       cursor = page.nextCursor;
       if (cursor === undefined) assert.equal(page.complete, true);
@@ -95,29 +91,30 @@ test("optional agent declarations may be absent and create Checks only when supp
   const runtime = await startRuntime("trust-optional-declarations-");
   try {
     await publish(runtime.endpoint, fixture("optional-agent-declarations.feature"));
-    const engagement = await rpc(runtime.endpoint, "plan.engage", {
+    const engagement = (await rpc(runtime.endpoint, "plan.engage", {
       contract: "trust.plan-engagement-request@1",
       procedure: "optional-agent-declarations",
       procedureVersion: "1.0.0",
       plan: "optional-agent-declarations",
       environment: "local",
       rootInputs: { workspace: "packages/trust-runtime" },
-    }) as { revision: number; checkUris: readonly string[] };
+    })) as { revision: number; checkUris: readonly string[] };
 
     assert.equal(engagement.revision, 1);
     assert.equal(engagement.checkUris.length, 3);
-    const initialView = await rpc(runtime.endpoint, "plan.read", {
+    const initialView = (await rpc(runtime.endpoint, "plan.read", {
       plan: "optional-agent-declarations",
-    }) as {
+    })) as {
       missingDeclarations: readonly string[];
       declarationRoles: readonly { role: string; optional: boolean }[];
       checks: readonly { name: string }[];
     };
     assert.deepEqual(initialView.missingDeclarations, ["required note"]);
-    assert.deepEqual(
-      initialView.checks.map(({ name }) => name).sort(),
-      ["after optional check observation", "after optional targets", "workspace head"],
-    );
+    assert.deepEqual(initialView.checks.map(({ name }) => name).sort(), [
+      "after optional check observation",
+      "after optional targets",
+      "workspace head",
+    ]);
     assert.equal(initialView.declarationRoles.find(({ role }) => role === "optional project")?.optional, true);
     assert.equal(initialView.declarationRoles.find(({ role }) => role === "optional target")?.optional, true);
     const initial = await mcpTool(runtime.endpoint, "trust_plan_read", { checkUri: engagement.checkUris[0] });
@@ -126,14 +123,17 @@ test("optional agent declarations may be absent and create Checks only when supp
     assert.match(initial, /- optional project: one reference; optional/);
     assert.match(initial, /- optional target: many reference; optional/);
 
-    assert.match(await mcpToolFailure(runtime.endpoint, "trust_plan_declarations_replace", {
-      plan: "optional-agent-declarations",
-      expectedRevision: 1,
-      declarations: {
-        "required note": "covered",
-        "optional target": [],
-      },
-    }), /Role "optional target" must contain values/);
+    assert.match(
+      await mcpToolFailure(runtime.endpoint, "trust_plan_declarations_replace", {
+        plan: "optional-agent-declarations",
+        expectedRevision: 1,
+        declarations: {
+          "required note": "covered",
+          "optional target": [],
+        },
+      }),
+      /Role "optional target" must contain values/,
+    );
 
     const replacement = await mcpTool(runtime.endpoint, "trust_plan_declarations_replace", {
       plan: "optional-agent-declarations",
@@ -146,21 +146,15 @@ test("optional agent declarations may be absent and create Checks only when supp
     });
     assert.match(replacement, /Revision: 2/);
     assert.match(replacement, /Current Checks: 10/);
-    const expanded = await rpc(runtime.endpoint, "plan.read", {
+    const expanded = (await rpc(runtime.endpoint, "plan.read", {
       plan: "optional-agent-declarations",
-    }) as { checks: readonly { checkUri: string; name: string; blockedBy: readonly string[] }[] };
+    })) as { checks: readonly { checkUri: string; name: string; blockedBy: readonly string[] }[] };
     const observed = expanded.checks.find(({ name }) => name === "optional observed head");
     assert.ok(observed);
     assert.equal(observed.blockedBy.length, 1);
     assert.ok(expanded.checks.some(({ name }) => name === "optional transitive head"));
-    assert.equal(
-      expanded.checks.find(({ name }) => name === "after optional check observation")?.blockedBy.length,
-      1,
-    );
-    assert.equal(
-      expanded.checks.find(({ name }) => name === "after optional targets")?.blockedBy.length,
-      2,
-    );
+    assert.equal(expanded.checks.find(({ name }) => name === "after optional check observation")?.blockedBy.length, 1);
+    assert.equal(expanded.checks.find(({ name }) => name === "after optional targets")?.blockedBy.length, 2);
 
     const materialization = expanded.checks.find(({ name }) => name === "optional materialization");
     assert.ok(materialization);
@@ -178,9 +172,9 @@ test("optional agent declarations may be absent and create Checks only when supp
       contract: "trust.attempt-finalization-request@1",
       attemptHandle: materializationAdmission.attemptHandle,
     });
-    const materialized = await rpc(runtime.endpoint, "plan.read", {
+    const materialized = (await rpc(runtime.endpoint, "plan.read", {
       plan: "optional-agent-declarations",
-    }) as { revision: number };
+    })) as { revision: number };
     assert.equal(materialized.revision, 3);
 
     const removal = await mcpTool(runtime.endpoint, "trust_plan_declarations_replace", {
@@ -192,24 +186,20 @@ test("optional agent declarations may be absent and create Checks only when supp
     assert.match(removal, /Current Checks: 3/);
     assert.match(removal, /Removed Checks: 7/);
 
-    const resumed = await rpc(runtime.endpoint, "plan.read", {
+    const resumed = (await rpc(runtime.endpoint, "plan.read", {
       plan: "optional-agent-declarations",
-    }) as { checks: readonly { checkUri: string }[] };
+    })) as { checks: readonly { checkUri: string }[] };
     for (const [index, check] of resumed.checks.entries()) {
-      const admission = await admit(
-        runtime.endpoint,
-        check.checkUri,
-        `optional-declarations-complete-${index}`,
-      );
+      const admission = await admit(runtime.endpoint, check.checkUri, `optional-declarations-complete-${index}`);
       await sendRunnerFacts(runtime.endpoint, admission, gitHeadFact(admission.operation.operation));
       await rpc(runtime.endpoint, "check.attempt.finalize", {
         contract: "trust.attempt-finalization-request@1",
         attemptHandle: admission.attemptHandle,
       });
     }
-    const complete = await rpc(runtime.endpoint, "plan.read", {
+    const complete = (await rpc(runtime.endpoint, "plan.read", {
       plan: "optional-agent-declarations",
-    }) as { workState: string; checklistComplete: boolean };
+    })) as { workState: string; checklistComplete: boolean };
     assert.equal(complete.workState, "COMPLETE");
     assert.equal(complete.checklistComplete, true);
   } finally {
@@ -220,49 +210,64 @@ test("optional agent declarations may be absent and create Checks only when supp
 test("an intent-chained Plan initializes on first read, survives resumption and rotates after each validated Check", async () => {
   const runtime = await startRuntime("trust-intent-chaining-");
   const assertIntentProjection = async (plan: string, currentIntent: string | null, nextIntent: string | null) => {
-    const detail = await rpc(runtime.endpoint, "plan.read", { plan }) as { currentIntent: string | null; nextIntent: string | null };
-    const list = await rpc(runtime.endpoint, "plan.list", {}) as { plans: readonly { plan: string; currentIntent: string | null; nextIntent: string | null }[] };
-    const summary = list.plans.find(value => value.plan === plan);
+    const detail = (await rpc(runtime.endpoint, "plan.read", { plan })) as {
+      currentIntent: string | null;
+      nextIntent: string | null;
+    };
+    const list = (await rpc(runtime.endpoint, "plan.list", {})) as {
+      plans: readonly { plan: string; currentIntent: string | null; nextIntent: string | null }[];
+    };
+    const summary = list.plans.find((value) => value.plan === plan);
     assert.ok(summary);
-    for (const view of [detail, summary]) assert.deepEqual({ currentIntent: view.currentIntent, nextIntent: view.nextIntent }, { currentIntent, nextIntent });
+    for (const view of [detail, summary])
+      assert.deepEqual(
+        { currentIntent: view.currentIntent, nextIntent: view.nextIntent },
+        { currentIntent, nextIntent },
+      );
   };
   try {
     await publish(runtime.endpoint, fixture("intent-chaining.feature"));
-    const concurrencyEngagement = await rpc(runtime.endpoint, "plan.engage", {
+    const concurrencyEngagement = (await rpc(runtime.endpoint, "plan.engage", {
       contract: "trust.plan-engagement-request@1",
       procedure: "intent-chaining",
       procedureVersion: "1.0.0",
       plan: "intent-concurrency",
       environment: "local",
       rootInputs: { repository: "trust" },
-    }) as { checkUris: readonly string[] };
-    const concurrencyRead = await mcpTool(runtime.endpoint, "trust_plan_read", { checkUri: concurrencyEngagement.checkUris[0] });
+    })) as { checkUris: readonly string[] };
+    const concurrencyRead = await mcpTool(runtime.endpoint, "trust_plan_read", {
+      checkUri: concurrencyEngagement.checkUris[0],
+    });
     const concurrencyIntent = /^Current intent: (.+)$/m.exec(concurrencyRead)?.[1];
     assert.ok(concurrencyIntent);
-    const concurrentAdmissions = await Promise.all(concurrencyEngagement.checkUris.map((checkUri, index) => (
-      rpc(runtime.endpoint, "check.attempt.admit", {
-        contract: "trust.check-admission-request@1",
-        attemptKey: `intent-concurrent-${index}`,
-        checkUri,
-        intent: concurrencyIntent,
-        nextIntent: `Continue after concurrent Check ${index}`,
-      })
-    ))) as Array<{ status: string; reasonCode?: string; checkUri?: string }>;
+    const concurrentAdmissions = (await Promise.all(
+      concurrencyEngagement.checkUris.map((checkUri, index) =>
+        rpc(runtime.endpoint, "check.attempt.admit", {
+          contract: "trust.check-admission-request@1",
+          attemptKey: `intent-concurrent-${index}`,
+          checkUri,
+          intent: concurrencyIntent,
+          nextIntent: `Continue after concurrent Check ${index}`,
+        }),
+      ),
+    )) as Array<{ status: string; reasonCode?: string; checkUri?: string }>;
     assert.deepEqual(concurrentAdmissions.map(({ status }) => status).sort(), ["ADMITTED", "REFUSED"]);
     assert.equal(concurrentAdmissions.find(({ status }) => status === "REFUSED")?.reasonCode, "intent-in-use");
     const boundCheck = concurrentAdmissions.find(({ status }) => status === "ADMITTED")?.checkUri;
-    const concurrencyAfterAdmission = await mcpTool(runtime.endpoint, "trust_plan_read", { checkUri: concurrencyEngagement.checkUris[0] });
+    const concurrencyAfterAdmission = await mcpTool(runtime.endpoint, "trust_plan_read", {
+      checkUri: concurrencyEngagement.checkUris[0],
+    });
     assert.match(concurrencyAfterAdmission, new RegExp(`^Current intent Check: ${escapeRegExp(boundCheck!)}$`, "m"));
     assert.equal((concurrencyAfterAdmission.match(/Continuing invocation URI:/g) ?? []).length, 1);
 
-    const interruptionEngagement = await rpc(runtime.endpoint, "plan.engage", {
+    const interruptionEngagement = (await rpc(runtime.endpoint, "plan.engage", {
       contract: "trust.plan-engagement-request@1",
       procedure: "intent-chaining",
       procedureVersion: "1.0.0",
       plan: "intent-interruption",
       environment: "local",
       rootInputs: { repository: "trust" },
-    }) as { checkUris: readonly string[] };
+    })) as { checkUris: readonly string[] };
     const interruptionRead = await mcpTool(runtime.endpoint, "trust_plan_read", {
       checkUri: interruptionEngagement.checkUris[0],
     });
@@ -275,49 +280,55 @@ test("an intent-chained Plan initializes on first read, survives resumption and 
       { intent: interruptionIntent, nextIntent: "Continue after the interrupted Attempt" },
     );
     await assertIntentProjection("intent-interruption", interruptionIntent, "Continue after the interrupted Attempt");
-    const interruption = await rpc(runtime.endpoint, "check.attempt.interrupt", {
+    const interruption = (await rpc(runtime.endpoint, "check.attempt.interrupt", {
       contract: "trust.attempt-interruption-request@1",
       attemptHandle: interruptedAdmission.attemptHandle,
-    }) as { contract: string; status: string; attemptHandle: string };
+    })) as { contract: string; status: string; attemptHandle: string };
     assert.deepEqual(interruption, {
       contract: "trust.attempt-interruption@1",
       status: "INTERRUPTED",
       attemptHandle: interruptedAdmission.attemptHandle,
     });
-    const interruptedCheck = await rpc(runtime.endpoint, "check.read", {
+    const interruptedCheck = (await rpc(runtime.endpoint, "check.read", {
       contract: "trust.check-read-request@1",
       checkUri: interruptedAdmission.checkUri,
-    }) as { attempts: readonly { state: string }[] };
+    })) as { attempts: readonly { state: string }[] };
     assert.equal(interruptedCheck.attempts[0]?.state, "interrupted");
     await assertIntentProjection("intent-interruption", interruptionIntent, null);
-    const retryAdmission = await rpc(runtime.endpoint, "check.attempt.admit", {
+    const retryAdmission = (await rpc(runtime.endpoint, "check.attempt.admit", {
       contract: "trust.check-admission-request@1",
       attemptKey: "intent-retry-after-interruption",
       checkUri: interruptedAdmission.checkUri,
       intent: interruptionIntent,
       nextIntent: "Continue after the retried Attempt",
-    }) as { status: string };
+    })) as { status: string };
     assert.equal(retryAdmission.status, "ADMITTED");
     await assertIntentProjection("intent-interruption", interruptionIntent, "Continue after the retried Attempt");
 
-    const sameCheckEngagement = await rpc(runtime.endpoint, "plan.engage", {
+    const sameCheckEngagement = (await rpc(runtime.endpoint, "plan.engage", {
       contract: "trust.plan-engagement-request@1",
       procedure: "intent-chaining",
       procedureVersion: "1.0.0",
       plan: "intent-same-check-concurrency",
       environment: "local",
       rootInputs: { repository: "trust" },
-    }) as { checkUris: readonly string[] };
-    const sameCheckRead = await mcpTool(runtime.endpoint, "trust_plan_read", { checkUri: sameCheckEngagement.checkUris[0] });
+    })) as { checkUris: readonly string[] };
+    const sameCheckRead = await mcpTool(runtime.endpoint, "trust_plan_read", {
+      checkUri: sameCheckEngagement.checkUris[0],
+    });
     const sameCheckIntent = /^Current intent: (.+)$/m.exec(sameCheckRead)?.[1];
     assert.ok(sameCheckIntent);
-    const sameCheckAdmissions = await Promise.all([0, 1].map((index) => rpc(runtime.endpoint, "check.attempt.admit", {
-      contract: "trust.check-admission-request@1",
-      attemptKey: `intent-same-check-${index}`,
-      checkUri: sameCheckEngagement.checkUris[0],
-      intent: sameCheckIntent,
-      nextIntent: `Continue after same Check admission ${index}`,
-    }))) as Array<{
+    const sameCheckAdmissions = (await Promise.all(
+      [0, 1].map((index) =>
+        rpc(runtime.endpoint, "check.attempt.admit", {
+          contract: "trust.check-admission-request@1",
+          attemptKey: `intent-same-check-${index}`,
+          checkUri: sameCheckEngagement.checkUris[0],
+          intent: sameCheckIntent,
+          nextIntent: `Continue after same Check admission ${index}`,
+        }),
+      ),
+    )) as Array<{
       status: string;
       reasonCode?: string;
       attemptKey?: string;
@@ -340,45 +351,59 @@ test("an intent-chained Plan initializes on first read, survives resumption and 
       environment: "local",
       rootInputs: { repository: "trust" },
     });
-    const resumedSameCheck = await mcpTool(runtime.endpoint, "trust_plan_read", { checkUri: sameCheckEngagement.checkUris[0] });
+    const resumedSameCheck = await mcpTool(runtime.endpoint, "trust_plan_read", {
+      checkUri: sameCheckEngagement.checkUris[0],
+    });
     assert.doesNotMatch(resumedSameCheck, /^Current intent Check:/m);
-    const replacementAdmission = await rpc(runtime.endpoint, "check.attempt.admit", {
+    const replacementAdmission = (await rpc(runtime.endpoint, "check.attempt.admit", {
       contract: "trust.check-admission-request@1",
       attemptKey: "intent-same-check-replacement",
       checkUri: sameCheckEngagement.checkUris[0],
       intent: sameCheckIntent,
       nextIntent: "Continue after the replacement Attempt",
-    }) as { status: string };
+    })) as { status: string };
     assert.equal(replacementAdmission.status, "ADMITTED");
-    const staleReplay = await rpc(runtime.endpoint, "check.attempt.admit", {
+    const staleReplay = (await rpc(runtime.endpoint, "check.attempt.admit", {
       contract: "trust.check-admission-request@1",
       attemptKey: sameCheckWinner.attemptKey,
       checkUri: sameCheckEngagement.checkUris[0],
       intent: sameCheckIntent,
       nextIntent: `Continue after same Check admission ${sameCheckWinnerIndex}`,
-    }) as { status: string; reasonCode: string };
-    assert.deepEqual({ status: staleReplay.status, reasonCode: staleReplay.reasonCode }, {
-      status: "REFUSED",
-      reasonCode: "attempt-expired",
-    });
-    assert.ok(sameCheckWinner.attemptHandle && sameCheckWinner.executionId && sameCheckWinner.checkUri && sameCheckWinner.operation);
-    const staleFacts = await postFacts(runtime.endpoint, {
-      attemptKey: sameCheckWinner.attemptKey,
-      attemptHandle: sameCheckWinner.attemptHandle,
-      executionId: sameCheckWinner.executionId,
-      checkUri: sameCheckWinner.checkUri,
-    }, [gitHeadFact(sameCheckWinner.operation.operation)]);
+    })) as { status: string; reasonCode: string };
+    assert.deepEqual(
+      { status: staleReplay.status, reasonCode: staleReplay.reasonCode },
+      {
+        status: "REFUSED",
+        reasonCode: "attempt-expired",
+      },
+    );
+    assert.ok(
+      sameCheckWinner.attemptHandle &&
+        sameCheckWinner.executionId &&
+        sameCheckWinner.checkUri &&
+        sameCheckWinner.operation,
+    );
+    const staleFacts = await postFacts(
+      runtime.endpoint,
+      {
+        attemptKey: sameCheckWinner.attemptKey,
+        attemptHandle: sameCheckWinner.attemptHandle,
+        executionId: sameCheckWinner.executionId,
+        checkUri: sameCheckWinner.checkUri,
+      },
+      [gitHeadFact(sameCheckWinner.operation.operation)],
+    );
     assert.equal(staleFacts.partialSuccess?.rejectedSpans, 1);
     assert.equal(staleFacts.partialSuccess?.errorMessage, "fact-batch-rejected");
 
-    const engagement = await rpc(runtime.endpoint, "plan.engage", {
+    const engagement = (await rpc(runtime.endpoint, "plan.engage", {
       contract: "trust.plan-engagement-request@1",
       procedure: "intent-chaining",
       procedureVersion: "1.0.0",
       plan: "intent-resumption",
       environment: "local",
       rootInputs: { repository: "trust" },
-    }) as { checkUris: readonly string[] };
+    })) as { checkUris: readonly string[] };
     assert.equal(engagement.checkUris.length, 2);
 
     const firstRead = await mcpTool(runtime.endpoint, "trust_plan_read", { checkUri: engagement.checkUris[0] });
@@ -392,23 +417,26 @@ test("an intent-chained Plan initializes on first read, survives resumption and 
     assert.match(repeatedRead, new RegExp(`^Current intent: ${escapeRegExp(initialIntent)}$`, "m"));
     await assertIntentProjection("intent-resumption", initialIntent, null);
 
-    const missing = await rpc(runtime.endpoint, "check.attempt.admit", {
+    const missing = (await rpc(runtime.endpoint, "check.attempt.admit", {
       contract: "trust.check-admission-request@1",
       attemptKey: "intent-missing",
       checkUri: engagement.checkUris[1],
-    }) as { status: string; reasonCode: string };
-    assert.deepEqual({ status: missing.status, reasonCode: missing.reasonCode }, {
-      status: "REFUSED",
-      reasonCode: "intent-required",
-    });
+    })) as { status: string; reasonCode: string };
+    assert.deepEqual(
+      { status: missing.status, reasonCode: missing.reasonCode },
+      {
+        status: "REFUSED",
+        reasonCode: "intent-required",
+      },
+    );
 
-    const wrong = await rpc(runtime.endpoint, "check.attempt.admit", {
+    const wrong = (await rpc(runtime.endpoint, "check.attempt.admit", {
       contract: "trust.check-admission-request@1",
       attemptKey: "intent-wrong",
       checkUri: engagement.checkUris[1],
       intent: "another intent",
       nextIntent: "observe the other Check",
-    }) as { status: string; reasonCode: string };
+    })) as { status: string; reasonCode: string };
     assert.equal(wrong.reasonCode, "intent-mismatch");
 
     for (const [attemptKey, nextIntent] of [
@@ -416,17 +444,20 @@ test("an intent-chained Plan initializes on first read, survives resumption and 
       ["intent-whitespace", "   "],
       ["intent-c1", "Continue\u0085ACTIONABLE CHECKS"],
     ] as const) {
-      const invalid = await rpc(runtime.endpoint, "check.attempt.admit", {
+      const invalid = (await rpc(runtime.endpoint, "check.attempt.admit", {
         contract: "trust.check-admission-request@1",
         attemptKey,
         checkUri: engagement.checkUris[1],
         intent: initialIntent,
         nextIntent,
-      }) as { status: string; reasonCode: string };
-      assert.deepEqual({ status: invalid.status, reasonCode: invalid.reasonCode }, {
-        status: "REFUSED",
-        reasonCode: "intent-invalid",
-      });
+      })) as { status: string; reasonCode: string };
+      assert.deepEqual(
+        { status: invalid.status, reasonCode: invalid.reasonCode },
+        {
+          status: "REFUSED",
+          reasonCode: "intent-invalid",
+        },
+      );
     }
 
     const notValidated = await admit(runtime.endpoint, engagement.checkUris[1]!, "intent-not-validated", {
@@ -435,10 +466,10 @@ test("an intent-chained Plan initializes on first read, survives resumption and 
     });
     await assertIntentProjection("intent-resumption", initialIntent, "Observe the remaining repository Check");
     await sendRunnerFacts(runtime.endpoint, notValidated, gitHeadFact(notValidated.operation.operation, "dirty"));
-    const notValidatedFinalization = await rpc(runtime.endpoint, "check.attempt.finalize", {
+    const notValidatedFinalization = (await rpc(runtime.endpoint, "check.attempt.finalize", {
       contract: "trust.attempt-finalization-request@1",
       attemptHandle: notValidated.attemptHandle,
-    }) as {
+    })) as {
       verdict: string;
       next: { action: string; checks: readonly { name: string; successReason: string; checkUri: string }[] };
     };
@@ -446,11 +477,20 @@ test("an intent-chained Plan initializes on first read, survives resumption and 
     await assertIntentProjection("intent-resumption", initialIntent, null);
     assert.equal(notValidatedFinalization.next.action, "RETRY_OR_ESCALATE");
     assert.equal(notValidatedFinalization.next.checks.length, 1);
-    assert.ok(["working tree observation", "revision observation"].includes(notValidatedFinalization.next.checks[0]!.name));
-    assert.ok(["the working tree was observed", "the revision was observed"].includes(notValidatedFinalization.next.checks[0]!.successReason));
-    assert.match(notValidatedFinalization.next.checks[0]!.checkUri, new RegExp(
-      `^${escapeRegExp(engagement.checkUris[1]!)}\\?intent=${escapeRegExp(encodeURIComponent(initialIntent))}&nextIntent=\\{nextIntent\\}$`,
-    ));
+    assert.ok(
+      ["working tree observation", "revision observation"].includes(notValidatedFinalization.next.checks[0]!.name),
+    );
+    assert.ok(
+      ["the working tree was observed", "the revision was observed"].includes(
+        notValidatedFinalization.next.checks[0]!.successReason,
+      ),
+    );
+    assert.match(
+      notValidatedFinalization.next.checks[0]!.checkUri,
+      new RegExp(
+        `^${escapeRegExp(engagement.checkUris[1]!)}\\?intent=${escapeRegExp(encodeURIComponent(initialIntent))}&nextIntent=\\{nextIntent\\}$`,
+      ),
+    );
     const afterNotValidated = await mcpTool(runtime.endpoint, "trust_plan_read", { checkUri: engagement.checkUris[1] });
     assert.match(afterNotValidated, new RegExp(`^Current intent: ${escapeRegExp(initialIntent)}$`, "m"));
     assert.doesNotMatch(afterNotValidated, /^Current intent Check:/m);
@@ -462,7 +502,7 @@ test("an intent-chained Plan initializes on first read, survives resumption and 
       blockingReason: "The current observation cannot satisfy the Check within the declared scope.",
       forbiddenFurtherAction: "Change the observed repository state merely to satisfy the Check.",
     });
-    const escalatedIntent = await rpc(runtime.endpoint, "plan.read", { plan: "intent-resumption" }) as {
+    const escalatedIntent = (await rpc(runtime.endpoint, "plan.read", { plan: "intent-resumption" })) as {
       workState: string;
       currentIntent: string | null;
       currentIntentCheckUri: string | null;
@@ -471,8 +511,14 @@ test("an intent-chained Plan initializes on first read, survives resumption and 
     assert.equal(escalatedIntent.workState, "ESCALATED");
     assert.equal(escalatedIntent.currentIntent, initialIntent);
     assert.equal(escalatedIntent.currentIntentCheckUri, null);
-    await rpc(runtime.endpoint, "plan.resume", { plan: "intent-resumption", escalationId: escalatedIntent.activeEscalation.escalationId, resumeReason: "The operator resolved the escalation without changing the current intent." });
-    const intentAfterEscalation = await mcpTool(runtime.endpoint, "trust_plan_read", { checkUri: engagement.checkUris[1] });
+    await rpc(runtime.endpoint, "plan.resume", {
+      plan: "intent-resumption",
+      escalationId: escalatedIntent.activeEscalation.escalationId,
+      resumeReason: "The operator resolved the escalation without changing the current intent.",
+    });
+    const intentAfterEscalation = await mcpTool(runtime.endpoint, "trust_plan_read", {
+      checkUri: engagement.checkUris[1],
+    });
     assert.match(intentAfterEscalation, new RegExp(`^Current intent: ${escapeRegExp(initialIntent)}$`, "m"));
     assert.doesNotMatch(intentAfterEscalation, /^Current intent Check:/m);
 
@@ -482,10 +528,10 @@ test("an intent-chained Plan initializes on first read, survives resumption and 
     });
     await assertIntentProjection("intent-resumption", initialIntent, "Observe the remaining repository Check");
     await sendRunnerFacts(runtime.endpoint, first, gitHeadFact(first.operation.operation));
-    const firstFinalization = await rpc(runtime.endpoint, "check.attempt.finalize", {
+    const firstFinalization = (await rpc(runtime.endpoint, "check.attempt.finalize", {
       contract: "trust.attempt-finalization-request@1",
       attemptHandle: first.attemptHandle,
-    }) as {
+    })) as {
       verdict: string;
       next: { action: string; checks: readonly { name: string; successReason: string; checkUri: string }[] };
     };
@@ -493,7 +539,10 @@ test("an intent-chained Plan initializes on first read, survives resumption and 
     await assertIntentProjection("intent-resumption", "Observe the remaining repository Check", null);
     assert.equal(firstFinalization.next.action, "RUN_CHECKS");
     assert.equal(firstFinalization.next.checks.length, 1);
-    assert.match(firstFinalization.next.checks[0]!.checkUri, /\?intent=Observe%20the%20remaining%20repository%20Check$/);
+    assert.match(
+      firstFinalization.next.checks[0]!.checkUri,
+      /\?intent=Observe%20the%20remaining%20repository%20Check$/,
+    );
 
     await rpc(runtime.endpoint, "plan.engage", {
       contract: "trust.plan-engagement-request@1",
@@ -508,13 +557,13 @@ test("an intent-chained Plan initializes on first read, survives resumption and 
     assert.equal((resumed.match(/Final invocation URI:/g) ?? []).length, 1);
     assert.doesNotMatch(resumed, /Continuing invocation URI:/);
 
-    const prematureContinuation = await rpc(runtime.endpoint, "check.attempt.admit", {
+    const prematureContinuation = (await rpc(runtime.endpoint, "check.attempt.admit", {
       contract: "trust.check-admission-request@1",
       attemptKey: "intent-premature-continuation",
       checkUri: engagement.checkUris[0],
       intent: "Observe the remaining repository Check",
       nextIntent: "There should be no further Check",
-    }) as { status: string; reasonCode: string };
+    })) as { status: string; reasonCode: string };
     assert.equal(prematureContinuation.reasonCode, "next-intent-unexpected");
 
     const final = await admit(runtime.endpoint, engagement.checkUris[0]!, "intent-final", {
@@ -522,10 +571,10 @@ test("an intent-chained Plan initializes on first read, survives resumption and 
     });
     await assertIntentProjection("intent-resumption", "Observe the remaining repository Check", null);
     await sendRunnerFacts(runtime.endpoint, final, gitHeadFact(final.operation.operation));
-    const finalization = await rpc(runtime.endpoint, "check.attempt.finalize", {
+    const finalization = (await rpc(runtime.endpoint, "check.attempt.finalize", {
       contract: "trust.attempt-finalization-request@1",
       attemptHandle: final.attemptHandle,
-    }) as { verdict: string; next: { action: string } };
+    })) as { verdict: string; next: { action: string } };
     assert.equal(finalization.verdict, "VALIDATED");
     assert.equal(finalization.next.action, "COMPLETE");
     await assertIntentProjection("intent-resumption", null, null);
@@ -545,14 +594,14 @@ test("MCP never presents a Check as actionable after its Session expires", async
   });
   try {
     await publish(runtime.endpoint, path.join(repositoryRoot, "assets/procedures/00-git-status.feature"));
-    const engagement = await rpc(runtime.endpoint, "plan.engage", {
+    const engagement = (await rpc(runtime.endpoint, "plan.engage", {
       contract: "trust.plan-engagement-request@1",
       procedure: "git-status",
       procedureVersion: "2.0.0",
       plan: "expired-session",
       environment: "local",
       rootInputs: { repository: "repository" },
-    }) as { checkUris: readonly string[] };
+    })) as { checkUris: readonly string[] };
     await new Promise((resolve) => setTimeout(resolve, 150));
 
     const plan = await mcpTool(runtime.endpoint, "trust_plan_read", {
@@ -569,11 +618,11 @@ test("MCP never presents a Check as actionable after its Session expires", async
     assert.match(check, /Do not run this Check yet/);
     assert.match(check, /The Plan Session is unavailable/);
 
-    const admission = await rpc(runtime.endpoint, "check.attempt.admit", {
+    const admission = (await rpc(runtime.endpoint, "check.attempt.admit", {
       contract: "trust.check-admission-request@1",
       attemptKey: "expired-session-attempt",
       checkUri: engagement.checkUris[0],
-    }) as { status: string; reasonCode: string };
+    })) as { status: string; reasonCode: string };
     assert.equal(admission.status, "REFUSED");
     assert.equal(admission.reasonCode, "session-unavailable");
   } finally {
@@ -585,14 +634,14 @@ test("MCP gives the accepted array shape for one declaration per parent", async 
   const runtime = await startRuntime("trust-one-for-each-");
   try {
     await publish(runtime.endpoint, fixture("one-for-each-declaration.feature"));
-    const engagement = await rpc(runtime.endpoint, "plan.engage", {
+    const engagement = (await rpc(runtime.endpoint, "plan.engage", {
       contract: "trust.plan-engagement-request@1",
       procedure: "one-for-each-declaration",
       procedureVersion: "1.0.0",
       plan: "one-for-each-declaration",
       environment: "local",
       rootInputs: { repository: ["repository-a", "repository-b"] },
-    }) as { checkUris: readonly string[] };
+    })) as { checkUris: readonly string[] };
 
     const plan = await mcpTool(runtime.endpoint, "trust_plan_read", {
       checkUri: engagement.checkUris[0],
@@ -621,14 +670,14 @@ test("MCP accepts several correlated declaration values for one parent", async (
   const runtime = await startRuntime("trust-many-for-each-");
   try {
     await publish(runtime.endpoint, fixture("many-for-each-declaration.feature"));
-    const engagement = await rpc(runtime.endpoint, "plan.engage", {
+    const engagement = (await rpc(runtime.endpoint, "plan.engage", {
       contract: "trust.plan-engagement-request@1",
       procedure: "many-for-each-declaration",
       procedureVersion: "1.0.0",
       plan: "many-for-each-declaration",
       environment: "local",
       rootInputs: { "library project": ["payment-common"] },
-    }) as { checkUris: readonly string[] };
+    })) as { checkUris: readonly string[] };
 
     const plan = await mcpTool(runtime.endpoint, "trust_plan_read", {
       checkUri: engagement.checkUris[0],
@@ -636,16 +685,21 @@ test("MCP accepts several correlated declaration values for one parent", async (
     assert.match(plan, /- runtime dependency project: many reference; parent for each: library project/);
     assert.match(plan, /one or more entries for each library project/);
 
-    assert.match(await mcpToolFailure(runtime.endpoint, "trust_plan_declarations_replace", {
-      plan: "many-for-each-declaration",
-      expectedRevision: 1,
-      declarations: {
-        "runtime dependency project": [{
-          value: "payment-api",
-          parents: [{ role: "library project", value: "another-library" }],
-        }],
-      },
-    }), /must contain one or more unique values per "library project"/);
+    assert.match(
+      await mcpToolFailure(runtime.endpoint, "trust_plan_declarations_replace", {
+        plan: "many-for-each-declaration",
+        expectedRevision: 1,
+        declarations: {
+          "runtime dependency project": [
+            {
+              value: "payment-api",
+              parents: [{ role: "library project", value: "another-library" }],
+            },
+          ],
+        },
+      }),
+      /must contain one or more unique values per "library project"/,
+    );
 
     const replacement = await mcpTool(runtime.endpoint, "trust_plan_declarations_replace", {
       plan: "many-for-each-declaration",
@@ -658,14 +712,14 @@ test("MCP accepts several correlated declaration values for one parent", async (
       },
     });
     assert.match(replacement, /Revision: 2/);
-    const current = await rpc(runtime.endpoint, "plan.engage", {
+    const current = (await rpc(runtime.endpoint, "plan.engage", {
       contract: "trust.plan-engagement-request@1",
       procedure: "many-for-each-declaration",
       procedureVersion: "1.0.0",
       plan: "many-for-each-declaration",
       environment: "local",
       rootInputs: { "library project": ["payment-common"] },
-    }) as { checkUris: readonly string[] };
+    })) as { checkUris: readonly string[] };
     assert.equal(current.checkUris.filter((uri) => uri.includes("git-head-read")).length, 4);
     assert.equal(new Set(current.checkUris).size, 4);
   } finally {
@@ -685,7 +739,7 @@ test("correlated Operation values produce the right Check Input for each declare
       environment: "local",
       rootInputs: {},
     } as const;
-    const engaged = await rpc(runtime.endpoint, "plan.engage", engagementInput) as {
+    const engaged = (await rpc(runtime.endpoint, "plan.engage", engagementInput)) as {
       revision: number;
       checkUris: readonly string[];
     };
@@ -722,7 +776,7 @@ test("correlated Operation values produce the right Check Input for each declare
       });
     }
 
-    const current = await rpc(runtime.endpoint, "plan.engage", engagementInput) as {
+    const current = (await rpc(runtime.endpoint, "plan.engage", engagementInput)) as {
       revision: number;
       checkUris: readonly string[];
     };
@@ -733,10 +787,7 @@ test("correlated Operation values produce the right Check Input for each declare
     const compared = new Map<string, string>();
     for (const checkUri of comparisonUris) {
       const admission = await admit(runtime.endpoint, checkUri, `compare-${checkUri.slice(-8)}`);
-      compared.set(
-        String(admission.actionInput.project),
-        String(admission.actionInput.baseRevision),
-      );
+      compared.set(String(admission.actionInput.project), String(admission.actionInput.baseRevision));
     }
     assert.deepEqual(compared, revisions);
   } finally {
@@ -748,14 +799,14 @@ test("two Check names keep distinct URIs with the same Operation and target", as
   const runtime = await startRuntime("trust-distinct-checks-");
   try {
     await publish(runtime.endpoint, fixture("distinct-checks.feature"));
-    const engagement = await rpc(runtime.endpoint, "plan.engage", {
+    const engagement = (await rpc(runtime.endpoint, "plan.engage", {
       contract: "trust.plan-engagement-request@1",
       procedure: "distinct-checks",
       procedureVersion: "1.0.0",
       plan: "distinct-checks",
       environment: "local",
       rootInputs: { repository: "repository" },
-    }) as { checkUris: readonly string[] };
+    })) as { checkUris: readonly string[] };
     assert.equal(engagement.checkUris.length, 2);
     assert.equal(new Set(engagement.checkUris).size, 2);
   } finally {
@@ -776,7 +827,7 @@ test("Fact rejection is atomic and Attempt finalization is idempotent", async ()
       environment: "local",
       rootInputs: { repository: "repository" },
     } as const;
-    const engagement = await rpc(runtime.endpoint, "plan.engage", engagementInput) as {
+    const engagement = (await rpc(runtime.endpoint, "plan.engage", engagementInput)) as {
       checkUris: readonly string[];
     };
     const admission = await admit(runtime.endpoint, engagement.checkUris[0]!, "attempt-replay-1");
@@ -784,14 +835,18 @@ test("Fact rejection is atomic and Attempt finalization is idempotent", async ()
     const repeatedAdmission = await admit(runtime.endpoint, engagement.checkUris[0]!, "attempt-replay-1");
     assert.equal(repeatedAdmission.executionId, admission.executionId);
 
-    const wrongExecution = await sendRunnerFacts(runtime.endpoint, {
-      ...admission,
-      executionId: "00000000-0000-4000-8000-000000000000",
-    }, {
-      kind: admission.operation.operation,
-      observedAt: "2026-08-15T11:59:59.000Z",
-      values: { headRevision: "revision-a", workingTree: "clean" },
-    });
+    const wrongExecution = await sendRunnerFacts(
+      runtime.endpoint,
+      {
+        ...admission,
+        executionId: "00000000-0000-4000-8000-000000000000",
+      },
+      {
+        kind: admission.operation.operation,
+        observedAt: "2026-08-15T11:59:59.000Z",
+        values: { headRevision: "revision-a", workingTree: "clean" },
+      },
+    );
     assert.equal(wrongExecution.partialSuccess?.rejectedSpans, 1);
     const rejected = await sendRunnerFacts(runtime.endpoint, admission, {
       kind: admission.operation.operation,
@@ -811,10 +866,10 @@ test("Fact rejection is atomic and Attempt finalization is idempotent", async ()
       values: { headRevision: "revision-a", workingTree: "clean" },
     });
     assert.equal(accepted.partialSuccess, undefined);
-    const check = await rpc(runtime.endpoint, "check.read", {
+    const check = (await rpc(runtime.endpoint, "check.read", {
       contract: "trust.check-read-request@1",
       checkUri: admission.checkUri,
-    }) as { attempts: readonly { executionId: string; facts: readonly { executionId: string }[] }[] };
+    })) as { attempts: readonly { executionId: string; facts: readonly { executionId: string }[] }[] };
     assert.equal(check.attempts[0]?.executionId, admission.executionId);
     assert.equal(check.attempts[0]?.facts[0]?.executionId, admission.executionId);
     const interruptionWithFacts = await rpcFailure(runtime.endpoint, "check.attempt.interrupt", {
@@ -839,7 +894,7 @@ test("Fact rejection is atomic and Attempt finalization is idempotent", async ()
       checkUri: admission.checkUri,
     });
     assert.match(planText, new RegExp(`Execution ID: ${admission.executionId}`));
-    const current = await rpc(runtime.endpoint, "plan.engage", engagementInput) as { revision: number };
+    const current = (await rpc(runtime.endpoint, "plan.engage", engagementInput)) as { revision: number };
     assert.equal(current.revision, 2);
 
     const afterFinalization = await sendRunnerFacts(runtime.endpoint, admission, {
@@ -857,19 +912,19 @@ test("concurrent admission and finalization keep one Attempt and one result", as
   const runtime = await startRuntime("trust-concurrent-attempt-");
   try {
     await publish(runtime.endpoint, path.join(repositoryRoot, "assets/procedures/00-git-status.feature"));
-    const engagement = await rpc(runtime.endpoint, "plan.engage", {
+    const engagement = (await rpc(runtime.endpoint, "plan.engage", {
       contract: "trust.plan-engagement-request@1",
       procedure: "git-status",
       procedureVersion: "2.0.0",
       plan: "concurrent-attempt",
       environment: "local",
       rootInputs: { repository: "repository" },
-    }) as { checkUris: readonly string[] };
+    })) as { checkUris: readonly string[] };
     const checkUri = engagement.checkUris[0]!;
 
-    const admissions = await Promise.all(Array.from({ length: 12 }, () => (
-      admit(runtime.endpoint, checkUri, "concurrent-attempt-key")
-    )));
+    const admissions = await Promise.all(
+      Array.from({ length: 12 }, () => admit(runtime.endpoint, checkUri, "concurrent-attempt-key")),
+    );
     assert.equal(new Set(admissions.map(({ attemptHandle }) => attemptHandle)).size, 1);
     const admission = admissions[0]!;
 
@@ -878,18 +933,20 @@ test("concurrent admission and finalization keep one Attempt and one result", as
       observedAt: "2026-08-15T12:00:00.000Z",
       values: { headRevision: "revision-a", workingTree: "clean" },
     });
-    const finalizations = await Promise.all(Array.from({ length: 12 }, () => (
-      rpc(runtime.endpoint, "check.attempt.finalize", {
-        contract: "trust.attempt-finalization-request@1",
-        attemptHandle: admission.attemptHandle,
-      })
-    )));
+    const finalizations = await Promise.all(
+      Array.from({ length: 12 }, () =>
+        rpc(runtime.endpoint, "check.attempt.finalize", {
+          contract: "trust.attempt-finalization-request@1",
+          attemptHandle: admission.attemptHandle,
+        }),
+      ),
+    );
     for (const result of finalizations.slice(1)) assert.deepEqual(result, finalizations[0]);
 
-    const check = await rpc(runtime.endpoint, "check.read", {
+    const check = (await rpc(runtime.endpoint, "check.read", {
       contract: "trust.check-read-request@1",
       checkUri,
-    }) as {
+    })) as {
       history: readonly unknown[];
       attempts: readonly { state: string; facts: readonly unknown[] }[];
     };
@@ -907,14 +964,14 @@ test("concurrent Fact ingestion and finalization keep Facts and Snapshot consist
   try {
     await publish(runtime.endpoint, path.join(repositoryRoot, "assets/procedures/00-git-status.feature"));
     for (let index = 0; index < 8; index += 1) {
-      const engagement = await rpc(runtime.endpoint, "plan.engage", {
+      const engagement = (await rpc(runtime.endpoint, "plan.engage", {
         contract: "trust.plan-engagement-request@1",
         procedure: "git-status",
         procedureVersion: "2.0.0",
         plan: `concurrent-facts-${index}`,
         environment: "local",
         rootInputs: { repository: "repository" },
-      }) as { checkUris: readonly string[] };
+      })) as { checkUris: readonly string[] };
       const checkUri = engagement.checkUris[0]!;
       const admission = await admit(runtime.endpoint, checkUri, `concurrent-facts-${index}`);
       await sendRunnerFacts(runtime.endpoint, admission, {
@@ -928,21 +985,28 @@ test("concurrent Fact ingestion and finalization keep Facts and Snapshot consist
           contract: "trust.attempt-finalization-request@1",
           attemptHandle: admission.attemptHandle,
         }),
-        sendRunnerFacts(runtime.endpoint, admission, {
-          kind: admission.operation.operation,
-          observedAt: "2026-08-15T12:00:00.000Z",
-          values: { headRevision: "revision-a", workingTree: "clean" },
-        }, [{
-          kind: admission.operation.operation,
-          observedAt: "2026-08-15T12:00:01.000Z",
-          values: { headRevision: "revision-a", workingTree: "clean" },
-        }]),
+        sendRunnerFacts(
+          runtime.endpoint,
+          admission,
+          {
+            kind: admission.operation.operation,
+            observedAt: "2026-08-15T12:00:00.000Z",
+            values: { headRevision: "revision-a", workingTree: "clean" },
+          },
+          [
+            {
+              kind: admission.operation.operation,
+              observedAt: "2026-08-15T12:00:01.000Z",
+              values: { headRevision: "revision-a", workingTree: "clean" },
+            },
+          ],
+        ),
       ]);
 
-      const check = await rpc(runtime.endpoint, "check.read", {
+      const check = (await rpc(runtime.endpoint, "check.read", {
         contract: "trust.check-read-request@1",
         checkUri,
-      }) as {
+      })) as {
         history: readonly { factIds: readonly string[] }[];
         attempts: readonly { facts: readonly { id: string }[] }[];
       };
@@ -1020,43 +1084,50 @@ async function sendRunnerFacts(
 
 async function postFacts(
   endpoint: string,
-  attempt: { readonly attemptKey: string; readonly attemptHandle: string; readonly executionId: string; readonly checkUri: string },
+  attempt: {
+    readonly attemptKey: string;
+    readonly attemptHandle: string;
+    readonly executionId: string;
+    readonly checkUri: string;
+  },
   facts: readonly Readonly<Record<string, unknown>>[],
 ): Promise<{ partialSuccess?: { rejectedSpans?: number; errorMessage?: string } }> {
   const response = await fetch(`${endpoint}/v1/traces`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
-      resourceSpans: [{
-        scopeSpans: [{
-          spans: [{
-            name: "trust.runner.facts",
-            startTimeUnixNano: "1786795200000000000",
-            attributes: [
-              { key: "trust.attempt_key", value: { stringValue: attempt.attemptKey } },
-              { key: "trust.attempt_handle", value: { stringValue: attempt.attemptHandle } },
-              { key: "trust.execution_id", value: { stringValue: attempt.executionId } },
-              { key: "trust.check_uri", value: { stringValue: attempt.checkUri } },
-            ],
-            events: facts.map((fact, index) => ({
-              name: "trust.runner.fact",
-              attributes: otlpFactAttributes(fact, index),
-            })),
-          }],
-        }],
-      }],
+      resourceSpans: [
+        {
+          scopeSpans: [
+            {
+              spans: [
+                {
+                  name: "trust.runner.facts",
+                  startTimeUnixNano: "1786795200000000000",
+                  attributes: [
+                    { key: "trust.attempt_key", value: { stringValue: attempt.attemptKey } },
+                    { key: "trust.attempt_handle", value: { stringValue: attempt.attemptHandle } },
+                    { key: "trust.execution_id", value: { stringValue: attempt.executionId } },
+                    { key: "trust.check_uri", value: { stringValue: attempt.checkUri } },
+                  ],
+                  events: facts.map((fact, index) => ({
+                    name: "trust.runner.fact",
+                    attributes: otlpFactAttributes(fact, index),
+                  })),
+                },
+              ],
+            },
+          ],
+        },
+      ],
     }),
   });
-  const body = await response.json() as { partialSuccess?: { rejectedSpans?: number; errorMessage?: string } };
+  const body = (await response.json()) as { partialSuccess?: { rejectedSpans?: number; errorMessage?: string } };
   assert.equal(response.status, 200, JSON.stringify(body));
   return body;
 }
 
-async function mcpTool(
-  endpoint: string,
-  name: string,
-  arguments_: Readonly<Record<string, unknown>>,
-): Promise<string> {
+async function mcpTool(endpoint: string, name: string, arguments_: Readonly<Record<string, unknown>>): Promise<string> {
   const response = await fetch(`${endpoint}/mcp`, {
     method: "POST",
     headers: {
@@ -1072,7 +1143,7 @@ async function mcpTool(
     }),
   });
   assert.equal(response.status, 200);
-  const envelope = await response.json() as {
+  const envelope = (await response.json()) as {
     result?: { content?: readonly { type?: string; text?: string }[]; isError?: boolean };
     error?: unknown;
   };
@@ -1103,7 +1174,7 @@ async function mcpToolFailure(
     }),
   });
   assert.equal(response.status, 200);
-  const envelope = await response.json() as {
+  const envelope = (await response.json()) as {
     result?: { content?: readonly { type?: string; text?: string }[]; isError?: boolean };
     error?: unknown;
   };
@@ -1151,7 +1222,11 @@ async function rpcFailure(endpoint: string, method: string, params: unknown) {
   return envelope.error!;
 }
 
-async function rpcEnvelope(endpoint: string, method: string, params: unknown): Promise<{
+async function rpcEnvelope(
+  endpoint: string,
+  method: string,
+  params: unknown,
+): Promise<{
   result?: unknown;
   error?: { code: number; message: string; data?: { reason?: string } };
 }> {
