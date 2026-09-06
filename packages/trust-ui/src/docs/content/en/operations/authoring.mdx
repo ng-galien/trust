@@ -1,6 +1,6 @@
 ---
 title: "Operations in the interface"
-summary: "The catalog, the Operation page and its tabs — Overview, Source, Simulate, Run, Contract — and the save, duplicate and delete actions."
+summary: "The catalog, the Operation page and its tabs — Overview, Source, Simulate, Run, Contract — drafts and immutable published versions."
 order: 6
 screen: /operations
 ---
@@ -18,13 +18,13 @@ The **Operations** entry of the sidebar opens the catalog. Selecting an Operatio
   "shell.environment": "The current Environment — the context of Run and of the runnable marks.",
 }} />
 
-The same list appears in the sidebar under **Operations**: each item opens the Operation, and its menu offers **Duplicate** and **Delete**. Delete is refused for an Operation a published Procedure uses.
+The sidebar groups each Operation identity once. Open its detail to select a published version or duplicate its source into a draft. Published versions cannot be modified or deleted, even when unused.
 
 ## The Operation page
 
 <Screenshot id="operation-overview" caption="An Operation, Overview tab." legend={{
   "overlay.header": "Version, compile status, runnable mark, title. In expert mode the identifier is repeated here.",
-  "overlay.actions": "Duplicate · Simulate · Run · Edit source · Delete (when unused) · Save (when the source compiles and changed).",
+  "overlay.actions": "Duplicate · Simulate · Run · Open source (when not already there) · Discard changes (for a modified draft) · Publish (for a new valid version).",
   "overlay.tabs": "Overview, Source, Simulate, Run — and Contract JSON in expert mode.",
   "overlay.status": "The compile status: the diagnostic and its line, or the count of steps and produced fields.",
   "operation.summary": "Description, then Needs (Input and Environment), Does (the steps in words), Produces (the fields and their enumerations).",
@@ -44,8 +44,9 @@ The Operation in words: its description, what it needs, what it does step by ste
 }} />
 
 - The editor knows the language: colouring, folding, completions for every sentence and table (⌃Space), and the **Operation feature** template.
-- Lines never wrap; a long step is formatted onto continuation lines instead.
-- **Save** (or ⌘S) writes `<operation>.feature` in the runtime catalog and reloads it. Save is available only when the source compiles and differs from the catalog copy. A source that renames the Operation saves under the new name; the old file stays until deleted.
+- Visual word wrap changes the display only. **Format source** changes the text by placing long steps onto continuation lines; these are distinct controls.
+- Editing creates a draft with an explicit modification indicator. **Discard changes** restores the selected published source; it never deletes a publication.
+- **Publish** writes a new immutable version as `<operation>@<version>.feature`. It is enabled only for a compiled draft whose identity and version are not already published. Change the version before publishing an evolution; previous versions remain available.
 
 ### Simulate
 
@@ -78,15 +79,15 @@ Run executes the Operation on the chosen Environment **outside any Plan**: no Ch
 
 The compiled Operation: identity, schemas of the interface, steps, projection, classification. It is what a Procedure embeds and what the Runner receives.
 
-## Creating, duplicating, deleting
+## Creating, duplicating, publishing
 
 <Steps>
   <Step title="New operation">From the catalog header or the sidebar. The Source tab opens on a template; the status line shows the first diagnostic until the source compiles.</Step>
-  <Step title="Duplicate">Opens a new source pre-filled with the current one; change the `@operation` name before saving.</Step>
-  <Step title="Save">Enabled once the source compiles. Writes the file in the catalog; the catalog reloads; the page reopens on the saved Operation.</Step>
-  <Step title="Delete">Removes the file from the catalog. Refused while a published Procedure uses the Operation; Procedures keep their embedded copy in any case.</Step>
+  <Step title="Duplicate">Opens a draft pre-filled with the current source; choose a new identity or version before publication.</Step>
+  <Step title="Publish">Stores a compiled draft under a new immutable version; the catalog reloads and the page opens that version.</Step>
+  <Step title="Discard changes">Restores the selected published source when a draft has changed. Published versions cannot be deleted, even when unused.</Step>
 </Steps>
 
 ## Agent access
 
-The runtime MCP exposes the same Operation lifecycle as text-oriented tools: list and read the catalog, compile, save, remove, simulate, discover compatible Environments, then start, list, read or cancel a Trial. Draft source can be simulated or run without saving it. The MCP adapter calls the same catalog, compiler, projection and Trial services as the interface; it does not relay RPC responses or expose their DTOs.
+The runtime MCP exposes text-oriented tools to list and read the catalog, compile, publish through `trust_operation_save`, simulate, discover compatible Environments, then start, list, read or cancel a Trial. The discoverable remove tool refuses published versions. Draft source can be simulated or run without publishing it. The MCP adapter calls the same catalog, compiler, projection and Trial services as the interface; it does not relay RPC responses or expose their DTOs.

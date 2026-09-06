@@ -3,15 +3,20 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "files": [
+    "dist/src",
+    "dist/documentation"
+  ],
   "engines": {
     "node": ">=24.10.0"
   },
   "scripts": {
-    "build": "tsc -b tsconfig.json",
+    "build": "tsc -b tsconfig.json && npm run package:documentation",
+    "package:documentation": "node scripts/package-documentation.mjs",
     "clean": "node --input-type=module -e \"import { rmSync } from 'node:fs'; rmSync('dist', { recursive: true, force: true })\"",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "pretest:acceptance": "npm run package:skill --workspace=@trust/runner",
-    "test:acceptance": "npm run build && node --test --test-concurrency=1 dist/acceptance/*.acceptance.test.js",
+    "test:acceptance": "npm run build && node --test --test-concurrency=1 dist/acceptance/*.acceptance.test.js acceptance/documentation.acceptance.test.mjs",
     "start": "node dist/src/index.js"
   },
   "dependencies": {
@@ -27,9 +32,13 @@
     "ws": "^8.21.3"
   },
   "devDependencies": {
+    "@mdx-js/mdx": "^3.1.1",
     "@types/express": "^5.0.0",
     "@types/node": "^24.0.0",
     "@types/ws": "^8.18.1",
-    "typescript": "^5.7.2"
+    "remark-frontmatter": "^5.0.0",
+    "remark-gfm": "^4.0.1",
+    "typescript": "^5.7.2",
+    "yaml": "^2.9.0"
   }
 }

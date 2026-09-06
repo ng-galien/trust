@@ -1,6 +1,6 @@
 ---
 title: "Les Opérations dans l'interface"
-summary: "Le catalogue, la page d'Opération et ses onglets — Aperçu, Source, Simuler, Exécuter, Contrat — et les actions enregistrer, dupliquer et supprimer."
+summary: "Le catalogue, la page d'Opération et ses onglets — Aperçu, Source, Simuler, Exécuter, Contrat — brouillons et versions publiées immuables."
 order: 6
 screen: /operations
 ---
@@ -18,13 +18,13 @@ L'entrée **Opérations** de la barre latérale ouvre le catalogue. Sélectionne
   "shell.environment": "L'environnement courant — le contexte d'Exécuter et des marques « exécutable ».",
 }} />
 
-La même liste apparaît dans la barre latérale sous **Opérations** : chaque élément ouvre l'Opération, et son menu propose **Dupliquer** et **Supprimer**. Supprimer est refusé pour une Opération qu'une Procédure publiée utilise.
+La barre latérale regroupe chaque identité d'Opération une seule fois. Ouvrez sa fiche pour choisir une version publiée ou dupliquer sa source dans un brouillon. Une version publiée ne peut être ni modifiée ni supprimée, même inutilisée.
 
 ## La page d'Opération
 
 <Screenshot id="operation-overview" caption="Une Opération, onglet Aperçu." legend={{
   "overlay.header": "Version, état de compilation, marque « exécutable », titre. En mode expert l'identifiant est répété ici.",
-  "overlay.actions": "Dupliquer · Simuler · Exécuter · Modifier la source · Supprimer (quand inutilisée) · Enregistrer (quand la source compile et a changé).",
+  "overlay.actions": "Dupliquer · Simuler · Exécuter · Ouvrir la source (si elle n'est pas déjà affichée) · Annuler les modifications (du brouillon modifié) · Publier (une nouvelle version valide).",
   "overlay.tabs": "Aperçu, Source, Simuler, Exécuter — et Contrat JSON en mode expert.",
   "overlay.status": "L'état de compilation : le diagnostic et sa ligne, ou le nombre d'étapes et de champs produits.",
   "operation.summary": "Description, puis Requiert (Input et Environment), Fait (les étapes en mots), Produit (les champs et leurs énumérations).",
@@ -44,8 +44,9 @@ L'Opération en mots : sa description, ce qu'elle requiert, ce qu'elle fait éta
 }} />
 
 - L'éditeur connaît le langage : coloration, repliement, complétions pour chaque phrase et table (⌃Espace), et le modèle **Operation feature**.
-- Les lignes ne se replient jamais ; une étape longue est plutôt formatée sur des lignes de continuation.
-- **Enregistrer** (ou ⌘S) écrit `<operation>.feature` dans le catalogue du runtime et le recharge. Enregistrer n'est disponible que quand la source compile et diffère de la copie du catalogue. Une source qui renomme l'Opération s'enregistre sous le nouveau nom ; l'ancien fichier reste jusqu'à sa suppression.
+- Le retour à la ligne visuel ne change que l'affichage. **Formater la source** modifie le texte en plaçant les étapes longues sur des lignes de continuation ; ce sont deux commandes distinctes.
+- L'édition crée un brouillon avec un indicateur explicite de modification. **Annuler les modifications** restaure la source publiée sélectionnée ; cette action ne supprime jamais une publication.
+- **Publier** écrit une nouvelle version immuable dans `<operation>@<version>.feature`. L'action est disponible uniquement pour un brouillon compilé dont l'identité et la version ne sont pas déjà publiées. Changez la version avant de publier une évolution ; les précédentes restent disponibles.
 
 ### Simuler
 
@@ -78,15 +79,15 @@ Exécuter exécute l'Opération sur l'Environnement choisi **hors de tout Plan**
 
 L'Opération compilée : identité, schémas de l'interface, étapes, projection, classification. C'est ce qu'une Procédure embarque et ce que le Runner reçoit.
 
-## Créer, dupliquer, supprimer
+## Créer, dupliquer, publier
 
 <Steps>
   <Step title="Nouvelle opération">Depuis l'en-tête du catalogue ou la barre latérale. L'onglet Source s'ouvre sur un modèle ; la ligne d'état montre le premier diagnostic jusqu'à ce que la source compile.</Step>
-  <Step title="Dupliquer">Ouvre une nouvelle source pré-remplie avec la courante ; changez le nom `@operation` avant d'enregistrer.</Step>
-  <Step title="Enregistrer">Activé dès que la source compile. Écrit le fichier dans le catalogue ; le catalogue se recharge ; la page se rouvre sur l'Opération enregistrée.</Step>
-  <Step title="Supprimer">Retire le fichier du catalogue. Refusé tant qu'une Procédure publiée utilise l'Opération ; les Procédures gardent leur copie embarquée dans tous les cas.</Step>
+  <Step title="Dupliquer">Ouvre un brouillon pré-rempli avec la source courante ; choisissez une nouvelle identité ou version avant publication.</Step>
+  <Step title="Publier">Stocke un brouillon compilé sous une nouvelle version immuable ; le catalogue se recharge et la page ouvre cette version.</Step>
+  <Step title="Annuler les modifications">Restaure la source publiée sélectionnée lorsqu'un brouillon a changé. Les versions publiées ne peuvent pas être supprimées, même inutilisées.</Step>
 </Steps>
 
 ## Accès agent
 
-Le MCP du runtime expose le même cycle de vie des Opérations sous forme d'outils textuels : lister et lire le catalogue, compiler, enregistrer, supprimer, simuler, découvrir les Environnements compatibles, puis démarrer, lister, lire ou annuler un Trial. Une source brouillon peut être simulée ou exécutée sans être enregistrée. L'adaptateur MCP appelle les mêmes services de catalogue, de compilation, de projection et de Trial que l'interface ; il ne relaie pas les réponses RPC et n'expose pas leurs DTO.
+Le MCP du runtime expose des outils textuels pour lister et lire le catalogue, compiler, publier via `trust_operation_save`, simuler, découvrir les Environnements compatibles, puis démarrer, lister, lire ou annuler un Trial. L'outil de suppression exposé refuse les versions publiées. Une source brouillon peut être simulée ou exécutée sans être publiée. L'adaptateur MCP appelle les mêmes services de catalogue, de compilation, de projection et de Trial que l'interface ; il ne relaie pas les réponses RPC et n'expose pas leurs DTO.

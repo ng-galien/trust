@@ -21,6 +21,12 @@ import {
   isAuthoringToolName,
   type McpAuthoringDependencies,
 } from "./mcp-authoring.js";
+import {
+  callDocumentationTool,
+  DocumentationArgumentsError,
+  documentationTools,
+  isDocumentationToolName,
+} from "./mcp-documentation.js";
 
 export const MCP_JSON_LIMIT_BYTES = 1_048_576;
 
@@ -151,7 +157,7 @@ async function dispatch(
       if (!validToolsListParams(message.params)) {
         return failure(id, INVALID_PARAMS, "Invalid tools/list parameters");
       }
-      return success(id, { tools: [...tools(), ...dependencies.extensionHost.tools()] });
+      return success(id, { tools: [...tools(), ...documentationTools(), ...dependencies.extensionHost.tools()] });
     case "tools/call":
       return callTool(id, message.params, dependencies);
     default:
@@ -160,6 +166,16 @@ async function dispatch(
 }
 
 async function callTool(id: JsonRpcId, value: unknown, dependencies: McpHttpDependencies): Promise<JsonRpcResponse> {
+  if (isRecord(value) && typeof value.name === "string" && isDocumentationToolName(value.name)) {
+    if (!isRecord(value.arguments)) return failure(id, INVALID_PARAMS, "Invalid documentation arguments");
+    try {
+      const result = await callDocumentationTool(value.name, value.arguments);
+      return result.isError ? toolError(id, result.text) : textResult(id, result.text);
+    } catch (error) {
+      if (error instanceof DocumentationArgumentsError) return failure(id, INVALID_PARAMS, error.message);
+      throw error;
+    }
+  }
   if (isRecord(value) && typeof value.name === "string") {
     const extension = dependencies.extensionHost.tool(value.name);
     if (extension) {

@@ -78,3 +78,9 @@ Plan and continue with the preserved intent. V1 does not define a separate opera
 
 Read [references/results.md](references/results.md) only when handling a refusal, retry, transport
 failure, or `NOT_VALIDATED` verdict.
+
+Do not modify, patch, reimplement or bypass the supplied Runner to unblock execution.
+Use the escalation path when the latest accepted Attempt is eligible. A Runner defect,
+refusal or transport failure without an admissible `NOT_VALIDATED` Attempt must be
+reported to the operator or coordinator instead. Never fabricate an attempt handle or
+Facts to obtain escalation. Runner maintenance requires a separately authorized task.

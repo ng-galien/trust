@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { access, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "node:test";
@@ -44,6 +44,12 @@ test("packaged public contracts compile an isolated extension without the runtim
     }
     await assert.rejects(access(path.join(directory, "node_modules/@trust/runtime")));
     await writeFile(path.join(directory, "package.json"), JSON.stringify({ type: "module" }));
+    const guide = await readFile(path.join(root, "packages/trust-extension-sdk/README.md"), "utf8");
+    const examples = Array.from(guide.matchAll(/^```typescript\n([\s\S]*?)^```/gm), (match) => match[1]);
+    assert.ok(examples.length > 0, "The minimal SDK guide must supply its compilable example");
+    const exampleFiles = examples.map((_, index) => `documented-example-${index}.ts`);
+    for (const [index, source] of examples.entries())
+      await writeFile(path.join(directory, exampleFiles[index]), source);
     await writeFile(
       path.join(directory, "tsconfig.json"),
       JSON.stringify({
@@ -55,7 +61,7 @@ test("packaged public contracts compile an isolated extension without the runtim
           types: [],
           skipLibCheck: false,
         },
-        files: ["extension.ts"],
+        files: ["extension.ts", ...exampleFiles],
       }),
     );
     await writeFile(
