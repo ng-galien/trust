@@ -19,10 +19,12 @@ separate, deferred task.
    and Procedure contracts from their canonical packages and matcher values from
    their `/match` entrypoints. Do not copy closed unions or add consumer re-export
    barrels. Validate JSON at transport boundaries; types do not validate JSON.
-3. Read the complete [Dragon manifest](../../extensions/dragon-heist/extension.json)
-   and [server](../../extensions/dragon-heist/server.mjs). Declare configuration,
-   requested capabilities, optional MCP commands and the federated module using
-   those existing contracts. Do not introduce a custom host protocol.
+3. Read the target extension's manifest and implementation when editing. Declare
+   configuration, requested capabilities, optional MCP commands and the federated
+   module through the SDK contracts. If an example is needed, inspect the
+   [Dragon manifest](../../extensions/dragon-heist/extension.json) and only the
+   relevant lifecycle or capability implementation in its
+   [server](../../extensions/dragon-heist/server.mjs). Do not introduce a custom host protocol.
 4. Keep prepare, start and stop distinct. Prepare requires an explicit operator
    action; start must not silently initialize or replace incompatible storage.
    Stop releases owned resources, not independent Runners or TRUST history.
@@ -37,7 +39,7 @@ separate, deferred task.
    Then test prepare/start/stop, declared commands, denied capabilities, event
    rereads, reconnection and real federation navigation with the public host.
 
-## Working example
+## Optional example
 
 Dragon's `ExtensionFactory` owns a separate SQLite game database. Its manifest
 requests `plans.read` and `plans.subscribe`; its HTTP Operations use the same
@@ -59,3 +61,10 @@ sandbox for malicious extension code. Browser federation shares the host's
 JavaScript environment. Install trusted code only. Fix mismatched capabilities,
 configuration or contract versions explicitly rather than importing runtime
 implementation to bypass the SDK.
+
+## Stop and report
+
+Return the changed extension files, build result, public scenarios actually run
+and remaining failures. Install or prepare the extension only when the assignment
+includes those actions. Stop after the requested implementation or validation;
+do not launch a demonstration or change shared storage as a completion step.

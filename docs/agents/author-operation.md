@@ -9,16 +9,17 @@ compiled and verified draft, published under a new version only when authorized.
 
 ## Steps
 
-1. Inspect an existing source rather than inventing grammar. For the main example,
-   read [turn-runes](../../assets/operations/dragon-heist.turn-runes.feature) fully.
-   [The controlled file read](../../assets/operations/file.smoke-signal-read.feature)
-   is a smaller example without network access.
+1. For an edit, read the complete target source. For a new Operation, use the
+   canonical reference and inspect an existing source only when it clarifies the
+   required step type. The [controlled file read](../../assets/operations/file.smoke-signal-read.feature)
+   is an optional file example; [turn-runes](../../assets/operations/dragon-heist.turn-runes.feature)
+   is an optional HTTP projection example.
 2. Separate business Input from Environment configuration. Do not embed credentials
    in the source, Plan inputs, public reports or browser properties. Declare every
    Produced field needed by the contract, not only fields used by one qualification.
-3. Author the step and JSONata projection. Dragon's HTTP response contains booleans;
-   its authored projection converts them to the declared string enum values
-   `"true"` and `"false"`. Do not silently change that contract to boolean Facts.
+3. Author the step and JSONata projection against the actual external response
+   and declared Produced types. Make required conversions explicit; preserve the
+   authored contract when editing an existing Operation.
 4. Call `trust_operation_compile` with `source` containing the full file and an
    optional `sourceName`. Inspect the returned diagnostic or compiled interface.
    Compilation neither publishes nor executes the Operation.
@@ -29,12 +30,12 @@ compiled and verified draft, published under a new version only when authorized.
    `trust_operation_environment_list` using either `{ source }` or
    `{ operation, version }`. Start a Trial with the same alternative plus
    `environment` and `input`; never send both source and catalog identity.
-7. Publish only after review. `trust_operation_save` takes `source` and `sourceName`;
+7. If publication is authorized and the draft has been reviewed, publish it. `trust_operation_save` takes `source` and `sourceName`;
    despite its name, it stores a published immutable catalog version. Select a new
    version and unused source filename. Read it back with `trust_operation_read`
    using the exact `operation` and `version`.
 
-## Working example: controlled signal
+## Optional example: controlled signal
 
 Load the complete linked file-read source into `source`. For simulation, add:
 
@@ -64,3 +65,10 @@ The discoverable `trust_operation_remove` tool does not permit deleting a
 published version. Do not use deletion and republication to evade immutability.
 
 Public verification reference: [MCP authoring acceptance](../../packages/trust-runtime/acceptance/mcp-authoring.acceptance.test.ts).
+
+## Stop and report
+
+For authoring, return the draft source, compilation and verification results, and
+remaining diagnostics. Stop before publication unless it is part of the authorized
+task. For publication, read back the exact new version and report its identity.
+Do not engage a Plan or start additional live actions to demonstrate completion.

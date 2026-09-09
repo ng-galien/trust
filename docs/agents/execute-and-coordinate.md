@@ -8,13 +8,20 @@ The outcome is TRUST's explicit current Plan state and Check results, not a work
 claim of completion. Read the [Runner instructions](../../assets/skills/trust/SKILL.md)
 before live execution.
 
-## Steps
+## Determine your role
 
-1. If assigned an existing Plan, skip engagement and read it. Only an authorized
-   coordinator engages with `trust_plan_engage`: exact `procedure`, `procedureVersion`, unique
-   `plan`, `environment`, and the closed `rootInputs` object. Optional metadata is
-   immutable presentation metadata, not execution input. Do not infer root inputs
-   from role names; read the compiled Procedure.
+Use the assignment to identify whether you execute one Plan or coordinate its
+children. Do not assume coordination authority because a Plan has Invocations.
+If assigned a child, keep execution and completion reporting within that child.
+Read ancestors only when needed to understand a reported blocker.
+
+## Execute the assigned Plan
+
+1. If assigned an existing Plan, skip engagement. If explicitly tasked with
+   engagement, use `trust_plan_engage` with exact `procedure`, `procedureVersion`,
+   unique `plan`, `environment`, and the closed `rootInputs` object. Read the
+   compiled Procedure for inputs; do not infer them from role names. Optional
+   metadata is immutable presentation metadata, not execution input.
 2. Read with `trust_plan_read` using either `{ plan }` or `{ checkUri }`, not both.
    Use the returned child Plan identifiers for invocation-only Plans. Never
    fabricate a Check URI when a Plan has only Invocations.
@@ -29,25 +36,41 @@ before live execution.
    Follow the supplied continuation and reread when it requests `READ_PLAN`.
 6. After the latest accepted `NOT_VALIDATED` attempt, either correct within scope
    and retry or use `trust_check_escalate` with the returned `checkUri`,
-   `attemptHandle`, `blockingReason` and `forbiddenFurtherAction`. Operator
-   resumption uses the actual escalated Plan and current escalation identity.
-7. After resumption, read that Plan again. The intention is preserved; resumption
-   neither supplies Facts nor satisfies the failed Check. Finish dependent work
-   and inspect the root Plan's final state.
+   `attemptHandle`, `blockingReason` and `forbiddenFurtherAction`. After accepted
+   escalation, stop executing that Plan and report its identity and blocker.
+   Only the operator resumes it through the operator surface.
+7. If assigned to resume after operator intervention, read that Plan again and
+   continue from its preserved intention. On `COMPLETE`, stop and report the
+   assigned Plan's result. A worker does not continue into its parent's Checks.
 
-## Two examples
+## Coordinate within the assignment
 
-In [Dragon Heist](dragon-heist.md), the host assigns the root and child
-Plans to agents, while TRUST governs each Check. The extension displays recorded
-game state separately from qualification.
+Read the parent Plan's returned child identifiers, state and blockers. Dispatch
+children through the host only when dispatch is authorized. Give each worker its
+assigned Plan identifier, scope and Runner instructions. Do not invent Check URIs
+for invocation-only Plans or reuse a parent's intention in a child.
 
-For a reusable software-work example, read the complete
-[coordination delegation methodology](../../extensions/coordination/DELEGATION.md).
-The coordinator persists the mission through its governed Check before dispatching
-the worker. The worker claims and submits through the Runner. The coordinator
-reviews the response and performs the final observation. Publishing a response
-alone does not complete its Plan. A host task launched outside this Procedure
-does not automatically become a coordination mission.
+Use TRUST's current child and parent states to decide what can run; a worker
+report alone does not satisfy an Invocation. Continue independent work only within
+your assigned scope. For descendant escalation, report the originating Plan and
+current escalation identity to the operator. Resume dependent execution only after
+the operator has resumed that Plan and TRUST reports it actionable.
+
+Stop when the assigned parent is complete or no authorized work is actionable.
+Report its current state and unresolved child blockers. Inspect the root's final
+state only when the root is your assigned coordination responsibility.
+
+## Select extension-specific instructions
+
+When the assignment uses the coordination extension, read its complete
+[delegation methodology](../../extensions/coordination/DELEGATION.md) before
+creating or dispatching a mission. Follow its worker claim, response and coordinator
+review flow. A host task launched outside that Procedure is not automatically a
+coordination mission.
+
+Read [Dragon Heist](dragon-heist.md) only for a requested game demonstration or
+when its nested Plan example is needed. Do not execute it to validate an unrelated
+assignment.
 
 ## Failure handling
 

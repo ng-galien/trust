@@ -55,7 +55,7 @@ async function verify(endpoint) {
     assert.equal(tools.find((entry) => entry.name === name)?.annotations.readOnlyHint, true);
   }
   const first = output(await tool(endpoint, "trust_documentation_list", { limit: 2 }));
-  assert.match(first, /agents\/README/);
+  assert.match(first, /agents\/SKILL/);
   const listCursor = next(first);
   assert.ok(listCursor);
   assert.equal(
@@ -66,8 +66,18 @@ async function verify(endpoint) {
   assert.match(searched, /execute-and-coordinate/);
 
   const index = await read(endpoint, "agents/README", 511);
-  assert.match(index, /Already assigned a Plan/);
-  assert.match(index, /trust-doc:\/\/\/references\/runner/);
+  assert.match(index, /trust-doc:\/\/\/agents\/SKILL/);
+  const skill = await read(endpoint, "agents/SKILL", 511);
+  assert.match(skill, /trust-doc:\/\/\/references\/runner/);
+  for (const reference of [
+    "author-operation",
+    "author-procedure",
+    "verify-and-test",
+    "execute-and-coordinate",
+    "author-extension",
+  ]) {
+    assert.ok(skill.includes(`trust-doc:///agents/${reference}`));
+  }
   const runner = await read(endpoint, "references/runner");
   assert.match(runner, /Do not modify, patch, reimplement or bypass/);
   const sdk = await read(endpoint, "references/extension-sdk");

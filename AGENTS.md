@@ -13,7 +13,7 @@ checklist verdict. An agent never infers whether its action advanced the Plan.
 ## Delegating work
 
 For operational authoring and execution guidance, start with the
-[agent guide index](docs/agents/README.md), then read the relevant task guide.
+[operational skill](docs/agents/SKILL.md), then read the relevant task reference.
 
 To delegate work through the coordination extension, first read
 [the extension's delegation methodology](extensions/coordination/DELEGATION.md).

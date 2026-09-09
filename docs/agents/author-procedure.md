@@ -9,10 +9,13 @@ authorized immutable publication. No Runner needs to be available to compile.
 
 ## Steps
 
-1. Read [Dragon's root Procedure](../../assets/procedures/dragon-heist/05-game.feature)
-   and [lock Procedure](../../assets/procedures/dragon-heist/01-lock.feature).
-   Identify the root input `game`, the `tactic` agent declaration, mandatory scope
-   table, Scenario prerequisites, Check qualifications and child Invocations.
+1. Read the target source when editing. Identify its root inputs, agent
+   declarations, mandatory scope table, Scenario prerequisites, Check
+   qualifications and applicable child Invocations. For a new source, derive
+   these from the requested intent and canonical grammar. Read Dragon's
+   [root](../../assets/procedures/dragon-heist/05-game.feature) and
+   [lock](../../assets/procedures/dragon-heist/01-lock.feature) examples only if
+   nested invocation or declaration syntax needs clarification.
 2. Declare only actual root inputs. Fixed roles and Check-produced values are not
    supplied again at engagement. Agent declarations are replaced separately using
    the current Plan revision and a complete declaration snapshot.
@@ -32,7 +35,7 @@ authorized immutable publication. No Runner needs to be available to compile.
    (`procedure`, `version`). Do not confuse it with the paged, Check-scoped
    `trust_procedure_read` used during execution.
 
-## Working examples
+## Optional examples
 
 [Runner smoke](../../assets/procedures/09-runner-smoke.feature) has no root inputs:
 `expected signal` is fixed as `"ready"`. Its Check qualifies the file Operation's
@@ -58,3 +61,10 @@ escalation from an ancestor's dependency blocker.
 
 Public verification references: [versioning](../../packages/trust-runtime/acceptance/resource-versioning.acceptance.test.ts)
 and [nested Plan depth](../../packages/trust-runtime/acceptance/child-plan-depth.acceptance.test.ts).
+
+## Stop and report
+
+For authoring, return the draft source, compilation and verification results, and
+remaining diagnostics. Stop before publication unless it is part of the authorized
+task. For publication, read back the exact new version and report its identity.
+Do not engage a Plan or start additional live actions to demonstrate completion.

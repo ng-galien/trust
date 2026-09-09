@@ -17,10 +17,12 @@ build or an inferred checklist verdict.
 | Dry-run Plan | Admission, operator Facts, qualification and cascade | External action; no Environment values are delegated |
 | Live Plan with Runner | Actual action, reported Facts and TRUST verdict | Safety of unrelated or untested actions |
 
-## Steps and working example
+## Verify the requested change
 
-1. Compile the exact proposed sources. For [Dragon Heist](dragon-heist.md), compile
-   Operations before publishing dependent Procedures, and children before parents.
+1. Select the boundary that can establish the requested behavior. Compile changed
+   sources and ensure their dependencies are available. Do not publish unrelated
+   sources to prepare a demonstration. Use the applicable steps below; a request
+   for compilation alone does not require live execution.
 2. Simulate positive, negative and malformed external results. For the
    [signal example](author-operation.md), `"blocked"` is a valid negative
    observation; a missing `signal` must not be disguised as an ordinary false result.
@@ -33,9 +35,11 @@ build or an inferred checklist verdict.
 5. Re-observe a satisfied Check only in dry-run mode. Verify which dependencies
    reopen and that historical Facts remain. Try a missing required field and
    require atomic rejection before persistence, without checklist progression.
-6. Run the live [Dragon walkthrough](dragon-heist.md) in an approved disposable
-   installation. Include the first negative rune result, escalation, operator
-   resumption, preserved die and the final root Check.
+6. If live behavior is in scope, execute the affected Procedure with the Runner
+   against approved disposable resources and inspect its actual verdicts. Run the
+   [Dragon walkthrough](dragon-heist.md) only when that demonstration is requested
+   or its integration is the target of the change; do not make it a prerequisite
+   for verifying another Procedure.
 
 For automated verification, use public boundaries, not mocks of TRUST's verdict
 or internal service unit tests. Simulated external step results are appropriate

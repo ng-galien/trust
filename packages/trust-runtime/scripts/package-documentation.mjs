@@ -188,7 +188,8 @@ for (const entry of entries) {
   const frontmatter = metadata ? parseYaml(metadata.value) : {};
   const title =
     frontmatter.title ?? source.match(/^# (.+)$/m)?.[1] ?? source.match(/^Feature: (.+)$/m)?.[1] ?? entry.id;
-  const summary = frontmatter.summary ?? `Packaged ${isSource ? "authored source" : "guide"}: ${title}.`;
+  const summary =
+    frontmatter.summary ?? frontmatter.description ?? `Packaged ${isSource ? "authored source" : "guide"}: ${title}.`;
   const rendered = isSource ? undefined : render(source, tree, entry.file).trim();
   documents.push({
     id: entry.id,
@@ -199,7 +200,7 @@ for (const entry of entries) {
       : render(rendered, markdownProcessor.parse(rendered), entry.file).trim(),
   });
 }
-documents.sort((a, b) => (a.id === "agents/README" ? -1 : b.id === "agents/README" ? 1 : a.id.localeCompare(b.id)));
+documents.sort((a, b) => (a.id === "agents/SKILL" ? -1 : b.id === "agents/SKILL" ? 1 : a.id.localeCompare(b.id)));
 const output = new URL("../dist/documentation/", import.meta.url);
 await mkdir(output, { recursive: true });
 await writeFile(new URL("catalog.json", output), `${JSON.stringify({ format: 1, documents })}\n`);
