@@ -52,4 +52,13 @@ L'en-tête de l'interface porte l'**environnement courant**. C'est le défaut de
 
 <Details title="Derrière l'écran" expert>
 Les Environnements et les credentials sont des objets du runtime : `environment.list` / `environment.save` / `environment.remove` et `credential.list` / `credential.save` / `credential.remove` (références seulement en lecture). `operation.environments` renvoie, par version d'Opération, les Environnements compatibles et les noms manquants — la source de chaque marque « exécutable ». Les valeurs sont validées à l'admission contre le schéma d'Environnement de l'Opération (répertoire absolu, URL `http(s)`).
+
+Le MCP expose `trust_environment_list`, `trust_environment_save` et
+`trust_environment_remove` pour les valeurs ordinaires uniquement. La sauvegarde
+prend `environment` et une carte `values` complète ; les valeurs ordinaires omises
+sont supprimées et les secrets restent inchangés. La liste renvoie les valeurs
+ordinaires sans les noms ni les valeurs des secrets. La suppression par MCP refuse
+un Environnement contenant des secrets ; un opérateur doit d'abord les gérer par
+l'interface des secrets. Aucun outil MCP ne gère les secrets. Utiliser
+`trust_operation_environment_list` pour vérifier la compatibilité d'une Operation.
 </Details>

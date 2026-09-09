@@ -279,3 +279,96 @@ async function mcpRequest(
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
+
+test("MCP manages ordinary Environment values while preserving credentials", async () => {
+  const runtime = await startPublicRuntime("trust-mcp-environments-");
+  const rpc = async (method: string, params: Record<string, unknown>) => {
+    const response = await fetch(`${runtime.endpoint}/rpc`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ jsonrpc: "2.0", id: method, method, params }),
+    });
+    assert.equal(response.status, 200);
+    const envelope = (await response.json()) as { result?: unknown; error?: unknown };
+    assert.equal(envelope.error, undefined, JSON.stringify(envelope.error));
+    return envelope.result;
+  };
+  try {
+    const listed = await mcpRequest(runtime.endpoint, "tools/list", {});
+    const tools = (listed.result as { tools: Array<{ name: string; annotations?: { readOnlyHint?: boolean } }> }).tools;
+    for (const name of ["trust_environment_list", "trust_environment_save", "trust_environment_remove"]) {
+      assert.ok(tools.some((tool) => tool.name === name));
+    }
+    assert.equal(tools.find((tool) => tool.name === "trust_environment_list")?.annotations?.readOnlyHint, true);
+    assert.ok(!tools.some((tool) => /credential|secret/.test(tool.name)));
+    const save = (values: Record<string, string>) =>
+      mcpTool(runtime.endpoint, "trust_environment_save", { environment: "mcp-test", values });
+    await save({ workspaceRoot: "/tmp", obsolete: "remove-me" });
+    assert.match(await mcpTool(runtime.endpoint, "trust_environment_list", {}), /mcp-test/);
+    await rpc("credential.save", {
+      environment: "mcp-test",
+      name: "privateToken",
+      value: "secret-sentinel-never-in-mcp",
+    });
+    const saved = await save({ workspaceRoot: "/tmp/changed" });
+    const read = await mcpTool(runtime.endpoint, "trust_environment_list", {});
+    assert.match(read, /\/tmp\/changed/);
+    assert.doesNotMatch(read, /obsolete|remove-me|privateToken|secret-sentinel/);
+    assert.doesNotMatch(saved, /privateToken|secret-sentinel/);
+    const ordinary = JSON.stringify(await rpc("environment.list", {}));
+    assert.match(ordinary, /\/tmp\/changed/);
+    assert.doesNotMatch(ordinary, /obsolete/);
+    const before = await rpc("credential.list", { environment: "mcp-test" });
+    assert.match(JSON.stringify(before), /privateToken/);
+    const refused = await mcpRequest(runtime.endpoint, "tools/call", {
+      name: "trust_environment_remove",
+      arguments: { environment: "mcp-test" },
+    });
+    assert.equal((refused.result as { isError?: boolean }).isError, true);
+    assert.match(JSON.stringify(refused), /attached credentials/);
+    assert.doesNotMatch(JSON.stringify(refused), /privateToken|secret-sentinel/);
+    assert.deepEqual(await rpc("credential.list", { environment: "mcp-test" }), before);
+    assert.match(await mcpTool(runtime.endpoint, "trust_environment_list", {}), /mcp-test/);
+    for (const [name, args] of [
+      ["trust_environment_list", { secrets: true }],
+      ["trust_environment_save", { environment: "mcp-test", values: { port: 42 } }],
+      ["trust_environment_save", { environment: "mcp-test", values: {}, credentials: {} }],
+      ["trust_environment_remove", { environment: "mcp-test", force: true }],
+      ["trust_environment_save", { environment: "mcp-test" }],
+    ] as const) {
+      const invalid = await mcpRequest(runtime.endpoint, "tools/call", { name, arguments: args });
+      assert.equal(invalid.error?.code, -32_602);
+    }
+    for (const args of [
+      { environment: "INVALID", values: {} },
+      { environment: "mcp-test", values: { "bad-key": "value" } },
+      { environment: "mcp-test", values: { empty: "" } },
+      { environment: "mcp-test", values: { nul: "\0" } },
+    ]) {
+      const invalid = await mcpRequest(runtime.endpoint, "tools/call", {
+        name: "trust_environment_save",
+        arguments: args,
+      });
+      assert.equal((invalid.result as { isError?: boolean }).isError, true);
+    }
+    assert.match(await mcpTool(runtime.endpoint, "trust_environment_list", {}), /\/tmp\/changed/);
+    await mcpTool(runtime.endpoint, "trust_environment_save", { environment: "mcp-removable", values: {} });
+    assert.match(
+      await mcpTool(runtime.endpoint, "trust_environment_remove", { environment: "mcp-removable" }),
+      /Removed: yes/,
+    );
+    assert.match(
+      await mcpTool(runtime.endpoint, "trust_environment_remove", { environment: "mcp-removable" }),
+      /Removed: no/,
+    );
+    assert.doesNotMatch(await mcpTool(runtime.endpoint, "trust_environment_list", {}), /mcp-removable/);
+    // The operator keeps the existing credential lifecycle, outside MCP.
+    await rpc("credential.remove", { environment: "mcp-test", name: "privateToken" });
+    assert.match(
+      await mcpTool(runtime.endpoint, "trust_environment_remove", { environment: "mcp-test" }),
+      /Removed: yes/,
+    );
+  } finally {
+    await runtime.close();
+  }
+});

@@ -7,12 +7,17 @@ import {
   simulateOperation,
 } from "@trust/operation";
 import { CatalogProcedureCompilationError, type CompiledProcedure } from "@trust/procedure";
+import type { EnvironmentService } from "../environment/service.js";
+import { EnvironmentConfigurationError } from "../environment/validation.js";
 import { type OperationCatalog, OperationCatalogError } from "../operation/catalog.js";
 import type { Procedures } from "../procedure/procedures.js";
 import { ProcedureConflictError } from "../procedure/store.js";
 import { TrialError, type TrialService } from "../trial/service.js";
 
 export const AUTHORING_TOOL_NAMES = [
+  "trust_environment_list",
+  "trust_environment_save",
+  "trust_environment_remove",
   "trust_operation_list",
   "trust_operation_read",
   "trust_operation_compile",
@@ -33,6 +38,7 @@ export const AUTHORING_TOOL_NAMES = [
 export type AuthoringToolName = (typeof AUTHORING_TOOL_NAMES)[number];
 
 export interface McpAuthoringDependencies {
+  readonly environmentService: EnvironmentService;
   readonly operationCatalog: OperationCatalog;
   readonly procedures: Procedures;
   readonly trialService: TrialService;
@@ -61,6 +67,39 @@ export async function callAuthoringTool(
 ): Promise<McpAuthoringResult> {
   try {
     switch (tool) {
+      case "trust_environment_list": {
+        exactEmpty(args, tool);
+        const environments = dependencies.environmentService.list();
+        return {
+          text: [
+            "ENVIRONMENTS",
+            `Count: ${environments.length}`,
+            ...environments.map(
+              (environment) => `Environment: ${environment.name}\nValues:\n${json(environment.values)}`,
+            ),
+            "",
+          ].join("\n"),
+        };
+      }
+      case "trust_environment_save": {
+        if (
+          !hasOnlyKeys(args, ["environment", "values"]) ||
+          !bounded(args.environment, 63) ||
+          !isRecord(args.values) ||
+          !Object.values(args.values).every((value) => typeof value === "string")
+        )
+          invalid(tool);
+        const environment = await dependencies.environmentService.save(
+          args.environment,
+          args.values as Record<string, string>,
+        );
+        return { text: `ENVIRONMENT SAVED\nEnvironment: ${environment.name}\nValues:\n${json(environment.values)}\n` };
+      }
+      case "trust_environment_remove": {
+        if (!hasOnlyKeys(args, ["environment"]) || !bounded(args.environment, 63)) invalid(tool);
+        const removed = await dependencies.environmentService.remove(args.environment, true);
+        return { text: `ENVIRONMENT REMOVAL\nEnvironment: ${args.environment}\nRemoved: ${removed ? "yes" : "no"}\n` };
+      }
       case "trust_operation_list": {
         exactEmpty(args, tool);
         return { text: renderOperationList(dependencies.operationCatalog) };
@@ -172,6 +211,7 @@ export async function callAuthoringTool(
       error instanceof OperationCatalogError ||
       error instanceof ProcedureConflictError ||
       error instanceof TrialError ||
+      error instanceof EnvironmentConfigurationError ||
       error instanceof TypeError
     ) {
       return rejected(renderAuthoringError(tool, error));
@@ -463,6 +503,47 @@ const trialProperty = { type: "string", minLength: 1, maxLength: 256, descriptio
 
 export function authoringTools(): readonly unknown[] {
   return [
+    {
+      name: "trust_environment_list",
+      title: "List Environments",
+      description:
+        "List configured Environments and their ordinary values. Does not return credential names or secrets.",
+      inputSchema: { type: "object", properties: {}, additionalProperties: false },
+      annotations: { readOnlyHint: true, openWorldHint: false },
+    },
+    {
+      name: "trust_environment_save",
+      title: "Save an Environment",
+      description:
+        "Create an Environment or replace its complete ordinary value map. Read the list first before editing. Omitted ordinary values are removed; credentials remain unchanged. Never send secrets in values.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          environment: { type: "string", pattern: "^[a-z][a-z0-9-]{0,62}$" },
+          values: {
+            type: "object",
+            propertyNames: { pattern: "^[A-Za-z][A-Za-z0-9_]{0,127}$" },
+            additionalProperties: { type: "string", minLength: 1 },
+          },
+        },
+        required: ["environment", "values"],
+        additionalProperties: false,
+      },
+      annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
+    },
+    {
+      name: "trust_environment_remove",
+      title: "Remove an Environment",
+      description:
+        "Remove an Environment only when it has no attached credentials. Refuses instead of deleting secrets. An unknown Environment returns Removed: no.",
+      inputSchema: {
+        type: "object",
+        properties: { environment: { type: "string", pattern: "^[a-z][a-z0-9-]{0,62}$" } },
+        required: ["environment"],
+        additionalProperties: false,
+      },
+      annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
+    },
     noArgumentTool(
       "trust_operation_list",
       "List Operations",

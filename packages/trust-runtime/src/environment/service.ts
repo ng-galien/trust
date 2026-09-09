@@ -43,9 +43,9 @@ export class EnvironmentService {
     return { name, values: { ...copy } };
   }
 
-  async remove(name: string): Promise<boolean> {
+  async remove(name: string, preserveCredentials = false): Promise<boolean> {
     assertEnvironmentName(name);
-    const removed = await this.dependencies.environmentStore.remove(name);
+    const removed = await this.dependencies.environmentStore.remove(name, preserveCredentials);
     if (removed) {
       this.#environments.delete(name);
       this.dependencies.credentialService.forgetEnvironment(name);

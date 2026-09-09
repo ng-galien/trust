@@ -52,4 +52,12 @@ The header of the interface holds the **current Environment**. It is the default
 
 <Details title="Behind the screen" expert>
 Environments and credentials are runtime objects: `environment.list` / `environment.save` / `environment.remove` and `credential.list` / `credential.save` / `credential.remove` (references only on read). `operation.environments` returns, per Operation version, the compatible Environments and the missing names — the source of every runnable mark. Values are validated at admission against the Operation's Environment schema (absolute directory, `http(s)` URL).
+
+MCP exposes `trust_environment_list`, `trust_environment_save` and
+`trust_environment_remove` for ordinary values only. Save takes `environment` and
+a complete `values` map; omitted ordinary values are removed and credentials stay
+unchanged. List returns ordinary values without credential names or values. MCP
+removal refuses an Environment with attached credentials; an operator must handle
+those through the credential interface first. There are no credential-management
+MCP tools. Use `trust_operation_environment_list` for Operation compatibility.
 </Details>

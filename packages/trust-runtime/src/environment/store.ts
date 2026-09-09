@@ -1,4 +1,5 @@
 import type { Database } from "../database/database.js";
+import { EnvironmentConfigurationError } from "./validation.js";
 
 export interface StoredEnvironment {
   readonly name: string;
@@ -62,11 +63,21 @@ export class EnvironmentStore {
     return environment !== undefined;
   }
 
-  async remove(name: string): Promise<boolean> {
-    const result = await this.dependencies.database
-      .deleteFrom("environments")
-      .where("name", "=", name)
-      .executeTakeFirst();
-    return result.numDeletedRows > 0n;
+  async remove(name: string, preserveCredentials = false): Promise<boolean> {
+    return this.dependencies.database.transaction().execute(async (transaction) => {
+      if (preserveCredentials) {
+        const credential = await transaction
+          .selectFrom("environment_credentials")
+          .select("environment")
+          .where("environment", "=", name)
+          .executeTakeFirst();
+        if (credential)
+          throw new EnvironmentConfigurationError(
+            "Environment has attached credentials. Remove them through the operator credential interface before removing the Environment.",
+          );
+      }
+      const result = await transaction.deleteFrom("environments").where("name", "=", name).executeTakeFirst();
+      return result.numDeletedRows > 0n;
+    });
   }
 }

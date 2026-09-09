@@ -34,6 +34,17 @@ selected document. Packaged `trust-doc:///` links are document identifiers for
 that reader, not browser URLs. If a required reference is marked repository-only,
 read it from an available checkout; report missing access when it blocks the task.
 
+## Configure ordinary Environment values
+
+For authorized Environment setup, call `trust_environment_list` first. Use
+`trust_environment_save` with `environment` and the complete `values` map to create
+or replace ordinary configuration. Omitted ordinary values are removed. Never put
+secrets in this map; credential management remains on the operator RPC/UI surface.
+Use `trust_environment_remove` only for requested removal. It refuses Environments
+with attached credentials so that MCP cannot delete secrets indirectly.
+Read the list again to verify the result. Use `trust_operation_environment_list`
+with a draft source or exact Operation identity to check compatibility before execution.
+
 ## Preserve the execution contract
 
 - Use the canonical [Operation](../../packages/trust-ui/src/docs/content/en/language/operations.mdx)
