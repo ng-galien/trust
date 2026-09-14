@@ -20,18 +20,23 @@ procedure_source = "source ~ '**/dir:packages/dir:trust-procedure/**'"
 authority_source = "$gherkin_source OR $operation_source OR $procedure_source"
 authority_contract_facade = "source ~ '**/dir:packages/dir:/^(trust-operation|trust-procedure|trust-extension-sdk)$/dir:src/module:index'"
 authority_contract_target = "$operation_target OR $procedure_target OR target ~ '**/dir:packages/dir:trust-extension-sdk/**' OR target ~ '**/external_pkg:/@trust.extension-sdk/**'"
-authority_matcher_target = "(target ~ '**/external_pkg:/@trust.operation/**' OR target ~ '**/external_pkg:/@trust.procedure/**') AND target ~ '**/path:/^match[A-Z]/'"
+authority_matcher_target = "(target ~ '**/external_pkg:/@trust.operation/**' OR target ~ '**/external_pkg:/@trust.procedure/**' OR target ~ '**/external_pkg:/@trust.extension-sdk/**') AND target ~ '**/path:/^match[A-Z]/'"
 authority_matcher_subpath = "target ~ '**/path:match/path:/^match[A-Z]/'"
 # Deliberately bounded semantic consumers, not protocol routing, parsers, or the
 # canonical match implementations. Add new total-dispatch consumer modules here.
-authority_dispatch_import = "kind = 'imports_symbol' AND (target ~ '**/external_pkg:/@trust.operation/**/path:/^(OperationStep|ShellStep|HttpStep|FileReadStep|PostgresqlStep|Shell|Http|FileRead|Postgresql|ShellArgument|HttpValueSource|HttpPathSegment|HttpBody|FileFormat|HttpFormat|matchOperationStep|matchShellArgument|matchHttpValueSource|matchHttpPathSegment|matchHttpBody|matchHttpFormat|matchFileFormat)$/' OR target ~ '**/external_pkg:/@trust.procedure/**/path:/^(CompiledProcedureRole|CompiledExpressionReference|matchProcedureRoleSource|matchProcedureRoleCardinality|matchExpressionReference|isPlanInputRoleSource)$/' )"
-authority_dispatch_consumer = "moniker ~ '**/dir:packages/dir:trust-runner/dir:src/dir:/^(operation|http|file-read)$/module:run' OR moniker ~ '**/dir:packages/dir:trust-ui/dir:src/dir:resources/dir:operations/module:/^(overview-view|contract-view|simulation-view|http-view-model|classification)$/' OR moniker ~ '**/dir:packages/dir:trust-ui/dir:src/dir:resources/dir:procedures/module:dependencies' OR ((NOT (moniker ~ '**/dir:packages/dir:trust-operation/**' OR moniker ~ '**/dir:packages/dir:trust-procedure/**' OR moniker ~ '**/dir:acceptance/**')) AND any(out_refs, $authority_dispatch_import))"
+authority_dispatch_import = "kind = 'imports_symbol' AND (target ~ '**/external_pkg:/@trust.operation/**/path:/^(OperationStep|ShellStep|HttpStep|FileReadStep|PostgresqlStep|Shell|Http|FileRead|Postgresql|ShellArgument|HttpValueSource|HttpPathSegment|HttpBody|FileFormat|HttpFormat|matchOperationStep|matchShellArgument|matchHttpValueSource|matchHttpPathSegment|matchHttpBody|matchHttpFormat|matchFileFormat)$/' OR target ~ '**/external_pkg:/@trust.procedure/**/path:/^(CompiledProcedureRole|CompiledExpressionReference|matchProcedureRoleSource|matchProcedureRoleCardinality|matchExpressionReference|isPlanInputRoleSource)$/' OR target ~ '**/external_pkg:/@trust.extension-sdk/**/path:/^(MissionDefinition|matchMissionDefinition)$/' )"
+# This exact JSON boundary constructs MissionDefinition from unknown input; it
+# does not dispatch accepted definitions. Semantic mission consumers stay guarded.
+mission_json_boundary = "moniker ~ '**/dir:packages/dir:trust-runtime/dir:src/dir:plan/module:mission-declarations'"
+authority_role_source_import = "kind = 'imports_symbol' AND target ~ '**/external_pkg:/@trust.procedure/**/path:/^(CompiledProcedureRole|matchProcedureRoleSource|isPlanInputRoleSource)$/'"
+authority_role_source_consumer = "$authority_dispatch_consumer AND any(out_refs, $authority_role_source_import)"
+authority_dispatch_consumer = "moniker ~ '**/dir:packages/dir:trust-runner/dir:src/dir:/^(operation|http|file-read)$/module:run' OR moniker ~ '**/dir:packages/dir:trust-ui/dir:src/dir:resources/dir:operations/module:/^(overview-view|contract-view|simulation-view|http-view-model|classification)$/' OR moniker ~ '**/dir:packages/dir:trust-ui/dir:src/dir:resources/dir:procedures/module:dependencies' OR ((NOT ($mission_json_boundary OR moniker ~ '**/dir:packages/dir:trust-operation/**' OR moniker ~ '**/dir:packages/dir:trust-procedure/**' OR moniker ~ '**/dir:acceptance/**')) AND any(out_refs, $authority_dispatch_import))"
 language_server_source = "source ~ '**/dir:packages/dir:trust-language-server/**'"
 runtime_source = "source ~ '**/dir:packages/dir:trust-runtime/**'"
 extension_sdk_source = "source ~ '**/dir:packages/dir:trust-extension-sdk/**'"
 ui_source = "source ~ '**/dir:packages/dir:trust-ui/**' OR source ~ '**/dir:apps/dir:trust-web/**'"
 ui_docs_highlight_source = "source ~ '**/dir:docs/module:highlight/**' OR source ~ '**/dir:docs/module:highlight'"
-editor_source = "source ~ '**/module:gherkin-editor/**' OR source ~ '**/module:gherkin-editor' OR source ~ '**/module:lsp-client/**' OR source ~ '**/module:lsp-client' OR source ~ '**/module:monaco-stack/**' OR source ~ '**/module:monaco-stack' OR source ~ '**/module:editor-resource-navigation/**' OR source ~ '**/module:editor-resource-navigation'"
+editor_source = "source ~ '**/dir:packages/dir:trust-ui/dir:src/dir:resources/dir:templates/**' OR source ~ '**/module:gherkin-editor/**' OR source ~ '**/module:gherkin-editor' OR source ~ '**/module:lsp-client/**' OR source ~ '**/module:lsp-client' OR source ~ '**/module:monaco-stack/**' OR source ~ '**/module:monaco-stack' OR source ~ '**/module:editor-resource-navigation/**' OR source ~ '**/module:editor-resource-navigation'"
 
 gherkin_target = "target ~ '**/dir:packages/dir:trust-gherkin/**' OR target ~ '**/external_pkg:/@trust.gherkin/**'"
 operation_target = "target ~ '**/dir:packages/dir:trust-operation/**' OR target ~ '**/external_pkg:/@trust.operation/**'"
@@ -43,7 +48,7 @@ authority_target = "$gherkin_target OR $operation_target OR $procedure_target"
 gherkin_downstream_target = "$operation_target OR $procedure_target OR $language_server_target OR $runtime_target OR $ui_target"
 operation_downstream_target = "$procedure_target OR $language_server_target OR $runtime_target OR $ui_target"
 procedure_downstream_target = "$language_server_target OR $runtime_target OR $ui_target"
-authority_language_behavior_target = "target ~ '**/external_pkg:/@trust./*:/^(parseGherkin|tokenizeSentence|highlightGherkinSource|highlightExpressionSource|formatGherkinSource|analyzeOperation|analyzeProcedure|isExpressionIdentifierPart|isExpressionIdentifierStart|qualificationCompletionPath|expressionMember|SentenceCursor|matchStepGrammar|parseStepGrammar|parseStepGrammarPrefix|stepChoice|stepGrammarExpectations|stepGrammarFailure|stepLiteral|stepOneOf|stepOptional|stepQuoted|stepRepeat|stepSequence|operationStepGrammar|procedureStepGrammar)$/'"
+authority_language_behavior_target = "target ~ '**/external_pkg:/@trust./*:/^(materializeTemplate|validateTemplateDefinition|validateTemplateParameters|procedureScopeFragment|analyzeProcedureScopeFragment|scanTemplatePlaceholders|isTemplateParameterName|parseGherkin|tokenizeSentence|highlightGherkinSource|highlightExpressionSource|formatGherkinSource|analyzeOperation|analyzeProcedure|analyzeProcedureScope|isExpressionIdentifierPart|isExpressionIdentifierStart|qualificationCompletionPath|expressionMember|SentenceCursor|matchStepGrammar|parseStepGrammar|parseStepGrammarPrefix|stepChoice|stepGrammarExpectations|stepGrammarFailure|stepLiteral|stepOneOf|stepOptional|stepQuoted|stepRepeat|stepSequence|operationStepGrammar|procedureStepGrammar)$/'"
 
 gherkin_parse_step_grammar_target = "target ~ '**/external_pkg:/@trust.gherkin/function:parseStepGrammar'"
 
@@ -159,7 +164,7 @@ rationale = "Contract ownership remains in the language packages and standalone 
 [[refs.where]]
 id = "editor-dependency-on-authority-language-behavior-goes-through-language-server"
 severity = "error"
-rationale = "Completion, formatting, folding, semantic tokens and diagnostics reach the editor exclusively over the LSP protocol; the Monaco surface (gherkin-editor) and its client (lsp-client) neither execute authority behavior nor import the adapter implementation. Static presentation contracts such as the canonical highlighting token table may be shared directly. The editor drifted once into importing isExpressionIdentifierPart to compute replace ranges; ranges are now server-owned textEdits."
+rationale = "Completion, formatting, folding, semantic tokens and diagnostics reach the editor exclusively over the LSP protocol; the Monaco surface (gherkin-editor) and its client (lsp-client) neither execute authority behavior nor import the adapter implementation. Static presentation contracts such as the canonical highlighting token table may be shared directly. Template parameter scanning also stays behind the LSP boundary; the shared SDK context is transport data, not a browser parser. The editor drifted once into importing isExpressionIdentifierPart to compute replace ranges; ranges are now server-owned textEdits."
 expr = "$editor_source => NOT ($authority_language_behavior_target OR $language_server_target)"
 message = "The editor surface must obtain language behavior through the language server protocol, not by importing authority behavior or the adapter implementation."
 
@@ -219,14 +224,14 @@ rationale = "Federated presentation consumes public game observations and author
 [[ts.module.where]]
 id = "authority-call-flow-uses-canonical-dispatch"
 severity = "error"
-expr = '''$authority_dispatch_consumer => none(ast, kind = 'switch_statement' OR (kind = 'member_expression' AND parent.kind = 'binary_expression' AND text =~ '\.(type|kind|format|source)$') OR (kind = 'subscript_expression' AND parent.kind = 'binary_expression' AND text =~ '\[("|\x27)(type|kind|format|source)("|\x27)\]$'))'''
+expr = '''$authority_dispatch_consumer => (none(ast, kind = 'switch_statement' OR (kind = 'member_expression' AND parent.kind = 'binary_expression' AND text =~ '\.(type|kind|format)$') OR (kind = 'subscript_expression' AND parent.kind = 'binary_expression' AND text =~ '\[("|\x27)(type|kind|format)("|\x27)\]$')) AND ($authority_role_source_consumer => none(ast, (kind = 'member_expression' AND parent.kind = 'binary_expression' AND text =~ '\.source$') OR (kind = 'subscript_expression' AND parent.kind = 'binary_expression' AND text =~ '\[("|\x27)source("|\x27)\]$'))))'''
 message = "Use the canonical matcher instead of switching or comparing a variant discriminant in this consumer."
 rationale = "In declared semantic consumers even variant predicates use the matcher, preventing early-return/final-fallback bypasses. Ordinary value guards and transport routers remain allowed. AST0.11 cannot infer receiver types or follow destructured/renamed discriminants."
 
 [[tsx.module.where]]
 id = "authority-call-flow-uses-canonical-dispatch"
 severity = "error"
-expr = '''$authority_dispatch_consumer => none(ast, kind = 'switch_statement' OR (kind = 'member_expression' AND parent.kind = 'binary_expression' AND text =~ '\.(type|kind|format|source)$') OR (kind = 'subscript_expression' AND parent.kind = 'binary_expression' AND text =~ '\[("|\x27)(type|kind|format|source)("|\x27)\]$'))'''
+expr = '''$authority_dispatch_consumer => (none(ast, kind = 'switch_statement' OR (kind = 'member_expression' AND parent.kind = 'binary_expression' AND text =~ '\.(type|kind|format)$') OR (kind = 'subscript_expression' AND parent.kind = 'binary_expression' AND text =~ '\[("|\x27)(type|kind|format)("|\x27)\]$')) AND ($authority_role_source_consumer => none(ast, (kind = 'member_expression' AND parent.kind = 'binary_expression' AND text =~ '\.source$') OR (kind = 'subscript_expression' AND parent.kind = 'binary_expression' AND text =~ '\[("|\x27)source("|\x27)\]$'))))'''
 message = "Use the canonical matcher instead of switching or comparing a variant discriminant in this consumer."
 rationale = "TSX uses its own grammar namespace. This is the same bounded construction policy as TypeScript, not a global type-aware proof."
 

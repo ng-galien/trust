@@ -77,6 +77,26 @@ test("every complete Gherkin snippet of the documentation compiles", async ({ re
   expect(failures, failures.join("\n")).toEqual([]);
 });
 
+test("the documented dynamic mission includes a complete inline Procedure that compiles", async ({ request }) => {
+  const examples = (await fences()).filter((fence) => fence.file === "en/procedures/delegation.mdx");
+  const parent = examples.find((fence) => fence.meta.includes('id="dynamic-mission-parent"'));
+  const worker = examples.find((fence) => fence.meta.includes('id="dynamic-mission-worker"'));
+  const declaration = examples.find((fence) => fence.meta.includes('id="dynamic-mission-declarations"'));
+  expect(parent).toBeDefined();
+  expect(worker).toBeDefined();
+  expect(declaration).toBeDefined();
+  const missions = JSON.parse(declaration!.code);
+  expect(missions.work).toHaveLength(1);
+  expect(missions.work[0].definition.kind).toBe("inline");
+  expect(missions.work[0].definition.procedureSource).toBe(worker!.code);
+  expect(missions.work[0].definition.operationSources).toEqual([]);
+  for (const source of [parent!.code, missions.work[0].definition.procedureSource]) {
+    const result = await rpc(request, "procedure.compile", { source, sourceName: "documented-mission.feature" });
+    expect(result.error, JSON.stringify(result.error)).toBeUndefined();
+    expect(result.result).toBeDefined();
+  }
+});
+
 test("every screenshot the documentation references has been captured, with its legend keys", async () => {
   const missing: string[] = [];
   for (const file of await mdxFiles(contentRoot)) {

@@ -60,6 +60,34 @@ Stop when the assigned parent is complete or no authorized work is actionable.
 Report its current state and unresolved child blockers. Inspect the root's final
 state only when the root is your assigned coordination responsibility.
 
+## Declared child Procedures
+
+Use this path only when the assigned orchestration Procedure exposes mission
+collections and you are authorized to declare work. Read the parent Plan. Use
+`trust_plan_declarations_replace` with the current revision, scalar `declarations`,
+and `missionDeclarations` keyed by the authorized collection names.
+
+Supply each mission with a stable `id`, `rootInputs`, and one `definition`:
+
+- `published`: `reference` identifies an installed Procedure with a SemVer selector.
+- `inline`: `procedureSource` and `operationSources` contain canonical DSL sources.
+  Put the task scope, stopping instructions and qualification criteria in these
+  definitions. Inline content is compiled, not published into the reusable catalog.
+
+Retain accepted mission IDs, definitions and inputs unchanged when adding work.
+Omit `missionDeclarations` when preserving the existing collection without changes.
+TRUST pins the complete composition on acceptance; identical resubmission does not
+select newer catalog versions. After rejection, inspect the Plan and report any
+partial creation as a failure instead of treating the declaration as accepted.
+
+Read the resulting child Plan. When host dispatch is authorized, pass its identifier
+to the assigned agent; declaring work does not launch an agent. Follow the
+coordination instructions above to observe its progress.
+
+Do not remove or replace accepted missions to bypass a blocker. Use the existing
+escalation path when admissible; otherwise report the blocker to the coordinator.
+Inline sources and their resolved definitions remain in persistent Plan history.
+
 ## Select extension-specific instructions
 
 When the assignment uses the coordination extension, read its complete

@@ -1,4 +1,4 @@
-import { Blocks, BookOpen, ChevronRight, Plus, Settings } from "lucide-react";
+import { Blocks, BookOpen, ChevronRight, Files, Plus, Settings } from "lucide-react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { NavLink, useLocation, useNavigate } from "react-router";
@@ -282,9 +282,6 @@ function CompactSidebar() {
           icon={<overviewAnchor.icon size={17} strokeWidth={1.8} />}
           onPointerEnter={() => setFlyout(null)}
         />
-        <div onPointerEnter={() => setFlyout(null)}>
-          <ExtensionsNavigation compact />
-        </div>
         {sections.map((section) => (
           <div key={section.id} className="flex flex-col items-center gap-1">
             <span className="my-1.5 h-px w-5 bg-border" aria-hidden />

@@ -15,6 +15,7 @@ import { type PlanRuntime, PlanRuntimeError } from "../plan/runtime.js";
 import type { Procedures } from "../procedure/procedures.js";
 import { ProcedureConflictError } from "../procedure/store.js";
 import { RegistryError, type RegistryErrorCode, type RegistryService } from "../registry/service.js";
+import { TemplateError, type TemplateService } from "../template/service.js";
 import { TrialError, type TrialService } from "../trial/service.js";
 import { executeConfigurationRpc, InvalidConfigurationRpcParams, isConfigurationRpcMethod } from "./configuration.js";
 import {
@@ -25,6 +26,7 @@ import {
   type PlanRuntimeFailureData,
 } from "./plan.js";
 import { executeRegistryRpc, InvalidRegistryRpcParams, isRegistryRpcMethod } from "./registry.js";
+import { executeTemplateRpc, isTemplateRpcMethod } from "./templates.js";
 import {
   executeTrialRpc,
   InvalidTrialRpcParams,
@@ -134,6 +136,7 @@ interface RpcHttpDependencies {
   readonly credentialService: CredentialService;
   readonly planReader: PlanReader;
   readonly procedures: Procedures;
+  readonly templateService: TemplateService;
   readonly operationCatalog: OperationCatalog;
   readonly planRuntime: PlanRuntime;
   readonly registryService: RegistryService;
@@ -262,11 +265,22 @@ const processMessage = async (message: unknown, dependencies: RpcHttpDependencie
     message.method !== OPERATION_SAVE_METHOD &&
     message.method !== OPERATION_REMOVE_METHOD &&
     !isPlanRuntimeRpcMethod(message.method) &&
+    !isTemplateRpcMethod(message.method) &&
     !isConfigurationRpcMethod(message.method) &&
     !isRegistryRpcMethod(message.method) &&
     !isTrialRpcMethod(message.method)
   ) {
     return respond(failure(id, METHOD_NOT_FOUND, "Method not found"));
+  }
+
+  if (isTemplateRpcMethod(message.method)) {
+    try {
+      const result = await executeTemplateRpc(message.method, message.params, dependencies.templateService);
+      return respond({ jsonrpc: "2.0", id, result });
+    } catch (error) {
+      if (error instanceof TemplateError) return respond(failure(id, INVALID_PARAMS, error.message));
+      return respond(failure(id, INTERNAL_ERROR, "Internal error"));
+    }
   }
 
   if (isConfigurationRpcMethod(message.method)) {

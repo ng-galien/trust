@@ -306,7 +306,11 @@ export class PlanReader {
               invocationsSatisfied:
                 procedure.invocations.every((definition) =>
                   composition.invocations.some((value) => value.name === definition.name),
-                ) && composition.invocations.every((value) => value.state === "SATISFIED"),
+                ) &&
+                (procedure.declaredInvocations ?? []).every((definition) =>
+                  composition.invocations.some((value) => value.name === definition.name),
+                ) &&
+                composition.invocations.every((value) => value.state === "SATISFIED"),
             }),
           plan.currentIntentCheckUri,
           composition.scenarios,
@@ -353,6 +357,9 @@ export class PlanReader {
       workState: activeEscalation ? "ESCALATED" : checklistComplete ? "COMPLETE" : "IN_PROGRESS",
       revision: plan.currentRevision,
       declarations: revision.agentDeclarations,
+      missionCollections: procedure.missionCollections,
+      missionDeclarations: revision.missionDeclarations,
+      resolvedMissions: revision.resolvedMissions,
       declarationRoles,
       missingDeclarations,
       checklistComplete,
@@ -383,6 +390,8 @@ export class PlanReader {
         definitionDigest: item.definitionDigest,
         source: item.source,
         declarations: item.agentDeclarations,
+        missionDeclarations: item.missionDeclarations,
+        resolvedMissions: item.resolvedMissions,
         roleValues: item.roleValues,
         checkValues: item.checkValues,
         checkUris: item.checks.map((check) => check.uri),

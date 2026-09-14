@@ -11,6 +11,16 @@ export interface RegistrySourceTable {
   updated_at: string;
 }
 
+export interface SourceTemplateTable {
+  deleted: number;
+  id: string;
+  title: string;
+  description: string;
+  body: string;
+  parameters_json: string;
+  revision: number;
+}
+
 export interface EnvironmentTable {
   name: string;
   created_at: string;
@@ -67,6 +77,8 @@ export interface PlanRevisionTable {
   definition_digest: string;
   source: string;
   declarations_json: string;
+  mission_declarations_json: string;
+  resolved_missions_json: string;
   role_values_json: string;
   check_values_json: string;
   invocations_json: string;
@@ -189,6 +201,7 @@ export interface PlanEscalationTable {
 export interface TrustDatabase {
   registry_sources: RegistrySourceTable;
   environments: EnvironmentTable;
+  source_templates: SourceTemplateTable;
   environment_variables: EnvironmentVariableTable;
   environment_credentials: EnvironmentCredentialTable;
   published_procedures: PublishedProcedureTable;

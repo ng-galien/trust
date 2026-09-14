@@ -1,13 +1,32 @@
+import { useQuery } from "@tanstack/react-query";
 import type { ParseKeys } from "i18next";
-import { Activity, FlaskConical, GitBranch, History, LayoutDashboard, Server, TerminalSquare } from "lucide-react";
+import {
+  Activity,
+  Files,
+  FlaskConical,
+  GitBranch,
+  History,
+  LayoutDashboard,
+  Network,
+  Server,
+  TerminalSquare,
+} from "lucide-react";
 import type { ComponentType } from "react";
 import { useTranslation } from "react-i18next";
 
 import { plural } from "../lib/format.js";
 import { useRemoveEnvironment, useRemovePlan } from "../lib/mutations.js";
-import { useEnvironments, useOperations, usePlans, useProcedures } from "../lib/runtime-context.js";
+import { useEnvironments, useOperations, usePlans, useProcedures, useRuntime } from "../lib/runtime-context.js";
 
-export type AnchorId = "operations" | "procedures" | "environments" | "plans" | "dry-runs" | "history";
+export type AnchorId =
+  | "delegation"
+  | "templates"
+  | "operations"
+  | "procedures"
+  | "environments"
+  | "plans"
+  | "dry-runs"
+  | "history";
 export type Section = "design" | "run";
 type TranslationKey = ParseKeys;
 
@@ -31,6 +50,25 @@ export interface ResourceAnchor {
 export const overviewAnchor = { label: "shell.nav.overview", icon: LayoutDashboard, to: "/overview" } as const;
 
 export const resourceAnchors: ResourceAnchor[] = [
+  {
+    id: "delegation",
+    label: "delegation.title",
+    singular: "delegation.title",
+    icon: Network,
+    to: "/delegation",
+    section: "run",
+    explorable: false,
+  },
+  {
+    id: "templates",
+    label: "templates.title",
+    singular: "templates.select",
+    icon: Files,
+    to: "/templates",
+    section: "design",
+    explorable: true,
+    createTo: "/templates/new",
+  },
   {
     id: "operations",
     label: "shell.nav.operations",
@@ -125,6 +163,8 @@ export interface AnchorItems {
 /** Items shown under an anchor. Reads the same queries as the resource homes. */
 export function useAnchorItems(anchor: AnchorId): AnchorItems {
   const { t } = useTranslation();
+  const runtime = useRuntime();
+  const templates = useQuery({ queryKey: ["templates"], queryFn: runtime.templates });
   const operations = useOperations();
   const procedures = useProcedures();
   const plans = usePlans();
@@ -133,6 +173,18 @@ export function useAnchorItems(anchor: AnchorId): AnchorItems {
   const removeEnvironment = useRemoveEnvironment();
 
   switch (anchor) {
+    case "templates":
+      return {
+        loading: templates.isLoading,
+        error: templates.error?.message,
+        items: (templates.data ?? []).map((template) => ({
+          id: template.id,
+          label: template.title,
+          to: `/templates/${encodeURIComponent(template.id)}`,
+          meta: `r${template.revision}`,
+          duplicateTo: `/templates/new?from=${encodeURIComponent(template.id)}`,
+        })),
+      };
     case "operations":
       return {
         loading: operations.isLoading,

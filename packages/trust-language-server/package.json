@@ -33,7 +33,8 @@
     "@trust/procedure": "file:../trust-procedure",
     "vscode-languageserver": "^10.1.0",
     "vscode-languageserver-textdocument": "^1.0.12",
-    "vscode-ws-jsonrpc": "^3.5.0"
+    "vscode-ws-jsonrpc": "^3.5.0",
+    "@trust/extension-sdk": "file:../trust-extension-sdk"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",

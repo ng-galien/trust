@@ -71,7 +71,7 @@ export async function callDocumentationTool(
     return {
       text: [
         "TRUST DOCUMENTATION",
-        "Start: agents/README",
+        "Start: agents/SKILL",
         "Read with trust_documentation_read using the exact document identifier.",
         `Matches: ${matches.length}`,
         `Complete: ${next >= matches.length ? "yes" : "no"}`,
@@ -153,7 +153,7 @@ export function documentationTools() {
       name: "trust_documentation_list",
       title: "Discover TRUST documentation",
       description:
-        "Discover packaged agent operational guides, canonical English reference pages and authored examples. Start at agents/README. Optional query searches the text; follow Next cursor until Complete is yes.",
+        "Discover packaged agent operational guides, canonical English reference pages and authored examples. Start at agents/SKILL. Optional query searches the text; follow Next cursor until Complete is yes.",
       annotations: { readOnlyHint: true },
       inputSchema: {
         type: "object",

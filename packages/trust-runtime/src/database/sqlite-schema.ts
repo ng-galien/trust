@@ -3,6 +3,16 @@ import { existsSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 
 export const SQLITE_SCHEMA = `
+  CREATE TABLE IF NOT EXISTS source_templates (
+    id TEXT PRIMARY KEY,
+    deleted INTEGER NOT NULL DEFAULT 0 CHECK (deleted IN (0, 1)),
+    title TEXT NOT NULL,
+    description TEXT NOT NULL,
+    body TEXT NOT NULL,
+    parameters_json TEXT NOT NULL,
+    revision INTEGER NOT NULL CHECK (revision >= 1)
+  ) STRICT;
+
   CREATE TABLE IF NOT EXISTS registry_sources (
     name TEXT PRIMARY KEY,
     kind TEXT NOT NULL CHECK (kind IN ('git', 'http')),
@@ -91,6 +101,8 @@ export const SQLITE_SCHEMA = `
     definition_digest TEXT NOT NULL,
     source TEXT NOT NULL,
     declarations_json TEXT NOT NULL,
+    mission_declarations_json TEXT NOT NULL,
+    resolved_missions_json TEXT NOT NULL,
     role_values_json TEXT NOT NULL,
     check_values_json TEXT NOT NULL,
     invocations_json TEXT NOT NULL,

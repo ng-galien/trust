@@ -1,4 +1,11 @@
-export { analyzeProcedure, compileProcedure, isProcedureSource } from "./compile.js";
+export {
+  analyzeProcedure,
+  analyzeProcedureScope,
+  analyzeProcedureScopeFragment,
+  compileProcedure,
+  isProcedureSource,
+  procedureScopeFragment,
+} from "./compile.js";
 export { type ScenarioDependencies, transitiveScenarioDependencies } from "./dependencies.js";
 export { evaluateQualificationCondition, evaluateQualificationRule } from "./evaluate.js";
 export type { QualificationCompletionPath } from "./language.js";

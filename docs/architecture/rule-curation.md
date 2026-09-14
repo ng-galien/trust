@@ -83,6 +83,15 @@ because UI source props contain DSL text, although direct discriminator
 comparisons remain guarded.
 
 TypeScript verifies complete handler records. Boundary validation verifies JSON.
+The SDK mission definition follows the same `/match` import and semantic-consumer
+dispatch policy. The exact `plan/mission-declarations.ts` boundary validates unknown
+JSON into that union and is excluded from semantic dispatch checks; it must not
+take on execution or resolution responsibilities. Public CLI fixtures verify both
+rejection of SDK consumer branches and acceptance of this boundary validation.
+The `source` discriminant check selects consumers of `CompiledProcedureRole` or
+its source matcher through canonical imports. A Procedure's authored source text
+is not that discriminant. SDK mission consumers retain `kind`, `type`, and `format`
+dispatch checks without confusing source-text comparisons with role dispatch.
 Public runtime/runner/browser acceptances verify behavior. Code Moniker verifies
 the declared structural policy. These complementary forms of evidence must not
 be presented as interchangeable guarantees.

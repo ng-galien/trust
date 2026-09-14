@@ -115,6 +115,14 @@ environments/trust-test/  retained Kind environment: projects, cluster, manifest
 - Published Operation and Procedure versions are immutable and cannot be deleted, even when unused.
   Source edits are unpublished drafts and must publish under a new version. Discarding a draft is not
   deleting a published version. Catalog interfaces group one identity with its versions in the detail view.
+- A Procedure may declare mission collections whose entries select an installed Procedure or supply
+  inline canonical Procedure and Operation sources. TRUST validates and pins each complete composition
+  when the mission is accepted, before creating its child Plan. Inline definitions are persistent Plan
+  history, not reusable catalog publications. Static composition retains engagement-time pinning.
+  Accepted missions are append-only: identical resubmission preserves their resolution and child;
+  changing or removing an accepted mission is refused. Empty collections remain waiting for work.
+  Agents read child Plans and use the existing Runner and escalation paths. Host dispatch remains
+  outside TRUST; this capability adds no cancellation or post-escalation policy.
 - Registry sources are named configuration stored by the runtime. An HTTP source points directly to a
   `trust.registry-index@1` index; a Git source clones one repository (optionally at one ref) and reads
   `trust-registry.json` at its root. Synchronization is explicit, verifies every artifact digest and

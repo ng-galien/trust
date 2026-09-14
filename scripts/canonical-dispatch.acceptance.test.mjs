@@ -205,6 +205,82 @@ export const explanation = "switch (step.type) is forbidden; else if (step.type 
       `import { matchOperationStep as visit } from "@trust/operation/match"; export const render = visit;`,
     );
     assert.equal((await check()).exitCode, 0, "Aliased matcher import from public subpath remains valid");
+    await put(
+      discovered,
+      `import { matchMissionDefinition } from "@trust/extension-sdk"; export const visit = matchMissionDefinition;`,
+    );
+    const sdkRootMatcher = await check();
+    assert.equal(sdkRootMatcher.exitCode, 1);
+    assert.ok(
+      sdkRootMatcher.result.summary.failed_rules.some(
+        (item) => item.rule_id === "refs.authority-dependency-uses-matcher-subpath",
+      ),
+    );
+    await put(
+      discovered,
+      `import { matchMissionDefinition } from "@trust/extension-sdk/match"; export const visit = matchMissionDefinition;`,
+    );
+    assert.equal((await check()).exitCode, 0, "SDK matcher subpath is sanctioned");
+    await put(
+      discovered,
+      `import type { MissionDefinition as Definition } from "@trust/extension-sdk"; export function bad(value: Definition) { return value.kind === "published"; }`,
+    );
+    const sdkDispatch = await check();
+    assert.equal(sdkDispatch.exitCode, 1);
+    assert.ok(sdkDispatch.result.summary.failed_rules.some((item) => item.rule_id === `ts.module.${dispatchRule}`));
+    await put(
+      discovered,
+      `import type { MissionDefinition } from "@trust/extension-sdk"; export function sameSource(value: {procedure:{source:string}}, source: string) { return value.procedure.source === source; }`,
+    );
+    assert.equal((await check()).exitCode, 0, "Authored Procedure source is not a MissionDefinition discriminant");
+    for (const extension of ["ts", "tsx"]) {
+      const roleConsumer = `packages/trust-ui/src/role-consumer.${extension}`;
+      for (const access of ["value.source", 'value["source"]']) {
+        await put(
+          roleConsumer,
+          `import type { CompiledProcedureRole as Role } from "@trust/procedure"; export function bad(value: Role) { return ${access} === "root"; }`,
+        );
+        const roleDispatch = await check();
+        assert.equal(roleDispatch.exitCode, 1, "Role source comparisons must use their canonical matcher");
+        assert.ok(
+          roleDispatch.result.summary.failed_rules.some(
+            (item) => item.rule_id === `${extension}.module.${dispatchRule}`,
+          ),
+        );
+      }
+      await put(roleConsumer, "export const safe = true;");
+    }
+    await put(discovered, "export const safe = true;");
+    await put(
+      "packages/trust-runtime/src/plan/mission-declarations.ts",
+      `import type { MissionDefinition } from "@trust/extension-sdk"; export function parse(value: any): MissionDefinition | undefined { if (value.kind === "published") return {kind:"published",reference:"example@1.0.0"}; return undefined; }`,
+    );
+    assert.equal((await check()).exitCode, 0, "Mission JSON validation remains a separate boundary");
+    for (const module of ["template-source-editor", "template-renderer"]) {
+      const editor = `packages/trust-ui/src/resources/templates/${module}.tsx`;
+      for (const behavior of [
+        "scanTemplatePlaceholders",
+        "validateTemplateParameters",
+        "validateTemplateDefinition",
+        "materializeTemplate",
+      ]) {
+        await put(editor, `import { ${behavior} } from "@trust/extension-sdk"; export const forbidden = ${behavior};`);
+        const rejected = await check();
+        assert.equal(rejected.exitCode, 1, `${module} must not become a template semantic authority`);
+        assert.ok(
+          rejected.result.summary.failed_rules.some(
+            (item) =>
+              item.rule_id === "refs.editor-dependency-on-authority-language-behavior-goes-through-language-server",
+          ),
+          JSON.stringify(rejected.result),
+        );
+      }
+      await put(
+        editor,
+        `import type { TemplateParameter } from "@trust/extension-sdk"; export const parameters: TemplateParameter[] = [];`,
+      );
+      assert.equal((await check()).exitCode, 0, "Template editor may transport canonical contracts");
+    }
   } finally {
     await rm(directory, { recursive: true, force: true });
   }

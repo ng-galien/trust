@@ -1,4 +1,4 @@
-import type { PublishedProcedure } from "@trust/extension-sdk";
+import type { MissionDefinition, PublishedProcedure } from "@trust/extension-sdk";
 import { normalizeGherkinSource } from "@trust/gherkin";
 import type { CompiledOperation } from "@trust/operation";
 import {
@@ -9,6 +9,7 @@ import {
 } from "@trust/procedure";
 import type { OperationCatalog } from "../operation/catalog.js";
 import type { Clock } from "../time.js";
+import { resolveMissionDefinition } from "./mission-resolution.js";
 import type { ProcedureStore } from "./store.js";
 
 export type ProcedureSource = Omit<ProcedureCompilationInput, "operations" | "procedures" | "resolveProcedure">;
@@ -57,6 +58,13 @@ export class Procedures {
 
   async list(): Promise<readonly PublishedProcedure[]> {
     return this.#store.list();
+  }
+
+  /** Resolve one accepted mission without publishing its inline definitions. */
+  async resolveMission(definition: MissionDefinition): Promise<CompiledProcedure> {
+    const operations = this.#operations.list();
+    const procedures = (await this.#store.list()).map((value) => value.procedure);
+    return resolveMissionDefinition(definition, operations, procedures);
   }
 
   /** Resolve once for a new root engagement. Published definitions are never rewritten. */

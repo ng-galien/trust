@@ -31,6 +31,7 @@ import { useOverlayViewState } from "../shared/overlay-state.js";
 import { ResourceOverlay } from "../shared/resource-overlay.js";
 import { useSourceDraft } from "../shared/source-draft.js";
 import { VersionSelector } from "../shared/version-selector.js";
+import { ProcedureTemplatePicker } from "../templates/procedure-template-picker.js";
 import { hasIntentChaining, orderedScenarios, procedureTemplate, setIntentChaining } from "./model.js";
 import { ProcedureGraph } from "./procedure-graph.js";
 import { ProcedureOverview } from "./procedure-overview.js";
@@ -401,6 +402,7 @@ export function ProcedureOverlay({ mode = "item" }: { mode?: "item" | "new" }) {
               {t(intentChaining ? "procedures.overlay.intentChainingOn" : "procedures.overlay.intentChainingOff")}
             </Button>
           </div>
+          <ProcedureTemplatePicker onApply={setDraft} />
           <div className="min-h-0 flex-1">
             <GherkinEditor
               kind="procedure"

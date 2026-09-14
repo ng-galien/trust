@@ -1,8 +1,76 @@
 ---
 title: "Déléguer une mission"
-summary: "La première procédure de dogfooding TRUST : conserver une demande, attribuer le travail, recueillir la réponse et qualifier sa fin."
+summary: "Déclarer des missions enfants et distinguer leur exécution de l'intégration de coordination."
 order: 5
 ---
+
+## Collections de missions dynamiques
+
+Une Procedure peut exposer des collections de missions qu'un agent remplit après engagement. TRUST valide chaque mission et fige sa composition complète avant de créer son Plan enfant. Chaque enfant possède ses Checks, sa Session et son historique. Une collection vide attend du travail.
+
+Ces Procedures complètes déclarent la collection parente et le Check exécutable du worker. Celui-ci exige l'Operation installée `git.head-read@1.0.0` et un dépôt accessible au Runner dans un Environment compatible. Le Check qualifie l'état observé du dépôt, pas le rapport du worker.
+
+```gherkin procedure id="dynamic-mission-parent"
+@trust-dsl:1 @procedure:documentation-missions @version:1.0.0
+Feature: Govern declared repository observations
+  Background: Plan context
+    Given Procedure scope
+      | check | authorized | forbidden |
+      | all | Read assigned repositories. | Modify repositories or launch unassigned work. |
+    And missions "work" declared by agent
+  @scenario:work
+  Scenario: Execute declared missions
+    Then Invocation "execute-work" runs each declared Procedure in "work"
+      and must establish "the declared observations are complete"
+```
+
+```gherkin procedure id="dynamic-mission-worker"
+@trust-dsl:1 @procedure:documentation-observation @version:1.0.0
+Feature: Verify a delegated repository is clean
+  Background: Plan context
+    Given Procedure scope
+      | check | authorized | forbidden |
+      | all | Read the assigned repository. | Modify the repository or qualification criteria. |
+    And one reference "repository"
+  @scenario:observe
+  Scenario: Observe the repository
+    Then Check "clean repository" runs Operation "git.head-read@1.0.0"
+      on "repository" as Input "project"
+      and must establish "the delegated repository is clean"
+      """js
+      fact.workingTree === "clean" || fail("the delegated repository has local changes")
+      """
+```
+
+Pour une mission inline, transmettre la table `missionDeclarations` suivante à `trust_plan_declarations_replace`, avec `plan`, l'`expectedRevision` de la dernière lecture du Plan et l'instantané complet des déclarations scalaires `declarations` (`{}` ici). Remplacer `assigned-repository` par le nom du répertoire du dépôt : un seul segment, sans séparateur de chemin. Définir `workspaceRoot` dans l'Environment comme son répertoire parent. Un tableau `operationSources` vide utilise les Operations installées ; y fournir les sources canoniques complètes lorsque la mission définit ses propres Operations.
+
+```json id="dynamic-mission-declarations"
+{
+  "work": [
+    {
+      "id": "observe-repository",
+      "rootInputs": {
+        "repository": "assigned-repository"
+      },
+      "definition": {
+        "kind": "inline",
+        "procedureSource": "@trust-dsl:1 @procedure:documentation-observation @version:1.0.0\nFeature: Verify a delegated repository is clean\n  Background: Plan context\n    Given Procedure scope\n      | check | authorized | forbidden |\n      | all | Read the assigned repository. | Modify the repository or qualification criteria. |\n    And one reference \"repository\"\n  @scenario:observe\n  Scenario: Observe the repository\n    Then Check \"clean repository\" runs Operation \"git.head-read@1.0.0\"\n      on \"repository\" as Input \"project\"\n      and must establish \"the delegated repository is clean\"\n      \"\"\"js\n      fact.workingTree === \"clean\" || fail(\"the delegated repository has local changes\")\n      \"\"\"\n",
+        "operationSources": []
+      }
+    }
+  ]
+}
+```
+
+Une mission publiée utilise plutôt `definition: { kind: "published", reference: "documentation-observation@^1.0.0" }` ; cette Procedure doit déjà être installée. Les références acceptent des versions SemVer exactes ou des plages standard. TRUST choisit la version la plus élevée satisfaisant le sélecteur avant de valider sa compatibilité et fige toute la composition récursive à l'acceptation. Les publications ultérieures ne modifient pas les missions acceptées. Les définitions inline restent dans l'historique persistant du Plan sans publier de versions réutilisables au catalogue.
+
+Lire le Plan enfant obtenu et, lorsque le lancement est autorisé, transmettre son identifiant au worker affecté. Déclarer une mission ne lance pas d'agent : ce lancement reste à la charge de l'hôte. Le worker lit son enfant et transmet uniquement l'URI de Check fournie au Runner. Le coordinateur lit les états courants de l'enfant et du parent ; une réponse du worker ne suffit pas à satisfaire une Invocation. L'escalade d'un enfant bloque le travail dépendant et utilise la reprise existante par l'opérateur.
+
+Les missions acceptées ne permettent que l'ajout. Conserver les identifiants, définitions et entrées racines acceptés inchangés lors d'un ajout. Une resoumission identique garde la même résolution et le même enfant ; supprimer ou modifier est refusé. Omettre `missionDeclarations` conserve les missions existantes. Un lot invalide est rejeté atomiquement avant toute création d'enfant. L'ajout de travail retire la qualification parente dépendante jusqu'à la fin du travail requis.
+
+## Recette de l'extension de coordination
+
+Le workflow PostgreSQL suivant est une recette d'intégration distincte. Sa demande conservée, la prise en charge par le worker et sa réponse ne remplacent pas les collections de missions ni le cycle de vie des Plans enfants du moteur.
 
 La Procedure `agent-delegation` coordonne une mission délimitée. L'hôte lance l'agent. Une base PostgreSQL externe conserve les instructions et la réponse ; TRUST contrôle quand chaque Operation peut être exécutée et qualifie le résultat observé.
 

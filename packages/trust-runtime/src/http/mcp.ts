@@ -11,6 +11,7 @@ import type {
 } from "@trust/extension-sdk";
 import express, { type ErrorRequestHandler, type RequestHandler, type Router } from "express";
 import { ExtensionError, type ExtensionHost } from "../extensions/host.js";
+import { parseMissionDeclarations } from "../plan/mission-declarations.js";
 import { type PlanReader, ReadError } from "../plan/read.js";
 import { type PlanRuntime, PlanRuntimeError } from "../plan/runtime.js";
 import {
@@ -395,6 +396,7 @@ function renderPlan(view: PlanView): string {
           "PROCEDURE INVOCATIONS",
           ...view.invocations.flatMap((invocation) => [
             `- ${invocation.name}: ${invocation.state}; generation ${invocation.generation ?? "not started"}`,
+            ...(invocation.mission ? [`  Mission: ${invocation.mission.collection}/${invocation.mission.id}`] : []),
             ...(invocation.childPlan
               ? [
                   `  Child Plan: ${invocation.childPlan}`,
@@ -476,6 +478,24 @@ function renderPlan(view: PlanView): string {
     );
   }
   const declarationEntries = Object.entries(view.declarations);
+  if (view.missionCollections?.length) {
+    lines.push(
+      "",
+      "DECLARED MISSION COLLECTIONS",
+      "Use trust_plan_declarations_replace with the current revision. Preserve accepted missions unchanged when adding work.",
+      "Each mission supplies id, rootInputs, and a published reference or inline procedureSource and operationSources.",
+      ...view.missionCollections.flatMap(({ name }) => {
+        const missions = view.missionDeclarations?.[name] ?? [];
+        return [
+          `- ${name}: ${missions.length} accepted mission(s)${missions.length ? "" : "; waiting for work"}`,
+          ...missions.map((mission) => {
+            const resolved = view.resolvedMissions?.[name]?.find((entry) => entry.id === mission.id);
+            return `  ${mission.id}${resolved ? `: ${resolved.procedure.procedure}@${resolved.procedure.version}` : ""}`;
+          }),
+        ];
+      }),
+    );
+  }
   if (declarationEntries.length > 0) {
     lines.push(
       "",
@@ -611,6 +631,15 @@ function planNext(view: PlanView, actionableChecks: number): readonly string[] {
     return ["Read this Plan with trust_plan_read before running a Check. That read starts its intent chain."];
   }
   const actions: string[] = [];
+  if (view.missionCollections?.some(({ name }) => !view.missionDeclarations?.[name]?.length)) {
+    actions.push("Declare work in the empty mission collections with trust_plan_declarations_replace.");
+  }
+  const children = view.invocations.filter((invocation) => invocation.state === "RUNNING" && invocation.childPlan);
+  if (children.length) {
+    actions.push(
+      "Read the child Plans listed under PROCEDURE INVOCATIONS and assign their authorized work through the host.",
+    );
+  }
   if (actionableChecks > 0) {
     actions.push(
       view.intentChainState === "ACTIVE"
@@ -857,7 +886,7 @@ function tools(): readonly unknown[] {
       name: "trust_plan_declarations_replace",
       title: "Replace TRUST Plan declarations",
       description:
-        "Replace the complete current snapshot of agent declarations authorized by the Feature. Read the Plan first to discover exact roles, types, cardinalities and parent coordinates.",
+        "Replace scalar agent declarations and optionally submit declared mission collections. Read the Plan first. Missions use a published Procedure reference or inline canonical sources. Accepted missions cannot be removed or changed; preserve them when adding work. Omit missionDeclarations to retain them. Compilation does not execute the work; agents read child Plans and use the Runner.",
       inputSchema: {
         type: "object",
         properties: {
@@ -870,6 +899,46 @@ function tools(): readonly unknown[] {
           declarations: {
             type: "object",
             description: "Complete declaration snapshot using only Feature-authorized role names",
+          },
+          missionDeclarations: {
+            type: "object",
+            description:
+              "Mission collections authorized by the Procedure; include previously accepted missions unchanged",
+            additionalProperties: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  id: { type: "string", minLength: 1, maxLength: 256 },
+                  rootInputs: { type: "object" },
+                  definition: {
+                    oneOf: [
+                      {
+                        type: "object",
+                        properties: {
+                          kind: { const: "published" },
+                          reference: { type: "string", minLength: 1, maxLength: 2048 },
+                        },
+                        required: ["kind", "reference"],
+                        additionalProperties: false,
+                      },
+                      {
+                        type: "object",
+                        properties: {
+                          kind: { const: "inline" },
+                          procedureSource: { type: "string", minLength: 1 },
+                          operationSources: { type: "array", items: { type: "string", minLength: 1 } },
+                        },
+                        required: ["kind", "procedureSource", "operationSources"],
+                        additionalProperties: false,
+                      },
+                    ],
+                  },
+                },
+                required: ["id", "rootInputs", "definition"],
+                additionalProperties: false,
+              },
+            },
           },
         },
         required: ["plan", "expectedRevision", "declarations"],
@@ -937,15 +1006,17 @@ function exactCheckEscalation(value: Record<string, unknown>): CheckEscalationIn
 
 function exactPlanDeclarationReplacement(value: Record<string, unknown>): PlanDeclarationReplacementInput | undefined {
   const keys = ["plan", "expectedRevision", "declarations"];
-  const expected = new Set(keys);
+  const expected = new Set([...keys, "missionDeclarations"]);
+  const missionDeclarations =
+    value.missionDeclarations === undefined ? undefined : parseMissionDeclarations(value.missionDeclarations);
   if (
-    Object.keys(value).length !== keys.length ||
     Object.keys(value).some((key) => !expected.has(key)) ||
     keys.some((key) => !Object.hasOwn(value, key)) ||
     !boundedString(value.plan) ||
     !Number.isSafeInteger(value.expectedRevision) ||
     Number(value.expectedRevision) < 1 ||
-    !isRecord(value.declarations)
+    !isRecord(value.declarations) ||
+    (value.missionDeclarations !== undefined && missionDeclarations === undefined)
   ) {
     return undefined;
   }
@@ -954,6 +1025,7 @@ function exactPlanDeclarationReplacement(value: Record<string, unknown>): PlanDe
     plan: value.plan,
     expectedRevision: value.expectedRevision as number,
     declarations: value.declarations,
+    ...(missionDeclarations === undefined ? {} : { missionDeclarations }),
   };
 }
 

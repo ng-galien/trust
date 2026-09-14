@@ -1,10 +1,10 @@
 # Child Plan composition
 
-Status: product direction selected; detailed contracts and implementation pending.
+Status: implemented in the current checkout; delivery and coverage require public acceptance results for the tested revision.
 
 This supersedes the single-Plan execution model in
-[Procedure composition](procedure-composition.md). The current executable runtime
-does not yet implement either composition model. Existing independent delegation
+[Procedure composition](procedure-composition.md). The runtime implements static child
+invocations and agent-declared published or inline missions. Existing independent delegation
 Plans must not be retrospectively described as children of a parent Plan.
 
 ## Selected direction
@@ -64,7 +64,7 @@ finishes after supersession or ancestor escalation. Do not promise process
 cancellation or rollback of external side effects merely because a Plan relation
 changed.
 
-## Design work before implementation
+## Implementation review inventory
 
 1. Define stable parent/invocation/generation identity and atomic creation so
    repeated reads or concurrent requests cannot create duplicate active children.
@@ -85,8 +85,9 @@ changed.
    dependency refusal, final parent validation, restart without duplication,
    replacement after invalidation, late old-child response, and escalation.
 
-This direction reuses Plan lifecycle services but is not a small parser change.
-No new child-plan API, schema or runtime behavior is implemented by this document.
+This inventory records review obligations, not proof that every listed race and
+recovery case has been tested. The public composition and dynamic mission acceptance
+suites provide executable evidence; report the exact cases run for each revision.
 
 ## Acceptance coverage is a delivery gate
 
@@ -97,7 +98,7 @@ Required nesting includes both a three-level chain and a four-level chain
 invocations. Combine depth with siblings to prove that invalidating one branch
 does not replace unrelated branches. Finite nesting and cyclic Procedure
 dependencies are different cases: support the former and reject the latter.
-Before implementation, turn each selected lifecycle contract into explicit public
+For each implementation change, turn each selected lifecycle contract into explicit public
 acceptance cases with preconditions, action, expected state, forbidden effects and
 observable evidence. Unresolved semantics block the affected implementation slice;
 tests must not silently choose product behavior.
@@ -136,4 +137,4 @@ while lifecycle choices or documented cases remain unresolved.
 
 The focused [lifecycle acceptance checklist](child-plan-lifecycle-acceptance.md)
 records concrete execution orderings and the flat-runtime boundaries that need
-revalidation as composition is implemented.
+revalidation when composition changes.

@@ -115,6 +115,7 @@ export async function readComposition(database: Database, slug: string): Promise
     }
     invocations.push({
       id: invocation.id,
+      ...(invocation.mission ? { mission: invocation.mission } : {}),
       name: invocation.definition.name,
       scenario: invocation.definition.scenario,
       state: !current ? "WAITING" : childComplete ? "SATISFIED" : "RUNNING",
@@ -148,12 +149,14 @@ export async function readComposition(database: Database, slug: string): Promise
         .map((value) => `Scenario ${value} is not satisfied`),
     );
   }
-  const missingDeclarations = procedure.roles.some(
-    (role) =>
-      role.source.kind === "agent-declaration" &&
-      role.source.optional !== true &&
-      !Object.hasOwn(revision.agentDeclarations, role.name),
-  );
+  const missingDeclarations =
+    (procedure.missionCollections ?? []).some((value) => !revision.missionDeclarations[value.name]?.length) ||
+    procedure.roles.some(
+      (role) =>
+        role.source.kind === "agent-declaration" &&
+        role.source.optional !== true &&
+        !Object.hasOwn(revision.agentDeclarations, role.name),
+    );
   const escalated = await database
     .selectFrom("plan_escalations")
     .selectAll()
@@ -184,6 +187,9 @@ export async function readComposition(database: Database, slug: string): Promise
       !escalated &&
       active.length === revision.checks.length &&
       procedure.invocations.every((value) => invocations.some((invocation) => invocation.name === value.name)) &&
+      (procedure.declaredInvocations ?? []).every((value) =>
+        invocations.some((invocation) => invocation.name === value.name),
+      ) &&
       invocations.every((value) => value.state === "SATISFIED"),
     invocations,
     scenarios,
@@ -347,6 +353,8 @@ export async function synchronizeChildren(input: {
         metadata: plan.metadata,
         rootInputs: plan.rootInputs,
         declarations: revision.agentDeclarations,
+        missionDeclarations: revision.missionDeclarations,
+        resolvedMissions: revision.resolvedMissions,
         roleValues: revision.roleValues.filter((value) => !invalid.has(value.providerCheckUri)),
         checkValues: revision.checkValues.filter((value) => !invalid.has(value.providerCheckUri)),
         revision: plan.currentRevision + 1,

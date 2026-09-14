@@ -1,4 +1,5 @@
 import * as monaco from "@codingame/monaco-vscode-editor-api";
+import type { TemplateParameter } from "@trust/extension-sdk";
 import { type HighlightTokenTone, highlightTokenTable } from "@trust/gherkin";
 import { WrapText } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -8,6 +9,7 @@ import { TrustMonacoEditor } from "./monaco-editor.js";
 import {
   ensureTrustLanguageClient,
   initializeTrustMonaco,
+  setTrustTemplateContext,
   subscribeTrustLanguageServerStatus,
 } from "./monaco-stack.js";
 import { Button } from "./ui/button.js";
@@ -39,6 +41,10 @@ interface GherkinEditorProps {
   decorations?: EditorDecoration[] | undefined;
   fontSize?: number | undefined;
   onSave?: (() => void) | undefined;
+  /** Supplied only by template authoring; analysis remains owned by the shared LSP. */
+  templateParameters?: readonly TemplateParameter[] | undefined;
+  templateMaterialized?: boolean | undefined;
+  ariaLabel?: string | undefined;
 }
 
 const markerOwner = "trust";
@@ -53,10 +59,15 @@ export function GherkinEditor({
   decorations = [],
   fontSize = 13,
   onSave,
+  templateParameters,
+  templateMaterialized,
+  ariaLabel,
 }: GherkinEditorProps) {
   const { t } = useTranslation();
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | undefined>(undefined);
-  const documentUri = useRef(`inmemory://trust/${kind}/${crypto.randomUUID()}.feature`);
+  const documentUri = useRef(
+    `inmemory://trust/${templateParameters ? "templates" : kind}/${crypto.randomUUID()}.feature`,
+  );
   const currentValue = useRef(value);
   currentValue.current = value;
   const [editor, setEditor] = useState<monaco.editor.IStandaloneCodeEditor>();
@@ -70,8 +81,28 @@ export function GherkinEditor({
   saveRef.current = onSave;
   const language = `trust-${kind}`;
   const options = useMemo(
-    () => ({ ...editorOptions(readOnly, fontSize), wordWrap: wordWrap ? ("on" as const) : ("off" as const) }),
-    [fontSize, readOnly, wordWrap],
+    () => ({
+      ...editorOptions(readOnly, fontSize),
+      ...(ariaLabel ? { ariaLabel } : {}),
+      wordWrap: wordWrap ? ("on" as const) : ("off" as const),
+    }),
+    [fontSize, readOnly, wordWrap, ariaLabel],
+  );
+
+  useEffect(() => {
+    if (templateParameters)
+      setTrustTemplateContext({
+        uri: documentUri.current,
+        parameters: templateParameters,
+        ...(templateMaterialized === undefined ? {} : { materialized: templateMaterialized }),
+      });
+  }, [templateParameters, templateMaterialized]);
+  const templateMode = templateParameters !== undefined;
+  useEffect(
+    () => () => {
+      if (templateMode) setTrustTemplateContext({ uri: documentUri.current, parameters: null });
+    },
+    [templateMode],
   );
 
   useEffect(() => {

@@ -1,0 +1,132 @@
+/* Delegation uses the application's tokens; only composition is local. */
+.delegation-workspace {
+  display: grid;
+  grid-template-columns: 272px minmax(0, 1fr);
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+.delegation-worklist {
+  padding: 16px 12px;
+  border-right: 1px solid var(--color-border);
+  background: var(--color-surface-2);
+  overflow-y: auto;
+}
+.delegation-workitem {
+  width: 100%;
+  height: auto;
+  min-height: 68px;
+  margin: 4px 0;
+  padding: 14px 16px;
+  justify-content: flex-start;
+  white-space: normal;
+  text-align: left;
+  border: 1px solid transparent;
+  color: var(--color-text);
+}
+.delegation-workitem-selected,
+.delegation-workitem-selected:hover {
+  background: var(--color-surface);
+  border-color: var(--color-border);
+  box-shadow: inset 3px 0 var(--color-accent);
+  color: var(--color-text);
+}
+.delegation-inspector {
+  min-width: 0;
+  overflow-y: auto;
+  padding: 20px 24px;
+}
+.delegation-inspector-content {
+  max-width: 720px;
+}
+.delegation-inspector-heading {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 16px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--color-border);
+}
+.delegation-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-left: auto;
+}
+.delegation-check {
+  padding-top: 28px;
+}
+.delegation-check + .delegation-check {
+  margin-top: 24px;
+  border-top: 1px solid var(--color-border);
+}
+.delegation-result {
+  padding-bottom: 28px;
+}
+.delegation-result h3,
+.delegation-fact h3 {
+  margin-bottom: 10px;
+  font-size: var(--text-ui);
+  font-weight: 500;
+  color: var(--color-muted);
+}
+.delegation-result > p {
+  max-width: 56ch;
+  font-size: var(--text-lead);
+  font-weight: 500;
+  line-height: 1.6;
+  color: var(--color-text);
+}
+.delegation-verdict {
+  display: inline-block;
+  margin-top: 12px;
+  padding: 3px 8px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-1);
+  font-size: var(--text-caption);
+  color: var(--color-muted);
+}
+.delegation-fact {
+  display: grid;
+  grid-template-columns: 132px minmax(0, 1fr);
+  gap: 20px;
+  padding: 20px 0;
+  border-top: 1px solid var(--color-border);
+  font-size: var(--text-ui);
+  line-height: 1.6;
+}
+.delegation-fact h3 {
+  margin-bottom: 0;
+}
+.delegation-fact li + li {
+  margin-top: 8px;
+}
+@media (max-width: 900px) {
+  .delegation-workspace {
+    grid-template-columns: 220px minmax(0, 1fr);
+  }
+  .delegation-inspector {
+    padding: 24px;
+  }
+  .delegation-fact {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+  .delegation-actions {
+    margin-left: 0;
+  }
+}
+@media (max-width: 700px) {
+  .delegation-workspace {
+    grid-template-columns: 1fr;
+    grid-auto-rows: min-content;
+    overflow-y: auto;
+  }
+  .delegation-worklist {
+    border-right: 0;
+    border-bottom: 1px solid var(--color-border);
+  }
+  .delegation-inspector {
+    overflow-y: visible;
+  }
+}

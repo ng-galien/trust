@@ -24,7 +24,9 @@ import {
   CatalogProcedureCompilationError,
   type CompiledProcedure,
   type CompiledProcedureCheck,
+  type CompiledProcedureDeclaredInvocation,
   type CompiledProcedureInvocation,
+  type CompiledProcedureMissionCollection,
   type CompiledProcedureRole,
   type CompiledProcedureScope,
   type ProcedureAnalysis,
@@ -96,6 +98,7 @@ interface ScenarioSource {
   readonly dependencies: readonly string[];
   readonly checks: readonly CheckSource[];
   readonly invocations: readonly InvocationSource[];
+  readonly declaredInvocations: readonly CompiledProcedureDeclaredInvocation[];
   readonly location?: { readonly line: number; readonly column?: number };
 }
 
@@ -106,6 +109,7 @@ interface InvocationSource extends Omit<CheckSource, "qualification" | "target">
 interface PlanContextSource {
   readonly roles: RoleSource[];
   readonly scope: CompiledProcedureScope[];
+  readonly missionCollections: readonly CompiledProcedureMissionCollection[];
 }
 
 export function compileProcedure(input: ProcedureCompilationInput): CompiledProcedure {
@@ -198,6 +202,19 @@ function compileProcedureInternal(
     roleByName.set(role.name, role);
   }
   validateRoleParents(roleSources, roleByName, sourceName);
+  const collectionNames = new Set<string>();
+  for (const collection of planContext.missionCollections) {
+    if (!SLUG.test(collection.name) || collection.name === PLAN_ROLE)
+      fail("invalid-identifier", "Mission collection must be a non-reserved lowercase slug", sourceName, collection);
+    if (collectionNames.has(collection.name) || roleByName.has(collection.name))
+      fail(
+        "duplicate-role",
+        `Mission collection "${collection.name}" conflicts with another declaration`,
+        sourceName,
+        collection,
+      );
+    collectionNames.add(collection.name);
+  }
 
   const scenarioNodes = feature.children.flatMap((child) => (child.scenario ? [child.scenario] : []));
   if (scenarioNodes.length === 0)
@@ -427,7 +444,20 @@ function compileProcedureInternal(
   });
   validateOptionalRoleDependencies(roles, roleByName, sourceName);
   const compiledInvocations: CompiledProcedureInvocation[] = [];
+  const declaredInvocations = scenarioSources.flatMap((scenario) => scenario.declaredInvocations);
   const invocationNames = new Set<string>();
+  for (const invocation of declaredInvocations) {
+    if (!collectionNames.has(invocation.collection))
+      fail("unknown-role", `Unknown mission collection "${invocation.collection}"`, sourceName, invocation);
+    if (
+      !invocation.name.trim() ||
+      invocationNames.has(invocation.name) ||
+      checkByName.has(invocation.name) ||
+      invocation.name === "all"
+    )
+      fail("duplicate-invocation", "Declared Invocation must have a unique non-reserved name", sourceName, invocation);
+    invocationNames.add(invocation.name);
+  }
   for (const scenario of scenarioSources) {
     for (const invocation of scenario.invocations) {
       if (invocationNames.has(invocation.name) || checkByName.has(invocation.name) || invocation.name === "all") {
@@ -596,7 +626,7 @@ function compileProcedureInternal(
     title: scenario.title,
     dependencies: scenario.dependencies,
     checks: scenario.checks.map((check) => check.name),
-    invocations: scenario.invocations.map((invocation) => invocation.name),
+    invocations: [...scenario.invocations, ...scenario.declaredInvocations].map((invocation) => invocation.name),
     ...(scenario.location ? { location: scenario.location } : {}),
   }));
   const body = {
@@ -610,9 +640,17 @@ function compileProcedureInternal(
     scenarios,
     checks: compiledChecks,
     invocations: compiledInvocations,
+    ...(planContext.missionCollections.length > 0 ? { missionCollections: planContext.missionCollections } : {}),
+    ...(declaredInvocations.length > 0 ? { declaredInvocations } : {}),
   };
   const semanticBody = {
     ...body,
+    ...(body.missionCollections
+      ? { missionCollections: body.missionCollections.map(({ location: _location, ...value }) => value) }
+      : {}),
+    ...(body.declaredInvocations
+      ? { declaredInvocations: body.declaredInvocations.map(({ location: _location, ...value }) => value) }
+      : {}),
     operations: operations.map(({ definition, ...operation }) => ({
       ...operation,
       definition: operationSemantics(definition),
@@ -662,8 +700,69 @@ function readDescription(raw: string | undefined): string | undefined {
   return text === "" ? undefined : text;
 }
 
-function parsePlanContext(steps: readonly Step[], sourceName: string): PlanContextSource {
-  const [scopeStep, ...roleSteps] = steps;
+/** Canonical containment and supported boundary for an unpublished scope fragment. */
+export function procedureScopeFragment(source: string) {
+  const prefix = "Feature: Template authoring context\n  Background: Template authoring context\n";
+  const recognizes = (candidate: string) => {
+    const first = parseGherkin(prefix + candidate).feature?.children[0]?.background?.steps[0];
+    const phrase = procedureLanguage.phrases.scope;
+    return first?.keyword.trim() === "Given" && (first.text === phrase || phrase.startsWith(first.text.trimEnd()));
+  };
+  let recognized = false;
+  try {
+    recognized = recognizes(source);
+  } catch (error) {
+    if (!(error instanceof GherkinSyntaxError)) throw error;
+    const first = source.split(/\r\n|\r|\n/).find((line) => line.trim() && !line.trimStart().startsWith("#"));
+    if (first !== undefined) {
+      try {
+        recognized = recognizes(first);
+      } catch (firstError) {
+        if (!(firstError instanceof GherkinSyntaxError)) throw firstError;
+      }
+    }
+  }
+  return { recognized, prefix: recognized ? prefix : "" };
+}
+
+/** Only one scope step is supported as a fragment; never silently ignore the remaining source. */
+export function analyzeProcedureScopeFragment(source: string, sourceName: string): ProcedureAnalysis["diagnostics"] {
+  const document = parseGherkin(source);
+  const children = document.feature?.children ?? [];
+  const background = children[0]?.background;
+  const diagnostics = [...analyzeProcedureScope(background?.steps[0], sourceName)];
+  const unsupported = (location: { line: number; column?: number } | undefined) => {
+    diagnostics.push({
+      code: "invalid-procedure",
+      sourceName,
+      message:
+        "Only one Procedure scope step is supported in a scope fragment; author a complete Procedure for additional declarations or Scenarios.",
+      ...(location ? { location: { line: location.line, column: location.column ?? 1 } } : {}),
+    });
+  };
+  for (const step of background?.steps.slice(1) ?? []) unsupported(step.location);
+  for (const child of children.slice(1))
+    unsupported(child.scenario?.location ?? child.rule?.location ?? child.background?.location);
+  return diagnostics;
+}
+
+/** Analyze a scope step with the same rules used by complete Procedure compilation. */
+export function analyzeProcedureScope(
+  step: Step | undefined,
+  sourceName = "<procedure-scope>",
+): ProcedureAnalysis["diagnostics"] {
+  try {
+    parseProcedureScope(step, sourceName);
+    return [];
+  } catch (error) {
+    if (!(error instanceof CatalogProcedureCompilationError)) throw error;
+    return [
+      { code: error.code, message: error.message, sourceName, ...(error.location ? { location: error.location } : {}) },
+    ];
+  }
+}
+
+function parseProcedureScope(scopeStep: Step | undefined, sourceName: string): CompiledProcedureScope[] {
   const parsedScope = scopeStep ? parseProcedureStep(scopeStep.text, "background") : undefined;
   if (
     !scopeStep ||
@@ -707,7 +806,28 @@ function parsePlanContext(steps: readonly Step[], sourceName: string): PlanConte
   if (scope.length === 0 || !scope.some(({ check }) => check === "all")) {
     fail("invalid-procedure", "Procedure scope must contain at least one row for all Checks", sourceName, scopeStep);
   }
-  return { scope, roles: parseRoles(roleSteps, sourceName) };
+  return scope;
+}
+
+function parsePlanContext(steps: readonly Step[], sourceName: string): PlanContextSource {
+  const [scopeStep, ...roleSteps] = steps;
+  const scope = parseProcedureScope(scopeStep, sourceName);
+  const missionCollections: CompiledProcedureMissionCollection[] = [];
+  const scalarSteps: Step[] = [];
+  for (const step of roleSteps) {
+    const parsed = parseProcedureStep(step.text, "background");
+    if (parsed?.production !== "mission-collection") {
+      scalarSteps.push(step);
+      continue;
+    }
+    if (step.dataTable || step.docString || !["Given", "And"].includes(step.keyword.trim()))
+      fail("invalid-procedure", "Mission collection must be a plain Plan context declaration", sourceName, step);
+    missionCollections.push({
+      name: requireCapture(parsed, "mission-collection", sourceName, step),
+      location: step.location,
+    });
+  }
+  return { scope, roles: parseRoles(scalarSteps, sourceName), missionCollections };
 }
 
 function parseRoles(steps: readonly Step[], sourceName: string): RoleSource[] {
@@ -778,11 +898,12 @@ function parseScenario(scenario: Scenario, sourceName: string): ScenarioSource {
   const dependencies: string[] = [];
   const checks: CheckSource[] = [];
   const invocations: InvocationSource[] = [];
+  const declaredInvocations: CompiledProcedureDeclaredInvocation[] = [];
   for (const step of scenario.steps) {
     const dependency = parseDependency(step.text);
     if (dependency) {
       if (
-        checks.length + invocations.length > 0 ||
+        checks.length + invocations.length + declaredInvocations.length > 0 ||
         (step.keyword.trim() !== "Given" && step.keyword.trim() !== "And") ||
         step.dataTable ||
         step.docString
@@ -795,6 +916,23 @@ function parseScenario(scenario: Scenario, sourceName: string): ScenarioSource {
     if (step.keyword.trim() !== "Then" && step.keyword.trim() !== "And")
       fail("invalid-procedure", "Check placement is invalid", sourceName, step);
     const parsed = parseProcedureStep(step.text, "scenario");
+    if (parsed?.production === "declared-invocation") {
+      if (step.docString || step.dataTable)
+        fail(
+          "invalid-procedure",
+          "Declared Invocation qualification is authoritative child completion",
+          sourceName,
+          step,
+        );
+      declaredInvocations.push({
+        name: requireCapture(parsed, "check", sourceName, step),
+        scenario: slug,
+        collection: requireCapture(parsed, "mission-collection", sourceName, step),
+        successReason: requireCapture(parsed, "reason", sourceName, step),
+        location: step.location,
+      });
+      continue;
+    }
     if (parsed?.production === "invocation") {
       if (step.docString || step.dataTable)
         fail(
@@ -821,9 +959,17 @@ function parseScenario(scenario: Scenario, sourceName: string): ScenarioSource {
       location: step.location,
     });
   }
-  if (checks.length + invocations.length === 0)
+  if (checks.length + invocations.length + declaredInvocations.length === 0)
     fail("invalid-procedure", `Scenario "${slug}" must contain at least one Check or Invocation`, sourceName, scenario);
-  return { slug, title: scenario.name, dependencies, checks, invocations, location: scenario.location };
+  return {
+    slug,
+    title: scenario.name,
+    dependencies,
+    checks,
+    invocations,
+    declaredInvocations,
+    location: scenario.location,
+  };
 }
 
 function parseDependency(text: string): string | undefined {

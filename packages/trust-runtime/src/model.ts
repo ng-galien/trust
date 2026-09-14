@@ -5,8 +5,10 @@ import type {
   ChecklistVerdict,
   CheckState,
   IntentChainState,
+  MissionDeclarations,
   PlanMetadata,
   PlanMode,
+  ResolvedMissions,
   RuntimeJsonObject,
 } from "@trust/extension-sdk";
 import type { CompiledOperation } from "@trust/operation";
@@ -91,6 +93,8 @@ export interface PlanRevision {
   metadata: PlanMetadata;
   rootInputs: RuntimeJsonObject;
   agentDeclarations: RuntimeJsonObject;
+  missionDeclarations: MissionDeclarations;
+  resolvedMissions: ResolvedMissions;
   planSlug: string;
   revision: number;
   definitionDigest: string;
@@ -103,6 +107,7 @@ export interface PlanRevision {
 
 export interface PlanInvocation {
   id: string;
+  mission?: { readonly collection: string; readonly id: string };
   definition: CompiledProcedureInvocation;
   rootInputs: RuntimeJsonObject;
   scenarioDependencies: readonly string[];

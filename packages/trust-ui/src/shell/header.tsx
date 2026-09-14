@@ -81,6 +81,8 @@ export function Header() {
 
 /** The documentation page of the current screen (route prefix → page below /docs). Kept static: the docs are their own chunk. */
 const helpPages: Array<[string, string]> = [
+  ["/delegation", "plans/delegation"],
+  ["/templates", "procedures/templates"],
   ["/operations", "operations/authoring"],
   ["/procedures", "procedures/authoring"],
   ["/environments", "environments"],

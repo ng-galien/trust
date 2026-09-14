@@ -132,6 +132,27 @@ const procedureQuoted = (slot: string, detail: string) => stepQuoted(slot, detai
 export const procedureStepGrammar: StepGrammar = {
   productions: [
     {
+      name: "mission-collection",
+      context: "background",
+      expression: stepSequence(
+        procedureLiteral("missions", "Declared child mission collection"),
+        procedureQuoted("mission-collection", "Mission collection"),
+        procedureLiteral("declared by agent", "Agent declaration"),
+      ),
+    },
+    {
+      name: "declared-invocation",
+      context: "scenario",
+      expression: stepSequence(
+        procedureLiteral("Invocation", "Child Plan invocation"),
+        procedureQuoted("check", "Invocation name"),
+        procedureLiteral("runs each declared Procedure in", "Declared child Procedure collection"),
+        procedureQuoted("mission-collection", "Mission collection"),
+        procedureLiteral("and must establish", "Successful child completion"),
+        procedureQuoted("reason", "Success reason"),
+      ),
+    },
+    {
       name: "invocation",
       context: "scenario",
       expression: stepSequence(

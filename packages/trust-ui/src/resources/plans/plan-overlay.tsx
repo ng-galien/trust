@@ -599,7 +599,7 @@ function EscalationDeclaration({ title, value }: { title: string; value: string 
   );
 }
 
-function PlanHistory({ plan }: { plan: PlanView }) {
+export function PlanHistory({ plan }: { plan: PlanView }) {
   const { t } = useTranslation();
   const expert = useExpert();
   const change = plan.latestRevisionChange;

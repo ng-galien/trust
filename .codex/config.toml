@@ -1,0 +1,30 @@
+[mcp_servers.trust]
+url = "http://127.0.0.1:4498/mcp"
+enabled = true
+
+[mcp_servers.trust.tools.trust_plan_engage]
+approval_mode = "approve"
+
+[mcp_servers.trust.tools.trust_plan_read]
+approval_mode = "approve"
+
+[mcp_servers.trust.tools.trust_plan_declarations_replace]
+approval_mode = "approve"
+
+[mcp_servers.trust.tools.trust_operation_list]
+approval_mode = "approve"
+
+[mcp_servers.trust.tools.trust_procedure_list]
+approval_mode = "approve"
+
+[mcp_servers.trust.tools.trust_check_read]
+approval_mode = "approve"
+
+[mcp_servers.trust.tools.trust_operation_compile]
+approval_mode = "approve"
+
+[mcp_servers.trust.tools.trust_operation_save]
+approval_mode = "approve"
+
+[mcp_servers.trust.tools.trust_procedure_compile]
+approval_mode = "approve"

@@ -1,6 +1,7 @@
 import "@codingame/monaco-vscode-standalone-json-language-features";
 import EditorWorker from "@codingame/monaco-vscode-editor-api/esm/vs/editor/editor.worker.js?worker";
 import JsonWorker from "@codingame/monaco-vscode-standalone-json-language-features/worker?worker";
+import { type TemplateDocumentContext, templateDocumentContextMethod } from "@trust/extension-sdk";
 
 import { LanguageClientManager } from "monaco-languageclient/lcwrapper";
 import {
@@ -23,6 +24,7 @@ const vscodeApiConfig: MonacoVscodeApiConfig = {
 
 let vscodeApiPromise: Promise<void> | undefined;
 const languageClients = new LanguageClientManager();
+const templateContexts = new Map<string, TemplateDocumentContext>();
 const statusListeners = new Set<(status: TrustLanguageServerStatus) => void>();
 let languageServerUrl: string | undefined;
 let languageServerStatus: TrustLanguageServerStatus = "connecting";
@@ -76,6 +78,7 @@ async function startLanguageClient(): Promise<void> {
   try {
     await startLanguageClientsWithin(1_000);
     updateLanguageServerStatus("ready");
+    for (const context of templateContexts.values()) void sendTemplateContext(context);
   } catch {
     updateLanguageServerStatus("unavailable");
     scheduleReconnect();
@@ -114,4 +117,20 @@ function scheduleReconnect(): void {
 function updateLanguageServerStatus(status: TrustLanguageServerStatus): void {
   languageServerStatus = status;
   for (const listener of statusListeners) listener(status);
+}
+
+/** Template authoring context travels over the existing LSP connection, never another analyzer. */
+export function setTrustTemplateContext(context: TemplateDocumentContext): void {
+  if (context.parameters === null) templateContexts.delete(context.uri);
+  else templateContexts.set(context.uri, context);
+  if (languageClients.isStarted()) void sendTemplateContext(context);
+}
+
+async function sendTemplateContext(context: TemplateDocumentContext): Promise<void> {
+  try {
+    await languageClients.getLanguageClient("trust")?.sendNotification(templateDocumentContextMethod, context);
+  } catch {
+    // The complete current context map is replayed by the shared client's reconnect path.
+    languageClientDisconnected();
+  }
 }

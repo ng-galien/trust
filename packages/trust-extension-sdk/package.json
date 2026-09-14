@@ -4,6 +4,10 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./match": {
+      "types": "./dist/match.d.ts",
+      "import": "./dist/match.js"
+    },
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"

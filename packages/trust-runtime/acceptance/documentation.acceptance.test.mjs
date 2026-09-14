@@ -54,8 +54,13 @@ async function verify(endpoint) {
   for (const name of ["trust_documentation_list", "trust_documentation_read"]) {
     assert.equal(tools.find((entry) => entry.name === name)?.annotations.readOnlyHint, true);
   }
+  assert.match(
+    tools.find((entry) => entry.name === "trust_documentation_list")?.description ?? "",
+    /Start at agents\/SKILL\./,
+  );
   const first = output(await tool(endpoint, "trust_documentation_list", { limit: 2 }));
-  assert.match(first, /agents\/SKILL/);
+  const entrypoint = first.match(/^Start: (.+)$/m)?.[1];
+  assert.equal(entrypoint, "agents/SKILL");
   const listCursor = next(first);
   assert.ok(listCursor);
   assert.equal(
@@ -67,7 +72,7 @@ async function verify(endpoint) {
 
   const index = await read(endpoint, "agents/README", 511);
   assert.match(index, /trust-doc:\/\/\/agents\/SKILL/);
-  const skill = await read(endpoint, "agents/SKILL", 511);
+  const skill = await read(endpoint, entrypoint, 511);
   assert.match(skill, /trust-doc:\/\/\/references\/runner/);
   for (const reference of [
     "author-operation",
@@ -77,6 +82,13 @@ async function verify(endpoint) {
     "author-extension",
   ]) {
     assert.ok(skill.includes(`trust-doc:///agents/${reference}`));
+  }
+  const skillReferences = new Set(
+    Array.from(skill.matchAll(/\]\(trust-doc:\/\/\/([^\s)#]+)(?:#[^)]*)?\)/g), (match) => decodeURIComponent(match[1])),
+  );
+  assert.ok(skillReferences.size > 0, "the operational entrypoint must route to packaged references");
+  for (const reference of skillReferences) {
+    assert.ok((await read(endpoint, reference, 511)).trim(), `Unreadable skill reference ${reference}`);
   }
   const runner = await read(endpoint, "references/runner");
   assert.match(runner, /Do not modify, patch, reimplement or bypass/);

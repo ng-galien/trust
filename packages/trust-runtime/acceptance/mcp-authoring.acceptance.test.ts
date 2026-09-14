@@ -7,6 +7,11 @@ import test from "node:test";
 import { startPublicRuntime } from "./support/runtime-process.js";
 
 const expectedAuthoringTools = [
+  "trust_template_list",
+  "trust_template_read",
+  "trust_template_save",
+  "trust_template_remove",
+  "trust_template_render",
   "trust_operation_list",
   "trust_operation_read",
   "trust_operation_compile",

@@ -163,6 +163,20 @@ export interface CompiledProcedureOperation {
   readonly definition: CompiledOperation;
 }
 
+/** A collection of child missions declared after parent engagement, separate from scalar roles. */
+export interface CompiledProcedureMissionCollection {
+  readonly name: string;
+  readonly location?: CompiledSourceLocation;
+}
+
+export interface CompiledProcedureDeclaredInvocation {
+  readonly name: string;
+  readonly scenario: string;
+  readonly collection: string;
+  readonly successReason: string;
+  readonly location?: CompiledSourceLocation;
+}
+
 /** One prose boundary declared by the Procedure. `all` applies to every Check; a Check name adds
     boundaries for that Check. The runner never interprets these declarations. */
 export interface CompiledProcedureScope {
@@ -188,4 +202,6 @@ export interface CompiledProcedure {
   readonly scenarios: readonly CompiledProcedureScenario[];
   readonly checks: readonly CompiledProcedureCheck[];
   readonly invocations: readonly CompiledProcedureInvocation[];
+  readonly missionCollections?: readonly CompiledProcedureMissionCollection[];
+  readonly declaredInvocations?: readonly CompiledProcedureDeclaredInvocation[];
 }

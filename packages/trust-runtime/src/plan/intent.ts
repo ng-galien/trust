@@ -24,7 +24,13 @@ export function completesPlanOnValidation(input: {
   readonly invocationsSatisfied?: boolean;
 }): boolean {
   const { procedure, revision, checks, activeCheckUris, check } = input;
-  if (procedure.invocations.length > 0 && input.invocationsSatisfied !== true) return false;
+  if (
+    (procedure.invocations.length > 0 || (procedure.declaredInvocations?.length ?? 0) > 0) &&
+    input.invocationsSatisfied !== true
+  )
+    return false;
+  if ((procedure.missionCollections ?? []).some((value) => !revision.missionDeclarations[value.name]?.length))
+    return false;
   const missingDeclarations = procedure.roles.some(
     (role) =>
       role.source.kind === "agent-declaration" &&

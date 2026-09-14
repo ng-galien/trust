@@ -1,5 +1,11 @@
 import { createHash } from "node:crypto";
-import type { PlanMetadata, PlanMode, RuntimeJsonObject } from "@trust/extension-sdk";
+import type {
+  MissionDeclarations,
+  PlanMetadata,
+  PlanMode,
+  ResolvedMissions,
+  RuntimeJsonObject,
+} from "@trust/extension-sdk";
 import { matchOperationValueType } from "@trust/operation/match";
 
 import type { CompiledProcedure, CompiledProcedureRole } from "@trust/procedure";
@@ -24,6 +30,8 @@ export interface BuildPlanRevisionInput {
   readonly metadata: PlanMetadata;
   readonly rootInputs: RuntimeJsonObject;
   readonly declarations?: RuntimeJsonObject;
+  readonly missionDeclarations?: MissionDeclarations;
+  readonly resolvedMissions?: ResolvedMissions;
   readonly revision: number;
   readonly roleValues?: readonly ProducedRoleValue[];
   readonly checkValues?: readonly CheckValues[];
@@ -76,6 +84,38 @@ export function buildPlanRevision(input: BuildPlanRevisionInput): PlanRevision {
         definition,
         rootInputs,
         scenarioDependencies: scenarioDependencies.get(definition.scenario) ?? [],
+      });
+    }
+  }
+
+  for (const declaration of input.procedure.declaredInvocations ?? []) {
+    for (const mission of input.missionDeclarations?.[declaration.collection] ?? []) {
+      const child = input.resolvedMissions?.[declaration.collection]?.find(
+        (value) => value.id === mission.id,
+      )?.procedure;
+      if (!child) throw new TypeError(`Mission "${mission.id}" has no pinned Procedure`);
+      const rootInputs = validateRootInputs(child.roles, mission.rootInputs);
+      invocations.push({
+        id: digest({
+          name: declaration.name,
+          scenario: declaration.scenario,
+          collection: declaration.collection,
+          mission: mission.id,
+        }),
+        mission: { collection: declaration.collection, id: mission.id },
+        definition: {
+          name: declaration.name,
+          scenario: declaration.scenario,
+          procedure: child.procedure,
+          procedureVersion: child.version,
+          procedureSelector: child.version,
+          procedureDigest: child.definitionDigest,
+          childDefinition: child,
+          inputBindings: [],
+          successReason: declaration.successReason,
+        },
+        rootInputs,
+        scenarioDependencies: scenarioDependencies.get(declaration.scenario) ?? [],
       });
     }
   }
@@ -230,6 +270,8 @@ export function buildPlanRevision(input: BuildPlanRevisionInput): PlanRevision {
     metadata: input.metadata,
     rootInputs,
     agentDeclarations: declarations,
+    missionDeclarations: input.missionDeclarations ?? {},
+    resolvedMissions: input.resolvedMissions ?? {},
     planSlug: input.plan,
     revision: input.revision,
     definitionDigest: input.procedure.definitionDigest,
@@ -250,7 +292,10 @@ export function validateAgentDeclarations(
   return normalizeDeclarations(roles, validateRootInputs(roles, rootInputs), plan, declarations).declarations;
 }
 
-function validateRootInputs(roles: readonly CompiledProcedureRole[], values: RuntimeJsonObject): RuntimeJsonObject {
+export function validateRootInputs(
+  roles: readonly CompiledProcedureRole[],
+  values: RuntimeJsonObject,
+): RuntimeJsonObject {
   const expected = new Map(roles.filter(isPlanInput).map((role) => [role.name, role]));
   if (Object.keys(values).length !== expected.size || Object.keys(values).some((name) => !expected.has(name))) {
     throw new TypeError(`Plan Inputs must be exactly: ${[...expected.keys()].join(", ")}`);

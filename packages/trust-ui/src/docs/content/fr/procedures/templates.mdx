@@ -1,0 +1,37 @@
+---
+title: "Templates réutilisables"
+summary: "Créer un texte réutilisable, renseigner ses paramètres et examiner le brouillon obtenu."
+order: 6
+screen: /templates
+---
+
+Les templates conservent du texte réutilisable et des paramètres nommés. Ils peuvent décrire une Procedure complète, une Operation, un fragment de policy ou un autre format textuel. Ce sont des supports de rédaction : enregistrer ou instancier un template ne publie aucune définition et n'exécute aucun Plan.
+
+## Créer et réutiliser
+
+Ouvrez **Templates** dans la navigation. Créez un template avec un identifiant, un titre, une description et un contenu. Écrivez les paramètres sous la forme `{{name}}`, puis déclarez chaque nom avec une description et, éventuellement, une valeur par défaut. Les noms commencent par une lettre et peuvent contenir des lettres, des chiffres et des caractères de soulignement.
+
+Sélectionnez un template enregistré, renseignez ses paramètres et prévisualisez le résultat. Les valeurs sont insérées littéralement une seule fois : ce ne sont pas des expressions, et le texte inséré n'est pas interprété comme un autre template. Les valeurs par défaut s'appliquent lorsqu'une valeur est omise. Dans l'éditeur de paramètre, activez **Utiliser la valeur par défaut** pour distinguer un défaut vide d'une absence de défaut ; effacer un défaut activé conserve la chaîne vide. L'échappement propre à Gherkin, JSON ou au langage de destination reste une responsabilité de rédaction.
+
+Le catalogue est initialement vide. Créez des templates à partir de sources que vous réutilisez réellement ; enregistrer un template ne rend pas ses consignes exécutoires par le runtime.
+
+## Assistance au langage
+
+La source et l’aperçu d’un template utilisent le même éditeur et le même serveur de langage que les Operations et les Procedures. Le serveur analyse le langage canonique ; les templates n’introduisent pas une autre grammaire Gherkin.
+
+Les valeurs par défaut déclarées fournissent un contexte de rédaction pour la complétion et les diagnostics. Les indications pointent vers le template original, même si une valeur occupe plusieurs lignes. Un paramètre sans valeur par défaut reste explicitement non résolu ; aucune valeur métier n’est inventée. La validation des définitions et la substitution littérale ont un seul propriétaire partagé, utilisé par le runtime et le serveur de langage. Un aperçu déjà matérialisé reçoit l’assistance du langage de destination sans rechercher à nouveau des paramètres. Un fragment de scope de Procedure utilise la validation du compilateur ; les déclarations et Scenarios supplémentaires sont explicitement non pris en charge dans un fragment et nécessitent une Procedure complète. Les diagnostics indépendants situés hors des paramètres non résolus restent visibles. Le texte générique n’est pas traité comme une Procedure complète.
+
+Cette analyse ne publie pas le template et n’ajoute pas son contexte temporaire aux catalogues d’Operations et de Procedures. Examinez la source obtenue avant de l’utiliser.
+
+## Utiliser un brouillon
+
+Dans l'éditeur de Procedure, sélectionnez un template et examinez son aperçu avant de remplacer explicitement le brouillon courant. L'éditeur et le serveur de langage analysent ensuite le Gherkin obtenu comme d'habitude. Un fragment peut être copié et intégré dans une source existante ; préservez alors le périmètre et les Checks de la Procedure.
+
+Une mission inline peut utiliser la même source de Procedure générée. Le rendu seul ne nécessite pas la publication des Operations référencées ; les règles habituelles du compilateur et de l'acceptation des missions s'appliquent lors de l'utilisation de la source.
+
+## Modifier sans changer le travail existant
+
+Les templates peuvent être modifiés, dupliqués et supprimés. Un contrôle de révision empêche un client d'écraser silencieusement les modifications d'un autre ; relisez le template courant lorsqu'un conflit est signalé.
+
+Le texte généré est indépendant de son template. Modifier ou supprimer le template ne met pas à jour les brouillons déjà créés et ne change pas l'historique des missions acceptées.
+

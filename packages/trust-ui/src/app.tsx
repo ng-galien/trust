@@ -8,11 +8,14 @@ import { HistoryHome } from "./resources/history/history-home.js";
 import { OperationOverlay } from "./resources/operations/operation-overlay.js";
 import { OperationsHome } from "./resources/operations/operations-home.js";
 import { OverviewHome } from "./resources/overview/overview-home.js";
+import { DelegationHome } from "./resources/plans/delegation-home.js";
 import { PlanOverlay } from "./resources/plans/plan-overlay.js";
 import { PlansHome } from "./resources/plans/plans-home.js";
 import { ProcedureOverlay } from "./resources/procedures/procedure-overlay.js";
 import { ProceduresHome } from "./resources/procedures/procedures-home.js";
 import { SettingsHome } from "./resources/settings/settings-home.js";
+import { TemplateOverlay } from "./resources/templates/template-overlay.js";
+import { TemplatesHome } from "./resources/templates/templates-home.js";
 import { TrustRuntimeClient } from "./runtime.js";
 import { AppShell } from "./shell/app-shell.js";
 import { LoadingState } from "./ui/states.js";
@@ -52,7 +55,12 @@ export function TrustApplication({ runtimeUrl }: { runtimeUrl: string }) {
                 <Route path=":plan" element={<PlanOverlay planMode="dry-run" />} />
               </Route>
               <Route path="/checklists" element={<Navigate to="/plans" replace />} />
+              <Route path="/delegation" element={<DelegationHome />} />
               <Route path="/history" element={<HistoryHome />} />
+              <Route path="/templates" element={<TemplatesHome />}>
+                <Route path="new" element={<TemplateOverlay mode="new" />} />
+                <Route path=":template" element={<TemplateOverlay />} />
+              </Route>
               <Route path="/settings" element={<SettingsHome />} />
               <Route path="/extensions" element={<ExtensionsHome />} />
               <Route path="/extensions/:extension" element={<ExtensionPage />} />

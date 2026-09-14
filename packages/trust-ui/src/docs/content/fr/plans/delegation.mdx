@@ -1,0 +1,14 @@
+---
+title: "Suivre les délégations"
+summary: "Lire les Plans parents et enfants avec leurs Checks et leurs résultats enregistrés."
+order: 3
+screen: /delegation
+---
+
+Ouvrir **Délégation** dans **Exécution** pour accéder au catalogue des travaux de délégation enregistrés. Seuls les Plans actifs ayant des Plans enfants enregistrés apparaissent. Les Plans indépendants sans délégation sont exclus. Le catalogue s’ouvre en liste et reprend la recherche, le tri, l’affichage en cartes et la fenêtre de détail des autres ressources.
+
+Ouvrir une ligne pour consulter une synthèse unique. Sélectionner un travail dans la liste de gauche pour lire son résultat attendu, sa qualification enregistrée et ses prérequis dans le détail adjacent. Le Plan parent apparaît au-dessus de ses Plans enfants indentés. Sélectionner le parent affiche sa propre vérification. Le détail réutilise la checklist des Plans : hiérarchie des scénarios, Checks dépliables, entrées, historique des qualifications, tentatives et Facts retournés. Le détail propose des boutons pour ouvrir le Plan et son historique ; les consignes complètes restent dans le Plan. Sur écran étroit, la liste apparaît au-dessus du détail. Les onglets Overview/Work et le bandeau de compteurs sont supprimés. Fermer le détail conserve les filtres du catalogue.
+
+Les attributions aux agents côté hôte ne sont pas déduites des noms ou des étiquettes. Les informations de coordination ne figurent pas dans cette projection du runtime. Les générations remplacées restent signalées explicitement. Les invocations sans enfant apparaissent dans la vue d’ensemble du parent sélectionné lorsque celui-ci appartient déjà à une délégation enregistrée.
+
+L’ordre des Checks est un ordre de lecture, pas une nouvelle séquence d’exécution. Le runtime reste responsable des prérequis et de la qualification. Cette vue lit les Plans existants et suit leurs mises à jour ; elle n’engage aucun Plan, ne distribue aucun travail, n’exécute aucun Check et ne qualifie pas le travail.

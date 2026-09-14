@@ -12,9 +12,16 @@ import { EnvironmentConfigurationError } from "../environment/validation.js";
 import { type OperationCatalog, OperationCatalogError } from "../operation/catalog.js";
 import type { Procedures } from "../procedure/procedures.js";
 import { ProcedureConflictError } from "../procedure/store.js";
+import { TemplateError, type TemplateService } from "../template/service.js";
 import { TrialError, type TrialService } from "../trial/service.js";
+import { templateTools } from "./mcp-templates.js";
 
 export const AUTHORING_TOOL_NAMES = [
+  "trust_template_list",
+  "trust_template_read",
+  "trust_template_save",
+  "trust_template_remove",
+  "trust_template_render",
   "trust_environment_list",
   "trust_environment_save",
   "trust_environment_remove",
@@ -41,6 +48,7 @@ export interface McpAuthoringDependencies {
   readonly environmentService: EnvironmentService;
   readonly operationCatalog: OperationCatalog;
   readonly procedures: Procedures;
+  readonly templateService: TemplateService;
   readonly trialService: TrialService;
 }
 
@@ -67,6 +75,16 @@ export async function callAuthoringTool(
 ): Promise<McpAuthoringResult> {
   try {
     switch (tool) {
+      case "trust_template_list":
+        return { text: json(await dependencies.templateService.list(args)) };
+      case "trust_template_read":
+        return { text: json(await dependencies.templateService.read(args)) };
+      case "trust_template_save":
+        return { text: json(await dependencies.templateService.save(args)) };
+      case "trust_template_remove":
+        return { text: json(await dependencies.templateService.remove(args)) };
+      case "trust_template_render":
+        return { text: json(await dependencies.templateService.render(args)) };
       case "trust_environment_list": {
         exactEmpty(args, tool);
         const environments = dependencies.environmentService.list();
@@ -203,6 +221,7 @@ export async function callAuthoringTool(
       }
     }
   } catch (error) {
+    if (error instanceof TemplateError) return rejected(error.message);
     if (error instanceof InvalidMcpAuthoringArguments) throw error;
     if (
       error instanceof CatalogProcedureCompilationError ||
@@ -503,6 +522,7 @@ const trialProperty = { type: "string", minLength: 1, maxLength: 256, descriptio
 
 export function authoringTools(): readonly unknown[] {
   return [
+    ...templateTools(),
     {
       name: "trust_environment_list",
       title: "List Environments",

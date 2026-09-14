@@ -10,6 +10,7 @@ import type {
   RuntimeJsonObject,
 } from "@trust/extension-sdk";
 import { checkContinuation } from "../plan/continuation.js";
+import { parseMissionDeclarations } from "../plan/mission-declarations.js";
 import type { PlanReader, ReadErrorCode } from "../plan/read.js";
 import type { PlanRuntime } from "../plan/runtime.js";
 
@@ -318,13 +319,16 @@ function parsePlanEngagement(value: unknown): PlanEngagementParams {
 }
 
 function parsePlanDeclarationReplacement(value: unknown): PlanDeclarationReplacementInput {
-  const record = exactRecord(value, ["contract", "plan", "expectedRevision", "declarations"]);
+  const record = exactRecord(value, ["contract", "plan", "expectedRevision", "declarations"], ["missionDeclarations"]);
+  const missionDeclarations =
+    record.missionDeclarations === undefined ? undefined : parseMissionDeclarations(record.missionDeclarations);
   if (
     record.contract !== "trust.plan-declaration-replacement-request@1" ||
     !boundedString(record.plan) ||
     !Number.isSafeInteger(record.expectedRevision) ||
     Number(record.expectedRevision) < 1 ||
-    !isRecord(record.declarations)
+    !isRecord(record.declarations) ||
+    (record.missionDeclarations !== undefined && missionDeclarations === undefined)
   ) {
     throw new InvalidPlanRuntimeRpcParams();
   }
@@ -333,6 +337,7 @@ function parsePlanDeclarationReplacement(value: unknown): PlanDeclarationReplace
     plan: record.plan,
     expectedRevision: record.expectedRevision as number,
     declarations: record.declarations,
+    ...(missionDeclarations === undefined ? {} : { missionDeclarations }),
   };
 }
 

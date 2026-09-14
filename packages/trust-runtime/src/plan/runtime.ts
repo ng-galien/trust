@@ -9,6 +9,7 @@ import type {
   Fact,
   FactBatchInput,
   FactBatchResult,
+  MissionDeclarations,
   PlanDeclarationReplacementInput,
   PlanDeclarationReplacementResult,
   PlanEngagementInput,
@@ -17,10 +18,11 @@ import type {
   PlanResumptionInput,
   PlanResumptionResult,
   Refusal,
+  ResolvedMissions,
   RuntimeJsonObject,
 } from "@trust/extension-sdk";
-import { projectOperationEnvironment } from "@trust/operation";
-import type { CompiledProcedure } from "@trust/procedure";
+import { OperationCompilationError, projectOperationEnvironment } from "@trust/operation";
+import { CatalogProcedureCompilationError, type CompiledProcedure } from "@trust/procedure";
 import type { AttemptCreation, AttemptStore } from "../attempt/store.js";
 import { checkDependenciesSatisfied } from "../check/actionability.js";
 import { qualifyCheck, validateFacts } from "../check/qualification.js";
@@ -32,12 +34,13 @@ import type { Procedures } from "../procedure/procedures.js";
 import type { SessionStore } from "../session/store.js";
 import type { SnapshotStore } from "../snapshot/store.js";
 import type { Clock } from "../time.js";
-import { buildPlanRevision, validateAgentDeclarations } from "./build.js";
+import { buildPlanRevision, validateAgentDeclarations, validateRootInputs } from "./build.js";
 import { ancestorBlocker, invocationDependencyDigest, readComposition, synchronizeChildren } from "./children.js";
 import type { EscalationStore } from "./escalation-store.js";
 import type { PlanEvents } from "./events.js";
 import { completesPlanOnValidation, dependentCheckUris, isIntentValue, MAX_INTENT_LENGTH } from "./intent.js";
 import { normalizePlanMetadata } from "./metadata.js";
+import { parseMissionDeclarations } from "./mission-declarations.js";
 import type { PlanStore } from "./store.js";
 
 export const DEFAULT_SESSION_DURATION_MS = 24 * 60 * 60 * 1_000;
@@ -553,6 +556,8 @@ export class PlanRuntime {
       throw new PlanRuntimeError("plan-conflict", `Plan ${plan.slug} is escalated and must be resumed by an operator`);
     }
     let declarations: RuntimeJsonObject;
+    let missionDeclarations: MissionDeclarations;
+    let resolvedMissions: ResolvedMissions;
     try {
       declarations = validateAgentDeclarations(
         current.resolvedProcedure.roles,
@@ -560,10 +565,67 @@ export class PlanRuntime {
         plan.slug,
         input.declarations,
       );
+      const requested = parseMissionDeclarations(input.missionDeclarations);
+      if (input.missionDeclarations !== undefined && requested === undefined)
+        throw new TypeError("Invalid mission declarations");
+      const accepted: Record<string, MissionDeclarations[string]> = Object.assign(
+        Object.create(null),
+        current.missionDeclarations,
+      );
+      const resolved: Record<string, ResolvedMissions[string]> = Object.assign(
+        Object.create(null),
+        current.resolvedMissions,
+      );
+      for (const [collection, missions] of Object.entries(requested ?? {})) {
+        if (!current.resolvedProcedure.missionCollections?.some((value) => value.name === collection)) {
+          throw new TypeError(`Mission collection "${collection}" is not declared by the Procedure`);
+        }
+        const previous = current.missionDeclarations[collection] ?? [];
+        for (const mission of previous) {
+          const submitted = missions.find((value) => value.id === mission.id);
+          if (!submitted || canonicalJson(submitted) !== canonicalJson(mission)) {
+            throw new TypeError(`Accepted mission "${mission.id}" cannot be removed or modified`);
+          }
+        }
+        const compiled = [...(current.resolvedMissions[collection] ?? [])];
+        for (const mission of missions) {
+          if (previous.some((value) => value.id === mission.id)) continue;
+          let phase = "resolution";
+          try {
+            const procedure = await this.#procedures.resolveMission(mission.definition);
+            phase = "inputs";
+            validateRootInputs(procedure.roles, mission.rootInputs);
+            compiled.push({ id: mission.id, procedure });
+          } catch (error) {
+            let detail = message(error);
+            if (error instanceof OperationCompilationError || error instanceof CatalogProcedureCompilationError) {
+              phase = "compilation";
+              const position = error.location ? `:${error.location.line}:${error.location.column}` : "";
+              detail = `[${error.code}] ${error.sourceName ?? "procedure.feature"}${position}: ${error.message}`;
+            }
+            throw new TypeError(`Mission collection "${collection}", mission "${mission.id}", ${phase}: ${detail}`, {
+              cause: error,
+            });
+          }
+        }
+        // Keep acceptance order stable even if an identical submission is reordered.
+        accepted[collection] = [
+          ...previous,
+          ...missions.filter((value) => !previous.some((old) => old.id === value.id)),
+        ];
+        resolved[collection] = compiled;
+      }
+      missionDeclarations = accepted;
+      resolvedMissions = resolved;
     } catch (error) {
-      throw new PlanRuntimeError("invalid-plan-declarations", message(error), { cause: error });
+      throw new PlanRuntimeError("invalid-plan-declarations", `${message(error)}. No changes accepted.`, {
+        cause: error,
+      });
     }
-    if (canonicalJson(declarations) === canonicalJson(current.agentDeclarations)) {
+    if (
+      canonicalJson(declarations) === canonicalJson(current.agentDeclarations) &&
+      canonicalJson(missionDeclarations) === canonicalJson(current.missionDeclarations)
+    ) {
       await this.#database.transaction().execute(async (transaction) => {
         const plans = this.#plans.using(transaction);
         const transactionalPlan = await plans.findPlan(plan.slug);
@@ -584,6 +646,15 @@ export class PlanRuntime {
       return declarationResult(current, current);
     }
     const activeBefore = await this.#snapshots.listActive(plan.slug, plan.currentRevision);
+    const changedMissionScenarios = new Set(
+      (current.resolvedProcedure.declaredInvocations ?? [])
+        .filter(
+          (value) =>
+            canonicalJson(missionDeclarations[value.collection]) !==
+            canonicalJson(current.missionDeclarations[value.collection]),
+        )
+        .map((value) => value.scenario),
+    );
     let roleValues = current.roleValues;
     let checkValues = current.checkValues;
     let next: PlanRevision;
@@ -598,6 +669,8 @@ export class PlanRuntime {
         metadata: plan.metadata,
         rootInputs: plan.rootInputs,
         declarations,
+        missionDeclarations,
+        resolvedMissions,
         revision: plan.currentRevision + 1,
         roleValues,
         checkValues,
@@ -606,7 +679,13 @@ export class PlanRuntime {
       // Checks untouched by the new declarations keep their active qualification (same URI, same semantic digest).
       const nextChecks = new Map(next.checks.map((candidate) => [candidate.uri, candidate]));
       const retainedCandidates = activeBefore
-        .filter((item) => nextChecks.get(item.checkUri)?.compiledCheckDigest === item.compiledCheckDigest)
+        .filter((item) => {
+          const check = nextChecks.get(item.checkUri);
+          return (
+            check?.compiledCheckDigest === item.compiledCheckDigest &&
+            !check.scenarioDependencies.some((value) => changedMissionScenarios.has(value))
+          );
+        })
         .map((item) => ({ ...item, planRevision: next.revision }));
       retained = retainQualifiedDependencies(retainedCandidates, next.checks);
       const retainedProviders = new Set(retained.map((item) => item.checkUri));
@@ -620,7 +699,12 @@ export class PlanRuntime {
         role.source.optional !== true &&
         !Object.hasOwn(declarations, role.name),
     );
-    const nextChecklistComplete = !missingDeclarations && retained.length === next.checks.length;
+    const nextChecklistComplete =
+      !missingDeclarations &&
+      retained.length === next.checks.length &&
+      (current.resolvedProcedure.missionCollections ?? []).every(
+        (value) => (missionDeclarations[value.name]?.length ?? 0) > 0,
+      );
     const now = this.#now();
     try {
       await this.#database.transaction().execute(async (transaction) => {
@@ -670,7 +754,7 @@ export class PlanRuntime {
         } else if (
           chainedPlan?.intentChaining &&
           chainedPlan.intentChainState === "COMPLETE" &&
-          !nextChecklistComplete
+          (!nextChecklistComplete || !composition.complete)
         ) {
           await plans.restartIntent(plan.slug);
         }
@@ -1066,6 +1150,8 @@ export class PlanRuntime {
         metadata: plan.metadata,
         rootInputs: plan.rootInputs,
         declarations: current.agentDeclarations,
+        missionDeclarations: current.missionDeclarations,
+        resolvedMissions: current.resolvedMissions,
         revision: nextRevisionNumber,
         roleValues: nextRoleValues,
         checkValues: nextCheckValues,
@@ -1369,6 +1455,9 @@ export class PlanRuntime {
                 (value) => value.state === "SATISFIED",
               ) &&
               revision.resolvedProcedure.invocations.every((value) =>
+                revision.invocations.some((invocation) => invocation.definition.name === value.name),
+              ) &&
+              (revision.resolvedProcedure.declaredInvocations ?? []).every((value) =>
                 revision.invocations.some((invocation) => invocation.definition.name === value.name),
               ),
           })

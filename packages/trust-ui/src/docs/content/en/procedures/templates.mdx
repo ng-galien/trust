@@ -1,0 +1,37 @@
+---
+title: "Reusable templates"
+summary: "Create reusable text, supply its parameters and review the resulting draft."
+order: 6
+screen: /templates
+---
+
+Templates keep reusable text and named parameters. They can describe a complete Procedure, Operation, policy fragment, or another text format. They are authoring material: saving or instantiating a template neither publishes a definition nor executes a Plan.
+
+## Create and reuse
+
+Open **Templates** in the navigation. Create a template with an identifier, title, description and body. Write parameters as `{{name}}`, then declare each name with a description and, optionally, a default value. Names start with a letter and may contain letters, digits and underscores.
+
+Select a saved template, fill its parameters and preview the result. Values are inserted literally once: they are not expressions, and inserted text is not interpreted as another template. Defaults apply when a value is omitted. In the parameter editor, enable **Use default** to distinguish an empty default from no default; clearing an enabled default preserves the empty string. Escaping for Gherkin, JSON or another destination language remains part of authoring.
+
+The catalog starts empty. Create templates from sources you actually reuse; saving a template does not make its instructions enforceable by the runtime.
+
+## Language assistance
+
+Template source and preview use the same editor and language server as Operations and Procedures. The server analyzes the canonical language; templates do not introduce another Gherkin grammar.
+
+Declared default values provide an authoring context for completion and diagnostics. Reports point back to the original template, including when a default spans several lines. A parameter without a default remains explicitly unresolved; no business value is invented. Template definition validation and literal substitution have one shared owner consumed by the runtime and language server. A rendered preview is already materialized and receives destination-language assistance without scanning placeholders again. A Procedure scope fragment uses the compiler’s scope validation; additional declarations or Scenarios are explicitly unsupported in a fragment and require a complete Procedure. Independent diagnostics outside unresolved placeholders remain visible. Generic text is not treated as a complete Procedure.
+
+This analysis does not publish the template or add its temporary authoring context to the Operation and Procedure catalogs. Review the rendered source before using it.
+
+## Use a draft
+
+In the Procedure editor, select a template and inspect the rendered preview before explicitly replacing the current draft. The normal editor and language server then analyze the generated Gherkin. A fragment can be copied and merged into an existing source; preserve the Procedure's scope and Checks when doing so.
+
+An inline mission can use the same generated Procedure source. Rendering alone does not require the referenced Operations to be published; the normal compiler and mission acceptance rules apply when the source is used.
+
+## Edit without changing existing work
+
+Templates can be edited, duplicated and deleted. A revision check prevents one client from silently overwriting another client's edits; reread the current template when a conflict is reported.
+
+Generated text is independent of its template. Editing or deleting the template does not update drafts already created from it or change accepted mission history.
+

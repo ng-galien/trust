@@ -19,6 +19,7 @@ Read only the reference needed for the current task:
 | --- | --- |
 | Create or revise an external action and its Produced schema | [Author an Operation](author-operation.md) |
 | Create or revise governed intent, dependencies and qualification | [Author a Procedure](author-procedure.md) |
+| Create, customize or instantiate reusable authoring templates | [Create and instantiate templates](templates.md) |
 | Verify a proposed change or investigate a failed acceptance | [Verify and test](verify-and-test.md) |
 | Execute or coordinate an assigned Plan | [Execute and coordinate](execute-and-coordinate.md), then the [Runner skill](../../assets/skills/trust/SKILL.md) for Check execution |
 | Implement an extension or its page | [Author an extension](author-extension.md) |

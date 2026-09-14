@@ -1,4 +1,5 @@
 /** Public extension and client contracts. No runtime implementation dependency. */
+
 export type {
   ExtensionContext,
   ExtensionDescriptor,
@@ -7,6 +8,15 @@ export type {
   ExtensionPageProps,
   ExtensionState,
 } from "./extension.js";
+export type {
+  SourceTemplate,
+  TemplateDocumentContext,
+  TemplateParameter,
+  TemplatePlaceholder,
+  TemplateRenderRequest,
+  TemplateRenderResult,
+  TemplateSaveRequest,
+} from "./templates.js";
 export interface NextCheck {
   readonly name: string;
   readonly successReason: string;
@@ -152,6 +162,9 @@ export interface PlanView {
   readonly workState: "IN_PROGRESS" | "ESCALATED" | "COMPLETE";
   readonly revision: number;
   readonly declarations: Readonly<Record<string, unknown>>;
+  readonly missionDeclarations?: MissionDeclarations;
+  readonly missionCollections?: import("@trust/procedure").CompiledProcedure["missionCollections"];
+  readonly resolvedMissions?: ResolvedMissions;
   readonly declarationRoles: readonly {
     readonly role: string;
     readonly type: string;
@@ -238,6 +251,8 @@ export interface PlanRevisionView {
   readonly definitionDigest: string;
   readonly source: string;
   readonly declarations: Readonly<Record<string, unknown>>;
+  readonly missionDeclarations?: MissionDeclarations;
+  readonly resolvedMissions?: ResolvedMissions;
   readonly roleValues: readonly unknown[];
   readonly checkValues: readonly unknown[];
   readonly checkUris: readonly string[];
@@ -384,11 +399,33 @@ export interface PlanEngagementResult {
   readonly checkUris: readonly string[];
 }
 
+/** Published and inline definitions use the same canonical compilation and child Plan execution. */
+export type MissionDefinition =
+  | { readonly kind: "published"; readonly reference: string }
+  | { readonly kind: "inline"; readonly procedureSource: string; readonly operationSources: readonly string[] };
+
+export interface MissionDeclaration {
+  readonly id: string;
+  readonly definition: MissionDefinition;
+  readonly rootInputs: RuntimeJsonObject;
+}
+
+/** Accepted missions are append-only; identical resubmission preserves their pinned composition. */
+export type MissionDeclarations = Readonly<Record<string, readonly MissionDeclaration[]>>;
+
+/** Exact canonical composition captured when a mission is accepted, never re-resolved on replay. */
+export interface ResolvedMission {
+  readonly id: string;
+  readonly procedure: import("@trust/procedure").CompiledProcedure;
+}
+export type ResolvedMissions = Readonly<Record<string, readonly ResolvedMission[]>>;
+
 export interface PlanDeclarationReplacementInput {
   readonly contract: "trust.plan-declaration-replacement-request@1";
   readonly plan: string;
   readonly expectedRevision: number;
   readonly declarations: RuntimeJsonObject;
+  readonly missionDeclarations?: MissionDeclarations;
 }
 
 export interface PlanDeclarationReplacementResult {
@@ -503,6 +540,7 @@ export interface AttemptInterruptionResult {
 export interface InvocationView {
   id: string;
   name: string;
+  mission?: { readonly collection: string; readonly id: string };
   scenario: string;
   state: "WAITING" | "RUNNING" | "SATISFIED";
   blockedBy: string[];
@@ -617,3 +655,14 @@ export interface PublishedProcedure {
   readonly publishedBy: string;
   readonly publishedAt: string;
 }
+
+export {
+  isTemplateParameterName,
+  materializeTemplate,
+  scanTemplatePlaceholders,
+  TemplateDefinitionError,
+  templateConstraints,
+  templateDocumentContextMethod,
+  validateTemplateDefinition,
+  validateTemplateParameters,
+} from "./templates.js";

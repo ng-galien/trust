@@ -30,6 +30,7 @@ import { RegistryService } from "./registry/service.js";
 import { RegistrySourceStore } from "./registry/store.js";
 import { SessionStore } from "./session/store.js";
 import { SnapshotStore } from "./snapshot/store.js";
+import { TemplateService } from "./template/service.js";
 import { type Clock, SystemClock } from "./time.js";
 import { TrialRegistry } from "./trial/registry.js";
 import { DEFAULT_TRIAL_TIMEOUT_MS, defaultRunnerTrialScript, TrialService } from "./trial/service.js";
@@ -56,6 +57,7 @@ export interface RuntimeComponents {
   readonly planStore: PlanStore;
   readonly procedureStore: ProcedureStore;
   readonly procedures: Procedures;
+  readonly templateService: TemplateService;
   readonly sessionStore: SessionStore;
   readonly attemptStore: AttemptStore;
   readonly factStore: FactStore;
@@ -127,6 +129,7 @@ export const createRuntimeContainer = async (
     planStore: asClass(PlanStore).singleton(),
     procedureStore: asClass(ProcedureStore).singleton(),
     procedures: asClass(Procedures).singleton(),
+    templateService: asClass(TemplateService).singleton(),
     sessionStore: asClass(SessionStore).singleton(),
     attemptStore: asClass(AttemptStore).singleton(),
     factStore: asClass(FactStore).singleton(),

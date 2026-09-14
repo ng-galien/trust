@@ -1,4 +1,5 @@
 import type { GherkinDocument, Step, TableRow } from "@cucumber/messages";
+import { type TemplateDocumentContext, templateDocumentContextMethod } from "@trust/extension-sdk";
 import {
   continuationLineIndexes,
   GherkinSyntaxError,
@@ -30,6 +31,7 @@ import {
 } from "@trust/operation/language";
 import {
   analyzeProcedure,
+  analyzeProcedureScopeFragment,
   type CompiledProcedure,
   isProcedureSource,
   transitiveScenarioDependencies,
@@ -63,6 +65,7 @@ import {
 } from "vscode-languageserver/node";
 import { TextDocument } from "vscode-languageserver-textdocument";
 import { resourceReferences } from "./references.js";
+import { templateContext, templateProjection } from "./template-context.js";
 
 type LanguageKind = "operation" | "procedure";
 const semanticTokenTypes = highlightTokenTable.map(({ kind }) => kind);
@@ -77,6 +80,30 @@ export interface TrustLanguageServerOptions {
 /** Install the TRUST language on one connection. Stdio and WebSocket use these exact handlers. */
 export function startTrustLanguageServer(connection: Connection, options: TrustLanguageServerOptions = {}): void {
   const documents = new TextDocuments(TextDocument);
+  const invalidTemplateContexts = new Set<string>();
+  const templateContexts = new Map<string, TemplateDocumentContext>();
+  const projections = new WeakMap<
+    TextDocument,
+    { parameters: TemplateDocumentContext; version: number; view: ReturnType<typeof templateProjection> }
+  >();
+  const projection = (document: TextDocument) => {
+    const parameters = templateContexts.get(document.uri);
+    if (!parameters) return undefined;
+    const cached = projections.get(document);
+    if (cached?.parameters === parameters && cached.version === document.version) return cached.view;
+    const view = templateProjection(document, parameters);
+    projections.set(document, { parameters, version: document.version, view });
+    return view;
+  };
+  const authoringDocument = (document: TextDocument) => projection(document)?.document ?? document;
+  const kindOf = (document: TextDocument) => {
+    const view = projection(document);
+    return view
+      ? view.fragment
+        ? ("procedure" as const)
+        : sourceKind(view.document.getText())
+      : (documentKinds.get(document.uri) ?? documentKind(document));
+  };
   const documentKinds = new Map<string, LanguageKind>();
   const openOperations = new Map<string, CompiledOperation>();
   const sendDiagnostics = (params: PublishDiagnosticsParams): void => {
@@ -97,7 +124,7 @@ export function startTrustLanguageServer(connection: Connection, options: TrustL
       byIdentity.set(`${procedure.procedure}@${procedure.version}`, procedure);
     const opened = documents
       .all()
-      .filter((document) => (documentKinds.get(document.uri) ?? documentKind(document)) === "procedure");
+      .filter((document) => !templateContexts.has(document.uri) && kindOf(document) === "procedure");
     // Resolve opened documents child-first without making opening order part of stdio behavior.
     for (let pass = 0; pass < opened.length; pass++) {
       let added = false;
@@ -134,19 +161,44 @@ export function startTrustLanguageServer(connection: Connection, options: TrustL
   });
 
   const update = async (document: TextDocument) => {
-    const kind = documentKind(document) ?? documentKinds.get(document.uri);
+    const kind = templateContexts.has(document.uri)
+      ? kindOf(document)
+      : (documentKind(document) ?? documentKinds.get(document.uri));
     if (kind) documentKinds.set(document.uri, kind);
-    if (kind === "operation") {
+    if (kind === "operation" && !templateContexts.has(document.uri)) {
       const analysis = analyzeOperation({ source: document.getText(), sourceName: document.uri });
       if ("compiled" in analysis) openOperations.set(document.uri, analysis.compiled);
       else openOperations.delete(document.uri);
     }
+    if (templateContexts.has(document.uri)) openOperations.delete(document.uri);
     await publishDiagnostics(document);
   };
 
-  documents.onDidOpen(({ document }) => update(document));
+  connection.onNotification(templateDocumentContextMethod, (value: unknown) => {
+    const context = templateContext(value);
+    if (!context) {
+      if (typeof value === "object" && value !== null && "uri" in value && typeof value.uri === "string") {
+        templateContexts.set(value.uri, { uri: value.uri, parameters: [] });
+        invalidTemplateContexts.add(value.uri);
+        const document = documents.get(value.uri);
+        if (document) void update(document);
+      }
+      return;
+    }
+    invalidTemplateContexts.delete(context.uri);
+    if (context.parameters === null) templateContexts.delete(context.uri);
+    else templateContexts.set(context.uri, context);
+    const document = documents.get(context.uri);
+    if (document) {
+      documentKinds.delete(context.uri);
+      void update(document);
+    }
+  });
+
   documents.onDidChangeContent(({ document }) => update(document));
   documents.onDidClose(({ document }) => {
+    invalidTemplateContexts.delete(document.uri);
+    templateContexts.delete(document.uri);
     documentKinds.delete(document.uri);
     openOperations.delete(document.uri);
     sendDiagnostics({ uri: document.uri, version: document.version, diagnostics: [] });
@@ -155,6 +207,7 @@ export function startTrustLanguageServer(connection: Connection, options: TrustL
   connection.onDocumentFormatting(({ textDocument }): TextEdit[] => {
     const document = documents.get(textDocument.uri);
     if (!document) return [];
+    if (templateContexts.has(document.uri) && !kindOf(document)) return [];
     const source = document.getText();
     const formatted = formatGherkinSource(source);
     return formatted === source
@@ -164,20 +217,60 @@ export function startTrustLanguageServer(connection: Connection, options: TrustL
 
   connection.onFoldingRanges(({ textDocument }): FoldingRange[] => {
     const document = documents.get(textDocument.uri);
-    return document ? foldingRanges(document.getText()) : [];
+    if (!document) return [];
+    const view = projection(document);
+    const ranges = foldingRanges(authoringDocument(document).getText());
+    return view
+      ? ranges
+          .filter((value) =>
+            view.safeRange({
+              start: { line: value.startLine, character: 0 },
+              end: { line: value.endLine, character: 0 },
+            }),
+          )
+          .map((value) => ({
+            ...value,
+            startLine: view.range({
+              start: { line: value.startLine, character: 0 },
+              end: { line: value.endLine, character: 0 },
+            }).start.line,
+            endLine: view.range({
+              start: { line: value.startLine, character: 0 },
+              end: { line: value.endLine, character: 0 },
+            }).end.line,
+          }))
+      : ranges;
   });
 
   connection.onCompletion(async ({ textDocument, position }): Promise<CompletionItem[]> => {
     const document = documents.get(textDocument.uri);
     if (!document) return [];
-    const kind = documentKinds.get(document.uri) ?? documentKind(document);
-    return kind ? completionItems(document, position, kind, catalog(), await procedureCatalog()) : [];
+    const kind = kindOf(document);
+    const view = projection(document);
+    if (!kind || view?.inPlaceholder(position)) return [];
+    const items = completionItems(
+      authoringDocument(document),
+      view?.toProjected(position) ?? position,
+      kind,
+      catalog(),
+      await procedureCatalog(),
+    );
+    if (!view) return items;
+    return items.flatMap((item) => {
+      if (!item.textEdit) return [item];
+      if (!("range" in item.textEdit) || !view.safeRange(item.textEdit.range)) return [];
+      return [{ ...item, textEdit: { ...item.textEdit, range: view.range(item.textEdit.range) } }];
+    });
   });
 
   const references = async (uri: string) => {
     const document = documents.get(uri);
-    if (!document || (documentKinds.get(uri) ?? documentKind(document)) !== "procedure") return [];
-    return resourceReferences(document.getText(), catalog(), await procedureCatalog());
+    if (!document || kindOf(document) !== "procedure") return [];
+    const view = projection(document);
+    const found = resourceReferences(authoringDocument(document).getText(), catalog(), await procedureCatalog());
+    return view
+      ? found.filter((item) => view.safeRange(item.range)).map((item) => ({ ...item, range: view.range(item.range) }))
+      : found;
   };
   connection.onDocumentLinks(async ({ textDocument }) =>
     (await references(textDocument.uri)).map(({ range, target }) => ({ range, target })),
@@ -196,25 +289,37 @@ export function startTrustLanguageServer(connection: Connection, options: TrustL
 
   connection.languages.semanticTokens.on(({ textDocument }) => {
     const document = documents.get(textDocument.uri);
-    return document ? semanticTokens(document.getText()) : null;
+    return document && kindOf(document) ? semanticTokens(document.getText()) : null;
   });
 
   connection.onDocumentSymbol(async ({ textDocument }) => {
     const document = documents.get(textDocument.uri);
     if (!document) return [];
-    const kind = documentKinds.get(document.uri) ?? documentKind(document);
+    const kind = kindOf(document);
+    const view = projection(document);
+    const effective = authoringDocument(document);
+    let symbols: DocumentSymbol[] = [];
     if (kind === "operation") {
-      const analysis = analyzeOperation({ source: document.getText(), sourceName: document.uri });
-      if (!analysis.document) return [];
-      return operationSymbols(analysis.document);
-    }
-    return kind === "procedure" ? procedureSymbols(document, catalog(), await procedureCatalog()) : [];
+      const analysis = analyzeOperation({ source: effective.getText(), sourceName: document.uri });
+      if (analysis.document) symbols = operationSymbols(analysis.document);
+    } else if (kind === "procedure") symbols = procedureSymbols(effective, catalog(), await procedureCatalog());
+    if (!view) return symbols;
+    const mapSymbol = (symbol: DocumentSymbol): DocumentSymbol => ({
+      ...symbol,
+      range: view.range(symbol.range),
+      selectionRange: view.range(symbol.selectionRange),
+      ...(symbol.children ? { children: symbol.children.map(mapSymbol) } : {}),
+    });
+    return symbols.map(mapSymbol);
   });
 
   async function publishDiagnostics(document: TextDocument): Promise<void> {
     const version = document.version;
-    const source = document.getText();
-    const kind = documentKinds.get(document.uri);
+    const context = templateContexts.get(document.uri);
+    const view = projection(document);
+    const effective = authoringDocument(document);
+    const source = effective.getText();
+    const kind = kindOf(document);
     let diagnostics: Diagnostic[] = [];
     if (kind === "operation") {
       diagnostics = analyzeOperation({ source, sourceName: document.uri }).diagnostics.map((diagnostic) => ({
@@ -233,7 +338,7 @@ export function startTrustLanguageServer(connection: Connection, options: TrustL
           procedures: await procedureCatalog(),
         }).diagnostics.map((diagnostic) => ({
           severity: DiagnosticSeverity.Error,
-          range: diagnosticRange(document, diagnostic.location),
+          range: diagnosticRange(effective, diagnostic.location),
           message: diagnostic.message,
           code: diagnostic.code,
           source: "trust-procedure",
@@ -250,7 +355,51 @@ export function startTrustLanguageServer(connection: Connection, options: TrustL
         ];
       }
     }
-    if (documents.get(document.uri) !== document || document.version !== version) return;
+    if (view) {
+      // Scope fragments use their compiler-owned analyzer without inventing a resource identity.
+      if (view.fragment) {
+        diagnostics = [];
+        try {
+          diagnostics = analyzeProcedureScopeFragment(source, document.uri).map((item) => ({
+            severity: DiagnosticSeverity.Error,
+            range: view.range(diagnosticRange(effective, item.location)),
+            message: item.message,
+            code: item.code,
+            source: "trust-procedure",
+          }));
+        } catch (error) {
+          if (error instanceof GherkinSyntaxError)
+            diagnostics = [
+              {
+                range: { start: { line: 0, character: 0 }, end: document.positionAt(document.getText().length) },
+                severity: DiagnosticSeverity.Error,
+                source: "trust-template",
+                code: "template-fragment-syntax",
+                message: error.message,
+              },
+            ];
+        }
+      } else diagnostics = diagnostics.map((item) => ({ ...item, range: view.range(item.range) }));
+      if (view.unresolved) diagnostics = diagnostics.filter((item) => !view.dependsOnUnresolved(item.range));
+      diagnostics.push(...view.diagnostics);
+      if (invalidTemplateContexts.has(document.uri))
+        diagnostics = [
+          {
+            range: lineTextRange(0, document.getText().split("\n")[0] ?? ""),
+            severity: DiagnosticSeverity.Error,
+            source: "trust-template",
+            code: "template-context-invalid",
+            message:
+              "Template parameters are invalid; complete unique parameter names and valid defaults before validation.",
+          },
+        ];
+    }
+    if (
+      documents.get(document.uri) !== document ||
+      document.version !== version ||
+      templateContexts.get(document.uri) !== context
+    )
+      return;
     sendDiagnostics({ uri: document.uri, version, diagnostics });
   }
 

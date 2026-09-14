@@ -1,0 +1,14 @@
+---
+title: "Following delegation"
+summary: "Read parent and child Plans together with their Checks and recorded results."
+order: 3
+screen: /delegation
+---
+
+Open **Delegation** under **Run** for the catalog of recorded delegation work. Only live Plans with recorded child Plans appear. Unrelated standalone Plans are excluded. The catalog defaults to List and provides the same search, sorting, Cards display and detail surface as the other resources.
+
+Open a row for a single work summary. Select a work item in the left-hand list to read its expected result, recorded qualification and prerequisites in the adjacent detail. The parent Plan appears above its indented child Plans. Selecting the parent shows its own verification. The detail reuses the Plan checklist, including scenario hierarchy, expandable Checks, inputs, qualification history, attempts and returned Facts. The detail provides buttons to open the Plan and its history; full work instructions remain in the Plan. On narrow screens, the list appears above the detail. There are no Overview/Work tabs or counter banners. Closing the detail preserves catalog filters.
+
+Host-level agent dispatch is not inferred from Plan names or labels. Coordination information is not part of this runtime projection. Superseded generations remain marked explicitly. Invocations without a child appear in the selected parent's overview when that parent is already part of a recorded delegation.
+
+Check order is a reading order, not a new execution sequence. The runtime owns prerequisites and qualification. This view reads existing Plans and follows their updates; it does not engage Plans, dispatch workers, execute Checks or qualify work.

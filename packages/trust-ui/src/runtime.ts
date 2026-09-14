@@ -14,6 +14,10 @@ import type {
   PlanView,
   PublishedProcedure,
   RuntimeJsonObject,
+  SourceTemplate,
+  TemplateRenderRequest,
+  TemplateRenderResult,
+  TemplateSaveRequest,
   TrialRecord,
   TrialSummary,
 } from "@trust/extension-sdk";
@@ -129,6 +133,18 @@ export class TrustRuntimeClient {
       environment,
       steps,
     });
+  templates = () => this.call<SourceTemplate[]>("template.list");
+  template = (id: string) => this.call<SourceTemplate>("template.read", { id });
+  saveTemplate = (request: TemplateSaveRequest) =>
+    this.call<SourceTemplate>("template.save", {
+      ...request,
+      parameters: request.parameters.map((parameter) => ({ ...parameter })),
+    });
+  removeTemplate = (id: string, expectedRevision: number) =>
+    this.call<{ removed: boolean }>("template.remove", { id, expectedRevision });
+  renderTemplate = (request: TemplateRenderRequest) =>
+    this.call<TemplateRenderResult>("template.render", { ...request, values: { ...request.values } });
+
   procedures = async () =>
     (
       await this.call<{
