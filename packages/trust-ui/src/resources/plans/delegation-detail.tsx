@@ -3,9 +3,8 @@ import type { PlanSummaryView, PlanView } from "@trust/extension-sdk";
 import { ArrowUpRight, History } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useNavigate } from "react-router";
+import { Link } from "react-router";
 import { cx } from "../../lib/format.js";
-import { useExpert } from "../../lib/preferences.js";
 import { usePlan, useProcedures } from "../../lib/runtime-context.js";
 import { StatusBadge } from "../../ui/badge.js";
 import { Breadcrumb } from "../../ui/breadcrumb.js";
@@ -26,22 +25,34 @@ export function DelegationDetail({
   onClose: () => void;
 }) {
   const { t } = useTranslation();
-  const root = usePlan(selected);
+  const byId = new Map(plans.map((plan) => [plan.plan, plan]));
+  let rootId = selected;
+  const ancestry = new Set([selected]);
+  while (byId.get(rootId)?.parent?.plan) {
+    const parentId = byId.get(rootId)?.parent?.plan;
+    if (!parentId || !byId.has(parentId) || ancestry.has(parentId)) break;
+    ancestry.add(parentId);
+    rootId = parentId;
+  }
+  const root = usePlan(rootId);
   const [selection, setSelection] = useState<string | null>(null);
-  const descendants: { plan: PlanSummaryView; depth: number }[] = [];
-  const visit = (id: string, depth: number, path: string[]) => {
+  const descendants: PlanSummaryView[] = [];
+  const visit = (id: string, path: string[]) => {
     for (const plan of plans.filter((item) => item.parent?.plan === id)) {
       if (path.includes(plan.plan)) continue;
-      descendants.push({ plan, depth });
-      visit(plan.plan, depth + 1, [...path, plan.plan]);
+      descendants.push(plan);
+      visit(plan.plan, [...path, plan.plan]);
     }
   };
-  visit(selected, 0, [selected]);
+  visit(rootId, [rootId]);
   const active =
-    selection && (selection === selected || descendants.some(({ plan }) => plan.plan === selection))
+    selection && (selection === rootId || descendants.some((plan) => plan.plan === selection))
       ? selection
-      : (descendants[0]?.plan.plan ?? selected);
-  const parent = plans.find((plan) => plan.plan === selected);
+      : selected === rootId
+        ? (descendants[0]?.plan ?? rootId)
+        : selected;
+  const parent = byId.get(rootId);
+  const selectedPlan = byId.get(selected);
   return (
     <Overlay
       onClose={onClose}
@@ -51,7 +62,8 @@ export function DelegationDetail({
           items={[
             { label: "TRUST", to: "/overview" },
             { label: t("delegation.title"), to: "/delegation" },
-            { label: selected, mono: true },
+            { label: parent?.metadata.title ?? parent?.procedure ?? rootId },
+            ...(selected !== rootId ? [{ label: selectedPlan?.procedure ?? selected, mono: true }] : []),
           ]}
         />
       }
@@ -70,36 +82,31 @@ export function DelegationDetail({
       ) : (
         <div className="delegation-workspace">
           <nav aria-label={t("delegation.work")} className="delegation-worklist">
+            <p className="delegation-worklist-label">{t("delegation.work")}</p>
             {parent && (
-              <WorkItem
-                plan={parent}
-                depth={0}
-                active={active === selected}
-                onSelect={() => setSelection(selected)}
-                rootTitle
-              />
-            )}
-            <div className="ml-3 border-l border-border pl-2">
-              {descendants.map(({ plan, depth }) => (
-                <WorkItem
-                  key={plan.plan}
-                  plan={plan}
-                  depth={depth + 1}
-                  active={active === plan.plan}
-                  onSelect={() => setSelection(plan.plan)}
+              <ul className="delegation-tree">
+                <WorkBranch
+                  plan={parent}
+                  plans={plans}
+                  active={active}
+                  onSelect={setSelection}
+                  path={[rootId]}
+                  rootTitle
                 />
-              ))}
-              {root.data?.invocations
-                .filter((item) => !item.childPlan)
-                .map((item) => (
-                  <div key={item.id} className="px-3 py-3 text-body">
-                    <p className="font-medium">{item.name}</p>
-                    <p className="mt-1 text-caption text-muted">
-                      {item.blockedBy.join(" · ") || t("delegation.waiting")}
-                    </p>
-                  </div>
-                ))}
-            </div>
+              </ul>
+            )}
+            {root.data?.invocations.some((item) => !item.childPlan) && (
+              <div className="delegation-waiting">
+                {root.data.invocations
+                  .filter((item) => !item.childPlan)
+                  .map((item) => (
+                    <div key={item.id} className="delegation-waiting-item">
+                      <p className="font-medium">{item.name}</p>
+                      <p className="text-caption text-muted">{item.blockedBy.join(" · ") || t("delegation.waiting")}</p>
+                    </div>
+                  ))}
+              </div>
+            )}
           </nav>
           <WorkInspector key={active} plan={active} />
         </div>
@@ -108,15 +115,50 @@ export function DelegationDetail({
   );
 }
 
+function WorkBranch({
+  plan,
+  plans,
+  active,
+  onSelect,
+  path,
+  rootTitle = false,
+}: {
+  plan: PlanSummaryView;
+  plans: PlanSummaryView[];
+  active: string;
+  onSelect: (plan: string) => void;
+  path: string[];
+  rootTitle?: boolean;
+}) {
+  const children = plans.filter((item) => item.parent?.plan === plan.plan && !path.includes(item.plan));
+  return (
+    <li className="delegation-tree-node">
+      <WorkItem plan={plan} active={active === plan.plan} onSelect={() => onSelect(plan.plan)} rootTitle={rootTitle} />
+      {children.length > 0 && (
+        <ul className="delegation-tree-children">
+          {children.map((child) => (
+            <WorkBranch
+              key={child.plan}
+              plan={child}
+              plans={plans}
+              active={active}
+              onSelect={onSelect}
+              path={[...path, child.plan]}
+            />
+          ))}
+        </ul>
+      )}
+    </li>
+  );
+}
+
 function WorkItem({
   plan,
-  depth,
   active,
   onSelect,
   rootTitle = false,
 }: {
   plan: PlanSummaryView;
-  depth: number;
   active: boolean;
   onSelect: () => void;
   rootTitle?: boolean;
@@ -134,13 +176,14 @@ function WorkItem({
       aria-current={active ? "true" : undefined}
       data-plan={plan.plan}
       className={cx("delegation-workitem", active && "delegation-workitem-selected")}
-      style={{ paddingLeft: 12 + depth * 20 }}
     >
       <span className="min-w-0">
         <span className="block text-ui font-semibold">{title}</span>
-        <span className="mt-1 block text-caption font-normal text-muted">
-          {t(`ui.status.${plan.workState}`)}
-          {plan.parent && !plan.parent.current ? ` · ${t("delegation.superseded")}` : ""}
+        <span className="delegation-workitem-status">
+          <StatusBadge state={plan.workState} className="delegation-workitem-state" />
+          {plan.parent && !plan.parent.current && (
+            <span className="text-caption font-normal text-muted">{t("delegation.superseded")}</span>
+          )}
         </span>
       </span>
     </Button>
@@ -150,25 +193,61 @@ function WorkItem({
 function WorkInspector({ plan }: { plan: string }) {
   const { t } = useTranslation();
   const detail = usePlan(plan);
-  const navigate = useNavigate();
-  const expert = useExpert();
   const compiled = useWorkDefinition(plan, detail.data);
+  const catalog = useProcedures();
   const [history, setHistory] = useState(false);
+  const [procedureSource, setProcedureSource] = useState(false);
   const [selectedCheck, setSelectedCheck] = useState<string | null | undefined>();
   if (detail.isLoading) return <LoadingState />;
   if (detail.error) return <ErrorBox message={detail.error.message} />;
   const checks = detail.data?.checks ?? [];
   const title = compiled?.title ?? detail.data?.metadata.title ?? detail.data?.procedure;
+  const procedure = detail.data?.procedure;
+  const version = detail.data?.procedureVersion;
+  const published = catalog.data?.some(
+    ({ procedure: item }) => item.procedure === procedure && item.version === version,
+  );
   return (
     <article aria-label={t("delegation.detail")} data-work-detail={plan} className="delegation-inspector">
       <div className="delegation-inspector-content">
         <header className="delegation-inspector-heading">
           <h2 className="text-heading font-semibold text-text">{title}</h2>
-          {expert && <p className="mt-2 break-all text-caption text-muted">{plan}</p>}
+          {procedure && (
+            <p className="mono delegation-procedure-name text-caption text-muted">
+              {procedure}
+              {version ? `@${version}` : ""}
+            </p>
+          )}
+          <details className="delegation-technical-id text-caption text-muted">
+            <summary className="cursor-pointer">{t("delegation.technicalId")}</summary>
+            <code className="block break-all pt-1">{plan}</code>
+          </details>
           <div className="delegation-actions">
-            <Button icon={<ArrowUpRight size={15} />} onClick={() => navigate(`/plans/${encodeURIComponent(plan)}`)}>
+            <Link
+              className="inline-flex h-8 items-center gap-1.5 rounded-(--radius-2) border border-border bg-surface px-3 text-ui font-medium hover:bg-surface-2"
+              to={`/plans/${encodeURIComponent(plan)}`}
+            >
+              <ArrowUpRight size={15} />
               {t("delegation.open")}
-            </Button>
+            </Link>
+            {published && procedure && (
+              <Link
+                className="inline-flex h-8 items-center gap-1.5 rounded-(--radius-2) border border-border bg-surface px-3 text-ui font-medium hover:bg-surface-2"
+                to={`/procedures/${encodeURIComponent(procedure)}?version=${encodeURIComponent(version ?? "")}`}
+              >
+                <ArrowUpRight size={15} />
+                {t("delegation.openProcedure")}
+              </Link>
+            )}
+            {catalog.data && !published && compiled?.source && (
+              <Button
+                variant="secondary"
+                aria-expanded={procedureSource}
+                onClick={() => setProcedureSource(!procedureSource)}
+              >
+                {t("delegation.pinnedProcedure")}
+              </Button>
+            )}
             <Button
               variant="ghost"
               icon={<History size={15} />}
@@ -179,6 +258,13 @@ function WorkInspector({ plan }: { plan: string }) {
             </Button>
           </div>
         </header>
+        {procedureSource && compiled?.source && (
+          <section className="mb-5 rounded-(--radius-2) border border-border bg-surface-2 p-3">
+            <h3 className="text-ui font-semibold">{t("delegation.pinnedProcedure")}</h3>
+            <p className="mt-1 text-caption text-muted">{t("delegation.inlineProcedureHint")}</p>
+            <pre className="mono mt-3 max-h-[50vh] overflow-auto whitespace-pre text-caption">{compiled.source}</pre>
+          </section>
+        )}
         {history && detail.data && <PlanHistory plan={detail.data} />}
         {!history && (
           <>
@@ -187,11 +273,13 @@ function WorkInspector({ plan }: { plan: string }) {
               <section key={check.checkUri} className="delegation-check">
                 {checks.length > 1 && <h3 className="text-subhead font-semibold">{check.name}</h3>}
                 <div className="delegation-result">
-                  <h3>{t("delegation.observed")}</h3>
+                  <div className="delegation-result-heading">
+                    <h3>{t("delegation.observed")}</h3>
+                    {check.latestVerdict && (
+                      <span className="delegation-verdict">{t(`ui.status.${check.latestVerdict}`)}</span>
+                    )}
+                  </div>
                   <p>{check.reason ?? t("delegation.noResult")}</p>
-                  {check.latestVerdict && (
-                    <span className="delegation-verdict">{t(`ui.status.${check.latestVerdict}`)}</span>
-                  )}
                 </div>
                 {check.successReason !== check.reason && (
                   <div className="delegation-fact">
@@ -215,7 +303,7 @@ function WorkInspector({ plan }: { plan: string }) {
         )}
       </div>
       {!history && detail.data && checks.length > 0 && (
-        <div className="mt-6 min-h-[360px] flex-1 border-t border-border">
+        <div className="delegation-inspector-checklist">
           <PlanChecklist
             plan={detail.data}
             compiled={compiled}
@@ -229,7 +317,7 @@ function WorkInspector({ plan }: { plan: string }) {
 }
 
 /** Resolve pinned inline mission titles and scenarios through the existing runtime projection. */
-function useWorkDefinition(id: string, view: PlanView | undefined) {
+export function useWorkDefinition(id: string, view: PlanView | undefined) {
   const owner = usePlan(view?.parent?.plan ?? id);
   const catalog = useProcedures();
   const mission = owner.data?.invocations.find(

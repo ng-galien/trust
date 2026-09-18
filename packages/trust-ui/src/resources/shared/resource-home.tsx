@@ -23,6 +23,8 @@ interface DisplayOption<T extends string> {
 export interface DisplayState<G extends string, S extends string> {
   view: ViewMode;
   onView: (view: ViewMode) => void;
+  /** A resource-specific projection may present its list as a hierarchy. */
+  listLabel?: string;
   group: G;
   groupOptions: Array<DisplayOption<G>>;
   onGroup: (group: G) => void;
@@ -193,7 +195,9 @@ function DisplayMenu<G extends string, S extends string>({ display }: { display:
         >
           {t("shared.resourceHome.display")}
           <span className="ml-1 text-caption font-normal text-muted">
-            {display.view === "cards" ? t("shared.resourceHome.cards") : t("shared.resourceHome.list")}
+            {display.view === "cards"
+              ? t("shared.resourceHome.cards")
+              : (display.listLabel ?? t("shared.resourceHome.list"))}
             {display.group !== defaultGroup && groupLabel
               ? ` · ${t("shared.resourceHome.byGroup", { group: groupLabel.toLowerCase() })}`
               : ""}
@@ -223,7 +227,7 @@ function DisplayMenu<G extends string, S extends string>({ display }: { display:
                 value: "list",
                 label: (
                   <>
-                    <List size={13} /> {t("shared.resourceHome.list")}
+                    <List size={13} /> {display.listLabel ?? t("shared.resourceHome.list")}
                   </>
                 ),
               },
