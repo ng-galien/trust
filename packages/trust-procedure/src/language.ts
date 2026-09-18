@@ -96,6 +96,8 @@ export const procedureLanguage = {
       "on",
       "using",
       "materializes",
+      "within",
+      "until",
       "establish",
       "validated",
       "declared",
@@ -148,6 +150,14 @@ export const procedureStepGrammar: StepGrammar = {
         procedureQuoted("check", "Invocation name"),
         procedureLiteral("runs each declared Procedure in", "Declared child Procedure collection"),
         procedureQuoted("mission-collection", "Mission collection"),
+        stepRepeat(
+          stepSequence(
+            procedureLiteral("and materializes", "Parent role receiving a child Result"),
+            procedureQuoted("result-target-role", "Parent Plan context role"),
+            procedureLiteral("from Result", "Child Result binding"),
+            procedureQuoted("result-source-role", "Returned child role"),
+          ),
+        ),
         procedureLiteral("and must establish", "Successful child completion"),
         procedureQuoted("reason", "Success reason"),
       ),
@@ -189,6 +199,14 @@ export const procedureStepGrammar: StepGrammar = {
             ),
           ),
         ),
+        stepRepeat(
+          stepSequence(
+            procedureLiteral("and materializes", "Parent role receiving a child Result"),
+            procedureQuoted("result-target-role", "Parent Plan context role"),
+            procedureLiteral("from Result", "Child Result binding"),
+            procedureQuoted("result-source-role", "Returned child role"),
+          ),
+        ),
         procedureLiteral("and must establish", "Authoritative child completion reason"),
         procedureQuoted("reason", "Success reason"),
       ),
@@ -216,6 +234,7 @@ export const procedureStepGrammar: StepGrammar = {
               procedureLiteral("fixed as", "Fixed role value"),
               procedureQuoted("fixed-value", "Fixed role value"),
             ),
+            procedureLiteral("returned", "Observed role exposed as a Procedure Result", "returned"),
             stepSequence(procedureLiteral("for", "Parent role"), procedureQuoted("parent-role", "Plan context role")),
             stepSequence(
               procedureLiteral("for each", "One instance per parent"),
@@ -242,6 +261,18 @@ export const procedureStepGrammar: StepGrammar = {
         procedureQuoted("check", "Check name"),
         procedureLiteral(procedureLanguage.phrases.operation, "Names the Operation this Check runs"),
         procedureQuoted("operation", "Operation"),
+        stepOptional(
+          stepChoice(
+            stepSequence(
+              procedureLiteral("within", "Relative execution limit"),
+              procedureQuoted("execution-duration", "Compact duration: ms, s, m or h"),
+            ),
+            stepSequence(
+              procedureLiteral("until", "Absolute execution deadline"),
+              procedureQuoted("execution-deadline", "ISO 8601 date-time"),
+            ),
+          ),
+        ),
         procedureLiteral("on", "Target role"),
         stepOptional(stepOneOf("target-selection", ["each", "all"], "Target selection")),
         procedureQuoted("target-role", "Plan context role"),
@@ -307,6 +338,8 @@ export const procedureHighlightVocabulary = {
     "each-parent-role",
     "materialized-role",
     "field",
+    "execution-duration",
+    "execution-deadline",
   ],
 } as const;
 

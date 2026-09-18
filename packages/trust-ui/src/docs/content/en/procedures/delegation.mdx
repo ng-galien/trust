@@ -4,6 +4,33 @@ summary: "Declare child missions and distinguish their execution from the coordi
 order: 5
 ---
 
+## Passing verified Results between Plans
+
+Parent-to-child Inputs are explicit and fixed for each child generation. In the other direction, a child Procedure marks an observed role `returned`; the parent Invocation explicitly maps that Result to one of its own typed roles. The child does not write arbitrary parent variables or change the parent's immutable root Inputs.
+
+```gherkin fragment
+  # In the child Procedure's Plan context and producing Scenario:
+  And one reference "revision" returned
+  Then Check "read revision" runs Operation "git.head-read@1.0.0"
+    on "repository" as Input "project"
+    and materializes "revision" from field "headRevision"
+    and must establish "the revision is observed"
+    """js
+    fact.workingTree === "clean" || fail("the working tree is not clean")
+    """
+
+  # In the parent Procedure's Plan context and child Scenario:
+  And one reference "child revision"
+  Then Invocation "observe child" runs Procedure "result-child@1.0.0"
+    on "repository" as Input "repository"
+    and materializes "child revision" from Result "revision"
+    and must establish "the child observation is complete"
+```
+
+The compiler rejects an undeclared, non-returned, mismatched or multiply provided Result. A flat child Result can be mapped to an unscoped parent role; `on each` may map one Result per target through a matching `for each` parent role. Other Result parent topologies are not yet supported. For a declared mission collection, the parent target is an unscoped `many` role and each proposed child Procedure's Result contract is checked before that mission is accepted.
+
+Only the **fully validated current child Plan** contributes its Result values. A changed validated observation replaces them in a new parent revision. If the child is requalified negatively, escalated, or its generation is superseded, TRUST withdraws the values and reopens dependent parent Checks; unrelated children retain their identities. `plan.read` exposes current `importedResults` with their child and generation provenance, and revisions retain their prior projections. No hook or independent Invocation qualification is involved.
+
 ## Dynamic mission collections
 
 A Procedure can expose mission collections that an agent fills after engagement. TRUST validates each mission and pins its complete composition before creating its child Plan. Each child has its own Checks, Session and history. An empty collection waits for work.

@@ -190,6 +190,7 @@ export const procedures = {
     fixed: "fixed {{value}}",
     agentDeclaration: "declared by the agent",
     operationField: "from Check “{{check}}” · {{field}}",
+    invocationResult: "from Invocation “{{invocation}}” · Result {{result}}",
     planIdentifier: "Plan identifier",
   },
 } as const;

@@ -582,6 +582,56 @@ async function assertDefaultTemplates(connection: MessageConnection): Promise<vo
     operations: [compileOperation({ source: operationFixture("valid/git.head-read.feature") })],
   });
 
+  const operationReference = '"git.head-read@^1.0.0"';
+  const constraintOffset = procedureTemplate.indexOf(operationReference) + operationReference.length;
+  const constraintUri = "file:///workspace/completion/new-procedure-constraint.feature";
+  connection.sendNotification("textDocument/didOpen", {
+    textDocument: { uri: constraintUri, languageId: "trust-procedure", version: 1, text: procedureTemplate },
+  });
+  const constraintItems = await connection.sendRequest<CompletionItem[]>("textDocument/completion", {
+    textDocument: { uri: constraintUri },
+    position: positionAt(procedureTemplate, constraintOffset),
+  });
+  assert.equal(constraintItems.find(({ label }) => label === "within")?.insertText, `within "\${1:10m}"`);
+  assert.equal(
+    constraintItems.find(({ label }) => label === "until")?.insertText,
+    `until "\${1:2099-12-31T23:59:59Z}"`,
+  );
+
+  const incompleteDuration = `${procedureTemplate.slice(0, constraintOffset)} within "${procedureTemplate.slice(constraintOffset)}`;
+  const durationUri = "file:///workspace/completion/new-procedure-duration.feature";
+  connection.sendNotification("textDocument/didOpen", {
+    textDocument: { uri: durationUri, languageId: "trust-procedure", version: 1, text: incompleteDuration },
+  });
+  const durationItems = await connection.sendRequest<CompletionItem[]>("textDocument/completion", {
+    textDocument: { uri: durationUri },
+    position: positionAt(incompleteDuration, constraintOffset + ' within "'.length),
+  });
+  assert.deepEqual(
+    durationItems.map(({ label }) => label),
+    ["500ms", "30s", "10m", "1h"],
+  );
+  const constrainedProcedure = `${procedureTemplate.slice(0, constraintOffset)} within "10m"${procedureTemplate.slice(constraintOffset)}`;
+  compileProcedure({
+    source: constrainedProcedure,
+    operations: [compileOperation({ source: operationFixture("valid/git.head-read.feature") })],
+  });
+  const formattingUri = "file:///workspace/format/new-procedure-constraint.feature";
+  connection.sendNotification("textDocument/didOpen", {
+    textDocument: { uri: formattingUri, languageId: "trust-procedure", version: 1, text: constrainedProcedure },
+  });
+  const formattingEdits = await connection.sendRequest<Array<{ newText: string }>>("textDocument/formatting", {
+    textDocument: { uri: formattingUri },
+    options: { tabSize: 2, insertSpaces: true },
+  });
+  assert.ok(formattingEdits.length <= 1);
+  const formattedConstraint = formattingEdits[0]?.newText ?? constrainedProcedure;
+  assert.match(formattedConstraint, /Operation "git\.head-read@\^1\.0\.0" within "10m"/);
+  compileProcedure({
+    source: formattedConstraint,
+    operations: [compileOperation({ source: operationFixture("valid/git.head-read.feature") })],
+  });
+
   const scopeBlock = `Procedure scope
       | check | authorized | forbidden |
       | all   | Change repository files required by this Procedure. | Alter the environment to make a Check pass. |`;

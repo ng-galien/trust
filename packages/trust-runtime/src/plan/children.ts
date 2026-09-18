@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import type { DescendantEscalation, InvocationView } from "@trust/extension-sdk";
+import type { DescendantEscalation, InvocationView, PlanImportedResult } from "@trust/extension-sdk";
 import type { ChildGenerationTable, Database } from "../database/database.js";
 import type { PlanCheck, PlanRevision } from "../model.js";
 import { SnapshotStore } from "../snapshot/store.js";
@@ -157,6 +157,9 @@ export async function readComposition(database: Database, slug: string): Promise
         role.source.optional !== true &&
         !Object.hasOwn(revision.agentDeclarations, role.name),
     );
+  const missingResults = procedure.roles
+    .filter((role) => role.returned === true)
+    .filter((role) => ![...revision.roleValues, ...revision.importedValues].some((value) => value.role === role.name));
   const escalated = await database
     .selectFrom("plan_escalations")
     .selectAll()
@@ -181,10 +184,12 @@ export async function readComposition(database: Database, slug: string): Promise
     blockers: [
       ...(escalated ? [`Plan ${slug} is escalated: ${escalated.blocking_reason}`] : []),
       ...invocations.flatMap((value) => value.blockedBy),
+      ...missingResults.map((role) => `Returned Result ${role.name} is not validated`),
     ],
     complete:
       !missingDeclarations &&
       !escalated &&
+      missingResults.length === 0 &&
       active.length === revision.checks.length &&
       procedure.invocations.every((value) => invocations.some((invocation) => invocation.name === value.name)) &&
       (procedure.declaredInvocations ?? []).every((value) =>
@@ -333,6 +338,8 @@ export async function synchronizeChildren(input: {
       }
     }
     const state = await readComposition(database, slug);
+    const importedValues = await collectImportedResults(database, revision);
+    const resultsChanged = hash(importedValues) !== hash(revision.importedValues);
     const invalid = new Set(
       revision.checks
         .filter((check) =>
@@ -343,7 +350,7 @@ export async function synchronizeChildren(input: {
         .map((value) => value.uri),
     );
     const withdrawn = active.filter((value) => invalid.has(value.checkUri));
-    if (withdrawn.length || changedScenarios.size) {
+    if (withdrawn.length || changedScenarios.size || resultsChanged) {
       const next = buildPlanRevision({
         authority: input.authority,
         procedure,
@@ -356,6 +363,7 @@ export async function synchronizeChildren(input: {
         missionDeclarations: revision.missionDeclarations,
         resolvedMissions: revision.resolvedMissions,
         roleValues: revision.roleValues.filter((value) => !invalid.has(value.providerCheckUri)),
+        importedValues,
         checkValues: revision.checkValues.filter((value) => !invalid.has(value.providerCheckUri)),
         revision: plan.currentRevision + 1,
         pruneUnavailableRoleValues: true,
@@ -399,6 +407,48 @@ export async function synchronizeChildren(input: {
   }
   await visit(root);
   return changed;
+}
+
+async function collectImportedResults(database: Database, revision: PlanRevision): Promise<PlanImportedResult[]> {
+  const plans = new PlanStore({ database });
+  const values: PlanImportedResult[] = [];
+  for (const invocation of revision.invocations) {
+    if (invocation.definition.materializes.length === 0) continue;
+    const relation = await database
+      .selectFrom("child_generations")
+      .selectAll()
+      .where("parent_plan", "=", revision.planSlug)
+      .where("invocation_id", "=", invocation.id)
+      .where("superseded_at", "is", null)
+      .executeTakeFirst();
+    if (!relation || !(await readComposition(database, relation.child_plan)).complete) continue;
+    const childPlan = (await plans.findPlan(relation.child_plan))!;
+    const child = (await plans.readRevision(relation.child_plan, childPlan.currentRevision))!;
+    for (const binding of invocation.definition.materializes) {
+      const parentRole = revision.resolvedProcedure.roles.find((role) => role.name === binding.role)!;
+      const results = [...child.roleValues, ...child.importedValues].filter((item) => item.role === binding.result);
+      if (results.length === 0) throw new TypeError(`Completed child has no Result "${binding.result}"`);
+      const parents = Object.fromEntries(
+        parentRole.parents.map(({ role }) => {
+          const input = invocation.definition.inputBindings.find((candidate) => candidate.role === role);
+          if (!input || !Object.hasOwn(invocation.rootInputs, input.input))
+            throw new TypeError(`Invocation Result "${binding.role}" has no parent coordinate "${role}"`);
+          return [role, invocation.rootInputs[input.input]];
+        }),
+      );
+      for (const result of results)
+        values.push({
+          role: binding.role,
+          result: binding.result,
+          value: result.value,
+          parents,
+          invocationId: invocation.id,
+          childPlan: relation.child_plan,
+          childRevision: childPlan.currentRevision,
+        });
+    }
+  }
+  return values.sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
 }
 
 function hash(value: unknown): string {

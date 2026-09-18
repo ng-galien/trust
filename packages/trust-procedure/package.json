@@ -46,6 +46,7 @@
   "devDependencies": {
     "@trust/runner": "file:../trust-runner",
     "@types/node": "^24.0.0",
+    "fast-check": "^4.10.0",
     "typescript": "^5.7.2",
     "vitest": "^4.1.10"
   }

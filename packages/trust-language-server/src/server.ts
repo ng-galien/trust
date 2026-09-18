@@ -586,6 +586,26 @@ function procedureSuggestions(
           },
         ];
       }
+      if (expectation.value === "within") {
+        return [
+          {
+            label: expectation.value,
+            kind: CompletionItemKind.Snippet,
+            detail: expectation.detail,
+            insertText: `within "\${1:10m}"`,
+          },
+        ];
+      }
+      if (expectation.value === "until") {
+        return [
+          {
+            label: expectation.value,
+            kind: CompletionItemKind.Snippet,
+            detail: expectation.detail,
+            insertText: `until "\${1:2099-12-31T23:59:59Z}"`,
+          },
+        ];
+      }
       return [keyword(expectation.value, expectation.detail)];
     }
     if (expectation.kind === "one-of") {
@@ -624,6 +644,10 @@ function procedureSuggestions(
               quotedValue(name, CompletionItemKind.Property, expectation.detail),
             )
           : [];
+      case "execution-duration":
+        return ["500ms", "30s", "10m", "1h"].map((value) =>
+          quotedValue(value, CompletionItemKind.Value, "Compact Check execution duration"),
+        );
       case "field":
         return operation
           ? Object.keys(operation.produced.properties).map((name) =>

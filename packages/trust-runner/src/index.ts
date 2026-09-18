@@ -16,5 +16,7 @@ export { PostgresqlError } from "./postgresql/run.js";
 export type { ShellRunnerConfiguration } from "./shell/run.js";
 export type { Fact, FactExporter, FactTrace } from "./telemetry/otlp.js";
 export { OtlpFactExporter } from "./telemetry/otlp.js";
+export type { Clock } from "./time.js";
+export { SystemClock } from "./time.js";
 export type { TrialJob, TrialOutcome } from "./trial/run.js";
 export { parseTrialJob, runTrial } from "./trial/run.js";

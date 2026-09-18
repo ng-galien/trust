@@ -21,6 +21,7 @@ import { isJsonObject, type JsonObject } from "../lib/json.js";
 import { type PostgresqlRunnerConfiguration, runPostgresql } from "../postgresql/run.js";
 import type { ShellRunnerConfiguration } from "../shell/run.js";
 import { runShell } from "../shell/run.js";
+import { type Clock, instantMilliseconds, SystemClock } from "../time.js";
 
 export interface OperationResult {
   readonly steps: JsonObject;
@@ -28,6 +29,9 @@ export interface OperationResult {
 }
 
 export interface OperationRunnerConfiguration {
+  /** Complete Operation budget resolved from the invoking Procedure Check. */
+  readonly executionTimeoutMs?: number;
+  readonly clock?: Clock;
   readonly shell?: ShellRunnerConfiguration;
   readonly postgresql?: PostgresqlRunnerConfiguration;
 }
@@ -40,10 +44,15 @@ export async function runOperation(
   executionValue: unknown = {},
   configuration: OperationRunnerConfiguration = {},
 ): Promise<OperationResult> {
-  const startedAt = Date.now();
+  const clock = configuration.clock ?? new SystemClock();
+  const startedAt = instantMilliseconds(clock);
+  const executionTimeoutMs = configuration.executionTimeoutMs;
+  if (executionTimeoutMs !== undefined && (!Number.isSafeInteger(executionTimeoutMs) || executionTimeoutMs < 1)) {
+    throw new TypeError("executionTimeoutMs must be a positive integer");
+  }
   diagnostics.emit({
     type: "operation.start",
-    at: now(),
+    at: now(clock),
     operation: operation.operation,
     version: operation.version,
     stepCount: operation.steps.length,
@@ -59,42 +68,50 @@ export async function runOperation(
 
     for (const [index, step] of operation.steps.entries()) {
       const reporter: StepReporter = {
-        log: (stream, text) => diagnostics.emit({ type: "step.log", at: now(), step: step.name, stream, text }),
+        log: (stream, text) => diagnostics.emit({ type: "step.log", at: now(clock), step: step.name, stream, text }),
       };
-      const stepStartedAt = Date.now();
+      const stepStartedAt = instantMilliseconds(clock);
       diagnostics.emit({
         type: "step.start",
-        at: now(),
+        at: now(clock),
         step: step.name,
         index,
         kind: step.type,
         ...describeStep(step, input, environment, execution),
       });
       try {
+        const timeoutMs = remainingExecutionTime(executionTimeoutMs, startedAt, operation.operation, clock);
         const result = await matchOperationStep<Promise<unknown>>(step, {
-          shell: ({ shell }) => runShell(shell, input, environment, execution, reporter, configuration.shell),
+          shell: ({ shell }) =>
+            runShell(shell, input, environment, execution, reporter, {
+              ...configuration.shell,
+              ...(timeoutMs === undefined ? {} : { timeoutMs }),
+            }),
           "file-read": ({ file }) => runFileRead(file, input, environment, reporter),
-          http: ({ http }) => runHttp(http, input, environment, steps, execution, reporter),
+          http: ({ http }) => runHttp(http, input, environment, steps, execution, reporter, timeoutMs, clock),
           postgresql: ({ postgresql }) =>
-            runPostgresql(postgresql, input, environment, reporter, configuration.postgresql),
+            runPostgresql(postgresql, input, environment, reporter, {
+              ...configuration.postgresql,
+              ...(timeoutMs === undefined ? {} : { timeoutMs }),
+            }),
         });
         const converted = json(result, `Operation step "${step.name}" result`);
         steps[step.name] = converted;
         diagnostics.emit({
           type: "step.end",
-          at: now(),
+          at: now(clock),
           step: step.name,
           ok: true,
-          durationMs: Date.now() - stepStartedAt,
+          durationMs: instantMilliseconds(clock) - stepStartedAt,
           outcome: outcomeOf(step, converted),
         });
       } catch (error) {
         diagnostics.emit({
           type: "step.end",
-          at: now(),
+          at: now(clock),
           step: step.name,
           ok: false,
-          durationMs: Date.now() - stepStartedAt,
+          durationMs: instantMilliseconds(clock) - stepStartedAt,
           outcome: {},
           error: message(error),
         });
@@ -102,6 +119,7 @@ export async function runOperation(
       }
     }
 
+    remainingExecutionTime(executionTimeoutMs, startedAt, operation.operation, clock);
     const producedValue = await evaluateOperationProjection(
       operation.produce.expression,
       operationProjectionContext(input, environment, steps, execution),
@@ -110,9 +128,9 @@ export async function runOperation(
     const produced = jsonObject(producedValue, "Operation Produced values");
     diagnostics.emit({
       type: "operation.end",
-      at: now(),
+      at: now(clock),
       ok: true,
-      durationMs: Date.now() - startedAt,
+      durationMs: instantMilliseconds(clock) - startedAt,
       produced,
       steps,
     });
@@ -120,13 +138,25 @@ export async function runOperation(
   } catch (error) {
     diagnostics.emit({
       type: "operation.end",
-      at: now(),
+      at: now(clock),
       ok: false,
-      durationMs: Date.now() - startedAt,
+      durationMs: instantMilliseconds(clock) - startedAt,
       error: message(error),
     });
     throw error;
   }
+}
+
+function remainingExecutionTime(
+  timeoutMs: number | undefined,
+  startedAt: number,
+  operation: string,
+  clock: Clock,
+): number | undefined {
+  if (timeoutMs === undefined) return undefined;
+  const remaining = timeoutMs - (instantMilliseconds(clock) - startedAt);
+  if (remaining < 1) throw new Error(`Operation "${operation}" exceeded its Check execution limit.`);
+  return Math.max(1, Math.floor(remaining));
 }
 
 function describeStep(

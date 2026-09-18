@@ -64,6 +64,8 @@ export interface CompiledProcedureRole {
   readonly type: ProcedureValueType;
   readonly cardinality: "one" | "many";
   readonly parents: readonly { readonly role: string; readonly each: boolean }[];
+  /** This observed role is part of the Procedure's child-result interface. */
+  readonly returned?: true;
   /** Position of the declaring Background step; absent for synthesised roles. */
   readonly location?: CompiledSourceLocation;
   readonly source:
@@ -71,6 +73,7 @@ export interface CompiledProcedureRole {
     | { readonly kind: "agent-declaration"; readonly optional?: true }
     | { readonly kind: "fixed"; readonly value: string }
     | { readonly kind: "operation-field"; readonly check: string; readonly field: string }
+    | { readonly kind: "invocation-result"; readonly invocation: string; readonly result: string }
     /** The reserved role `plan`, synthesised when a Check uses `using plan as Input`: one string,
         the Plan identifier (slug) supplied at engagement, fixed for the Plan's lifetime. */
     | { readonly kind: "plan-identifier" };
@@ -115,6 +118,11 @@ export interface CompiledProcedureQualification {
   readonly location: { readonly line: number; readonly column: number };
 }
 
+/** The Procedure-owned time boundary for one Check invocation. Operations remain context-free. */
+export type CheckExecutionConstraint =
+  | { readonly kind: "within"; readonly duration: string; readonly milliseconds: number }
+  | { readonly kind: "until"; readonly dateTime: string };
+
 export interface CompiledProcedureCheck {
   readonly name: string;
   readonly scenario: string;
@@ -122,6 +130,7 @@ export interface CompiledProcedureCheck {
   readonly operationVersion: string;
   readonly operationSelector: string;
   readonly operationDigest: string;
+  readonly executionConstraint?: CheckExecutionConstraint;
   readonly target: { readonly role: string; readonly selection: "one" | "each" | "all" };
   readonly inputBindings: readonly CompiledProcedureInputBinding[];
   readonly materializes: readonly { readonly role: string; readonly field: string }[];
@@ -152,6 +161,7 @@ export interface CompiledProcedureInvocation {
   readonly childDefinition: CompiledProcedure;
   readonly target?: CompiledProcedureCheck["target"];
   readonly inputBindings: readonly CompiledProcedureInputBinding[];
+  readonly materializes: readonly { readonly role: string; readonly result: string }[];
   readonly successReason: string;
   readonly location?: CompiledSourceLocation;
 }
@@ -173,6 +183,7 @@ export interface CompiledProcedureDeclaredInvocation {
   readonly name: string;
   readonly scenario: string;
   readonly collection: string;
+  readonly materializes: readonly { readonly role: string; readonly result: string }[];
   readonly successReason: string;
   readonly location?: CompiledSourceLocation;
 }

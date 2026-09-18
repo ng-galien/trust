@@ -9,6 +9,7 @@ import type {
   PlanView,
   SessionView,
 } from "@trust/extension-sdk";
+import { matchCheckExecutionConstraint } from "@trust/procedure/match";
 import express, { type ErrorRequestHandler, type RequestHandler, type Router } from "express";
 import { ExtensionError, type ExtensionHost } from "../extensions/host.js";
 import { parseMissionDeclarations } from "../plan/mission-declarations.js";
@@ -426,6 +427,17 @@ function renderPlan(view: PlanView): string {
           "Immutable root business inputs recorded at Plan engagement; these are not re-observed Facts.",
           ...Object.entries(view.rootInputs).map(([role, value]) => `- ${role} = ${JSON.stringify(value)}`),
         ]),
+    ...(view.importedResults.length === 0
+      ? []
+      : [
+          "",
+          "IMPORTED RESULTS",
+          "Current values from fully validated child Plans; they may be withdrawn by requalification or supersession.",
+          ...view.importedResults.map(
+            (result) =>
+              `- ${result.role} = ${JSON.stringify(result.value)} from ${result.childPlan} Result ${result.result}`,
+          ),
+        ]),
     ...(view.intentChaining
       ? [
           "",
@@ -569,6 +581,7 @@ function renderCheck(view: CheckView): string {
     `Scenario: ${view.scenario}`,
     `Status: ${view.state}`,
     `Operation: ${view.operation}`,
+    ...formatExecutionConstraint(view.executionConstraint),
     "Authorized scope:",
     ...formatScope(view.actionScope.authorized),
     "Forbidden scope:",
@@ -675,6 +688,7 @@ function renderActionableCheck(check: PlanView["checks"][number], view: PlanView
         ]
       : []),
     `  Operation: ${check.operation}`,
+    ...formatExecutionConstraint(check.executionConstraint).map((line) => `  ${line}`),
     "  Authorized scope:",
     ...formatScope(check.actionScope.authorized).map((line) => `    ${line}`),
     "  Forbidden scope:",
@@ -690,6 +704,16 @@ function renderBlockedCheck(check: PlanView["checks"][number], checks: PlanView[
     `- ${check.name} (${check.scenario})`,
     `  Check URI: ${check.checkUri}`,
     ...check.blockedBy.map((blocker) => `  - ${renderBlocker(blocker, checks)}`),
+  ];
+}
+
+function formatExecutionConstraint(constraint: PlanView["checks"][number]["executionConstraint"]): readonly string[] {
+  if (constraint === undefined) return [];
+  return [
+    `Execution limit: ${matchCheckExecutionConstraint(constraint, {
+      within: ({ duration }) => `within ${duration}`,
+      until: ({ dateTime }) => `until ${dateTime}`,
+    })}`,
   ];
 }
 

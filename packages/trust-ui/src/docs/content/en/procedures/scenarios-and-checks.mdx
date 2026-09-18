@@ -10,7 +10,7 @@ A **Scenario** groups Checks and orders them: it is satisfied when every Check i
   @scenario:verification
   Scenario: Verify the committed fix
     Given scenario "fix" is validated
-    Then Check "Maven verification" runs Operation "maven.project-verify@*"
+    Then Check "Maven verification" runs Operation "maven.project-verify@*" within "10m"
         on "project" as Input "project"
         using "fix revision" as Input "revision"
         and must establish "the committed fix passes Maven verification"
@@ -41,6 +41,7 @@ A **Scenario** groups Checks and orders them: it is satisfied when every Check i
 
 ```gherkin fragment
 Then|And Check "<name>" runs Operation "<domain.action>@*"
+    [within "<positive integer><ms|s|m|h>" | until "<ISO-8601 date-time with timezone>"]
     on [each|all] "<role>" as Input "<input>"
     [using [all] "<role>" as Input "<input>" | using plan as Input "<input>"]…
     [and materializes "<role>" from field "<field>"]…
@@ -55,6 +56,8 @@ Then|And Check "<name>" runs Operation "<domain.action>@*"
 | `Then` / `And` | the keyword of a Check step |
 | `Check "<name>"` | free quoted name, non-empty, unique in the Procedure — it names the Check in Plans, verdicts and history |
 | `runs Operation "<domain.action>@*"` | an Operation of the catalog, by name; the version embedded is the current one at publication |
+| `within "<duration>"` | optional relative limit for the complete Operation execution. The duration is a positive integer immediately followed by `ms`, `s`, `m` or `h`, for example `500ms`, `30s`, `10m` or `2h` |
+| `until "<date-time>"` | optional absolute limit for the complete Operation execution, written as an ISO 8601 date-time with an explicit timezone, for example `2026-09-14T18:00:00Z`. A Check uses either `within` or `until`, never both |
 | `on [each\|all] "<role>" as Input "<input>"` | the **target**: one role bound to one Input of the Operation. `on "r"` — one Check; `on each "r"` — one Check per value of a `many` role; `on all "r"` — one Check receiving the whole collection |
 | `using [all] "<role>" as Input "<input>"` | binds another Input (no `and` before `using`); `all` passes a collection. Every Input of the Operation is bound **exactly once**, between `on` and `using` |
 | `using plan as Input "<input>"` | binds the **Plan identifier** (the slug given at engagement) to one `string` or `reference` Input of cardinality `one`. `plan` is a reserved role name (no Background may declare it): the binding compiles to a synthesised role `"plan"` with source `plan-identifier`, seeded with the Plan slug at engagement; the value is fixed for the Plan's lifetime and never reopens the Check. It lets an Operation tag what it does with the Plan (a Maven property, a trace attribute, a query parameter) |
@@ -63,6 +66,8 @@ Then|And Check "<name>" runs Operation "<domain.action>@*"
 | `js` DocString | the qualification, see [Qualifications](/docs/procedures/expectations) — exactly one expression attached to the Check |
 
 `using` and `and materializes` may be interleaved in any order between `on` and `and must establish`. Keywords are case-sensitive.
+
+The limit belongs to the Procedure Check, not to the reusable Operation. A live Plan passes it to the Runner, which applies it across every step and Produce. A timeout interrupts the Attempt before Facts are accepted, so the Check remains open and may be retried. Operation simulation executes nothing, an Operation Trial has no Procedure Check and keeps its own technical limit, and a Procedure dry-run records operator Facts without running the Operation; none of those modes applies this Check limit.
 
 Cardinality at each binding: a scalar Input takes `on`/`using` of a `one` role, or `each` of a `many` role (one value per Check); a collection Input takes `all` of a `many` role. A `many` role without `each` or `all` is accepted only in a `using` of the same scope as an `each` target (the related value). Types must match exactly (`reference` ≠ `string`).
 
@@ -98,5 +103,5 @@ The referenced Check, or the provider of the role, must belong to a **prerequisi
 </Callout>
 
 <Details title="Compiled Checks and Check instances" expert>
-Each Check compiles to `{ name, scenario, operation, operationVersion, operationDigest, target, inputBindings, materializes, qualification { source, guards }, successReason }`. At engagement the runtime instantiates it: one instance for `one` and `all`, one per target value for `each` (none while an agent-declared collection is empty). Each instance has a URI `trust://…/<procedure>@<version>/<plan>/<scenario>/<check>/<domain>-<action>[/<value>]` — the Check name is used as-is when it is a slug, hashed otherwise; the last segment exists only for `each`. The instance's dependencies (prerequisite Scenarios, `checks` references, providers of the roles it binds) and the context it consumes are what the cascade follows: a value it does not use cannot reopen it.
+Each Check compiles to `{ name, scenario, operation, operationVersion, operationDigest, executionConstraint?, target, inputBindings, materializes, qualification { source, guards }, successReason }`. At engagement the runtime instantiates it: one instance for `one` and `all`, one per target value for `each` (none while an agent-declared collection is empty). Each instance has a URI `trust://…/<procedure>@<version>/<plan>/<scenario>/<check>/<domain>-<action>[/<value>]` — the Check name is used as-is when it is a slug, hashed otherwise; the last segment exists only for `each`. The instance's dependencies (prerequisite Scenarios, `checks` references, providers of the roles it binds) and the context it consumes are what the cascade follows: a value it does not use cannot reopen it.
 </Details>

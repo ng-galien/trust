@@ -89,7 +89,7 @@ export class PlanStore {
         declarations_json: JSON.stringify(compiled.agentDeclarations),
         mission_declarations_json: JSON.stringify(compiled.missionDeclarations),
         resolved_missions_json: JSON.stringify(compiled.resolvedMissions),
-        role_values_json: JSON.stringify(compiled.roleValues),
+        role_values_json: JSON.stringify(serializeRoleValues(compiled)),
         check_values_json: JSON.stringify(compiled.checkValues),
         invocations_json: JSON.stringify(compiled.invocations),
         compiled_at: compiledAt,
@@ -405,6 +405,7 @@ function toPlan(row: PlanRow): Plan {
 }
 
 function toRevision(plan: Plan, row: RevisionRow, checkJson: readonly string[]): PlanRevision {
+  const values = parseRoleValues(row.role_values_json);
   return {
     resolvedProcedure: JSON.parse(row.resolved_procedure_json) as PlanRevision["resolvedProcedure"],
     procedure: plan.procedure,
@@ -421,10 +422,40 @@ function toRevision(plan: Plan, row: RevisionRow, checkJson: readonly string[]):
     agentDeclarations: JSON.parse(row.declarations_json) as PlanRevision["agentDeclarations"],
     missionDeclarations: JSON.parse(row.mission_declarations_json) as PlanRevision["missionDeclarations"],
     resolvedMissions: JSON.parse(row.resolved_missions_json) as PlanRevision["resolvedMissions"],
-    roleValues: JSON.parse(row.role_values_json) as PlanRevision["roleValues"],
+    roleValues: values.produced,
+    importedValues: values.imported,
     checkValues: JSON.parse(row.check_values_json) as PlanRevision["checkValues"],
     invocations: JSON.parse(row.invocations_json) as PlanRevision["invocations"],
     checks: checkJson.map((value) => JSON.parse(value) as PlanCheck),
+  };
+}
+
+function serializeRoleValues(revision: PlanRevision): unknown {
+  if (revision.importedValues.length === 0) return revision.roleValues;
+  return {
+    contract: "trust.plan-role-values@1",
+    produced: revision.roleValues,
+    imported: revision.importedValues,
+  };
+}
+
+function parseRoleValues(raw: string): {
+  readonly produced: PlanRevision["roleValues"];
+  readonly imported: PlanRevision["importedValues"];
+} {
+  const parsed: unknown = JSON.parse(raw);
+  if (Array.isArray(parsed)) return { produced: parsed as PlanRevision["roleValues"], imported: [] };
+  if (parsed === null || typeof parsed !== "object") throw new TypeError("Plan revision has invalid role values");
+  const record = parsed as Record<string, unknown>;
+  if (
+    record.contract !== "trust.plan-role-values@1" ||
+    !Array.isArray(record.produced) ||
+    !Array.isArray(record.imported)
+  )
+    throw new TypeError("Plan revision has invalid role values");
+  return {
+    produced: record.produced as PlanRevision["roleValues"],
+    imported: record.imported as PlanRevision["importedValues"],
   };
 }
 

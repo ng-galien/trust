@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
@@ -251,6 +251,7 @@ describe("Operation runner", () => {
           actionInput: {},
           operation: fixtureOperation("shell.execution-id.feature"),
           environment: { workspaceRoot },
+          executionConstraint: { kind: "within" as const, duration: "10m", milliseconds: 600_000 },
           expiresAt: "2026-08-15T13:00:00.000Z",
         }),
         finalize: async () => ({
@@ -267,7 +268,7 @@ describe("Operation runner", () => {
         },
       } as FactExporter,
       attemptKey: () => "execution-attempt",
-      clock: () => new Date("2026-08-15T12:00:00.000Z"),
+      clock: { now: () => new Date("2026-08-15T12:00:00.000Z") },
     });
 
     const result = await runner.run("trust://local/example@1.0.0/plan/scenario/check/execution");
@@ -287,6 +288,106 @@ describe("Operation runner", () => {
         facts: [expect.objectContaining({ values: { executionId } })],
       }),
     ]);
+  });
+
+  test("applies a Procedure Check limit to the complete Operation and interrupts without exporting Facts", async () => {
+    const workspaceRoot = await temporaryDirectory("trust-runner-check-timeout-");
+    const pidFile = join(workspaceRoot, "stubborn.pid");
+    const code = `require("node:fs").writeFileSync(${JSON.stringify(pidFile)}, String(process.pid)); process.on("SIGTERM", () => {}); setInterval(() => {}, 1000)`;
+    const source = `# language: en
+@trust-dsl:1 @operation:trust.stubborn @version:1.0.0
+Feature: Keep running until the Check limit stops the process
+
+  Background: Operation interface
+    Given Environment
+      | name          | type      |
+      | workspaceRoot | directory |
+    And Produced fields
+      | field     | type   | cardinality | domain |
+      | completed | string | one         | any    |
+
+  Scenario: Run
+    When Shell "wait" runs "${process.execPath}" with cwd from Environment "workspaceRoot"
+      | argument | source  |
+      | -e       | literal |
+      | ${code} | literal |
+    Then Produce with JSONata
+      """
+      { "completed": "yes" }
+      """
+`;
+    const interrupted: string[] = [];
+    const runner = createCheckRunner({
+      checkClient: {
+        admit: async () => ({
+          status: "ADMITTED" as const,
+          attemptKey: "timed-attempt",
+          attemptHandle: "timed-handle",
+          executionId: "01924f0e-6f6e-4d8e-8fe8-3d2a246f177c",
+          checkUri: "trust://local/example@1.0.0/plan/scenario/check/timeout",
+          actionInput: {},
+          operation: compileOperation({ source }),
+          environment: { workspaceRoot },
+          executionConstraint: { kind: "within" as const, duration: "200ms", milliseconds: 200 },
+          expiresAt: "2026-08-15T13:00:00.000Z",
+        }),
+        interrupt: async (attemptHandle: string) => {
+          interrupted.push(attemptHandle);
+          return { status: "INTERRUPTED" as const };
+        },
+      } as unknown as CheckClient,
+      facts: {
+        export: async () => {
+          throw new Error("Facts must not be exported after a Check execution timeout.");
+        },
+      } as FactExporter,
+      attemptKey: () => "timed-attempt",
+      clock: { now: () => new Date("2026-08-15T12:00:00.000Z") },
+    });
+
+    await expect(runner.run("trust://local/example@1.0.0/plan/scenario/check/timeout")).rejects.toThrow(
+      "Shell timed out after",
+    );
+    expect(interrupted).toEqual(["timed-handle"]);
+    await waitForFile(pidFile);
+    await waitUntilProcessStops(Number(await readFile(pidFile, "utf8")));
+  });
+
+  test("refuses an elapsed absolute Check deadline before starting the Operation", async () => {
+    const workspaceRoot = await temporaryDirectory("trust-runner-elapsed-deadline-");
+    const interrupted: string[] = [];
+    const runner = createCheckRunner({
+      checkClient: {
+        admit: async () => ({
+          status: "ADMITTED" as const,
+          attemptKey: "elapsed-attempt",
+          attemptHandle: "elapsed-handle",
+          executionId: "01924f0e-6f6e-4d8e-8fe8-3d2a246f177c",
+          checkUri: "trust://local/example@1.0.0/plan/scenario/check/elapsed",
+          actionInput: {},
+          operation: fixtureOperation("shell.execution-id.feature"),
+          environment: { workspaceRoot },
+          executionConstraint: { kind: "until" as const, dateTime: "2026-08-15T11:59:59.000Z" },
+          expiresAt: "2026-08-15T13:00:00.000Z",
+        }),
+        interrupt: async (attemptHandle: string) => {
+          interrupted.push(attemptHandle);
+          return { status: "INTERRUPTED" as const };
+        },
+      } as unknown as CheckClient,
+      facts: {
+        export: async () => {
+          throw new Error("Facts must not be exported after an elapsed Check deadline.");
+        },
+      } as FactExporter,
+      attemptKey: () => "elapsed-attempt",
+      clock: { now: () => new Date("2026-08-15T12:00:00.000Z") },
+    });
+
+    await expect(runner.run("trust://local/example@1.0.0/plan/scenario/check/elapsed")).rejects.toThrow(
+      "execution deadline 2026-08-15T11:59:59.000Z has elapsed",
+    );
+    expect(interrupted).toEqual(["elapsed-handle"]);
   });
 
   test("interrupts an admitted Attempt when the Operation fails before Facts are exported", async () => {
@@ -323,7 +424,7 @@ describe("Operation runner", () => {
         },
       } as FactExporter,
       attemptKey: () => "failed-operation-attempt",
-      clock: () => new Date("2026-08-15T12:00:00.000Z"),
+      clock: { now: () => new Date("2026-08-15T12:00:00.000Z") },
     });
 
     await expect(runner.run("trust://local/example@1.0.0/plan/scenario/check/failure")).rejects.toThrow(
@@ -362,7 +463,7 @@ describe("Operation runner", () => {
         },
       } as FactExporter,
       attemptKey: () => "failed-export-attempt",
-      clock: () => new Date("2026-08-15T12:00:00.000Z"),
+      clock: { now: () => new Date("2026-08-15T12:00:00.000Z") },
     });
 
     await expect(runner.run("trust://local/example@1.0.0/plan/scenario/check/export-failure")).rejects.toThrow(
@@ -415,7 +516,7 @@ describe("Operation runner", () => {
         },
       } as FactExporter,
       attemptKey: () => "lost-response-attempt",
-      clock: () => new Date("2026-08-15T12:00:00.000Z"),
+      clock: { now: () => new Date("2026-08-15T12:00:00.000Z") },
     });
 
     await expect(runner.run("trust://local/example@1.0.0/plan/scenario/check/lost-response")).resolves.toMatchObject({
@@ -1381,4 +1482,30 @@ async function serverConnectionCount(server: Server): Promise<number> {
   return new Promise<number>((resolve, reject) => {
     server.getConnections((error, count) => (error ? reject(error) : resolve(count)));
   });
+}
+
+async function waitForFile(file: string): Promise<void> {
+  const deadline = Date.now() + 5_000;
+  while (Date.now() < deadline) {
+    try {
+      await access(file);
+      return;
+    } catch {
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+  }
+  throw new Error(`Timed-out Operation did not write ${file}`);
+}
+
+async function waitUntilProcessStops(pid: number): Promise<void> {
+  const deadline = Date.now() + 5_000;
+  while (Date.now() < deadline) {
+    try {
+      process.kill(pid, 0);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ESRCH") return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  throw new Error(`Process ${pid} survived the Check execution timeout`);
 }

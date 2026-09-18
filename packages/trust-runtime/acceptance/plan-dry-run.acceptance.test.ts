@@ -13,6 +13,51 @@ const operationsDirectory = path.join(repositoryRoot, "assets/operations");
    declarations, admission, Fact validation, qualification, cascade), but the operator supplies
    the Facts over RPC and TRUST never resolves an environment for it. */
 
+test("a Procedure Check execution limit is delegated only by a live Plan", async () => {
+  const runtime = await startPublicRuntime("trust-check-execution-limit-", {
+    operationsDirectory,
+    environments: { local: { workspaceRoot: repositoryRoot } },
+  });
+  try {
+    const source = (
+      await readFile(path.join(repositoryRoot, "assets/procedures/00-git-status.feature"), "utf8")
+    ).replace('runs Operation "git.head-read@*"', 'runs Operation "git.head-read@*" within "10m"');
+    await rpc(runtime.endpoint, "procedure.publish", { source, sourceName: "git-status-timeboxed.feature" });
+
+    const engage = async (plan: string, mode: "live" | "dry-run") =>
+      rpc(runtime.endpoint, "plan.engage", {
+        contract: "trust.plan-engagement-request@1",
+        procedure: "git-status",
+        procedureVersion: "2.0.0",
+        plan,
+        environment: "local",
+        rootInputs: { repository: "." },
+        mode,
+      }) as Promise<{ checkUris: readonly string[] }>;
+
+    const live = await engage("live-timeboxed", "live");
+    const dryRun = await engage("dry-timeboxed", "dry-run");
+    const declaredLimit = { kind: "within", duration: "10m", milliseconds: 600_000 } as const;
+
+    assert.deepEqual(
+      (await readPlan(runtime.endpoint, "live-timeboxed")).checks[0]?.executionConstraint,
+      declaredLimit,
+    );
+    assert.deepEqual((await readPlan(runtime.endpoint, "dry-timeboxed")).checks[0]?.executionConstraint, declaredLimit);
+    assert.deepEqual(
+      (await admit(runtime.endpoint, live.checkUris[0]!, "live-timeboxed-attempt")).executionConstraint,
+      declaredLimit,
+    );
+    assert.equal(
+      (await admit(runtime.endpoint, dryRun.checkUris[0]!, "dry-timeboxed-attempt")).executionConstraint,
+      undefined,
+    );
+    assert.match(await mcpTool(runtime.endpoint, "trust_plan_read", { plan: "live-timeboxed" }), /within 10m/);
+  } finally {
+    await runtime.close();
+  }
+});
+
 test("a dry-run Plan is driven end to end from the RPC boundary without any environment value", async () => {
   const runtime = await startPublicRuntime("trust-dry-run-", {
     operationsDirectory,
@@ -1408,6 +1453,9 @@ interface Admission {
   operation: { operation: string };
   actionInput: Record<string, unknown>;
   environment: Record<string, unknown>;
+  executionConstraint?:
+    | { kind: "within"; duration: string; milliseconds: number }
+    | { kind: "until"; dateTime: string };
 }
 
 interface PlanViewShape {
@@ -1447,6 +1495,9 @@ interface PlanViewShape {
     latestVerdict: string | null;
     inputs: Record<string, unknown>;
     actionScope: { authorized: readonly string[]; forbidden: readonly string[] };
+    executionConstraint?:
+      | { kind: "within"; duration: string; milliseconds: number }
+      | { kind: "until"; dateTime: string };
   }[];
 }
 

@@ -5,6 +5,7 @@ export {
   compileProcedure,
   isProcedureSource,
   procedureScopeFragment,
+  validateDeclaredInvocationResults,
 } from "./compile.js";
 export { type ScenarioDependencies, transitiveScenarioDependencies } from "./dependencies.js";
 export { evaluateQualificationCondition, evaluateQualificationRule } from "./evaluate.js";

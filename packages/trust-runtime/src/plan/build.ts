@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import type {
   MissionDeclarations,
+  PlanImportedResult,
   PlanMetadata,
   PlanMode,
   ResolvedMissions,
@@ -34,6 +35,7 @@ export interface BuildPlanRevisionInput {
   readonly resolvedMissions?: ResolvedMissions;
   readonly revision: number;
   readonly roleValues?: readonly ProducedRoleValue[];
+  readonly importedValues?: readonly PlanImportedResult[];
   readonly checkValues?: readonly CheckValues[];
   readonly pruneUnavailableRoleValues?: boolean;
 }
@@ -47,14 +49,16 @@ export function buildPlanRevision(input: BuildPlanRevisionInput): PlanRevision {
     input.declarations ?? Object.freeze({}),
   );
   const roleValues = input.roleValues ?? Object.freeze([]);
+  const importedValues = input.importedValues ?? Object.freeze([]);
   const checkValues = input.checkValues ?? Object.freeze([]);
-  const produced = appendProducedValues(
+  const derived = appendDerivedValues(
     input.procedure.roles,
     declaredContext,
     roleValues,
+    importedValues,
     input.pruneUnavailableRoleValues === true,
   );
-  const context = produced.context;
+  const context = derived.context;
   const scenarioDependencies = new Map(
     input.procedure.scenarios.map((scenario) => [scenario.slug, scenario.dependencies]),
   );
@@ -112,6 +116,7 @@ export function buildPlanRevision(input: BuildPlanRevisionInput): PlanRevision {
           procedureDigest: child.definitionDigest,
           childDefinition: child,
           inputBindings: [],
+          materializes: declaration.materializes,
           successReason: declaration.successReason,
         },
         rootInputs,
@@ -169,6 +174,7 @@ export function buildPlanRevision(input: BuildPlanRevisionInput): PlanRevision {
               "plan-identifier": () => true,
               "agent-declaration": () => true,
               "operation-field": ({ check }) => check !== compiledCheck.name,
+              "invocation-result": () => true,
             })
           );
         }),
@@ -278,7 +284,8 @@ export function buildPlanRevision(input: BuildPlanRevisionInput): PlanRevision {
     source: input.procedure.source,
     checks: Object.freeze(withDependencies),
     invocations: Object.freeze(invocations),
-    roleValues: produced.roleValues,
+    roleValues: derived.roleValues,
+    importedValues: derived.importedValues,
     checkValues: Object.freeze([...checkValues]),
   });
 }
@@ -317,6 +324,7 @@ export function validateRootInputs(
       "plan-identifier": () => {},
       "agent-declaration": () => {},
       "operation-field": () => {},
+      "invocation-result": () => {},
     });
     appended.add(role.name);
   };
@@ -377,6 +385,7 @@ function baseContext(roles: readonly CompiledProcedureRole[], roots: RuntimeJson
       "plan-identifier": () => appendInputValues(role, plan, context, "Plan identifier"),
       "agent-declaration": () => {},
       "operation-field": () => {},
+      "invocation-result": () => {},
     });
     appended.add(role.name);
   };
@@ -453,6 +462,129 @@ function appendInputValues(role: CompiledProcedureRole, raw: unknown, context: C
   }
 }
 
+function appendDerivedValues(
+  roles: readonly CompiledProcedureRole[],
+  base: readonly ContextValue[],
+  produced: readonly ProducedRoleValue[],
+  imported: readonly PlanImportedResult[],
+  pruneUnavailable: boolean,
+): {
+  readonly context: readonly ContextValue[];
+  readonly roleValues: readonly ProducedRoleValue[];
+  readonly importedValues: readonly PlanImportedResult[];
+} {
+  let context = base;
+  let pendingProduced = [...produced];
+  let pendingImported = [...imported];
+  const retainedProduced = new Set<ProducedRoleValue>();
+  const retainedImported = new Set<PlanImportedResult>();
+  while (pendingProduced.length > 0 || pendingImported.length > 0) {
+    const nextProduced = appendProducedValues(roles, context, pendingProduced, true);
+    const nextImported = appendImportedValues(roles, nextProduced.context, pendingImported, true);
+    if (nextProduced.roleValues.length === 0 && nextImported.values.length === 0) break;
+    context = nextImported.context;
+    for (const value of nextProduced.roleValues) retainedProduced.add(value);
+    for (const value of nextImported.values) retainedImported.add(value);
+    pendingProduced = pendingProduced.filter((value) => !retainedProduced.has(value));
+    pendingImported = pendingImported.filter((value) => !retainedImported.has(value));
+  }
+  if (!pruneUnavailable) {
+    if (pendingProduced.length > 0) appendProducedValues(roles, context, pendingProduced, false);
+    if (pendingImported.length > 0) appendImportedValues(roles, context, pendingImported, false);
+  }
+  return Object.freeze({
+    context,
+    roleValues: Object.freeze(produced.filter((value) => retainedProduced.has(value))),
+    importedValues: Object.freeze(
+      imported
+        .filter((value) => retainedImported.has(value))
+        .sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b))),
+    ),
+  });
+}
+
+function appendImportedValues(
+  roles: readonly CompiledProcedureRole[],
+  base: readonly ContextValue[],
+  imported: readonly PlanImportedResult[],
+  pruneUnavailable: boolean,
+): { readonly context: readonly ContextValue[]; readonly values: readonly PlanImportedResult[] } {
+  const context = [...base];
+  const seenValues = new Set<string>();
+  const seenCoordinates = new Set<string>();
+  for (const item of base) {
+    const role = roles.find((candidate) => candidate.name === item.role);
+    if (
+      !role ||
+      !matchProcedureRoleSource(role.source, {
+        "invocation-result": () => true,
+        "operation-field": () => false,
+        "plan-input": () => false,
+        fixed: () => false,
+        "plan-identifier": () => false,
+        "agent-declaration": () => false,
+      })
+    )
+      continue;
+    const coordinate = canonicalJson({ role: item.role, parents: item.parents });
+    seenValues.add(canonicalJson({ coordinate, value: item.value }));
+    if (role.cardinality === "one") seenCoordinates.add(coordinate);
+  }
+  const retained: PlanImportedResult[] = [];
+  let pending = [...imported];
+  while (pending.length > 0) {
+    const waiting: PlanImportedResult[] = [];
+    let advanced = false;
+    for (const item of pending) {
+      const role = roles.find((candidate) => candidate.name === item.role);
+      if (
+        !role ||
+        !matchProcedureRoleSource(role.source, {
+          "invocation-result": ({ result }) => result === item.result,
+          "operation-field": () => false,
+          "plan-input": () => false,
+          fixed: () => false,
+          "plan-identifier": () => false,
+          "agent-declaration": () => false,
+        })
+      )
+        throw new TypeError(`Imported role "${item.role}" is not owned by an Invocation Result`);
+      validateScalar(role, item.value);
+      if (!same(role.parents.map((parent) => parent.role).sort(), Object.keys(item.parents).sort()))
+        throw new TypeError(`Imported role "${item.role}" has invalid parent coordinates`);
+      const unavailableParent = Object.entries(item.parents).find(
+        ([parentName, parentValue]) =>
+          !context.some((candidate) => candidate.role === parentName && same(candidate.value, parentValue)),
+      );
+      if (unavailableParent) {
+        waiting.push(item);
+        continue;
+      }
+      const coordinate = canonicalJson({ role: item.role, parents: item.parents });
+      const identity = canonicalJson({ coordinate, value: item.value });
+      if (role.cardinality === "one" && seenCoordinates.has(coordinate))
+        throw new TypeError(`Imported role "${item.role}" has conflicting values`);
+      if (!seenValues.has(identity)) {
+        context.push(
+          Object.freeze({ role: role.name, value: cloneJson(item.value), parents: cloneObject(item.parents) }),
+        );
+        seenValues.add(identity);
+      }
+      if (role.cardinality === "one") seenCoordinates.add(coordinate);
+      retained.push(item);
+      advanced = true;
+    }
+    if (!advanced) {
+      if (!pruneUnavailable)
+        throw new TypeError(`Imported role "${waiting[0]?.role ?? "unknown"}" has unavailable parent coordinates`);
+      break;
+    }
+    pending = waiting;
+  }
+  retained.sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
+  return { context: Object.freeze(context.sort(compareCanonical)), values: Object.freeze(retained) };
+}
+
 function appendProducedValues(
   roles: readonly CompiledProcedureRole[],
   base: readonly ContextValue[],
@@ -474,6 +606,7 @@ function appendProducedValues(
         fixed: () => false,
         "plan-identifier": () => false,
         "agent-declaration": () => false,
+        "invocation-result": () => false,
       })
     ) {
       throw new TypeError(`Produced role "${item.role}" is not owned by an Operation`);
@@ -730,6 +863,7 @@ function requiredCheckNames(check: DraftPlanCheck, roles: readonly CompiledProce
         fixed: () => {},
         "plan-identifier": () => {},
         "agent-declaration": () => {},
+        "invocation-result": () => {},
       });
   }
   return [...names];
@@ -770,6 +904,7 @@ function roleDependsOnOptionalDeclaration(
       fixed: () => false,
       "plan-identifier": () => false,
       "operation-field": () => false,
+      "invocation-result": () => false,
     })
   )
     return true;
@@ -813,6 +948,7 @@ function checkDependsOnOptionalDeclaration(
         fixed: () => false,
         "plan-identifier": () => false,
         "agent-declaration": () => false,
+        "invocation-result": () => false,
       })
     );
   };
@@ -847,6 +983,7 @@ function isPlanInput(role: CompiledProcedureRole): boolean {
     "plan-identifier": () => false,
     "agent-declaration": () => false,
     "operation-field": () => false,
+    "invocation-result": () => false,
   });
 }
 
@@ -857,6 +994,7 @@ function isAgentDeclaration(role: CompiledProcedureRole): boolean {
     fixed: () => false,
     "plan-identifier": () => false,
     "operation-field": () => false,
+    "invocation-result": () => false,
   });
 }
 
@@ -867,6 +1005,7 @@ function isRootContextRole(role: CompiledProcedureRole): boolean {
     "plan-identifier": () => false,
     "agent-declaration": () => false,
     "operation-field": () => false,
+    "invocation-result": () => false,
   });
 }
 
@@ -877,6 +1016,7 @@ function isBaseContextRole(role: CompiledProcedureRole): boolean {
     "plan-identifier": () => true,
     "agent-declaration": () => false,
     "operation-field": () => false,
+    "invocation-result": () => false,
   });
 }
 

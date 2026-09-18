@@ -6,6 +6,7 @@ import {
   compileProcedure,
   type ProcedureCompilationErrorCode,
 } from "@trust/procedure";
+import fc from "fast-check";
 import { describe, expect, test } from "vitest";
 
 const operationCatalog = new URL("../../../assets/operations/", import.meta.url);
@@ -146,6 +147,111 @@ describe("Procedure compiler", () => {
       },
     });
   });
+
+  test("compiles Procedure-owned relative and absolute Check execution limits", () => {
+    const base = source("00-git-status.feature");
+    const relative = compileProcedure({
+      source: base.replace('runs Operation "git.head-read@*"', 'runs Operation "git.head-read@*" within "10m"'),
+      operations: operations(),
+    });
+    const absolute = compileProcedure({
+      source: base.replace(
+        'runs Operation "git.head-read@*"',
+        'runs Operation "git.head-read@*" until "2026-09-14T18:00:00+02:00"',
+      ),
+      operations: operations(),
+    });
+
+    expect(relative.checks[0]?.executionConstraint).toEqual({ kind: "within", duration: "10m", milliseconds: 600_000 });
+    expect(absolute.checks[0]?.executionConstraint).toEqual({
+      kind: "until",
+      dateTime: "2026-09-14T16:00:00.000Z",
+    });
+    expect(relative.definitionDigest).not.toBe(absolute.definitionDigest);
+  });
+
+  test("accepts every generated canonical compact duration and ISO instant", () => {
+    const base = source("00-git-status.feature");
+    const catalog = gitOperationCatalog();
+    const multipliers = { ms: 1, s: 1_000, m: 60_000, h: 3_600_000 } as const;
+    fc.assert(
+      fc.property(
+        fc.integer({ min: 1, max: 1_000_000 }),
+        fc.constantFrom<keyof typeof multipliers>("ms", "s", "m", "h"),
+        (amount, unit) => {
+          const compiled = compileWithExecutionClause(base, `within "${amount}${unit}"`, catalog);
+          expect(compiled.checks[0]?.executionConstraint).toEqual({
+            kind: "within",
+            duration: `${amount}${unit}`,
+            milliseconds: amount * multipliers[unit],
+          });
+        },
+      ),
+      { seed: 20_260_914, numRuns: 100 },
+    );
+    fc.assert(
+      fc.property(
+        fc.date({ min: new Date("2000-01-01T00:00:00.000Z"), max: new Date("2099-12-31T23:59:59.999Z") }),
+        (instant) => {
+          const dateTime = instant.toISOString();
+          const compiled = compileWithExecutionClause(base, `until "${dateTime}"`, catalog);
+          expect(compiled.checks[0]?.executionConstraint).toEqual({ kind: "until", dateTime });
+        },
+      ),
+      { seed: 20_260_915, numRuns: 100 },
+    );
+  });
+
+  test("rejects generated non-canonical duration families and impossible ISO date-times", () => {
+    const base = source("00-git-status.feature");
+    const catalog = gitOperationCatalog();
+    const amount = fc.integer({ min: 1, max: 1_000_000 });
+    const unit = fc.constantFrom("ms", "s", "m", "h");
+    const nonCanonicalDuration = fc.oneof(
+      fc.tuple(amount, unit).map(([value, suffix]) => `0${value}${suffix}`),
+      fc.tuple(amount, unit).map(([value, suffix]) => `${value} ${suffix}`),
+      fc.tuple(amount, unit).map(([value, suffix]) => `${value}.5${suffix}`),
+      fc.tuple(amount, unit).map(([value, suffix]) => `${value}${suffix.toUpperCase()}`),
+      fc.tuple(amount, fc.constantFrom("d", "sec", "min")).map(([value, suffix]) => `${value}${suffix}`),
+    );
+    fc.assert(
+      fc.property(nonCanonicalDuration, (duration) => {
+        expectCompilationErrorForClause(base, `within "${duration}"`, catalog);
+      }),
+      { seed: 20_260_916, numRuns: 200 },
+    );
+
+    const impossibleDateTime = fc.oneof(
+      fc
+        .tuple(fc.integer({ min: 2000, max: 2099 }), fc.integer({ min: 1, max: 12 }))
+        .map(
+          ([year, month]) => `${year}-${twoDigits(month)}-${twoDigits(daysInCalendarMonth(year, month) + 1)}T12:00:00Z`,
+        ),
+      fc.integer({ min: 24, max: 99 }).map((hour) => `2026-09-14T${hour}:00:00Z`),
+      fc.integer({ min: 60, max: 99 }).map((minute) => `2026-09-14T18:${minute}:00Z`),
+      fc.integer({ min: 60, max: 99 }).map((second) => `2026-09-14T18:00:${second}Z`),
+    );
+    fc.assert(
+      fc.property(impossibleDateTime, (dateTime) => {
+        expectCompilationErrorForClause(base, `until "${dateTime}"`, catalog);
+      }),
+      { seed: 20_260_917, numRuns: 200 },
+    );
+  });
+
+  test.each(['within "10m" until "2026-09-14T18:00:00Z"', 'until "2026-09-14T18:00:00Z" within "10m"'])(
+    "rejects mutually exclusive Check execution limits: %s",
+    (clause) => {
+      expectCompilationErrorForClause(source("00-git-status.feature"), clause, gitOperationCatalog());
+    },
+  );
+
+  test.each(['within "0s"', 'within "PT10M"', 'until "2026-09-14T18:00:00"'])(
+    "rejects the non-canonical Check execution limit: %s",
+    (clause) => {
+      expectCompilationErrorForClause(source("00-git-status.feature"), clause, gitOperationCatalog());
+    },
+  );
 
   test("compiles optionality only as part of an agent declaration", () => {
     const procedure = source("00-git-status.feature").replace(
@@ -523,7 +629,7 @@ Feature: Bind the Plan identifier to a number Input
   }[] = [
     {
       name: "unknown Operation",
-      change: (value: string) => value.replace('Operation "git.head-read"', 'Operation "git.unknown"'),
+      change: (value: string) => value.replace('Operation "git.head-read@*"', 'Operation "git.unknown@*"'),
       code: "unknown-operation",
     },
     {
@@ -651,4 +757,36 @@ function expectCompilationError(sourceValue: string, code: ProcedureCompilationE
   }
   expect(thrown).toBeInstanceOf(CatalogProcedureCompilationError);
   expect((thrown as CatalogProcedureCompilationError).code).toBe(code);
+}
+
+function compileWithExecutionClause(base: string, clause: string, catalog: readonly CompiledOperation[]) {
+  return compileProcedure({
+    source: base.replace('runs Operation "git.head-read@*"', `runs Operation "git.head-read@*" ${clause}`),
+    sourceName: "generated-execution-limit.feature",
+    operations: catalog,
+  });
+}
+
+function gitOperationCatalog(): readonly CompiledOperation[] {
+  return operations().filter(({ operation }) => operation === "git.head-read");
+}
+
+function expectCompilationErrorForClause(base: string, clause: string, catalog: readonly CompiledOperation[]): void {
+  let thrown: unknown;
+  try {
+    compileWithExecutionClause(base, clause, catalog);
+  } catch (error) {
+    thrown = error;
+  }
+  expect(thrown).toBeInstanceOf(CatalogProcedureCompilationError);
+  expect((thrown as CatalogProcedureCompilationError).code).toBe("invalid-procedure");
+}
+
+function twoDigits(value: number): string {
+  return String(value).padStart(2, "0");
+}
+
+function daysInCalendarMonth(year: number, month: number): number {
+  if (month === 2) return year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0) ? 29 : 28;
+  return [4, 6, 9, 11].includes(month) ? 30 : 31;
 }

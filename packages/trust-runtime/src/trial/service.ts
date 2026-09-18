@@ -57,7 +57,7 @@ export interface TrialServiceDependencies {
   readonly trialTimeoutMs: number;
 }
 
-export const DEFAULT_TRIAL_TIMEOUT_MS = 5 * 60_000;
+export const DEFAULT_TRIAL_TIMEOUT_MS = 10 * 60_000;
 const FORCE_KILL_DELAY_MS = 2_000;
 
 export class TrialService {

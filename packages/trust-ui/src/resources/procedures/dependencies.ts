@@ -35,6 +35,8 @@ export function describeProvenance(provenance: RoleProvenance | undefined): stri
     "agent-declaration": () => i18next.t("procedures.provenance.agentDeclaration"),
     "operation-field": (value) =>
       i18next.t("procedures.provenance.operationField", { check: value.check, field: value.field }),
+    "invocation-result": (value) =>
+      i18next.t("procedures.provenance.invocationResult", { invocation: value.invocation, result: value.result }),
     "plan-identifier": () => i18next.t("procedures.provenance.planIdentifier"),
   });
 }
@@ -50,6 +52,9 @@ export function dataLinks(procedure: CompiledProcedure): DataLink[] {
           "operation-field": (source) => {
             if (source.check !== check.name)
               links.push({ from: source.check, to: check.name, role: binding.role, input: binding.input });
+          },
+          "invocation-result": (source) => {
+            links.push({ from: source.invocation, to: check.name, role: binding.role, input: binding.input });
           },
           "plan-input": () => {},
           "agent-declaration": () => {},

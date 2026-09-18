@@ -4,6 +4,33 @@ summary: "Déclarer des missions enfants et distinguer leur exécution de l'int�
 order: 5
 ---
 
+## Transmettre des Results vérifiés entre Plans
+
+Les Inputs du parent vers l'enfant sont explicites et figés pour chaque génération enfant. Dans l'autre sens, la Procedure enfant marque un rôle observé `returned` ; l'Invocation parente relie explicitement ce Result à l'un de ses propres rôles typés. L'enfant n'écrit pas arbitrairement les variables du parent et ne modifie pas ses entrées racines immuables.
+
+```gherkin fragment
+  # In the child Procedure's Plan context and producing Scenario:
+  And one reference "revision" returned
+  Then Check "read revision" runs Operation "git.head-read@1.0.0"
+    on "repository" as Input "project"
+    and materializes "revision" from field "headRevision"
+    and must establish "the revision is observed"
+    """js
+    fact.workingTree === "clean" || fail("the working tree is not clean")
+    """
+
+  # In the parent Procedure's Plan context and child Scenario:
+  And one reference "child revision"
+  Then Invocation "observe child" runs Procedure "result-child@1.0.0"
+    on "repository" as Input "repository"
+    and materializes "child revision" from Result "revision"
+    and must establish "the child observation is complete"
+```
+
+Le compilateur refuse un Result absent, non marqué `returned`, incompatible ou fourni plusieurs fois. Un Result enfant sans rattachement peut alimenter un rôle parent sans rattachement ; `on each` peut relier un Result par cible à un rôle parent `for each` correspondant. Les autres topologies de Result ne sont pas encore prises en charge. Pour une collection de missions déclarées, la cible parente est un rôle `many` sans rattachement et le contrat de Result de chaque Procedure enfant proposée est vérifié avant l'acceptation de sa mission.
+
+Seul le **Plan enfant courant entièrement validé** fournit ses valeurs de Result. Une nouvelle observation validée les remplace dans une nouvelle révision du parent. Si l'enfant est requalifié négativement, escaladé ou si sa génération est remplacée, TRUST retire ces valeurs et rouvre les Checks parents dépendants ; les enfants sans lien gardent leur identité. `plan.read` expose les `importedResults` courants avec la provenance de l'enfant et de sa génération ; les révisions conservent leurs projections antérieures. Aucun hook ni qualification indépendante de l'Invocation n'intervient.
+
 ## Collections de missions dynamiques
 
 Une Procedure peut exposer des collections de missions qu'un agent remplit après engagement. TRUST valide chaque mission et fige sa composition complète avant de créer son Plan enfant. Chaque enfant possède ses Checks, sa Session et son historique. Une collection vide attend du travail.

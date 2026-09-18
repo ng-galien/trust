@@ -1,10 +1,19 @@
 import type { CheckContinuation, CheckFinalizationResult } from "@trust/extension-sdk";
+import { matchCheckExecutionConstraint } from "@trust/procedure/match";
 import { type DiagnosticsSink, now, nullSink } from "../diagnostics/events.js";
 import type { JsonObject } from "../lib/json.js";
 import { runOperation } from "../operation/run.js";
 import type { PostgresqlRunnerConfiguration } from "../postgresql/run.js";
 import type { ShellRunnerConfiguration } from "../shell/run.js";
 import type { FactExporter } from "../telemetry/otlp.js";
+import {
+  type Clock,
+  instantIso,
+  instantMilliseconds,
+  isoToMilliseconds,
+  millisecondsToIso,
+  SystemClock,
+} from "../time.js";
 import { type CheckClient, CheckClientError } from "./client.js";
 
 export type CheckResult =
@@ -40,7 +49,7 @@ export type CheckResult =
 export interface CheckRunnerOptions {
   readonly checkClient: CheckClient;
   readonly facts: FactExporter;
-  readonly clock?: () => Date;
+  readonly clock?: Clock;
   readonly attemptKey?: () => string;
   readonly diagnostics?: DiagnosticsSink;
   readonly shell?: ShellRunnerConfiguration;
@@ -48,7 +57,7 @@ export interface CheckRunnerOptions {
 }
 
 export function createCheckRunner(options: CheckRunnerOptions) {
-  const clock = options.clock ?? (() => new Date());
+  const clock = options.clock ?? new SystemClock();
   const attemptKey = options.attemptKey ?? (() => globalThis.crypto.randomUUID());
   const diagnostics = options.diagnostics ?? nullSink;
   return {
@@ -60,7 +69,7 @@ export function createCheckRunner(options: CheckRunnerOptions) {
       let actionOutcome: JsonObject | undefined;
       diagnostics.emit({
         type: "runner.log",
-        at: now(),
+        at: now(clock),
         level: "info",
         text: `Check ${invocation.checkUri}: requesting admission.`,
       });
@@ -74,7 +83,7 @@ export function createCheckRunner(options: CheckRunnerOptions) {
         if (admission.status === "REFUSED") {
           diagnostics.emit({
             type: "runner.log",
-            at: now(),
+            at: now(clock),
             level: "warn",
             text: `Check ${invocation.checkUri}: admission refused (${admission.reasonCode}).`,
           });
@@ -90,8 +99,34 @@ export function createCheckRunner(options: CheckRunnerOptions) {
         }
         admittedAttemptHandle = admission.attemptHandle;
         phase = "operation";
-        if (Date.parse(admission.expiresAt) <= clock().getTime()) {
+        const executionStartedAt = instantMilliseconds(clock);
+        if (isoToMilliseconds(admission.expiresAt) <= executionStartedAt) {
           throw new Error("Check admission expired before execution.");
+        }
+        const execution =
+          admission.executionConstraint === undefined
+            ? undefined
+            : matchCheckExecutionConstraint(admission.executionConstraint, {
+                within: ({ milliseconds }) => ({
+                  timeoutMs: milliseconds,
+                  deadline: millisecondsToIso(executionStartedAt + milliseconds),
+                }),
+                until: ({ dateTime }) => ({
+                  timeoutMs: isoToMilliseconds(dateTime) - executionStartedAt,
+                  deadline: dateTime,
+                }),
+              });
+        const executionTimeoutMs = execution?.timeoutMs;
+        if (executionTimeoutMs !== undefined && executionTimeoutMs <= 0) {
+          throw new Error(`Check execution deadline ${execution?.deadline} has elapsed.`);
+        }
+        if (execution !== undefined) {
+          diagnostics.emit({
+            type: "runner.log",
+            at: now(clock),
+            level: "info",
+            text: `Check ${invocation.checkUri}: execution deadline ${execution.deadline}.`,
+          });
         }
         const result = await runOperation(
           admission.operation,
@@ -100,13 +135,15 @@ export function createCheckRunner(options: CheckRunnerOptions) {
           diagnostics,
           { id: admission.executionId },
           {
+            ...(executionTimeoutMs === undefined ? {} : { executionTimeoutMs }),
+            clock,
             ...(options.shell === undefined ? {} : { shell: options.shell }),
             ...(options.postgresql === undefined ? {} : { postgresql: options.postgresql }),
           },
         );
         actionOutcome = result.steps;
         phase = "fact export";
-        const observedAt = clock().toISOString();
+        const observedAt = instantIso(clock);
         await options.facts.export({
           attemptKey: attempt,
           attemptHandle: admission.attemptHandle,
@@ -119,13 +156,13 @@ export function createCheckRunner(options: CheckRunnerOptions) {
               values: result.produced,
             },
           ],
-          recordedAt: clock().toISOString(),
+          recordedAt: instantIso(clock),
         });
         phase = "finalization";
         const finalization = await options.checkClient.finalize(admission.attemptHandle);
         diagnostics.emit({
           type: "runner.log",
-          at: now(),
+          at: now(clock),
           level: "info",
           text: `Check ${invocation.checkUri}: completed with ${finalization.verdict}.`,
         });
@@ -134,7 +171,7 @@ export function createCheckRunner(options: CheckRunnerOptions) {
         const reason = error instanceof Error ? error.message : String(error);
         diagnostics.emit({
           type: "runner.log",
-          at: now(),
+          at: now(clock),
           level: "error",
           text: `Check ${invocation.checkUri}: ${phase} failed: ${reason}`,
         });
@@ -143,7 +180,7 @@ export function createCheckRunner(options: CheckRunnerOptions) {
             await options.checkClient.interrupt(admittedAttemptHandle);
             diagnostics.emit({
               type: "runner.log",
-              at: now(),
+              at: now(clock),
               level: "info",
               text: `Check ${invocation.checkUri}: interrupted Attempt ${admittedAttemptHandle} before Facts were accepted.`,
             });
@@ -156,7 +193,7 @@ export function createCheckRunner(options: CheckRunnerOptions) {
             ) {
               diagnostics.emit({
                 type: "runner.log",
-                at: now(),
+                at: now(clock),
                 level: "info",
                 text: `Check ${invocation.checkUri}: Facts were accepted despite the lost export response; finalizing Attempt ${admittedAttemptHandle}.`,
               });
@@ -164,7 +201,7 @@ export function createCheckRunner(options: CheckRunnerOptions) {
                 const finalization = await options.checkClient.finalize(admittedAttemptHandle);
                 diagnostics.emit({
                   type: "runner.log",
-                  at: now(),
+                  at: now(clock),
                   level: "info",
                   text: `Check ${invocation.checkUri}: completed with ${finalization.verdict}.`,
                 });
@@ -174,7 +211,7 @@ export function createCheckRunner(options: CheckRunnerOptions) {
                   finalizationError instanceof Error ? finalizationError.message : String(finalizationError);
                 diagnostics.emit({
                   type: "runner.log",
-                  at: now(),
+                  at: now(clock),
                   level: "error",
                   text: `Check ${invocation.checkUri}: recovery finalization failed: ${finalizationReason}`,
                 });
@@ -185,7 +222,7 @@ export function createCheckRunner(options: CheckRunnerOptions) {
               interruptionError instanceof Error ? interruptionError.message : String(interruptionError);
             diagnostics.emit({
               type: "runner.log",
-              at: now(),
+              at: now(clock),
               level: "warn",
               text: `Check ${invocation.checkUri}: Attempt interruption failed: ${interruptionReason}`,
             });

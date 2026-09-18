@@ -71,6 +71,8 @@ Simuler **n'exécute rien** : cela évalue la projection de la source courante s
 
 Exécuter exécute l'Opération sur l'Environnement choisi **hors de tout Plan** : pas de Check, pas de Facts, pas de verdict — un moyen d'essayer une Opération contre un système réel. Le rapport montre chaque étape (commande ou requête, sortie ou statut, résultat) et les champs produits, ou le point où l'Opération a été interrompue. Une source non enregistrée peut être exécutée ; la page avertit avant de démarrer.
 
+Un Trial n'a pas de Check de Procédure : il n'hérite donc pas d'une clause `within` ou `until`. Sa limite de sécurité technique indépendante vaut 10 minutes par défaut et peut être configurée par l'hôte.
+
 <Callout kind="note" title="Exécutable, ou non">
   Une Opération est exécutable sur un Environnement quand l'Environnement déclare chaque valeur de sa table `Environment`. Quand l'environnement courant ne le fait pas, l'onglet Exécuter dit quelles valeurs manquent et renvoie vers cet Environnement ; le catalogue et l'écran Environnement montrent la même information sous forme de marques ✓ / ✗.
 </Callout>

@@ -10,7 +10,7 @@ Un **Scénario** regroupe des Checks et les ordonne : il est satisfait quand cha
   @scenario:verification
   Scenario: Verify the committed fix
     Given scenario "fix" is validated
-    Then Check "Maven verification" runs Operation "maven.project-verify@*"
+    Then Check "Maven verification" runs Operation "maven.project-verify@*" within "10m"
         on "project" as Input "project"
         using "fix revision" as Input "revision"
         and must establish "the committed fix passes Maven verification"
@@ -41,6 +41,7 @@ Un **Scénario** regroupe des Checks et les ordonne : il est satisfait quand cha
 
 ```gherkin fragment
 Then|And Check "<name>" runs Operation "<domain.action>@*"
+    [within "<positive integer><ms|s|m|h>" | until "<ISO-8601 date-time with timezone>"]
     on [each|all] "<role>" as Input "<input>"
     [using [all] "<role>" as Input "<input>" | using plan as Input "<input>"]…
     [and materializes "<role>" from field "<field>"]…
@@ -55,6 +56,8 @@ Then|And Check "<name>" runs Operation "<domain.action>@*"
 | `Then` / `And` | le mot-clé d'une étape de Check |
 | `Check "<name>"` | nom libre entre guillemets, non vide, unique dans la Procédure — il nomme le Check dans les Plans, les verdicts et l'historique |
 | `runs Operation "<domain.action>@*"` | une Opération du catalogue, par son nom ; la version embarquée est la version courante à la publication |
+| `within "<durée>"` | limite relative optionnelle de l'exécution complète de l'Opération. La durée est un entier positif immédiatement suivi de `ms`, `s`, `m` ou `h`, par exemple `500ms`, `30s`, `10m` ou `2h` |
+| `until "<date-heure>"` | limite absolue optionnelle de l'exécution complète de l'Opération, écrite comme une date-heure ISO 8601 avec un fuseau explicite, par exemple `2026-09-14T18:00:00Z`. Un Check emploie soit `within`, soit `until`, jamais les deux |
 | `on [each\|all] "<role>" as Input "<input>"` | la **cible** : un rôle lié à un Input de l'Opération. `on "r"` — un Check ; `on each "r"` — un Check par valeur d'un rôle `many` ; `on all "r"` — un Check recevant la collection entière |
 | `using [all] "<role>" as Input "<input>"` | lie un autre Input (pas de `and` avant `using`) ; `all` passe une collection. Chaque Input de l'Opération est lié **exactement une fois**, entre `on` et `using` |
 | `using plan as Input "<input>"` | lie l'**identifiant du Plan** (le slug donné à l'engagement) à un Input `string` ou `reference` de cardinalité `one`. `plan` est un nom de rôle réservé (aucun Background ne peut le déclarer) : la liaison compile en un rôle synthétisé `"plan"` de source `plan-identifier`, alimenté par le slug du Plan à l'engagement ; la valeur est fixe pendant toute la vie du Plan et ne rouvre jamais le Check. Cela permet à une Opération d'étiqueter ce qu'elle fait avec le Plan (une propriété Maven, un attribut de trace, un paramètre de query) |
@@ -63,6 +66,8 @@ Then|And Check "<name>" runs Operation "<domain.action>@*"
 | DocString `js` | la qualification, voir [Qualifications](/docs/procedures/expectations) — exactement une expression attachée au Check |
 
 `using` et `and materializes` peuvent s'entremêler dans n'importe quel ordre entre `on` et `and must establish`. Les mots-clés sont sensibles à la casse.
+
+La limite appartient au Check de la Procédure, pas à l'Opération réutilisable. Un Plan live la transmet au Runner, qui l'applique à tous les steps et au Produce. Un timeout interrompt l'Attempt avant l'acceptation de Facts : le Check reste ouvert et peut être réessayé. La simulation d'Opération n'exécute rien, un Trial d'Opération n'a pas de Check de Procédure et conserve sa propre limite technique, et un dry-run de Procédure enregistre des Facts opérateur sans exécuter l'Opération ; aucun de ces modes n'applique cette limite de Check.
 
 Cardinalité à chaque liaison : un Input scalaire prend `on`/`using` d'un rôle `one`, ou `each` d'un rôle `many` (une valeur par Check) ; un Input collection prend `all` d'un rôle `many`. Un rôle `many` sans `each` ni `all` n'est accepté que dans un `using` du même périmètre qu'une cible `each` (la valeur reliée). Les types doivent correspondre exactement (`reference` ≠ `string`).
 
@@ -98,5 +103,5 @@ Le Check référencé, ou le fournisseur du rôle, doit appartenir à un **Scén
 </Callout>
 
 <Details title="Checks compilés et instances de Check" expert>
-Chaque Check compile en `{ name, scenario, operation, operationVersion, operationDigest, target, inputBindings, materializes, qualification { source, guards }, successReason }`. À l'engagement, le runtime l'instancie : une instance pour `one` et `all`, une par valeur cible pour `each` (aucune tant qu'une collection déclarée par l'agent est vide). Chaque instance a une URI `trust://…/<procedure>@<version>/<plan>/<scenario>/<check>/<domain>-<action>[/<value>]` — le nom du Check est utilisé tel quel quand c'est un slug, haché sinon ; le dernier segment n'existe que pour `each`. Les dépendances de l'instance (Scénarios prérequis, références `checks`, fournisseurs des rôles qu'elle lie) et le contexte qu'elle consomme sont ce que suit la cascade : une valeur qu'elle n'utilise pas ne peut pas la rouvrir.
+Chaque Check compile en `{ name, scenario, operation, operationVersion, operationDigest, executionConstraint?, target, inputBindings, materializes, qualification { source, guards }, successReason }`. À l'engagement, le runtime l'instancie : une instance pour `one` et `all`, une par valeur cible pour `each` (aucune tant qu'une collection déclarée par l'agent est vide). Chaque instance a une URI `trust://…/<procedure>@<version>/<plan>/<scenario>/<check>/<domain>-<action>[/<value>]` — le nom du Check est utilisé tel quel quand c'est un slug, haché sinon ; le dernier segment n'existe que pour `each`. Les dépendances de l'instance (Scénarios prérequis, références `checks`, fournisseurs des rôles qu'elle lie) et le contexte qu'elle consomme sont ce que suit la cascade : une valeur qu'elle n'utilise pas ne peut pas la rouvrir.
 </Details>

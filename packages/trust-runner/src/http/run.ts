@@ -13,6 +13,7 @@ import { matchHttpBody, matchHttpFormat } from "@trust/operation/match";
 
 import { clip, nullReporter, type StepReporter } from "../diagnostics/events.js";
 import type { JsonObject } from "../lib/json.js";
+import { type Clock, instantMilliseconds, SystemClock } from "../time.js";
 import { parseHttpJson, requestHttp } from "./request.js";
 
 export class HttpStatusError extends Error {
@@ -33,6 +34,8 @@ export async function runHttp(
   steps: JsonObject,
   execution: OperationExecutionContext,
   reporter: StepReporter = nullReporter,
+  timeoutMs?: number,
+  clock: Clock = new SystemClock(),
 ): Promise<HttpTextResult | HttpJsonResult | HttpEmptyResult> {
   const baseUrl = environment[http.url.environment];
   if (typeof baseUrl !== "string") {
@@ -65,16 +68,17 @@ export async function runHttp(
             .join("\n")}`
     }${body === undefined ? "" : `\n\n${clip(body, 8_192)}`}`,
   );
-  const startedAt = Date.now();
+  const startedAt = instantMilliseconds(clock);
   const response = await requestHttp({
     method: http.method,
     url,
     ...(Object.keys(headers).length === 0 ? {} : { headers }),
     ...(body === undefined ? {} : { body }),
+    ...(timeoutMs === undefined ? {} : { timeoutMs }),
   });
   reporter.log(
     "http.response",
-    `HTTP ${response.status}${response.statusText ? ` ${response.statusText}` : ""} (${Date.now() - startedAt} ms)\n${Object.entries(
+    `HTTP ${response.status}${response.statusText ? ` ${response.statusText}` : ""} (${instantMilliseconds(clock) - startedAt} ms)\n${Object.entries(
       response.headers,
     )
       .map(([name, value]) => `${name}: ${value}`)

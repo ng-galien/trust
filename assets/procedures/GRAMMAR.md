@@ -140,6 +140,7 @@ flatten child Checks into the parent and does not create a synthetic Operation o
 Invocation "<name>" runs Procedure "<procedure-slug>@<selector>"
   [on [each|all] "<role>" as Input "<child root role>"
     [using [all] "<role>" as Input "<child root role>" | using plan as Input "<child root role>" ...]]
+  [and materializes "<parent role>" from Result "<returned child role>"]...
   and must establish "<success reason>"
 ```
 
@@ -163,11 +164,21 @@ success reason, not an executable predicate. Scenario prerequisites govern invoc
 and downstream parent work. The runtime owns child creation and lifecycle; compilation alone does
 not instantiate a child.
 
+A child Procedure may mark a Check- or Invocation-produced role `returned` in its Plan context.
+This is an output interface annotation, never another source of data. A parent maps that Result
+explicitly with `and materializes`; the target role is neither a root Input nor an agent
+declaration. The compiler checks the published child's returned role, type, cardinality and
+supported topology. A declared mission collection validates each selected Procedure's Result
+interface before accepting the mission; its parent target must be an unscoped `many` role.
+Only a fully validated current child Plan contributes Results. Requalification, escalation or
+generation replacement withdraws them and reopens dependent parent Checks. The parent Plan's root
+Inputs remain immutable. An Invocation never runs a custom qualification predicate.
+
 Foundation limits:
 
 - Children inherit the parent's Environment. No override syntax is accepted.
-- Child Results are not exported into parent context; custom invocation qualification and
-  materialization are rejected.
+- Result mapping currently accepts flat child Result roles. A static `on each` invocation can
+  coordinate its parent output `for each` its target role. Other parent topology is rejected.
 - Child root inputs with parent topology (`for` or `for each`) are rejected explicitly. Flat root
   inputs support one/many cardinalities; this is not a claim of complete topology support.
 - Runtime compilation resolves already published exact child versions. Registry synchronization

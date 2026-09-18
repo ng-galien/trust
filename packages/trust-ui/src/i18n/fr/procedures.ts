@@ -193,6 +193,7 @@ export const procedures: Translation<typeof en> = {
     fixed: "fixé à {{value}}",
     agentDeclaration: "déclaré par l'agent",
     operationField: "depuis le Check « {{check}} » · {{field}}",
+    invocationResult: "depuis l’Invocation « {{invocation}} » · Résultat {{result}}",
     planIdentifier: "identifiant du Plan",
   },
 };

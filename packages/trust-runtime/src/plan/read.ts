@@ -351,6 +351,7 @@ export class PlanReader {
       currentIntentCheckUri: plan.currentIntentCheckUri ?? null,
       metadata: plan.metadata,
       rootInputs: plan.rootInputs,
+      importedResults: revision.importedValues,
       createdAt: plan.createdAt,
       state: "ENGAGED",
       sessionState: sessionAvailable ? "OPEN" : "UNAVAILABLE",
@@ -393,6 +394,7 @@ export class PlanReader {
         missionDeclarations: item.missionDeclarations,
         resolvedMissions: item.resolvedMissions,
         roleValues: item.roleValues,
+        importedResults: item.importedValues,
         checkValues: item.checkValues,
         checkUris: item.checks.map((check) => check.uri),
       })),
@@ -476,6 +478,9 @@ export class PlanReader {
       attemptHandle: view.attemptHandle,
       blockedBy: view.blockedBy,
       operation: view.operation,
+      ...(check.check.executionConstraint === undefined
+        ? {}
+        : { executionConstraint: check.check.executionConstraint }),
       actionScope: view.actionScope,
       context: check.context,
       scenarioDependencies: check.scenarioDependencies,
@@ -714,6 +719,7 @@ function checkView(
     },
     inputs: check.actionInput,
     operation: check.check.operation,
+    ...(check.check.executionConstraint === undefined ? {} : { executionConstraint: check.check.executionConstraint }),
     actionScope: scope,
     state: active.has(check.uri) ? "SATISFIED" : "OPEN",
     actionable:

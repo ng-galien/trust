@@ -7,6 +7,7 @@ const JSONB_OID = 3_802;
 
 export interface PostgresqlRunnerConfiguration {
   readonly processEnvironment?: Readonly<Record<string, string | undefined>>;
+  readonly timeoutMs?: number;
 }
 
 export class PostgresqlError extends Error {
@@ -31,7 +32,7 @@ export async function runPostgresql(
   }
   const connectionString = postgresConnectionString(connectionValue, postgresql.connection.environment);
   const processEnvironment = configuration.processEnvironment ?? process.env;
-  const client = new Client(clientConfiguration(connectionString, processEnvironment));
+  const client = new Client(clientConfiguration(connectionString, processEnvironment, configuration.timeoutMs));
   let connected = false;
   try {
     await client.connect();
@@ -93,16 +94,21 @@ function postgresConnectionString(value: string, environment: string): string {
 function clientConfiguration(
   connectionString: string,
   environment: Readonly<Record<string, string | undefined>>,
+  timeoutMs?: number,
 ): ClientConfig {
   const port = environment.PGPORT === undefined ? undefined : Number(environment.PGPORT);
   if (port !== undefined && (!Number.isInteger(port) || port < 1 || port > 65_535)) {
     throw new TypeError("PGPORT must be an integer from 1 to 65535.");
+  }
+  if (timeoutMs !== undefined && (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1)) {
+    throw new TypeError("PostgreSQL timeoutMs must be a positive integer.");
   }
   return {
     connectionString,
     ...(environment.PGUSER === undefined ? {} : { user: environment.PGUSER }),
     ...(environment.PGPASSWORD === undefined ? {} : { password: environment.PGPASSWORD }),
     ...(port === undefined ? {} : { port }),
+    ...(timeoutMs === undefined ? {} : { connectionTimeoutMillis: timeoutMs, query_timeout: timeoutMs }),
     ...(environment.PGAPPNAME === undefined ? {} : { application_name: environment.PGAPPNAME }),
   };
 }

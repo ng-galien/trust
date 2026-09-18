@@ -22,7 +22,11 @@ import type {
   RuntimeJsonObject,
 } from "@trust/extension-sdk";
 import { OperationCompilationError, projectOperationEnvironment } from "@trust/operation";
-import { CatalogProcedureCompilationError, type CompiledProcedure } from "@trust/procedure";
+import {
+  CatalogProcedureCompilationError,
+  type CompiledProcedure,
+  validateDeclaredInvocationResults,
+} from "@trust/procedure";
 import type { AttemptCreation, AttemptStore } from "../attempt/store.js";
 import { checkDependenciesSatisfied } from "../check/actionability.js";
 import { qualifyCheck, validateFacts } from "../check/qualification.js";
@@ -595,6 +599,8 @@ export class PlanRuntime {
             const procedure = await this.#procedures.resolveMission(mission.definition);
             phase = "inputs";
             validateRootInputs(procedure.roles, mission.rootInputs);
+            phase = "results";
+            validateDeclaredInvocationResults(current.resolvedProcedure, collection, procedure);
             compiled.push({ id: mission.id, procedure });
           } catch (error) {
             let detail = message(error);
@@ -673,6 +679,7 @@ export class PlanRuntime {
         resolvedMissions,
         revision: plan.currentRevision + 1,
         roleValues,
+        importedValues: current.importedValues,
         checkValues,
         pruneUnavailableRoleValues: true,
       });
@@ -870,6 +877,7 @@ export class PlanRuntime {
         revision: attempt.planRevision,
       });
     }
+    const executionConstraint = resolved.check.check.executionConstraint;
     return {
       contract: "trust.check-admission@1",
       status: "ADMITTED",
@@ -886,6 +894,7 @@ export class PlanRuntime {
           ? {}
           : projectOperationEnvironment(resolved.check.operation, this.#environments.resolve(attempt.environment) ?? {})
               .environment,
+      ...(executionConstraint === undefined || resolved.plan.mode === "dry-run" ? {} : { executionConstraint }),
       expiresAt: attempt.expiresAt,
     };
   }
@@ -1154,6 +1163,7 @@ export class PlanRuntime {
         resolvedMissions: current.resolvedMissions,
         revision: nextRevisionNumber,
         roleValues: nextRoleValues,
+        importedValues: current.importedValues,
         checkValues: nextCheckValues,
       });
       const nextChecks = new Map(next.checks.map((candidate) => [candidate.uri, candidate]));

@@ -1,4 +1,4 @@
-import type { CompiledExpressionReference, CompiledProcedureRole } from "./procedure.js";
+import type { CheckExecutionConstraint, CompiledExpressionReference, CompiledProcedureRole } from "./procedure.js";
 
 type RoleSource = CompiledProcedureRole["source"];
 export type ProcedureRoleSourceHandlers<R> = {
@@ -21,4 +21,16 @@ export function matchExpressionReference<R>(
   handlers: ExpressionReferenceHandlers<R>,
 ): R {
   return handlers[reference.kind](reference as never);
+}
+
+export type CheckExecutionConstraintHandlers<R> = {
+  [K in CheckExecutionConstraint["kind"]]: (constraint: Extract<CheckExecutionConstraint, { kind: K }>) => R;
+};
+
+/** Total dispatch over the Procedure-owned time boundary for one Check invocation. */
+export function matchCheckExecutionConstraint<R>(
+  constraint: CheckExecutionConstraint,
+  handlers: CheckExecutionConstraintHandlers<R>,
+): R {
+  return handlers[constraint.kind](constraint as never);
 }

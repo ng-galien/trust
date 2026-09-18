@@ -71,6 +71,8 @@ Simulate **executes nothing**: it evaluates the projection of the current source
 
 Run executes the Operation on the chosen Environment **outside any Plan**: no Check, no Facts, no verdict — a way to try an Operation against a real system. The report shows each step (command or request, exit or status, output) and the produced fields, or the point where the Operation was interrupted. An unsaved source can be run; the page warns before starting.
 
+A Trial has no Procedure Check, so it does not inherit a Check's `within` or `until` clause. Its independent technical safety limit defaults to 10 minutes and can be configured by the host.
+
 <Callout kind="note" title="Runnable, or not">
   An Operation is runnable on an Environment when the Environment declares every value of its `Environment` table. When the current Environment does not, the Run tab says which values are missing and links to that Environment; the catalog and the Environment screen show the same information as ✓ / ✗ marks.
 </Callout>

@@ -2,6 +2,7 @@ import { useMutation } from "@tanstack/react-query";
 import type { AttemptFinalizationResult, PlanCheckView, PlanView, RuntimeJsonObject } from "@trust/extension-sdk";
 import type { CompiledOperation } from "@trust/operation";
 import type { CompiledProcedure, CompiledProcedureCheck } from "@trust/procedure";
+import { matchCheckExecutionConstraint } from "@trust/procedure/match";
 import { CheckCircle2, FlaskConical, PanelRightClose, Pause, Play, Send, XCircle } from "lucide-react";
 import { useEffect, useId, useMemo, useState } from "react";
 import { Trans, useTranslation } from "react-i18next";
@@ -631,6 +632,14 @@ function CheckWorkbench({
             {compiledCheck?.successReason ? (
               <p className="mt-1 text-body">
                 {t("plans.workbench.mustEstablish")} <em>“{compiledCheck.successReason}”</em>
+              </p>
+            ) : null}
+            {compiledCheck?.executionConstraint ? (
+              <p className="mono mt-1 text-label text-muted">
+                {matchCheckExecutionConstraint(compiledCheck.executionConstraint, {
+                  within: ({ duration }) => `within ${duration}`,
+                  until: ({ dateTime }) => `until ${dateTime}`,
+                })}
               </p>
             ) : null}
             <div className="mt-2 grid gap-2 sm:grid-cols-2">

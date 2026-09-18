@@ -25,11 +25,12 @@ export class ShellError extends Error {
 export interface ShellRunnerConfiguration {
   readonly additionalPath?: readonly string[];
   readonly processEnvironment?: Readonly<Record<string, string | undefined>>;
+  readonly timeoutMs?: number;
 }
 
-const DEFAULT_TIMEOUT_MS = 30_000;
+const DEFAULT_TIMEOUT_MS = 10 * 60_000;
 const FORCE_KILL_DELAY_MS = 2_000;
-/** Per-command timeout; hosts running long trials raise it through TRUST_SHELL_TIMEOUT_MS. */
+/** Technical fallback for unconstrained Operations and Trials; the host may override it. */
 const TIMEOUT_MS =
   Number.parseInt(process.env.TRUST_SHELL_TIMEOUT_MS ?? "", 10) > 0
     ? Number.parseInt(process.env.TRUST_SHELL_TIMEOUT_MS ?? "", 10)
@@ -44,6 +45,10 @@ export async function runShell(
   reporter: StepReporter = nullReporter,
   configuration: ShellRunnerConfiguration = {},
 ): Promise<ShellResult> {
+  const timeoutMs = configuration.timeoutMs ?? TIMEOUT_MS;
+  if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1) {
+    throw new TypeError("Shell timeoutMs must be a positive integer.");
+  }
   let directory: string;
   try {
     ({ directory } = await resolveEnvironmentDirectory(shell.cwd, input, environment, `Shell "${shell.executable}"`));
@@ -95,7 +100,7 @@ export async function runShell(
   const timer = setTimeout(() => {
     timedOut = true;
     requestStop();
-  }, TIMEOUT_MS);
+  }, timeoutMs);
   timer.unref();
   try {
     if (processHandle.stdout === null || processHandle.stderr === null) {
@@ -106,7 +111,7 @@ export async function runShell(
       readBounded(processHandle.stdout, requestStop, (text) => reporter.log("stdout", text)),
       readBounded(processHandle.stderr, requestStop, (text) => reporter.log("stderr", text)),
     ]);
-    if (timedOut) throw new ShellError(`Shell timed out: ${shell.executable}.`);
+    if (timedOut) throw new ShellError(`Shell timed out after ${timeoutMs}ms: ${shell.executable}.`);
     const exitCode = closed[0];
     if (typeof exitCode !== "number") {
       throw new ShellError(`Shell ended without an exit code: ${shell.executable}.`);

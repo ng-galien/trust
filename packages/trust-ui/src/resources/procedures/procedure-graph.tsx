@@ -20,6 +20,7 @@ import {
 import "@xyflow/react/dist/style.css";
 import type { PlanCheckView } from "@trust/extension-sdk";
 import type { CompiledProcedure, CompiledProcedureCheck } from "@trust/procedure";
+import { matchCheckExecutionConstraint } from "@trust/procedure/match";
 import {
   ArrowDownToLine,
   ArrowUpFromLine,
@@ -77,6 +78,7 @@ interface CheckRow {
   role: string | undefined;
   selection: string | undefined;
   establishes: string;
+  executionLimit: string | undefined;
   state: LiveState;
   emphasis: Emphasis;
   /** Plan mode: one instance per target value when the Check expands ("each") — the parallel branches of the loop. */
@@ -425,6 +427,8 @@ function layout(
         role: check?.target?.role,
         selection: check?.target?.selection,
         establishes: check?.successReason ?? "",
+        executionLimit:
+          check?.executionConstraint === undefined ? undefined : describeExecutionConstraint(check.executionConstraint),
         state,
         emphasis: emphasis.check(name),
         instances: (instancesOf.get(name)?.length ?? 0) > 1 ? instancesOf.get(name)! : [],
@@ -932,6 +936,11 @@ function ScenarioNode({ data }: NodeProps<Node<ScenarioNodeData>>) {
                 {check.establishes ? (
                   <span className="block truncate text-meta leading-snug text-muted" title={check.establishes}>
                     “{check.establishes}”
+                  </span>
+                ) : null}
+                {check.executionLimit ? (
+                  <span className="mono flex items-center gap-1 text-meta text-muted">
+                    <Clock3 size={10} /> {check.executionLimit}
                   </span>
                 ) : null}
                 {check.instances.length ? (
@@ -1522,6 +1531,11 @@ function CheckDetails({
             </Expert>
           </p>
         ) : null}
+        {check.executionConstraint ? (
+          <p className="mono mt-0.5 flex items-center gap-1 text-label text-muted">
+            <Clock3 size={11} /> {describeExecutionConstraint(check.executionConstraint)}
+          </p>
+        ) : null}
         {check.successReason ? (
           <p className="mt-1 text-label text-muted">
             {t("procedures.graph.panel.mustEstablish", { reason: check.successReason })}
@@ -1612,6 +1626,13 @@ function CheckDetails({
       </Expert>
     </>
   );
+}
+
+function describeExecutionConstraint(constraint: import("@trust/procedure").CheckExecutionConstraint): string {
+  return matchCheckExecutionConstraint(constraint, {
+    within: ({ duration }) => `within ${duration}`,
+    until: ({ dateTime }) => `until ${dateTime}`,
+  });
 }
 
 function CheckButton({ name, onSelect }: { name: string; onSelect: ProcedureGraphProps["onSelect"] }) {

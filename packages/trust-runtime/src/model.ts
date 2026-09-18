@@ -6,6 +6,7 @@ import type {
   CheckState,
   IntentChainState,
   MissionDeclarations,
+  PlanImportedResult,
   PlanMetadata,
   PlanMode,
   ResolvedMissions,
@@ -102,6 +103,7 @@ export interface PlanRevision {
   checks: readonly PlanCheck[];
   invocations: readonly PlanInvocation[];
   roleValues: readonly ProducedRoleValue[];
+  importedValues: readonly PlanImportedResult[];
   checkValues: readonly CheckValues[];
 }
 

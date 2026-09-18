@@ -156,6 +156,7 @@ export interface PlanView {
   readonly currentIntentCheckUri: string | null;
   readonly metadata: PlanMetadata;
   readonly rootInputs: Readonly<Record<string, unknown>>;
+  readonly importedResults: readonly PlanImportedResult[];
   readonly createdAt: string;
   readonly state: "ENGAGED";
   readonly sessionState: "OPEN" | "UNAVAILABLE";
@@ -254,8 +255,20 @@ export interface PlanRevisionView {
   readonly missionDeclarations?: MissionDeclarations;
   readonly resolvedMissions?: ResolvedMissions;
   readonly roleValues: readonly unknown[];
+  readonly importedResults: readonly PlanImportedResult[];
   readonly checkValues: readonly unknown[];
   readonly checkUris: readonly string[];
+}
+
+/** A current child Result projected into a parent Plan, with generation provenance. */
+export interface PlanImportedResult {
+  readonly role: string;
+  readonly result: string;
+  readonly value: unknown;
+  readonly parents: RuntimeJsonObject;
+  readonly invocationId: string;
+  readonly childPlan: string;
+  readonly childRevision: number;
 }
 
 export interface PlanEscalationView {
@@ -288,6 +301,7 @@ export interface PlanCheckView {
   readonly target: CheckTargetView;
   readonly inputs: Readonly<Record<string, unknown>>;
   readonly operation: string;
+  readonly executionConstraint?: import("@trust/procedure").CheckExecutionConstraint;
   readonly actionScope: ProcedureActionScopeView;
   readonly state: "OPEN" | "SATISFIED";
   readonly actionable: boolean;
@@ -343,6 +357,7 @@ export interface CheckView {
   readonly attemptHandle: string | null;
   readonly blockedBy: readonly string[];
   readonly operation: string;
+  readonly executionConstraint?: import("@trust/procedure").CheckExecutionConstraint;
   readonly actionScope: ProcedureActionScopeView;
   readonly context: Readonly<Record<string, unknown>>;
   readonly scenarioDependencies: readonly string[];
@@ -493,6 +508,8 @@ export type CheckAttemptAdmissionResult =
       readonly operation: import("@trust/operation").CompiledOperation;
       readonly actionInput: RuntimeJsonObject;
       readonly environment: RuntimeJsonObject;
+      /** Procedure-declared Check constraint. Absent for dry-runs and unconstrained live Checks. */
+      readonly executionConstraint?: import("@trust/procedure").CheckExecutionConstraint;
       readonly expiresAt: string;
     }
   | Refusal;

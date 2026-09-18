@@ -15,7 +15,7 @@ Feature: <title>
       | all | <authorized prose> | <forbidden prose> |
       | <exact Check name> | <additional authorized prose> | <additional forbidden prose> |
     Given|And one|many string|number|instant|reference "<role>"
-        [declared [optionally] by agent] [fixed as "<value>"] [for "<parent>"]… [for each "<parent>"]…
+        [declared [optionally] by agent] [fixed as "<value>"] [returned] [for "<parent>"]… [for each "<parent>"]…
 
     [And missions "<collection>" declared by agent]
 
@@ -23,8 +23,14 @@ Feature: <title>
   Scenario: <title>
     [Given|And scenario "<slug>" is validated]…
     [Then|And Invocation "<name>" runs each declared Procedure in "<collection>"
+        [and materializes "<parent role>" from Result "<child role>"]…
+        and must establish "<success reason>"]
+    [Then|And Invocation "<name>" runs Procedure "<slug>@<selector>"
+        [on [each|all] "<role>" as Input "<child input>" [using [all] "<role>" as Input "<child input>"]…]
+        [and materializes "<parent role>" from Result "<child role>"]…
         and must establish "<success reason>"]
     Then|And Check "<name>" runs Operation "<domain.action>@*"
+        [within "<positive integer><ms|s|m|h>" | until "<ISO-8601 date-time with timezone>"]
         on [each|all] "<role>" as Input "<input>"
         [using [all] "<role>" as Input "<input>" | using plan as Input "<input>"]…
         [and materializes "<role>" from field "<field>"]…

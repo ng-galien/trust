@@ -1,5 +1,6 @@
 import type { JsonValue, OperationStep } from "@trust/operation";
 import type { JsonObject } from "../lib/json.js";
+import { type Clock, instantIso, SystemClock } from "../time.js";
 
 /* Diagnostic events emitted while an Operation runs. They exist for humans validating an
    Operation (trial runs); they are never Facts and never reach a Plan. */
@@ -88,7 +89,9 @@ export interface StepReporter {
 
 export const nullReporter: StepReporter = { log() {} };
 
-export const now = (): string => new Date().toISOString();
+const systemClock = new SystemClock();
+
+export const now = (clock: Clock = systemClock): string => instantIso(clock);
 
 /** Keeps diagnostics bounded: long outputs are truncated with an explicit marker. */
 export function clip(text: string, max = 64 * 1024): string {

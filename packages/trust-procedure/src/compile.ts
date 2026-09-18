@@ -22,6 +22,7 @@ import { compileQualificationExpression, QualificationExpressionError } from "./
 import { procedureLanguage, procedureStepGrammar } from "./language.js";
 import {
   CatalogProcedureCompilationError,
+  type CheckExecutionConstraint,
   type CompiledProcedure,
   type CompiledProcedureCheck,
   type CompiledProcedureDeclaredInvocation,
@@ -55,6 +56,7 @@ interface RoleSource {
   readonly optional: boolean;
   readonly parents: readonly { readonly role: string; readonly each: boolean }[];
   readonly declared: boolean;
+  readonly returned: boolean;
   readonly fixed?: string;
   readonly planIdentifier?: true;
   readonly location?: { readonly line: number; readonly column?: number };
@@ -73,12 +75,14 @@ const PLAN_ROLE_SOURCE: RoleSource = {
   optional: false,
   parents: [],
   declared: false,
+  returned: false,
   planIdentifier: true,
 };
 
 interface CheckSource {
   readonly name: string;
   readonly operation: string;
+  readonly executionConstraint?: CheckExecutionConstraint;
   readonly target: { readonly role: string; readonly selection: "one" | "each" | "all"; readonly input: string };
   readonly using: readonly UsingSource[];
   readonly materializes: readonly { readonly role: string; readonly field: string }[];
@@ -104,6 +108,7 @@ interface ScenarioSource {
 
 interface InvocationSource extends Omit<CheckSource, "qualification" | "target"> {
   readonly target?: CheckSource["target"];
+  readonly results: readonly { readonly role: string; readonly result: string }[];
 }
 
 interface PlanContextSource {
@@ -114,6 +119,27 @@ interface PlanContextSource {
 
 export function compileProcedure(input: ProcedureCompilationInput): CompiledProcedure {
   return compileProcedureInternal(input);
+}
+
+/** Validate the Result interface of a dynamically selected child before accepting its mission. */
+export function validateDeclaredInvocationResults(
+  parent: CompiledProcedure,
+  collection: string,
+  child: CompiledProcedure,
+): void {
+  for (const invocation of parent.declaredInvocations?.filter((value) => value.collection === collection) ?? []) {
+    for (const binding of invocation.materializes) {
+      const target = parent.roles.find((role) => role.name === binding.role);
+      const result = child.roles.find((role) => role.name === binding.result && role.returned === true);
+      if (!target || !result || result.parents.length > 0 || target.type !== result.type)
+        throw new CatalogProcedureCompilationError(
+          "incompatible-type",
+          `Mission Procedure Result "${binding.result}" is incompatible with role "${binding.role}"`,
+          child.procedure,
+          invocation.location ? { line: invocation.location.line, column: invocation.location.column ?? 1 } : undefined,
+        );
+    }
+  }
 }
 
 export function analyzeProcedure(input: ProcedureCompilationInput): ProcedureAnalysis {
@@ -405,6 +431,7 @@ function compileProcedureInternal(
         operationVersion: operation.version,
         operationSelector: parseResourceReference(check.operation)!.selector,
         operationDigest,
+        ...(check.executionConstraint === undefined ? {} : { executionConstraint: check.executionConstraint }),
         target: { role: check.target.role, selection: check.target.selection },
         inputBindings: bindings.map((binding) => ({
           input: binding.input,
@@ -430,6 +457,7 @@ function compileProcedureInternal(
       type: role.type,
       cardinality: role.cardinality,
       parents: role.parents,
+      ...(role.returned ? { returned: true as const } : {}),
       source: role.planIdentifier
         ? { kind: "plan-identifier" }
         : role.fixed !== undefined
@@ -442,9 +470,63 @@ function compileProcedureInternal(
       ...(role.location ? { location: role.location } : {}),
     };
   });
-  validateOptionalRoleDependencies(roles, roleByName, sourceName);
   const compiledInvocations: CompiledProcedureInvocation[] = [];
   const declaredInvocations = scenarioSources.flatMap((scenario) => scenario.declaredInvocations);
+  const invocationResults = new Map<string, { invocation: string; result: string; scenario: string }>();
+  const claimResult = (
+    name: string,
+    scenario: string,
+    binding: { readonly role: string; readonly result: string },
+    located: Located,
+    child?: CompiledProcedure,
+    target?: InvocationSource["target"],
+  ): void => {
+    const parentRole = roleByName.get(binding.role);
+    if (!parentRole)
+      fail("unknown-role", `Invocation "${name}" materializes unknown role "${binding.role}"`, sourceName, located);
+    if (
+      parentRole.declared ||
+      parentRole.fixed !== undefined ||
+      parentRole.planIdentifier ||
+      materialized.has(binding.role) ||
+      invocationResults.has(binding.role)
+    )
+      fail("invalid-procedure", `Role "${binding.role}" must have exactly one observed provider`, sourceName, located);
+    if (child) {
+      const result = child.roles.find((role) => role.name === binding.result && role.returned === true);
+      if (!result)
+        fail("unknown-role", `Child Procedure has no returned Result "${binding.result}"`, sourceName, located);
+      if (
+        result.parents.length > 0 ||
+        result.type !== parentRole.type ||
+        (target?.selection === "each"
+          ? parentRole.cardinality === "one" && result.cardinality !== "one"
+          : result.cardinality !== parentRole.cardinality)
+      )
+        fail(
+          "incompatible-type",
+          `Result "${binding.result}" is incompatible with role "${binding.role}"`,
+          sourceName,
+          located,
+        );
+      const expectedParents = target?.selection === "each" ? [{ role: target.role, each: true }] : [];
+      if (JSON.stringify(parentRole.parents) !== JSON.stringify(expectedParents))
+        fail(
+          "incompatible-cardinality",
+          `Result role "${binding.role}" has incompatible parent topology`,
+          sourceName,
+          located,
+        );
+    } else if (parentRole.cardinality !== "many" || parentRole.parents.length > 0) {
+      fail(
+        "incompatible-cardinality",
+        `Declared Invocation Result role "${binding.role}" must be an unscoped many role`,
+        sourceName,
+        located,
+      );
+    }
+    invocationResults.set(binding.role, { invocation: name, result: binding.result, scenario });
+  };
   const invocationNames = new Set<string>();
   for (const invocation of declaredInvocations) {
     if (!collectionNames.has(invocation.collection))
@@ -457,6 +539,8 @@ function compileProcedureInternal(
     )
       fail("duplicate-invocation", "Declared Invocation must have a unique non-reserved name", sourceName, invocation);
     invocationNames.add(invocation.name);
+    for (const binding of invocation.materializes)
+      claimResult(invocation.name, invocation.scenario, binding, invocation);
   }
   for (const scenario of scenarioSources) {
     for (const invocation of scenario.invocations) {
@@ -489,6 +573,8 @@ function compileProcedureInternal(
           invocation,
         );
       const child = input.resolveProcedure?.(candidates[0]!) ?? candidates[0]!;
+      for (const binding of invocation.results)
+        claimResult(invocation.name, scenario.slug, binding, invocation, child, invocation.target);
       const visit = (definition: CompiledProcedure, ancestry: ReadonlySet<string>): void => {
         const identity = `${definition.procedure}@${definition.version}`;
         if (ancestry.has(identity))
@@ -532,7 +618,7 @@ function compileProcedureInternal(
         assertBinding(
           role.planIdentifier && root.type === "reference" ? { ...role, type: "reference" } : role,
           binding.selection,
-          schemaForRole({ ...root, optional: false, declared: false }),
+          schemaForRole({ ...root, optional: false, declared: false, returned: false }),
           invocation.name,
           binding.input,
           binding === invocation.target,
@@ -541,9 +627,11 @@ function compileProcedureInternal(
           invocation,
         );
         const provider = materialized.get(binding.role);
-        const providerScenario = provider && checkByName.get(provider.check)?.scenario.slug;
+        const providerScenario = provider
+          ? checkByName.get(provider.check)?.scenario.slug
+          : invocationResults.get(binding.role)?.scenario;
         if (
-          provider &&
+          (provider || invocationResults.has(binding.role)) &&
           (!providerScenario || !isTransitiveDependency(scenario.slug, providerScenario, scenarioSources))
         )
           fail(
@@ -573,17 +661,37 @@ function compileProcedureInternal(
           ? { target: { role: invocation.target.role, selection: invocation.target.selection } }
           : {}),
         inputBindings: bindings.map(({ input, role, selection }) => ({ input, role, selection })),
+        materializes: invocation.results,
         successReason: invocation.successReason,
         ...(invocation.location ? { location: invocation.location } : {}),
       });
     }
   }
+  for (const [name, provider] of invocationResults) {
+    const index = roles.findIndex((role) => role.name === name);
+    roles[index] = {
+      ...roles[index]!,
+      source: { kind: "invocation-result", invocation: provider.invocation, result: provider.result },
+    };
+  }
+  for (const role of roles) {
+    if (role.returned && role.source.kind !== "operation-field" && role.source.kind !== "invocation-result")
+      fail(
+        "invalid-procedure",
+        `Returned role "${role.name}" must be produced by a Check or Invocation`,
+        sourceName,
+        role,
+      );
+  }
+  validateOptionalRoleDependencies(roles, roleByName, sourceName);
   for (const scenario of scenarioSources) {
     for (const check of scenario.checks) {
       for (const binding of [check.target, ...check.using]) {
         const provider = materialized.get(binding.role);
-        if (!provider) continue;
-        const providerScenario = checkByName.get(provider.check)?.scenario.slug;
+        const providerScenario = provider
+          ? checkByName.get(provider.check)?.scenario.slug
+          : invocationResults.get(binding.role)?.scenario;
+        if (!providerScenario) continue;
         if (!providerScenario || !isTransitiveDependency(scenario.slug, providerScenario, scenarioSources)) {
           fail(
             "invalid-dependency",
@@ -597,8 +705,10 @@ function compileProcedureInternal(
       for (const reference of compiledCheck?.qualification.guards.flatMap((guard) => guard.references) ?? []) {
         if (reference.kind !== "context") continue;
         const provider = materialized.get(reference.role);
-        if (!provider) continue;
-        const providerScenario = checkByName.get(provider.check)?.scenario.slug;
+        const providerScenario = provider
+          ? checkByName.get(provider.check)?.scenario.slug
+          : invocationResults.get(reference.role)?.scenario;
+        if (!providerScenario) continue;
         if (!providerScenario || !isTransitiveDependency(scenario.slug, providerScenario, scenarioSources)) {
           fail(
             "invalid-dependency",
@@ -844,6 +954,7 @@ function parseRoles(steps: readonly Step[], sourceName: string): RoleSource[] {
     if (name === PLAN_ROLE)
       fail("invalid-procedure", `Role "${PLAN_ROLE}" is reserved for the Plan identifier`, sourceName, step);
     const declared = parsed.captures.some(({ slot }) => slot === "declared");
+    const returned = parsed.captures.some(({ slot }) => slot === "returned");
     const optional = parsed.captures.some(({ slot }) => slot === "optional");
     const fixed = parsed.captures.findLast(({ slot }) => slot === "fixed-value")?.value;
     const parents: { role: string; each: boolean }[] = [];
@@ -858,6 +969,8 @@ function parseRoles(steps: readonly Step[], sourceName: string): RoleSource[] {
     if (fixed === "") fail("invalid-procedure", `Fixed role "${name}" cannot be empty`, sourceName, step);
     if (declared && fixed !== undefined)
       fail("invalid-procedure", `Role "${name}" cannot be declared and fixed`, sourceName, step);
+    if (returned && (declared || fixed !== undefined))
+      fail("invalid-procedure", `Returned role "${name}" must be produced by a Check or Invocation`, sourceName, step);
     if (fixed !== undefined && cardinality !== "one") {
       fail("incompatible-cardinality", `Fixed role "${name}" must have cardinality one`, sourceName, step);
     }
@@ -871,6 +984,7 @@ function parseRoles(steps: readonly Step[], sourceName: string): RoleSource[] {
       optional,
       parents,
       declared,
+      returned,
       ...(fixed !== undefined ? { fixed } : {}),
       location: step.location,
     };
@@ -928,6 +1042,7 @@ function parseScenario(scenario: Scenario, sourceName: string): ScenarioSource {
         name: requireCapture(parsed, "check", sourceName, step),
         scenario: slug,
         collection: requireCapture(parsed, "mission-collection", sourceName, step),
+        materializes: parseResultBindings(parsed.captures, sourceName, step),
         successReason: requireCapture(parsed, "reason", sourceName, step),
         location: step.location,
       });
@@ -950,7 +1065,11 @@ function parseScenario(scenario: Scenario, sourceName: string): ScenarioSource {
             materializes: [],
             successReason: requireCapture(parsed, "reason", sourceName, step),
           };
-      invocations.push({ ...call, location: step.location });
+      invocations.push({
+        ...call,
+        results: parseResultBindings(parsed.captures, sourceName, step),
+        location: step.location,
+      });
       continue;
     }
     checks.push({
@@ -972,6 +1091,23 @@ function parseScenario(scenario: Scenario, sourceName: string): ScenarioSource {
   };
 }
 
+function parseResultBindings(
+  captures: readonly { readonly slot: string; readonly value: string }[],
+  sourceName: string,
+  located: Located,
+): { role: string; result: string }[] {
+  const bindings: { role: string; result: string }[] = [];
+  for (let index = 0; index < captures.length; index += 1) {
+    const capture = captures[index];
+    if (capture?.slot !== "result-target-role") continue;
+    const result = captures[index + 1];
+    if (result?.slot !== "result-source-role")
+      fail("invalid-procedure", "Invocation has an invalid Result binding", sourceName, located);
+    bindings.push({ role: capture.value, result: result.value });
+  }
+  return bindings;
+}
+
 function parseDependency(text: string): string | undefined {
   const parsed = parseProcedureStep(text, "scenario");
   if (parsed?.production !== "dependency") return undefined;
@@ -989,6 +1125,14 @@ function parseCheckSentence(
     fail("invalid-procedure", `Invalid Check or Invocation sentence "${text}"`, sourceName, located);
   const name = requireCapture(parsed, "check", sourceName, located);
   const operation = requireCapture(parsed, "operation", sourceName, located);
+  const duration = parsed.captures.find(({ slot }) => slot === "execution-duration")?.value;
+  const deadline = parsed.captures.find(({ slot }) => slot === "execution-deadline")?.value;
+  const executionConstraint =
+    duration !== undefined
+      ? parseExecutionDuration(duration, sourceName, located)
+      : deadline !== undefined
+        ? parseExecutionDeadline(deadline, sourceName, located)
+        : undefined;
   const selection = parsed.captures.find(({ slot }) => slot === "target-selection")?.value as
     | "each"
     | "all"
@@ -1026,11 +1170,73 @@ function parseCheckSentence(
   return {
     name,
     operation,
+    ...(executionConstraint === undefined ? {} : { executionConstraint }),
     target: { role, selection: selection ?? "one", input },
     using,
     materializes,
     successReason,
   };
+}
+
+const DURATION = /^([1-9]\d*)(ms|s|m|h)$/;
+const DURATION_MULTIPLIER = { ms: 1, s: 1_000, m: 60_000, h: 3_600_000 } as const;
+const ISO_DATE_TIME = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d{1,3})?(?:Z|[+-](\d{2}):(\d{2}))$/;
+
+function parseExecutionDuration(value: string, sourceName: string, located: Located): CheckExecutionConstraint {
+  const match = DURATION.exec(value);
+  const amount = match ? Number(match[1]) : Number.NaN;
+  const unit = match?.[2] as keyof typeof DURATION_MULTIPLIER | undefined;
+  const milliseconds = unit === undefined ? Number.NaN : amount * DURATION_MULTIPLIER[unit];
+  if (!Number.isSafeInteger(milliseconds) || milliseconds < 1) {
+    fail(
+      "invalid-procedure",
+      `Check execution duration "${value}" must be a positive integer immediately followed by ms, s, m or h`,
+      sourceName,
+      located,
+    );
+  }
+  return { kind: "within", duration: value, milliseconds };
+}
+
+function parseExecutionDeadline(value: string, sourceName: string, located: Located): CheckExecutionConstraint {
+  const match = ISO_DATE_TIME.exec(value);
+  const parsed = Date.parse(value);
+  if (match === null || !validDateTimeParts(match) || !Number.isFinite(parsed)) {
+    fail(
+      "invalid-procedure",
+      `Check execution deadline "${value}" must be an ISO 8601 date-time with a timezone`,
+      sourceName,
+      located,
+    );
+  }
+  return { kind: "until", dateTime: new Date(parsed).toISOString() };
+}
+
+function validDateTimeParts(match: RegExpExecArray): boolean {
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const hour = Number(match[4]);
+  const minute = Number(match[5]);
+  const second = Number(match[6]);
+  const offsetHour = match[7] === undefined ? 0 : Number(match[7]);
+  const offsetMinute = match[8] === undefined ? 0 : Number(match[8]);
+  return (
+    month >= 1 &&
+    month <= 12 &&
+    day >= 1 &&
+    day <= daysInMonth(year, month) &&
+    hour <= 23 &&
+    minute <= 59 &&
+    second <= 59 &&
+    offsetHour <= 23 &&
+    offsetMinute <= 59
+  );
+}
+
+function daysInMonth(year: number, month: number): number {
+  if (month === 2) return year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0) ? 29 : 28;
+  return [4, 6, 9, 11].includes(month) ? 30 : 31;
 }
 
 function parseQualification(step: Step, sourceName: string): QualificationSource {
@@ -1099,11 +1305,11 @@ function validateOptionalRoleDependencies(
     });
   for (const role of roles) {
     if (!hasOptionalDeclarationAncestor(role)) continue;
-    if (role.source.kind === "operation-field") continue;
+    if (role.source.kind === "operation-field" || role.source.kind === "invocation-result") continue;
     if (role.source.kind === "agent-declaration" && role.source.optional === true) continue;
     fail(
       "invalid-procedure",
-      `Role "${role.name}" depends on an optional agent declaration and must also be declared optionally by agent or materialized by a Check`,
+      `Role "${role.name}" depends on an optional agent declaration and must also be declared optionally by agent or materialized by a Check or Invocation`,
       sourceName,
       sources.get(role.name),
     );

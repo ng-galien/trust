@@ -4,31 +4,36 @@ Tracking issue: https://github.com/ng-galien/trust/issues/3
 
 ## Problem
 
-An Operation running a long Hall Playwright or PostgreSQL command cannot declare its execution timeout in the TRUST DSL. Direct Runner Shell commands default to 30 seconds, while Operation Trials default to 5 minutes and pass that value to the Shell runner. The same Operation therefore receives different time budgets depending on its launch path. Host environment overrides are not a discoverable, versioned execution contract.
+A Procedure Check running a long Hall Playwright or PostgreSQL Operation cannot declare its execution limit in the TRUST DSL. Direct Runner Shell commands default to 30 seconds, while Operation Trials default to 5 minutes and pass that value to the Shell runner. Those technical defaults are too short for ordinary software builds.
 
 ## Requested outcome
 
-Support an explicit execution timeout in the authored DSL, with `with timeout` as a syntax direction. Decide the precise owner and scope (Procedure invocation, Operation, or step) before implementation; this issue does not approve competing timeout authorities. The duration should be understandable from the source and effective execution details, with consistent behavior in a Plan Check and an Operation Trial.
+Support `within "<duration>"` and `until "<date-time>"` on a Procedure Check's Operation invocation. The constraint covers the complete Operation. It is not part of the reusable Operation contract.
 
-## Design decisions to resolve
+## Product decisions
 
-- Canonical owner, syntax, units, positive bounds and omitted-value behavior.
-- Precedence between declared duration and host/Trial safety limits, including how the effective limit is exposed.
-- Whether a duration covers one step or the complete Operation; distinguish it from Session expiry, MCP request deadlines and tool-specific deadlines such as Playwright.
+- `within` accepts a positive integer immediately followed by `ms`, `s`, `m` or `h`.
+- `until` accepts an ISO 8601 date-time with an explicit timezone.
+- A Check declares at most one of these clauses, immediately after its Operation reference.
+- A live Runner applies the constraint from the start of the complete Operation execution through every step and Produce.
+- Operation simulation executes nothing. An Operation Trial has no Procedure Check and therefore retains its independent technical limit. A Procedure dry-run records operator Facts and does not apply an execution timer.
+- Without a Check constraint, the Runner Shell and Trial technical defaults are 10 minutes. Host configuration remains a technical fallback, not a competing authored contract.
 
 ## Acceptance
 
 - Compile valid durations and reject invalid or ambiguous values at public boundaries; preserve one canonical type authority across compiler, SDK, Runner, LSP and UI.
-- Execute the same declared Operation through a Plan Check and a Trial and verify the documented effective-timeout policy.
+- Verify that a live Plan Check applies its Procedure-owned constraint and that Trial, Operation simulation and Procedure dry-run do not inherit it.
 - Verify a command completing before the deadline and a command exceeding it, including child-process cleanup and useful diagnostics.
 - A timeout without accepted Facts must not fabricate a qualification or mark a Check satisfied; preserve the existing interruption and retry contract.
 - Reflect the declaration in language assistance, source formatting, effective execution details and English/French documentation with compiling examples.
 - Preserve immutable published versions and pinned compositions.
 
-## Current implementation
+## Implementation direction
 
-- `packages/trust-runner/src/shell/run.ts`: 30-second default, `TRUST_SHELL_TIMEOUT_MS`, SIGTERM followed by SIGKILL after 2 seconds.
-- `packages/trust-runtime/src/trial/service.ts`: 5-minute Trial default, `TRUST_TRIAL_TIMEOUT_MS` at server configuration, propagated to Shell execution.
-- `packages/trust-operation/src/shell.ts`: no declarative timeout field.
+- `trust-procedure` owns the compiled constraint and its exhaustive matcher.
+- The runtime includes it in live Check admission; it is omitted from dry-run admission.
+- The Runner converts it to the effective execution budget and propagates the remaining time to Shell, HTTP and PostgreSQL execution.
+- Shell retains SIGTERM followed by SIGKILL after 2 seconds. Its fallback and the Trial limit default to 10 minutes.
+- `trust-operation` remains unchanged and context-free.
 
-Raised while validating Hall agenda scheduling with `hall.playwright-test-run` and `hall.postgres-test-run`. This issue records the feature request; it does not implement the language change.
+Raised while validating Hall agenda scheduling with `hall.playwright-test-run` and `hall.postgres-test-run`.
