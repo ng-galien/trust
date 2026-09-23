@@ -1,4 +1,12 @@
-import type { MissionDefinition } from "./index.js";
+import type { CatalogMetadata, MissionDefinition } from "./index.js";
+
+/** Total dispatch over the catalog resource kind. */
+export function matchCatalogMetadataKind<R>(
+  metadata: CatalogMetadata,
+  handlers: { readonly operation: () => R; readonly procedure: () => R },
+): R {
+  return handlers[metadata.kind]();
+}
 
 export type MissionDefinitionHandlers<R> = {
   [K in MissionDefinition["kind"]]: (definition: Extract<MissionDefinition, { kind: K }>) => R;

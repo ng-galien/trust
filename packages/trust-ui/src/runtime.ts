@@ -1,5 +1,6 @@
 import type {
   AttemptFinalizationResult,
+  CatalogMetadata,
   CheckAttemptAdmissionResult,
   CheckView,
   CredentialReference,
@@ -113,6 +114,11 @@ export class TrustRuntimeClient {
         operations: CompiledOperation[];
       }>("operation.list")
     ).operations;
+  catalogMetadata = () => this.call<CatalogMetadata[]>("catalog.metadata.list");
+  catalogMetadataHistory = (kind: CatalogMetadata["kind"], name: string) =>
+    this.call<CatalogMetadata[]>("catalog.metadata.history", { kind, name });
+  saveCatalogMetadata = (metadata: Omit<CatalogMetadata, "revision" | "updatedAt"> & { expectedRevision: number }) =>
+    this.call<CatalogMetadata>("catalog.metadata.save", { ...metadata, tags: [...metadata.tags] });
   compileOperation = (source: string, sourceName = "editor.feature") =>
     this.call<CompiledOperation>("operation.compile", { source, sourceName });
   /** Writes a new immutable source file into the runtime catalog directory and recompiles it. */

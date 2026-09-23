@@ -2,6 +2,8 @@ import type { CompiledOperation } from "@trust/operation";
 import { type AwilixContainer, asClass, asFunction, asValue, createContainer, InjectionMode } from "awilix";
 import type { Express, Router } from "express";
 import { AttemptStore } from "./attempt/store.js";
+import { CatalogMetadataService } from "./catalog/metadata.js";
+import { CatalogMetadataStore } from "./catalog/metadata-store.js";
 import { CredentialService } from "./credential/service.js";
 import { CredentialStore } from "./credential/store.js";
 import type { Database } from "./database/database.js";
@@ -48,6 +50,8 @@ export interface RuntimeComponents {
   readonly operations: readonly CompiledOperation[];
   readonly operationsDirectory?: string;
   readonly operationCatalog: OperationCatalog;
+  readonly metadataStore: CatalogMetadataStore;
+  readonly metadataService: CatalogMetadataService;
   readonly registrySourceStore: RegistrySourceStore;
   readonly registryService: RegistryService;
   readonly environmentStore: EnvironmentStore;
@@ -115,6 +119,8 @@ export const createRuntimeContainer = async (
     operations: asValue(options.operations ?? []),
     operationsDirectory: asValue(options.operationsDirectory),
     operationCatalog: asClass(OperationCatalog).singleton(),
+    metadataStore: asClass(CatalogMetadataStore).singleton(),
+    metadataService: asClass(CatalogMetadataService).singleton(),
     registrySourceStore: asClass(RegistrySourceStore).singleton(),
     registryService: asClass(RegistryService).singleton(),
     sessionDurationMs: asValue(options.sessionDurationMs ?? DEFAULT_SESSION_DURATION_MS),

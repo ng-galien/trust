@@ -4,7 +4,7 @@ import { useTranslation } from "react-i18next";
 import { Link, useLocation } from "react-router";
 
 import { plural, relativeTime } from "../../lib/format.js";
-import { usePlans, useProcedures } from "../../lib/runtime-context.js";
+import { useCatalogMetadata, usePlans, useProcedures } from "../../lib/runtime-context.js";
 import { Badge } from "../../ui/badge.js";
 import { type FacetGroupSpec, FilterBox } from "../../ui/filter-box.js";
 import { families, otherFamily } from "../operations/classification.js";
@@ -28,13 +28,17 @@ import {
 
 export function ProceduresHome() {
   const procedures = useProcedures();
+  const metadata = useCatalogMetadata();
   const plans = usePlans();
   const location = useLocation();
   const { t } = useTranslation();
   const [filters, update] = useUrlFilters(readFilters, writeFilters, "procedures");
   const overlayOpen = location.pathname !== "/procedures" && location.pathname !== "/procedures/";
 
-  const rows = useMemo(() => toRows(procedures.data ?? [], plans.data ?? []), [procedures.data, plans.data]);
+  const rows = useMemo(
+    () => toRows(procedures.data ?? [], plans.data ?? [], metadata.data ?? []),
+    [procedures.data, plans.data, metadata.data],
+  );
   const visible = useMemo(() => applyFilters(rows, filters), [rows, filters]);
   const groups = useMemo(() => groupRows(visible, filters.group), [visible, filters.group]);
 
@@ -65,8 +69,8 @@ export function ProceduresHome() {
         ],
         onSort: (sort) => update({ sort }),
       }}
-      loading={procedures.isLoading}
-      error={procedures.error?.message}
+      loading={procedures.isLoading || metadata.isLoading}
+      error={procedures.error?.message ?? metadata.error?.message}
       emptyTitle={rows.length ? t("procedures.home.emptyFilteredTitle") : t("procedures.home.emptyTitle")}
       emptyBody={rows.length ? t("procedures.home.emptyFilteredBody") : t("procedures.home.emptyBody")}
       onClearFilters={() => update(emptyFilters)}
@@ -90,8 +94,20 @@ function ProcedureFilters({
   const { t } = useTranslation();
   const { count, toggle, pick } = facetHelpers(rows, filters, applyFacets, update);
   const familyIds = Array.from(new Set(rows.map((row) => row.family.id)));
+  const tags = Array.from(new Set(rows.flatMap((row) => row.metadata?.tags ?? []))).sort();
   const operationIds = Array.from(new Set(rows.flatMap((row) => row.operations))).sort();
   const groups: FacetGroupSpec[] = [
+    {
+      id: "tag",
+      label: t("shared.catalogMetadata.tags"),
+      selected: filters.tags,
+      options: tags.map((tag) => ({
+        value: tag,
+        label: tag,
+        count: count("tags", (row) => row.metadata?.tags.includes(tag) ?? false),
+      })),
+      onToggle: (value, options) => pick({ tags: toggle(filters.tags, value) }, options),
+    },
     {
       id: "family",
       label: t("procedures.home.facets.family"),

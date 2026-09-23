@@ -2,10 +2,8 @@ import type { CompiledOperation } from "@trust/operation";
 import { matchOperationStep } from "@trust/operation/match";
 import { i18next } from "../../i18n/index.js";
 
-/* Classification of Operations.
-   Derived in the UI until the Operation grammar accepts classification tags
-   (proposed: `@family:<slug>` and `@nature:observe|act` — today rejected as outside the closed grammar).
-   Everything below is a presentation rule, not a contract. */
+/* Catalog classification uses editable tags when present, then falls back to the
+   published definition and name. These are presentation rules, not Runner inputs. */
 
 export type Nature = "observe" | "act";
 
@@ -66,8 +64,11 @@ export const otherFamily: Family = {
   domains: [],
 };
 
-export function familyOf(domain: string, operation?: CompiledOperation): Family {
-  const tagged = operation?.classification?.family?.[0];
+export function familyOf(domain: string, operation?: CompiledOperation, tags?: readonly string[]): Family {
+  const tagged =
+    tags === undefined
+      ? operation?.classification?.family?.[0]
+      : tags.find((tag) => tag.startsWith("family:"))?.slice("family:".length);
   if (tagged)
     return families.find((family) => family.id === tagged) ?? { id: tagged, label: labelOf(tagged), domains: [] };
   return families.find((family) => family.domains.includes(domain)) ?? otherFamily;

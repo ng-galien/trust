@@ -5,7 +5,12 @@ import { Link, useLocation } from "react-router";
 
 import { useCurrentEnvironment } from "../../lib/environment.js";
 import { cx, plural } from "../../lib/format.js";
-import { useOperationEnvironments, useOperations, useProcedures } from "../../lib/runtime-context.js";
+import {
+  useCatalogMetadata,
+  useOperationEnvironments,
+  useOperations,
+  useProcedures,
+} from "../../lib/runtime-context.js";
 import { type FacetGroupSpec, FilterBox } from "../../ui/filter-box.js";
 import { Popover } from "../../ui/menu.js";
 import { facetHelpers } from "../shared/facets.js";
@@ -30,6 +35,7 @@ import {
 } from "./model.js";
 
 export function OperationsHome() {
+  const metadata = useCatalogMetadata();
   const { t } = useTranslation();
   const operations = useOperations();
   const procedures = useProcedures();
@@ -39,8 +45,8 @@ export function OperationsHome() {
   const overlayOpen = location.pathname !== "/operations" && location.pathname !== "/operations/";
 
   const rows = useMemo(
-    () => toRows(operations.data ?? [], procedures.data ?? [], operationEnvironments.data),
-    [operations.data, procedures.data, operationEnvironments.data],
+    () => toRows(operations.data ?? [], procedures.data ?? [], operationEnvironments.data, metadata.data ?? []),
+    [operations.data, procedures.data, operationEnvironments.data, metadata.data],
   );
   const visible = useMemo(() => applyFilters(rows, filters), [rows, filters]);
   const groups = useMemo(() => groupRows(visible, filters.group), [visible, filters.group]);
@@ -73,8 +79,8 @@ export function OperationsHome() {
         ],
         onSort: (sort) => update({ sort }),
       }}
-      loading={operations.isLoading}
-      error={operations.error?.message}
+      loading={operations.isLoading || metadata.isLoading}
+      error={operations.error?.message ?? metadata.error?.message}
       emptyTitle={rows.length ? t("operations.home.emptyFilteredTitle") : t("operations.home.emptyCatalogTitle")}
       emptyBody={rows.length ? t("operations.home.emptyFilteredBody") : t("operations.home.emptyCatalogBody")}
       onClearFilters={() => update(emptyFilters)}
@@ -100,7 +106,19 @@ function OperationFilters({
   const { t } = useTranslation();
   const { count, toggle, pick } = facetHelpers(rows, filters, applyFacets, update);
   const familyIds = Array.from(new Set(rows.map((row) => row.family.id)));
+  const tags = Array.from(new Set(rows.flatMap((row) => row.metadata?.tags ?? []))).sort();
   const groups: FacetGroupSpec[] = [
+    {
+      id: "tag",
+      label: t("shared.catalogMetadata.tags"),
+      selected: filters.tags,
+      options: tags.map((tag) => ({
+        value: tag,
+        label: tag,
+        count: count("tags", (row) => row.metadata?.tags.includes(tag) ?? false),
+      })),
+      onToggle: (value, options) => pick({ tags: toggle(filters.tags, value) }, options),
+    },
     {
       id: "family",
       label: t("operations.home.facets.family"),
@@ -309,8 +327,8 @@ function CardsView({ rows, search, q }: { rows: OperationRow[]; search: string; 
             </>
           }
           version={row.operation.version}
-          title={row.operation.title}
-          description={row.operation.description}
+          title={row.metadata?.title ?? row.operation.title}
+          description={row.metadata ? row.metadata.description : row.operation.description}
           id={row.id}
           note={matchReason(row, q) ? t("operations.home.matches", { reason: matchReason(row, q) ?? "" }) : undefined}
           facts={[
@@ -352,10 +370,10 @@ function ListView({ rows, search, q }: { rows: OperationRow[]; search: string; q
         <TitleCell
           key="t"
           to={`/operations/${encodeURIComponent(row.id)}${search}`}
-          title={row.operation.title}
+          title={row.metadata?.title ?? row.operation.title}
           id={row.id}
           version={row.operation.version}
-          description={row.operation.description}
+          description={row.metadata ? row.metadata.description : row.operation.description}
           note={matchReason(row, q) ? t("operations.home.matches", { reason: matchReason(row, q) ?? "" }) : undefined}
         />,
         <div key="i" className="flex flex-col gap-1">

@@ -1,4 +1,15 @@
 export const shared = {
+  catalogMetadata: {
+    heading: "Catalog classification",
+    edit: "Edit catalog details",
+    title: "Display title",
+    description: "Description",
+    tags: "Tags",
+    tagsHint: "One tag per line",
+    noTags: "No tags",
+    save: "Save details",
+    cancel: "Cancel",
+  },
   versions: {
     label: "Version",
     exact: "Selected published version",

@@ -1,4 +1,5 @@
-import type { PlanSummaryView, PublishedProcedure, RuntimeJsonObject } from "@trust/extension-sdk";
+import type { CatalogMetadata, PlanSummaryView, PublishedProcedure, RuntimeJsonObject } from "@trust/extension-sdk";
+import { matchCatalogMetadataKind } from "@trust/extension-sdk/match";
 import type { CompiledProcedure } from "@trust/procedure";
 import { procedureLanguage } from "@trust/procedure/language";
 import { i18next } from "../../i18n/index.js";
@@ -16,6 +17,7 @@ export interface ProcedureRow {
   version: string;
   title: string;
   description: string | undefined;
+  metadata: CatalogMetadata | undefined;
   operations: string[];
   domains: string[];
   family: Family;
@@ -28,13 +30,23 @@ export interface ProcedureRow {
   publishedBy: string;
 }
 
-export function toRows(procedures: PublishedProcedure[], plans: PlanSummaryView[]): ProcedureRow[] {
+export function toRows(
+  procedures: PublishedProcedure[],
+  plans: PlanSummaryView[],
+  metadata: CatalogMetadata[] = [],
+): ProcedureRow[] {
   return catalogIdentities(
     procedures,
     (value) => value.procedure.procedure,
     (value) => value.procedure.version,
   ).map((published) => {
     const procedure = published.procedure;
+    const editorial = metadata.find((entry) =>
+      matchCatalogMetadataKind(entry, {
+        operation: () => false,
+        procedure: () => entry.name === procedure.procedure,
+      }),
+    );
     const operations = Array.from(new Set(procedure.operations.map((used) => used.operation))).sort();
     const domains = Array.from(new Set(operations.map((operation) => operation.split(".")[0] ?? "").filter(Boolean)));
     const executing = plans.filter((plan) => plan.procedure === procedure.procedure);
@@ -43,11 +55,14 @@ export function toRows(procedures: PublishedProcedure[], plans: PlanSummaryView[
       procedure,
       id: procedure.procedure,
       version: procedure.version,
-      title: procedure.title,
-      description: procedure.description,
+      title: editorial?.title ?? procedure.title,
+      description: editorial ? editorial.description : procedure.description,
+      metadata: editorial,
       operations,
       domains,
-      family: dominantFamily(operations, procedure),
+      family: editorial?.tags.find((tag) => tag.startsWith("family:"))
+        ? familyOf("", undefined, editorial.tags)
+        : dominantFamily(operations, procedure),
       inputs: procedure.roles.filter((role) => role.source.kind === "plan-input").map((role) => role.name),
       scenarioCount: procedure.scenarios.length,
       checkCount: procedure.checks.length,
@@ -75,6 +90,7 @@ export interface Filters {
   q: string;
   family: string;
   operations: string[];
+  tags: string[];
   plans: "active" | "any" | "none" | "";
   sort: SortKey;
   group: GroupKey;
@@ -89,6 +105,7 @@ export function readFilters(params: URLSearchParams): Filters {
     q: params.get("q") ?? "",
     family: params.get("family") ?? "",
     operations: (params.get("op") ?? "").split(",").filter(Boolean),
+    tags: params.getAll("tag").filter(Boolean),
     plans: plans === "active" || plans === "any" || plans === "none" ? plans : "",
     sort: sort === "published" || sort === "checks" || sort === "plans" ? sort : "name",
     group: group === "family" ? group : "none",
@@ -102,6 +119,8 @@ export function writeFilters(filters: Filters, base: URLSearchParams): URLSearch
   set("q", filters.q);
   set("family", filters.family);
   set("op", filters.operations.join(","));
+  next.delete("tag");
+  for (const tag of filters.tags) next.append("tag", tag);
   set("plans", filters.plans);
   set("sort", filters.sort === "name" ? "" : filters.sort);
   set("group", filters.group === "none" ? "" : filters.group);
@@ -109,17 +128,19 @@ export function writeFilters(filters: Filters, base: URLSearchParams): URLSearch
   return next;
 }
 
-export const emptyFilters: Pick<Filters, "q" | "family" | "operations" | "plans"> = {
+export const emptyFilters: Pick<Filters, "q" | "family" | "operations" | "tags" | "plans"> = {
   q: "",
   family: "",
   operations: [],
+  tags: [],
   plans: "",
 };
 
 function matchesQuery(row: ProcedureRow, needle: string): boolean {
   if (!needle) return true;
   return (
-    `${row.id} ${row.title}`.toLowerCase().includes(needle) ||
+    `${row.id} ${row.title} ${row.description ?? ""}`.toLowerCase().includes(needle) ||
+    (row.metadata?.tags ?? []).some((tag) => tag.toLowerCase().includes(needle)) ||
     row.operations.some((operation) => operation.toLowerCase().includes(needle)) ||
     row.procedure.checks.some((check) => check.name.toLowerCase().includes(needle)) ||
     row.inputs.some((input) => input.toLowerCase().includes(needle))
@@ -129,6 +150,8 @@ function matchesQuery(row: ProcedureRow, needle: string): boolean {
 export function matchReason(row: ProcedureRow, q: string): string | undefined {
   const needle = q.trim().toLowerCase();
   if (!needle || `${row.id} ${row.title}`.toLowerCase().includes(needle)) return undefined;
+  const tag = row.metadata?.tags.find((entry) => entry.toLowerCase().includes(needle));
+  if (tag) return tag;
   const operation = row.operations.find((entry) => entry.toLowerCase().includes(needle));
   if (operation) return i18next.t("procedures.model.matchUses", { operation });
   const check = row.procedure.checks.find((entry) => entry.name.toLowerCase().includes(needle));
@@ -147,6 +170,9 @@ export function applyFacets(rows: ProcedureRow[], filters: Filters, except?: key
       (except === "operations" ||
         filters.operations.length === 0 ||
         filters.operations.some((operation) => row.operations.includes(operation))) &&
+      (except === "tags" ||
+        filters.tags.length === 0 ||
+        filters.tags.some((tag) => row.metadata?.tags.includes(tag))) &&
       (except === "plans" ||
         !filters.plans ||
         (filters.plans === "active"

@@ -1,4 +1,5 @@
-import type { OperationEnvironments, PublishedProcedure } from "@trust/extension-sdk";
+import type { CatalogMetadata, OperationEnvironments, PublishedProcedure } from "@trust/extension-sdk";
+import { matchCatalogMetadataKind } from "@trust/extension-sdk/match";
 import type { CompiledOperation, ObjectSchema, OperationStep } from "@trust/operation";
 import { operationLanguage } from "@trust/operation/language";
 import { compareVersions } from "@trust/operation/version";
@@ -24,6 +25,7 @@ export function stepTypeLabel(type: StepType): string {
 
 export interface OperationRow {
   operation: CompiledOperation;
+  metadata: CatalogMetadata | undefined;
   id: string;
   domain: string;
   action: string;
@@ -47,18 +49,26 @@ export function toRows(
   operations: CompiledOperation[],
   procedures: PublishedProcedure[],
   environments?: OperationEnvironments[],
+  metadata: CatalogMetadata[] = [],
 ): OperationRow[] {
   return catalogIdentities(
     operations,
     (value) => value.operation,
     (value) => value.version,
   ).map((operation) => {
+    const editorial = metadata.find((entry) =>
+      matchCatalogMetadataKind(entry, {
+        operation: () => entry.name === operation.operation,
+        procedure: () => false,
+      }),
+    );
     const known = environments?.find(
       (entry) => entry.operation === operation.operation && entry.version === operation.version,
     );
     const [domain, ...rest] = operation.operation.split(".");
     return {
       operation,
+      metadata: editorial,
       id: operation.operation,
       domain: rest.length ? domain! : "",
       action: rest.length ? rest.join(".") : operation.operation,
@@ -69,7 +79,7 @@ export function toRows(
       usedBy: procedures.filter(({ procedure }) =>
         procedure.operations.some((used) => used.operation === operation.operation),
       ),
-      family: familyOf(rest.length ? domain! : "", operation),
+      family: familyOf(rest.length ? domain! : "", operation, editorial?.tags),
       nature: natureOf(operation),
       runnableOn: known ? known.environments.filter((entry) => entry.compatible).map((entry) => entry.name) : undefined,
     };
@@ -80,6 +90,7 @@ export interface Filters {
   q: string;
   family: string;
   domains: string[];
+  tags: string[];
   types: StepType[];
   nature: Nature | "";
   usage: "used" | "unused" | "";
@@ -101,6 +112,7 @@ export function readFilters(params: URLSearchParams): Filters {
     q: params.get("q") ?? "",
     family: params.get("family") ?? "",
     domains: (params.get("domain") ?? "").split(",").filter(Boolean),
+    tags: params.getAll("tag").filter(Boolean),
     types: (params.get("type") ?? "").split(",").filter(isStepType),
     nature: nature === "observe" || nature === "act" ? nature : "",
     usage: usage === "used" || usage === "unused" ? usage : "",
@@ -117,6 +129,8 @@ export function writeFilters(filters: Filters, base: URLSearchParams): URLSearch
   set("q", filters.q);
   set("family", filters.family);
   set("domain", filters.domains.join(","));
+  next.delete("tag");
+  for (const tag of filters.tags) next.append("tag", tag);
   set("type", filters.types.join(","));
   set("nature", filters.nature);
   set("usage", filters.usage);
@@ -127,10 +141,14 @@ export function writeFilters(filters: Filters, base: URLSearchParams): URLSearch
   return next;
 }
 
-export const emptyFilters: Pick<Filters, "q" | "family" | "domains" | "types" | "nature" | "usage" | "runnable"> = {
+export const emptyFilters: Pick<
+  Filters,
+  "q" | "family" | "domains" | "tags" | "types" | "nature" | "usage" | "runnable"
+> = {
   q: "",
   family: "",
   domains: [],
+  tags: [],
   types: [],
   nature: "",
   usage: "",
@@ -141,8 +159,10 @@ export const emptyFilters: Pick<Filters, "q" | "family" | "domains" | "types" | 
 export function matchReason(row: OperationRow, q: string): string | undefined {
   const needle = q.trim().toLowerCase();
   if (!needle) return undefined;
-  if (`${row.id} ${row.operation.title}`.toLowerCase().includes(needle)) return undefined;
+  if (`${row.id} ${row.metadata?.title ?? row.operation.title}`.toLowerCase().includes(needle)) return undefined;
   const hit = (names: string[]) => names.find((name) => name.toLowerCase().includes(needle));
+  const tag = hit([...(row.metadata?.tags ?? [])]);
+  if (tag) return tag;
   const produced = hit(row.produced);
   if (produced) return i18next.t("operations.model.matchProduces", { name: produced });
   const input = hit(row.inputs);
@@ -155,7 +175,10 @@ export function matchReason(row: OperationRow, q: string): string | undefined {
 function matchesQuery(row: OperationRow, needle: string): boolean {
   if (!needle) return true;
   return (
-    `${row.id} ${row.operation.title}`.toLowerCase().includes(needle) ||
+    `${row.id} ${row.metadata?.title ?? row.operation.title} ${row.metadata ? (row.metadata.description ?? "") : (row.operation.description ?? "")}`
+      .toLowerCase()
+      .includes(needle) ||
+    (row.metadata?.tags ?? []).some((tag) => tag.toLowerCase().includes(needle)) ||
     [...row.produced, ...row.inputs, ...row.environment].some((name) => name.toLowerCase().includes(needle))
   );
 }
@@ -168,6 +191,9 @@ export function applyFacets(rows: OperationRow[], filters: Filters, except?: key
       (except === "q" || matchesQuery(row, needle)) &&
       (except === "family" || !filters.family || row.family.id === filters.family) &&
       (except === "domains" || filters.domains.length === 0 || filters.domains.includes(row.domain)) &&
+      (except === "tags" ||
+        filters.tags.length === 0 ||
+        filters.tags.some((tag) => row.metadata?.tags.includes(tag))) &&
       (except === "types" ||
         filters.types.length === 0 ||
         filters.types.some((type) => row.stepTypes.includes(type))) &&

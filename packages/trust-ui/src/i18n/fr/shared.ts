@@ -2,6 +2,17 @@ import type { shared as en } from "../en/shared.js";
 import type { Translation } from "../types.js";
 
 export const shared: Translation<typeof en> = {
+  catalogMetadata: {
+    heading: "Classement du catalogue",
+    edit: "Modifier la fiche",
+    title: "Titre affiché",
+    description: "Description",
+    tags: "Tags",
+    tagsHint: "Un tag par ligne",
+    noTags: "Aucun tag",
+    save: "Enregistrer la fiche",
+    cancel: "Annuler",
+  },
   versions: {
     label: "Version",
     exact: "Version publiée sélectionnée",

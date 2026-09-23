@@ -1,3 +1,4 @@
+import { matchCatalogMetadataKind } from "@trust/extension-sdk/match";
 import type { CompiledOperation } from "@trust/operation";
 import { BookOpen, Braces, Copy, FileCode2, FlaskConical, GitBranch, Pencil, Play, Save } from "lucide-react";
 import { useMemo } from "react";
@@ -8,7 +9,13 @@ import { catalogIdentities, orderedVersions } from "../../lib/catalog-versions.j
 import { plural } from "../../lib/format.js";
 import { mutationError, useSaveOperation } from "../../lib/mutations.js";
 import { useExpert, usePreference, useResolvedTheme } from "../../lib/preferences.js";
-import { useOperationEnvironments, useOperations, useProcedures, useRuntime } from "../../lib/runtime-context.js";
+import {
+  useCatalogMetadata,
+  useOperationEnvironments,
+  useOperations,
+  useProcedures,
+  useRuntime,
+} from "../../lib/runtime-context.js";
 import { Badge, StatusBadge } from "../../ui/badge.js";
 import { Button } from "../../ui/button.js";
 import { Expert } from "../../ui/expert.js";
@@ -43,6 +50,7 @@ export function OperationOverlay({ mode = "item" }: { mode?: "item" | "new" }) {
   const expert = useExpert();
   const editorFontSize = usePreference("editorFontSize");
   const operations = useOperations();
+  const metadataQuery = useCatalogMetadata();
   const procedures = useProcedures();
   const operationEnvironments = useOperationEnvironments();
 
@@ -82,6 +90,22 @@ export function OperationOverlay({ mode = "item" }: { mode?: "item" | "new" }) {
   const close = useCloseTo(`/operations${listSearch}`);
   // While authoring, the live compilation is the truth; otherwise the catalog copy is.
   const compiled: CompiledOperation | undefined = authoring ? draft.compiled : catalog;
+  const metadata = !authoring
+    ? metadataQuery.data?.find((entry) =>
+        matchCatalogMetadataKind(entry, {
+          operation: () => entry.name === id,
+          procedure: () => false,
+        }),
+      )
+    : undefined;
+  const displayed =
+    compiled && metadata
+      ? {
+          ...compiled,
+          title: metadata.title,
+          description: metadata.description ?? "",
+        }
+      : compiled;
   const status = draft.status === "CURRENT" ? "PUBLISHED" : draft.status;
   const usedBy = useMemo(
     () =>
@@ -114,7 +138,11 @@ export function OperationOverlay({ mode = "item" }: { mode?: "item" | "new" }) {
   );
   const canSave = Boolean(compiled) && !occupied && !compileError && !draft.compiling && authoring && !save.isPending;
 
-  const title = compiled?.title ?? catalog?.title ?? (mode === "new" ? t("operations.overlay.newTitle") : (id ?? ""));
+  const title =
+    metadata?.title ??
+    compiled?.title ??
+    catalog?.title ??
+    (mode === "new" ? t("operations.overlay.newTitle") : (id ?? ""));
   const version = compiled?.version ?? catalog?.version;
   const displayId =
     compiled?.operation ?? catalog?.operation ?? (mode === "new" ? t("operations.overlay.unnamed") : (id ?? ""));
@@ -322,7 +350,9 @@ export function OperationOverlay({ mode = "item" }: { mode?: "item" | "new" }) {
           <ErrorBox message={saveError} />
         </div>
       ) : null}
-      {tab === "overview" ? <OverviewView compiled={compiled} error={compileError?.detail} /> : null}
+      {tab === "overview" ? (
+        <OverviewView compiled={displayed} error={compileError?.detail} metadata={metadata} />
+      ) : null}
       {tab === "source" ? (
         <div className="flex h-full min-h-0 flex-col">
           {authoring ? (

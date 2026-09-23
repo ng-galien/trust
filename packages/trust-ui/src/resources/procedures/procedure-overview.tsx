@@ -1,3 +1,4 @@
+import type { CatalogMetadata } from "@trust/extension-sdk";
 import type { CompiledProcedure } from "@trust/procedure";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
@@ -7,6 +8,7 @@ import { Description } from "../../ui/description.js";
 import { Expert } from "../../ui/expert.js";
 import { Disclosure } from "../../ui/schema.js";
 import { EmptyState } from "../../ui/states.js";
+import { CatalogMetadataEditor } from "../shared/catalog-metadata-editor.js";
 import { useOrigin } from "../shared/origin.js";
 import { orderedScenarios } from "./model.js";
 
@@ -14,9 +16,11 @@ import { orderedScenarios } from "./model.js";
 export function ProcedureOverview({
   compiled,
   error,
+  metadata,
 }: {
   compiled: CompiledProcedure | undefined;
   error?: string | undefined;
+  metadata?: CatalogMetadata | undefined;
 }) {
   const origin = useOrigin();
   const { t } = useTranslation();
@@ -33,6 +37,7 @@ export function ProcedureOverview({
 
   return (
     <div className="flex h-full flex-col gap-3 overflow-y-auto bg-bg p-4 [&>*]:shrink-0">
+      {metadata ? <CatalogMetadataEditor key={`${metadata.name}:${metadata.revision}`} metadata={metadata} /> : null}
       <section className="rounded-(--radius-3) border border-border bg-surface p-4" data-doc="procedure.summary">
         {compiled.description ? (
           <Description text={compiled.description} className="max-w-3xl text-ui leading-relaxed" />

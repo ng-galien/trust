@@ -1,3 +1,4 @@
+import { matchCatalogMetadataKind } from "@trust/extension-sdk/match";
 import type { CompiledProcedure } from "@trust/procedure";
 import {
   Activity,
@@ -19,7 +20,7 @@ import { catalogIdentities, orderedVersions } from "../../lib/catalog-versions.j
 import { plural } from "../../lib/format.js";
 import { mutationError, usePublishProcedure } from "../../lib/mutations.js";
 import { useExpert, usePreference, useResolvedTheme } from "../../lib/preferences.js";
-import { useOperations, usePlans, useProcedures, useRuntime } from "../../lib/runtime-context.js";
+import { useCatalogMetadata, useOperations, usePlans, useProcedures, useRuntime } from "../../lib/runtime-context.js";
 import { Badge, StatusBadge } from "../../ui/badge.js";
 import { Button } from "../../ui/button.js";
 import { Expert } from "../../ui/expert.js";
@@ -54,6 +55,7 @@ export function ProcedureOverlay({ mode = "item" }: { mode?: "item" | "new" }) {
   const theme = useResolvedTheme();
   const editorFontSize = usePreference("editorFontSize");
   const procedures = useProcedures();
+  const metadataQuery = useCatalogMetadata();
   const operations = useOperations();
   const plans = usePlans();
 
@@ -90,6 +92,22 @@ export function ProcedureOverlay({ mode = "item" }: { mode?: "item" | "new" }) {
   const { tab, setTab, sel: selectedNode, setSel: setSelectedNode } = view;
   const close = useCloseTo(`/procedures${listSearch}`);
   const compiled: CompiledProcedure | undefined = authoring ? draft.compiled : published?.procedure;
+  const metadata = !authoring
+    ? metadataQuery.data?.find((entry) =>
+        matchCatalogMetadataKind(entry, {
+          operation: () => false,
+          procedure: () => entry.name === id,
+        }),
+      )
+    : undefined;
+  const displayed =
+    compiled && metadata
+      ? {
+          ...compiled,
+          title: metadata.title,
+          description: metadata.description ?? "",
+        }
+      : compiled;
   const status = draft.status === "CURRENT" ? "PUBLISHED" : draft.status;
 
   const publish = usePublishProcedure();
@@ -124,7 +142,10 @@ export function ProcedureOverlay({ mode = "item" }: { mode?: "item" | "new" }) {
   const inputs = compiled?.roles.filter((role) => role.source.kind === "plan-input") ?? [];
 
   const title =
-    compiled?.title ?? published?.procedure.title ?? (mode === "new" ? t("procedures.overlay.newTitle") : (id ?? ""));
+    metadata?.title ??
+    compiled?.title ??
+    published?.procedure.title ??
+    (mode === "new" ? t("procedures.overlay.newTitle") : (id ?? ""));
   const version = compiled?.version ?? published?.procedure.version;
   const displayId =
     compiled?.procedure ??
@@ -377,7 +398,9 @@ export function ProcedureOverlay({ mode = "item" }: { mode?: "item" | "new" }) {
         </>
       }
     >
-      {tab === "overview" ? <ProcedureOverview compiled={compiled} error={compileError?.detail} /> : null}
+      {tab === "overview" ? (
+        <ProcedureOverview compiled={displayed} error={compileError?.detail} metadata={metadata} />
+      ) : null}
       {tab === "source" ? (
         <div className="flex h-full min-h-0 flex-col">
           {authoring ? (

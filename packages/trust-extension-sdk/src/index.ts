@@ -673,6 +673,17 @@ export interface PublishedProcedure {
   readonly publishedAt: string;
 }
 
+/** Editable catalog presentation for one reusable identity, independent of SemVer. */
+export interface CatalogMetadata {
+  readonly kind: "operation" | "procedure";
+  readonly name: string;
+  readonly revision: number;
+  readonly title: string;
+  readonly description?: string;
+  readonly tags: readonly string[];
+  readonly updatedAt?: string;
+}
+
 export {
   isTemplateParameterName,
   materializeTemplate,

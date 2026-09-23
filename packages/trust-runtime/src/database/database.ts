@@ -52,6 +52,16 @@ export interface PublishedProcedureTable {
   published_at: string;
 }
 
+export interface CatalogMetadataRevisionTable {
+  kind: "operation" | "procedure";
+  name: string;
+  revision: number;
+  title: string;
+  description: string | null;
+  tags_json: string;
+  updated_at: string;
+}
+
 export interface PlanTable {
   plan_slug: string;
   procedure_name: string;
@@ -205,6 +215,7 @@ export interface TrustDatabase {
   environment_variables: EnvironmentVariableTable;
   environment_credentials: EnvironmentCredentialTable;
   published_procedures: PublishedProcedureTable;
+  catalog_metadata_revisions: CatalogMetadataRevisionTable;
   plans: PlanTable;
   plan_revisions: PlanRevisionTable;
   child_generations: ChildGenerationTable;

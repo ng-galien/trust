@@ -6,6 +6,8 @@ import {
 } from "@trust/operation";
 import { CatalogProcedureCompilationError, type ProcedureCompilationErrorCode } from "@trust/procedure";
 import express, { type ErrorRequestHandler, type RequestHandler, type Router } from "express";
+import { type CatalogMetadataService, InvalidCatalogMetadataError } from "../catalog/metadata.js";
+import { CatalogMetadataConflictError } from "../catalog/metadata-store.js";
 import type { CredentialService } from "../credential/service.js";
 import type { EnvironmentService } from "../environment/service.js";
 import { EnvironmentConfigurationError } from "../environment/validation.js";
@@ -45,6 +47,9 @@ const OPERATION_READ_METHOD = "operation.read" as const;
 const OPERATION_SIMULATE_METHOD = "operation.simulate" as const;
 const OPERATION_SAVE_METHOD = "operation.save" as const;
 const OPERATION_REMOVE_METHOD = "operation.remove" as const;
+const METADATA_LIST_METHOD = "catalog.metadata.list" as const;
+const METADATA_HISTORY_METHOD = "catalog.metadata.history" as const;
+const METADATA_SAVE_METHOD = "catalog.metadata.save" as const;
 const PROCEDURE_COMPILATION_ERROR_CONTRACT = "trust.procedure-compilation-error@1" as const;
 const OPERATION_COMPILATION_ERROR_CONTRACT = "trust.operation-compilation-error@1" as const;
 
@@ -138,6 +143,7 @@ interface RpcHttpDependencies {
   readonly procedures: Procedures;
   readonly templateService: TemplateService;
   readonly operationCatalog: OperationCatalog;
+  readonly metadataService: CatalogMetadataService;
   readonly planRuntime: PlanRuntime;
   readonly registryService: RegistryService;
 }
@@ -264,6 +270,9 @@ const processMessage = async (message: unknown, dependencies: RpcHttpDependencie
     message.method !== OPERATION_SIMULATE_METHOD &&
     message.method !== OPERATION_SAVE_METHOD &&
     message.method !== OPERATION_REMOVE_METHOD &&
+    message.method !== METADATA_LIST_METHOD &&
+    message.method !== METADATA_HISTORY_METHOD &&
+    message.method !== METADATA_SAVE_METHOD &&
     !isPlanRuntimeRpcMethod(message.method) &&
     !isTemplateRpcMethod(message.method) &&
     !isConfigurationRpcMethod(message.method) &&
@@ -350,6 +359,50 @@ const processMessage = async (message: unknown, dependencies: RpcHttpDependencie
       process.stderr.write(
         `trial rpc ${message.method} failed: ${error instanceof Error ? (error.stack ?? error.message) : String(error)}\n`,
       );
+      return respond(failure(id, INTERNAL_ERROR, "Internal error"));
+    }
+  }
+
+  if (message.method === METADATA_LIST_METHOD) {
+    if (!isRecord(message.params) || Object.keys(message.params).length !== 0) {
+      return respond(failure(id, INVALID_PARAMS, "Invalid params"));
+    }
+    try {
+      return respond({ jsonrpc: "2.0", id, result: await dependencies.metadataService.list() });
+    } catch {
+      return respond(failure(id, INTERNAL_ERROR, "Internal error"));
+    }
+  }
+
+  if (message.method === METADATA_HISTORY_METHOD) {
+    const params = message.params;
+    if (
+      !isRecord(params) ||
+      !hasOnlyKeys(params, ["kind", "name"]) ||
+      (params.kind !== "operation" && params.kind !== "procedure") ||
+      typeof params.name !== "string" ||
+      params.name.length === 0
+    ) {
+      return respond(failure(id, INVALID_PARAMS, "Invalid params"));
+    }
+    try {
+      return respond({
+        jsonrpc: "2.0",
+        id,
+        result: await dependencies.metadataService.history(params.kind, params.name),
+      });
+    } catch (error) {
+      if (error instanceof InvalidCatalogMetadataError) return respond(failure(id, INVALID_PARAMS, error.message));
+      return respond(failure(id, INTERNAL_ERROR, "Internal error"));
+    }
+  }
+
+  if (message.method === METADATA_SAVE_METHOD) {
+    try {
+      return respond({ jsonrpc: "2.0", id, result: await dependencies.metadataService.save(message.params) });
+    } catch (error) {
+      if (error instanceof InvalidCatalogMetadataError) return respond(failure(id, INVALID_PARAMS, error.message));
+      if (error instanceof CatalogMetadataConflictError) return respond(failure(id, -32_011, error.message));
       return respond(failure(id, INTERNAL_ERROR, "Internal error"));
     }
   }

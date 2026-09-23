@@ -1,4 +1,10 @@
-import type { PublishedProcedure, RuntimeJsonObject, TrialRecord, TrialSummary } from "@trust/extension-sdk";
+import type {
+  CatalogMetadata,
+  PublishedProcedure,
+  RuntimeJsonObject,
+  TrialRecord,
+  TrialSummary,
+} from "@trust/extension-sdk";
 import {
   type CompiledOperation,
   compileOperation,
@@ -7,6 +13,7 @@ import {
   simulateOperation,
 } from "@trust/operation";
 import { CatalogProcedureCompilationError, type CompiledProcedure } from "@trust/procedure";
+import type { CatalogMetadataService } from "../catalog/metadata.js";
 import type { EnvironmentService } from "../environment/service.js";
 import { EnvironmentConfigurationError } from "../environment/validation.js";
 import { type OperationCatalog, OperationCatalogError } from "../operation/catalog.js";
@@ -47,6 +54,7 @@ export type AuthoringToolName = (typeof AUTHORING_TOOL_NAMES)[number];
 export interface McpAuthoringDependencies {
   readonly environmentService: EnvironmentService;
   readonly operationCatalog: OperationCatalog;
+  readonly metadataService: CatalogMetadataService;
   readonly procedures: Procedures;
   readonly templateService: TemplateService;
   readonly trialService: TrialService;
@@ -120,14 +128,23 @@ export async function callAuthoringTool(
       }
       case "trust_operation_list": {
         exactEmpty(args, tool);
-        return { text: renderOperationList(dependencies.operationCatalog) };
+        return { text: renderOperationList(dependencies.operationCatalog, await dependencies.metadataService.list()) };
       }
       case "trust_operation_read": {
         const { operation, version } = exactIdentity(args, "operation", tool);
         const entry = dependencies.operationCatalog.entry(operation, version);
         return entry === undefined
           ? rejected(`Operation ${operation}@${version} is not in the catalog.`)
-          : { text: renderOperation("OPERATION", entry.operation, entry.sourceName) };
+          : {
+              text: renderOperation(
+                "OPERATION",
+                entry.operation,
+                entry.sourceName,
+                (await dependencies.metadataService.list()).find(
+                  (metadata) => metadata.kind === "operation" && metadata.name === operation,
+                ),
+              ),
+            };
       }
       case "trust_operation_compile": {
         const input = exactSource(args, tool, false);
@@ -201,14 +218,25 @@ export async function callAuthoringTool(
       }
       case "trust_procedure_list": {
         exactEmpty(args, tool);
-        return { text: renderProcedureList(await dependencies.procedures.list()) };
+        return {
+          text: renderProcedureList(await dependencies.procedures.list(), await dependencies.metadataService.list()),
+        };
       }
       case "trust_published_procedure_read": {
         const { operation: procedure, version } = exactIdentity(args, "procedure", tool);
         const published = await dependencies.procedures.find(procedure, version);
         return published === undefined
           ? rejected(`Procedure ${procedure}@${version} is not published.`)
-          : { text: renderProcedure("PUBLISHED PROCEDURE", published.procedure, published) };
+          : {
+              text: renderProcedure(
+                "PUBLISHED PROCEDURE",
+                published.procedure,
+                published,
+                (await dependencies.metadataService.list()).find(
+                  (metadata) => metadata.kind === "procedure" && metadata.name === procedure,
+                ),
+              ),
+            };
       }
       case "trust_procedure_compile": {
         const input = exactSource(args, tool, false);
@@ -257,25 +285,33 @@ function renderAuthoringError(tool: AuthoringToolName, error: Error): string {
   return `${tool} rejected the request.${reason ? `\nReason: ${reason}` : ""}\nMessage: ${error.message}${location}`;
 }
 
-function renderOperationList(catalog: OperationCatalog): string {
+function renderOperationList(catalog: OperationCatalog, metadata: readonly CatalogMetadata[]): string {
   const entries = catalog.list();
   return [
     "OPERATION CATALOG",
     `Count: ${entries.length}`,
     ...entries.map((operation) => {
       const sourceName = catalog.entry(operation.operation, operation.version)?.sourceName;
-      return `- ${operation.operation}@${operation.version}: ${operation.title}${sourceName ? ` [${sourceName}]` : ""}`;
+      const current = metadata.find((entry) => entry.kind === "operation" && entry.name === operation.operation);
+      return `- ${operation.operation}@${operation.version}: ${current?.title ?? operation.title}${current?.description ? ` — ${catalogSnippet(current.description)}` : ""}${current?.tags.length ? ` [tags: ${current.tags.join(", ")}]` : ""}${sourceName ? ` [${sourceName}]` : ""}`;
     }),
     "",
   ].join("\n");
 }
 
-function renderOperation(heading: string, operation: CompiledOperation, sourceName?: string): string {
+function renderOperation(
+  heading: string,
+  operation: CompiledOperation,
+  sourceName?: string,
+  metadata?: CatalogMetadata,
+): string {
+  const description = metadata ? metadata.description : operation.description;
   return [
     heading,
     `Operation: ${operation.operation}@${operation.version}`,
-    `Title: ${operation.title}`,
-    ...(operation.description ? [`Description: ${operation.description}`] : []),
+    `Title: ${metadata?.title ?? operation.title}`,
+    ...(description ? [`Description: ${description}`] : []),
+    ...(metadata?.tags.length ? [`Tags: ${metadata.tags.join(", ")}`] : []),
     ...(sourceName ? [`Source name: ${sourceName}`] : []),
     `Input fields: ${Object.keys(operation.input.properties).join(", ") || "none"}`,
     `Environment fields: ${Object.keys(operation.environment.properties).join(", ") || "none"}`,
@@ -288,24 +324,31 @@ function renderOperation(heading: string, operation: CompiledOperation, sourceNa
   ].join("\n");
 }
 
-function renderProcedureList(procedures: readonly PublishedProcedure[]): string {
+function renderProcedureList(procedures: readonly PublishedProcedure[], metadata: readonly CatalogMetadata[]): string {
   return [
     "PROCEDURE CATALOG",
     `Count: ${procedures.length}`,
-    ...procedures.map(
-      ({ procedure, sourceName }) =>
-        `- ${procedure.procedure}@${procedure.version}: ${procedure.title} [${sourceName}]`,
-    ),
+    ...procedures.map(({ procedure, sourceName }) => {
+      const current = metadata.find((entry) => entry.kind === "procedure" && entry.name === procedure.procedure);
+      return `- ${procedure.procedure}@${procedure.version}: ${current?.title ?? procedure.title}${current?.description ? ` — ${catalogSnippet(current.description)}` : ""}${current?.tags.length ? ` [tags: ${current.tags.join(", ")}]` : ""} [${sourceName}]`;
+    }),
     "",
   ].join("\n");
 }
 
-function renderProcedure(heading: string, procedure: CompiledProcedure, published?: PublishedProcedure): string {
+function renderProcedure(
+  heading: string,
+  procedure: CompiledProcedure,
+  published?: PublishedProcedure,
+  metadata?: CatalogMetadata,
+): string {
+  const description = metadata ? metadata.description : procedure.description;
   return [
     heading,
     `Procedure: ${procedure.procedure}@${procedure.version}`,
-    `Title: ${procedure.title}`,
-    ...(procedure.description ? [`Description: ${procedure.description}`] : []),
+    `Title: ${metadata?.title ?? procedure.title}`,
+    ...(description ? [`Description: ${description}`] : []),
+    ...(metadata?.tags.length ? [`Tags: ${metadata.tags.join(", ")}`] : []),
     `Definition digest: ${procedure.definitionDigest}`,
     `Intent chaining: ${procedure.intentChaining ? "enabled" : "disabled"}`,
     `Operations: ${procedure.operations.map((operation) => `${operation.operation}@${operation.version}`).join(", ") || "none"}`,
@@ -327,6 +370,11 @@ function renderProcedure(heading: string, procedure: CompiledProcedure, publishe
     procedure.source,
     "",
   ].join("\n");
+}
+
+function catalogSnippet(description: string): string {
+  const singleLine = description.replace(/\s+/g, " ").trim();
+  return singleLine.length > 180 ? `${singleLine.slice(0, 177)}…` : singleLine;
 }
 
 function renderTrialSummary(heading: string, trial: TrialSummary): string {

@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-
+import type { CatalogMetadata } from "@trust/extension-sdk";
 import { RuntimeError } from "../runtime.js";
 import { useRuntime } from "./runtime-context.js";
 
@@ -33,6 +33,16 @@ export function useSaveOperation() {
     mutationFn: ({ source, sourceName }: { source: string; sourceName: string }) =>
       runtime.saveOperation(source, sourceName),
     onSuccess: () => invalidateCatalog(queryClient),
+  });
+}
+
+export function useSaveCatalogMetadata() {
+  const runtime = useRuntime();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (metadata: Omit<CatalogMetadata, "revision" | "updatedAt"> & { expectedRevision: number }) =>
+      runtime.saveCatalogMetadata(metadata),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["catalog.metadata"] }),
   });
 }
 

@@ -1,3 +1,4 @@
+import type { CatalogMetadata } from "@trust/extension-sdk";
 import type { CompiledOperation, OperationStep } from "@trust/operation";
 import { matchHttpFormat, matchOperationStep, matchShellArgument } from "@trust/operation/match";
 import type { TFunction } from "i18next";
@@ -7,6 +8,7 @@ import { Description } from "../../ui/description.js";
 import { Expert } from "../../ui/expert.js";
 import { Disclosure, schemaProperties } from "../../ui/schema.js";
 import { EmptyState } from "../../ui/states.js";
+import { CatalogMetadataEditor } from "../shared/catalog-metadata-editor.js";
 import { StepCard } from "./contract-view.js";
 import { describeAcceptedStatuses, describeHttpBodyKind, describeHttpLocation } from "./http-view-model.js";
 
@@ -14,9 +16,11 @@ import { describeAcceptedStatuses, describeHttpBodyKind, describeHttpLocation } 
 export function OverviewView({
   compiled,
   error,
+  metadata,
 }: {
   compiled: CompiledOperation | undefined;
   error?: string | undefined;
+  metadata?: CatalogMetadata | undefined;
 }) {
   const { t } = useTranslation();
   if (!compiled) {
@@ -32,6 +36,7 @@ export function OverviewView({
 
   return (
     <div className="flex h-full flex-col gap-3 overflow-y-auto bg-bg p-4 [&>*]:shrink-0">
+      {metadata ? <CatalogMetadataEditor key={`${metadata.name}:${metadata.revision}`} metadata={metadata} /> : null}
       <section className="rounded-(--radius-3) border border-border bg-surface p-4" data-doc="operation.summary">
         {compiled.description ? (
           <Description text={compiled.description} className="mb-3 max-w-3xl text-ui leading-relaxed" />

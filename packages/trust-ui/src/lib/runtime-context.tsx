@@ -1,7 +1,7 @@
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import type { HistoryListInput } from "@trust/extension-sdk";
 import { createContext, useContext } from "react";
-import { TrustRuntimeClient } from "../runtime.js";
+import type { TrustRuntimeClient } from "../runtime.js";
 import { useLiveMode } from "./plan-events.js";
 
 export const RuntimeContext = createContext<TrustRuntimeClient | null>(null);
@@ -20,6 +20,11 @@ export function useHealth() {
 export function useOperations() {
   const runtime = useRuntime();
   return useQuery({ queryKey: ["operations"], queryFn: runtime.operations });
+}
+
+export function useCatalogMetadata() {
+  const runtime = useRuntime();
+  return useQuery({ queryKey: ["catalog.metadata"], queryFn: runtime.catalogMetadata });
 }
 
 export function useProcedures() {

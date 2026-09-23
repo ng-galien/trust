@@ -58,6 +58,17 @@ export const SQLITE_SCHEMA = `
     UNIQUE (definition_digest)
   ) STRICT;
 
+  CREATE TABLE IF NOT EXISTS catalog_metadata_revisions (
+    kind TEXT NOT NULL CHECK (kind IN ('operation', 'procedure')),
+    name TEXT NOT NULL,
+    revision INTEGER NOT NULL CHECK (revision >= 1),
+    title TEXT NOT NULL,
+    description TEXT,
+    tags_json TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY (kind, name, revision)
+  ) STRICT;
+
   CREATE TRIGGER IF NOT EXISTS published_procedures_cannot_change
   BEFORE UPDATE ON published_procedures
   BEGIN
