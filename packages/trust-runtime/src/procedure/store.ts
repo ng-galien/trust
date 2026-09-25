@@ -47,6 +47,7 @@ export class ProcedureStore {
           published_by: publishedBy,
           published_at: publishedAt,
         })
+        .onConflict((conflict) => conflict.columns(["procedure_name", "procedure_version"]).doNothing())
         .execute();
 
       const published = await transaction
@@ -56,7 +57,16 @@ export class ProcedureStore {
         .where("procedure_version", "=", procedure.version)
         .executeTakeFirst();
       if (!published) throw new Error("Published Procedure cannot be read back");
-      return toPublishedProcedure(published);
+      const result = toPublishedProcedure(published);
+      if (
+        result.procedure.definitionDigest !== procedure.definitionDigest ||
+        result.procedure.source !== procedure.source
+      ) {
+        throw new ProcedureConflictError(
+          `Procedure ${procedure.procedure}@${procedure.version} is already published with another immutable definition`,
+        );
+      }
+      return result;
     });
   }
 
@@ -90,7 +100,7 @@ export class ProcedureStore {
       .orderBy("definition_digest")
       .execute();
     const match = rows
-      .map((row) => JSON.parse(row.compiled_procedure_json) as CompiledProcedure)
+      .map((row) => row.compiled_procedure_json as CompiledProcedure)
       .flatMap((procedure) => procedure.operations)
       .find((candidate) => candidate.operation === operation && candidate.digest === digest);
     return match ? { operation, digest } : undefined;
@@ -98,7 +108,7 @@ export class ProcedureStore {
 }
 
 function toPublishedProcedure(row: ProcedureRow): PublishedProcedure {
-  const compiled = JSON.parse(row.compiled_procedure_json) as CompiledProcedure;
+  const compiled = row.compiled_procedure_json as CompiledProcedure;
   if (
     compiled.procedure !== row.procedure_name ||
     compiled.version !== row.procedure_version ||

@@ -55,7 +55,10 @@ async function rejected(endpoint: string, action: string, params: unknown) {
 
 async function fixture() {
   const directory = await mkdtemp(path.join(tmpdir(), "trust-templates-"));
-  const options = { databasePath: path.join(directory, "runtime.sqlite"), operationsDirectory: directory };
+  const options = {
+    storage: { kind: "pglite" as const, directory: path.join(directory, "pglite") },
+    operationsDirectory: directory,
+  };
   let runtime = await startPublicRuntime("trust-template-process-", options);
   return {
     get endpoint() {

@@ -36,7 +36,7 @@ TRUST_SERVER_STATE_DIRECTORY=.trust/dogfood TRUST_SERVER_TMUX_SESSION=trust-dogf
 TRUST_COORDINATION_DATABASE_URL=postgresql://flowlab@127.0.0.1:15432/flowlab node environments/trust-test/scripts/delegation-install.ts
 ```
 
-The manager retains the runtime in tmux and stores its SQLite history separately in `.trust/dogfood/runtime.sqlite`. The interface is `http://127.0.0.1:4173/plans`; the MCP endpoint is `http://127.0.0.1:4318/mcp`. The installer configures the `coordination` Environment and publishes through MCP from the repository Operation catalog.
+The manager retains the runtime in tmux and stores its embedded history separately in `.trust/dogfood/pglite` (an older `runtime.sqlite` requires explicit import). The interface is `http://127.0.0.1:4173/plans`; the MCP endpoint is `http://127.0.0.1:4318/mcp`. The installer configures the `coordination` Environment and publishes through MCP from the repository Operation catalog.
 
 The runner obtains PostgreSQL credentials from its process environment. Set `PGPASSWORD` to the existing local test database password when running Checks; never put a password in a Plan, Operation, URL, or metadata. `TRUST_URL` can override the MCP helper endpoint; configure `TRUST_RPC_ENDPOINT` and `TRUST_OTLP_ENDPOINT` consistently for the runner when using other ports.
 
@@ -76,13 +76,13 @@ TRUST_COORDINATION_DATABASE_URL=postgresql://flowlab@127.0.0.1:15432/flowlab nod
 
 The two tests exercise live MCP, RPC reads, the packaged runner, OTLP and PostgreSQL: completion, blocked response and escalation, premature admission without a database write, declaration revision conflict, retained prerequisites, database replay, wrong assignment and response immutability. They retain uniquely named acceptance Plans and mission events for inspection. Without the database URL they explicitly skip; skipped tests are not evidence.
 
-The additional recovery acceptance discards the successful claim output and starts a new MCP client process with only the Check URI and transport endpoint. It checks exact engagement-context recovery (including multiline text), uses MCP-rendered intent templates through submission and final completion, and verifies the PostgreSQL request, response and event sequence. It never reads an RPC Plan DTO. Run against an isolated runtime by setting `TRUST_URL`; configure that runtime with its own temporary SQLite database and a separate port, then install the same repository definitions with `delegation-install.ts`. The shared runtime need not restart.
+The additional recovery acceptance discards the successful claim output and starts a new MCP client process with only the Check URI and transport endpoint. It checks exact engagement-context recovery (including multiline text), uses MCP-rendered intent templates through submission and final completion, and verifies the PostgreSQL request, response and event sequence. It never reads an RPC Plan DTO. Run against an isolated runtime by setting `TRUST_URL`; configure that runtime with its own temporary PGlite directory or dedicated PostgreSQL database and a separate port, then install the same repository definitions with `delegation-install.ts`. The shared runtime need not restart.
 
 ## Traceability and limits
 
 - Plan annotations correlate the mission, project and canonical host agent name. Session, Check, attempt, Fact, qualification and intent history remain owned by TRUST. PostgreSQL retains the immutable request/response and ordered creation, claim and outcome events.
 - The agent name is a trusted-host declaration, **not authentication**. Multiple callers sharing it are not isolated. This recipe does not add multi-tenant access control or constrain capabilities outside the runner.
 - Authorized and forbidden prose governs the worker's work; it is not a new executable filesystem or browser permission policy.
-- The existing test PostgreSQL deployment has no persistent volume. Mission data survives client/runtime restarts, **not pod replacement**. SQLite and PostgreSQL must both be retained for a complete history. Do not use this environment as the only copy of important ongoing work.
+- The existing test PostgreSQL deployment has no persistent volume. Mission data survives client/runtime restarts, **not pod replacement**. The core history and extension PostgreSQL data must both be retained for a complete history. Do not use this environment as the only copy of important ongoing work.
 - Worker dispatch and recovery remain host responsibilities. There is no inbox listing, recursive delegation, automatic relaunch, or Myri connector in this slice.
 - The A3 Maket functional model could not be updated in this run because its MCP tools were unavailable. The model still needs alignment with this first concrete delegation recipe.

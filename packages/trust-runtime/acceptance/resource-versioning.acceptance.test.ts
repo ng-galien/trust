@@ -53,7 +53,7 @@ async function setup() {
   const operationsDirectory = path.join(directory, "operations");
   await mkdir(operationsDirectory);
   const options = {
-    databasePath: path.join(directory, "runtime.sqlite"),
+    storage: { kind: "pglite" as const, directory: path.join(directory, "pglite") },
     operationsDirectory,
     environments: { local: { workspaceRoot: root } },
   };

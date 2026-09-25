@@ -24,7 +24,7 @@ not loaded. This is an extension-specific workflow, not a generic engine rule.
 ## Active repository map
 
 ```text
-packages/trust-runtime/   shared runtime: domain, services, SQLite, RPC, MCP and OTLP
+packages/trust-runtime/   shared runtime: domain, services, PostgreSQL/PGlite, RPC, MCP and OTLP
 packages/trust-operation/ Operation types shared by the runtime and runner
 packages/trust-extension-sdk/ standalone public runtime and extension contracts (no server implementation)
 packages/trust-procedure/ Procedure types and Gherkin compiler

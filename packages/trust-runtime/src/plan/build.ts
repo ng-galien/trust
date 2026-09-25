@@ -8,11 +8,11 @@ import type {
   RuntimeJsonObject,
 } from "@trust/extension-sdk";
 import { matchOperationValueType } from "@trust/operation/match";
-
 import type { CompiledProcedure, CompiledProcedureRole } from "@trust/procedure";
 import { matchExpressionReference, matchProcedureRoleSource } from "@trust/procedure/match";
 import { buildSemanticCheckUri } from "../check/uri.js";
 import type { CheckValues, PlanCheck, PlanInvocation, PlanRevision, ProducedRoleValue } from "../model.js";
+import { semanticJson } from "./semantic-json.js";
 
 interface ContextValue {
   readonly role: string;
@@ -498,7 +498,7 @@ function appendDerivedValues(
     importedValues: Object.freeze(
       imported
         .filter((value) => retainedImported.has(value))
-        .sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b))),
+        .sort((a, b) => semanticJson(a).localeCompare(semanticJson(b))),
     ),
   });
 }
@@ -581,7 +581,7 @@ function appendImportedValues(
     }
     pending = waiting;
   }
-  retained.sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
+  retained.sort((a, b) => semanticJson(a).localeCompare(semanticJson(b)));
   return { context: Object.freeze(context.sort(compareCanonical)), values: Object.freeze(retained) };
 }
 

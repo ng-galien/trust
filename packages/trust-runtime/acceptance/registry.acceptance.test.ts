@@ -170,7 +170,7 @@ test("a named Git registry source clones one repository and survives a runtime r
   const directory = await mkdtemp(path.join(tmpdir(), "trust-git-registry-"));
   const repository = path.join(directory, "tenant-repository");
   const operationsDirectory = path.join(directory, "operations-catalog");
-  const databasePath = path.join(directory, "trust.sqlite");
+  const storage = { kind: "pglite" as const, directory: path.join(directory, "pglite") };
   await Promise.all([
     mkdir(path.join(repository, "operations"), { recursive: true }),
     mkdir(path.join(repository, "procedures"), { recursive: true }),
@@ -199,7 +199,7 @@ test("a named Git registry source clones one repository and survives a runtime r
   ]);
 
   const firstRuntime = await startPublicRuntime("trust-git-registry-first-", {
-    databasePath,
+    storage,
     operationsDirectory,
   });
   try {
@@ -223,7 +223,7 @@ test("a named Git registry source clones one repository and survives a runtime r
   }
 
   const secondRuntime = await startPublicRuntime("trust-git-registry-second-", {
-    databasePath,
+    storage,
     operationsDirectory,
   });
   try {

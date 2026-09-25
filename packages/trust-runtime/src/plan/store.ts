@@ -63,7 +63,7 @@ export class PlanStore {
           procedure_version: compiled.procedureVersion,
           environment: compiled.environment,
           mode: compiled.mode,
-          intent_chaining: compiled.intentChaining ? 1 : 0,
+          intent_chaining: compiled.intentChaining,
           intent_chain_state: compiled.intentChaining ? "NOT_STARTED" : "DISABLED",
           current_intent: null,
           current_intent_check_uri: null,
@@ -144,15 +144,16 @@ export class PlanStore {
     return row ? toPlan(row) : undefined;
   }
 
-  /** Acquire the Plan's SQLite write serialization point without changing its revision. */
+  /** Lock the expected current Plan row without producing a new tuple. */
   async lockCurrentRevision(planSlug: string, revision: number): Promise<boolean> {
     const result = await this.dependencies.database
-      .updateTable("plans")
-      .set({ current_revision: revision })
+      .selectFrom("plans")
+      .select("plan_slug")
       .where("plan_slug", "=", planSlug)
       .where("current_revision", "=", revision)
+      .forUpdate()
       .executeTakeFirst();
-    return result.numUpdatedRows === 1n;
+    return result !== undefined;
   }
 
   async initializeIntent(planSlug: string, intent: string): Promise<Plan> {
@@ -165,7 +166,7 @@ export class PlanStore {
         current_intent_attempt_key: null,
       })
       .where("plan_slug", "=", planSlug)
-      .where("intent_chaining", "=", 1)
+      .where("intent_chaining", "=", true)
       .where("intent_chain_state", "=", "NOT_STARTED")
       .execute();
     const plan = await this.findPlan(planSlug);
@@ -189,7 +190,7 @@ export class PlanStore {
         current_intent_attempt_key: null,
       })
       .where("plan_slug", "=", planSlug)
-      .where("intent_chaining", "=", 1)
+      .where("intent_chaining", "=", true)
       .where("intent_chain_state", "=", "ACTIVE")
       .where("current_intent", "=", currentIntent)
       .where("current_intent_attempt_key", "=", attemptKey)
@@ -239,7 +240,7 @@ export class PlanStore {
         current_intent_attempt_key: null,
       })
       .where("plan_slug", "=", planSlug)
-      .where("intent_chaining", "=", 1)
+      .where("intent_chaining", "=", true)
       .where("intent_chain_state", "=", "COMPLETE")
       .execute();
   }
@@ -260,7 +261,7 @@ export class PlanStore {
         current_intent_attempt_key: attemptKey,
       })
       .where("plan_slug", "=", planSlug)
-      .where("intent_chaining", "=", 1)
+      .where("intent_chaining", "=", true)
       .where("intent_chain_state", "=", "COMPLETE")
       .where("current_revision", "=", planRevision)
       .executeTakeFirst();
@@ -277,7 +278,7 @@ export class PlanStore {
         current_intent_attempt_key: null,
       })
       .where("plan_slug", "=", planSlug)
-      .where("intent_chaining", "=", 1)
+      .where("intent_chaining", "=", true)
       .where("intent_chain_state", "in", ["NOT_STARTED", "ACTIVE"])
       .where("current_intent_check_uri", "is", null)
       .where("current_intent_attempt_key", "is", null)
@@ -333,7 +334,7 @@ export class PlanStore {
       .where("compiled_checks.check_uri", "=", checkUri)
       .whereRef("compiled_checks.plan_revision", "=", "plans.current_revision")
       .executeTakeFirst();
-    return row ? (JSON.parse(row.check_json) as PlanCheck) : undefined;
+    return row ? (row.check_json as PlanCheck) : undefined;
   }
 
   async listCurrentChecks(planSlug: string): Promise<PlanCheck[]> {
@@ -345,7 +346,7 @@ export class PlanStore {
       .whereRef("compiled_checks.plan_revision", "=", "plans.current_revision")
       .orderBy("compiled_checks.check_uri")
       .execute();
-    return rows.map((row) => JSON.parse(row.check_json) as PlanCheck);
+    return rows.map((row) => row.check_json as PlanCheck);
   }
 
   async findCheckAtRevision(planSlug: string, revision: number, checkUri: string): Promise<PlanCheck | undefined> {
@@ -356,7 +357,7 @@ export class PlanStore {
       .where("plan_revision", "=", revision)
       .where("check_uri", "=", checkUri)
       .executeTakeFirst();
-    return row ? (JSON.parse(row.check_json) as PlanCheck) : undefined;
+    return row ? (row.check_json as PlanCheck) : undefined;
   }
 
   async readRevision(planSlug: string, revision: number): Promise<PlanRevision | undefined> {
@@ -392,22 +393,22 @@ function toPlan(row: PlanRow): Plan {
     procedureVersion: row.procedure_version,
     environment: row.environment,
     mode: row.mode as PlanMode,
-    intentChaining: row.intent_chaining === 1,
+    intentChaining: row.intent_chaining,
     intentChainState: row.intent_chain_state as IntentChainState,
     ...(row.current_intent === null ? {} : { currentIntent: row.current_intent }),
     ...(row.current_intent_check_uri === null ? {} : { currentIntentCheckUri: row.current_intent_check_uri }),
     ...(row.current_intent_attempt_key === null ? {} : { currentIntentAttemptKey: row.current_intent_attempt_key }),
-    metadata: JSON.parse(row.metadata_json) as Plan["metadata"],
-    rootInputs: JSON.parse(row.root_inputs_json) as Record<string, unknown>,
+    metadata: row.metadata_json as Plan["metadata"],
+    rootInputs: row.root_inputs_json as Record<string, unknown>,
     currentRevision: row.current_revision,
     createdAt: row.created_at,
   };
 }
 
-function toRevision(plan: Plan, row: RevisionRow, checkJson: readonly string[]): PlanRevision {
+function toRevision(plan: Plan, row: RevisionRow, checkJson: readonly PlanCheck[]): PlanRevision {
   const values = parseRoleValues(row.role_values_json);
   return {
-    resolvedProcedure: JSON.parse(row.resolved_procedure_json) as PlanRevision["resolvedProcedure"],
+    resolvedProcedure: row.resolved_procedure_json as PlanRevision["resolvedProcedure"],
     procedure: plan.procedure,
     procedureVersion: plan.procedureVersion,
     environment: plan.environment,
@@ -419,14 +420,14 @@ function toRevision(plan: Plan, row: RevisionRow, checkJson: readonly string[]):
     revision: row.revision,
     definitionDigest: row.definition_digest,
     source: row.source,
-    agentDeclarations: JSON.parse(row.declarations_json) as PlanRevision["agentDeclarations"],
-    missionDeclarations: JSON.parse(row.mission_declarations_json) as PlanRevision["missionDeclarations"],
-    resolvedMissions: JSON.parse(row.resolved_missions_json) as PlanRevision["resolvedMissions"],
+    agentDeclarations: row.declarations_json as PlanRevision["agentDeclarations"],
+    missionDeclarations: row.mission_declarations_json as PlanRevision["missionDeclarations"],
+    resolvedMissions: row.resolved_missions_json as PlanRevision["resolvedMissions"],
     roleValues: values.produced,
     importedValues: values.imported,
-    checkValues: JSON.parse(row.check_values_json) as PlanRevision["checkValues"],
-    invocations: JSON.parse(row.invocations_json) as PlanRevision["invocations"],
-    checks: checkJson.map((value) => JSON.parse(value) as PlanCheck),
+    checkValues: row.check_values_json as PlanRevision["checkValues"],
+    invocations: row.invocations_json as PlanRevision["invocations"],
+    checks: checkJson,
   };
 }
 
@@ -439,11 +440,10 @@ function serializeRoleValues(revision: PlanRevision): unknown {
   };
 }
 
-function parseRoleValues(raw: string): {
+function parseRoleValues(parsed: unknown): {
   readonly produced: PlanRevision["roleValues"];
   readonly imported: PlanRevision["importedValues"];
 } {
-  const parsed: unknown = JSON.parse(raw);
   if (Array.isArray(parsed)) return { produced: parsed as PlanRevision["roleValues"], imported: [] };
   if (parsed === null || typeof parsed !== "object") throw new TypeError("Plan revision has invalid role values");
   const record = parsed as Record<string, unknown>;

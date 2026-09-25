@@ -773,7 +773,7 @@ test("an expired pending Attempt cannot permanently block escalation", async () 
   const runtime = await startPublicRuntime("trust-expired-escalation-attempt-", {
     operationsDirectory,
     environments: { local: { workspaceRoot: repositoryRoot } },
-    sessionDurationMs: 100,
+    sessionDurationMs: 1500,
   });
   try {
     await publish(runtime.endpoint, path.join(repositoryRoot, "assets/procedures/00-git-status.feature"));
@@ -801,7 +801,7 @@ test("an expired pending Attempt cannot permanently block escalation", async () 
 
     const abandonedRetry = await admit(runtime.endpoint, checkUri, "expired-escalation-abandoned-retry");
     assert.equal(abandonedRetry.status, "ADMITTED");
-    await new Promise((resolve) => setTimeout(resolve, 150));
+    await new Promise((resolve) => setTimeout(resolve, 1800));
     await rpc(runtime.endpoint, "plan.engage", engagementInput);
 
     const latestFailure = await admit(runtime.endpoint, checkUri, "expired-escalation-latest-failure");

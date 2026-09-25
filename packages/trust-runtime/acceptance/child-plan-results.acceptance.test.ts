@@ -47,7 +47,7 @@ test("child Results enter parent context only after complete validation and are 
 }, async () => {
   const directory = await mkdtemp(path.join(tmpdir(), "trust-child-results-db-"));
   const options = {
-    databasePath: path.join(directory, "runtime.sqlite"),
+    storage: { kind: "pglite" as const, directory: path.join(directory, "pglite") },
     operationsDirectory: path.join(root, "assets/operations"),
     environments: { local: { workspaceRoot: root } },
   };

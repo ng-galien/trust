@@ -1,6 +1,6 @@
 import type { Selectable } from "kysely";
-
 import type { Database, SessionTable } from "../database/database.js";
+import { isDatabaseUuid } from "../database/database.js";
 import type { Session } from "../model.js";
 
 type SessionRow = Selectable<SessionTable>;
@@ -42,6 +42,7 @@ export class SessionStore {
   }
 
   async findById(sessionId: string): Promise<Session | undefined> {
+    if (!isDatabaseUuid(sessionId)) return undefined;
     const row = await this.dependencies.database
       .selectFrom("sessions")
       .selectAll()

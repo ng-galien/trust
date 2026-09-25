@@ -12,7 +12,7 @@ In a TRUST checkout with the runtime already built, start an isolated process:
 validation_dir=$(mktemp -d)
 mkdir "$validation_dir/operations"
 TRUST_HOST=127.0.0.1 TRUST_PORT=0 \
-TRUST_DATABASE_PATH="$validation_dir/runtime.sqlite" \
+TRUST_STORAGE=pglite TRUST_PGLITE_DIRECTORY="$validation_dir/pglite" \
 TRUST_OPERATIONS_DIRECTORY="$validation_dir/operations" \
 node packages/trust-runtime/dist/src/index.js
 ```
@@ -20,7 +20,7 @@ node packages/trust-runtime/dist/src/index.js
 The process prints its actual endpoint. Keep it running while testing; stop this
 process afterward. Both the database **and the Operation catalog directory** must
 be temporary. `trust_operation_save` writes source files to that directory;
-isolating only SQLite would still modify a shared catalog. Do not use the retained
+isolating only the database would still modify a shared catalog. Do not use the retained
 development runtime. Outside a checkout, use the installed runtime entrypoint.
 
 On this temporary endpoint, compile and save the exact draft Operations with MCP,

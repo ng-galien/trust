@@ -94,7 +94,8 @@ await writeFile(
 start([path.join(root, "packages/trust-runtime/dist/src/index.js")], root, {
   TRUST_HOST: "127.0.0.1",
   TRUST_PORT: "4399",
-  TRUST_DATABASE_PATH: path.join(temporary, "runtime.sqlite"),
+  TRUST_STORAGE: "pglite",
+  TRUST_PGLITE_DIRECTORY: path.join(temporary, "runtime-pglite"),
   TRUST_OPERATIONS_DIRECTORY: operationsDirectory,
   TRUST_EXTENSIONS_FILE: registry,
 });

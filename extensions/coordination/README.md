@@ -1,6 +1,6 @@
 # Coordination extension
 
-This trusted local extension owns a PostgreSQL read API and a separately built federated page. It does not qualify Checks, access TRUST's SQLite database, or launch agents. Mission state and TRUST Plan qualification remain distinct.
+This trusted local extension owns a PostgreSQL read API and a separately built federated page. It does not qualify Checks, access the TRUST core database, or launch agents. Mission state and TRUST Plan qualification remain distinct.
 
 To delegate work to an agent through this integration, follow [the delegation methodology](DELEGATION.md): persist the mission, dispatch the assigned worker, claim and submit through the Runner, then review and observe completion.
 

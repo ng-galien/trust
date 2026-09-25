@@ -10,6 +10,7 @@ import {
   validateTemplateDefinition,
   validateTemplateParameters,
 } from "@trust/extension-sdk";
+import type { Selectable } from "kysely";
 import type { Database, SourceTemplateTable } from "../database/database.js";
 
 export class TemplateError extends Error {
@@ -59,13 +60,13 @@ function parseSave(value: unknown): TemplateSaveRequest {
     expectedRevision: value.expectedRevision,
   };
 }
-function view(row: SourceTemplateTable): SourceTemplate {
+function view(row: Selectable<SourceTemplateTable>): SourceTemplate {
   return {
     id: row.id,
     title: row.title,
     description: row.description,
     body: row.body,
-    parameters: JSON.parse(row.parameters_json) as TemplateParameter[],
+    parameters: row.parameters_json as TemplateParameter[],
     revision: row.revision,
     builtIn: false,
   };
@@ -80,7 +81,7 @@ export class TemplateService {
     const stored = await this.dependencies.database
       .selectFrom("source_templates")
       .selectAll()
-      .where("deleted", "=", 0)
+      .where("deleted", "=", false)
       .orderBy("id")
       .execute();
     return stored.map(view).sort((a, b) => a.title.localeCompare(b.title));
@@ -92,7 +93,7 @@ export class TemplateService {
     const row = await this.dependencies.database
       .selectFrom("source_templates")
       .selectAll()
-      .where("deleted", "=", 0)
+      .where("deleted", "=", false)
       .where("id", "=", input.id)
       .executeTakeFirst();
     if (!row) throw new TemplateError(`Unknown template ${input.id}`);
@@ -102,7 +103,7 @@ export class TemplateService {
   async save(input: unknown): Promise<SourceTemplate> {
     const draft = parseSave(input);
     const values = {
-      deleted: 0,
+      deleted: false,
       id: draft.id,
       title: draft.title,
       description: draft.description,
@@ -119,7 +120,7 @@ export class TemplateService {
             conflict
               .column("id")
               .doUpdateSet({ ...values, revision: (eb) => eb("source_templates.revision", "+", 1) })
-              .where("source_templates.deleted", "=", 1),
+              .where("source_templates.deleted", "=", true),
           )
           .returningAll()
           .executeTakeFirst();
@@ -131,7 +132,7 @@ export class TemplateService {
         .set(values)
         .where("id", "=", draft.id)
         .where("revision", "=", draft.expectedRevision)
-        .where("deleted", "=", 0)
+        .where("deleted", "=", false)
         .returningAll()
         .executeTakeFirst();
       if (!updated) throw new TemplateError("Template revision conflict; read the current template before saving");
@@ -146,7 +147,7 @@ export class TemplateService {
     const result = await this.dependencies.database
       .updateTable("source_templates")
       .set({
-        deleted: 1,
+        deleted: true,
         title: "",
         description: "",
         body: "",
@@ -155,7 +156,7 @@ export class TemplateService {
       })
       .where("id", "=", input.id)
       .where("revision", "=", input.expectedRevision)
-      .where("deleted", "=", 0)
+      .where("deleted", "=", false)
       .executeTakeFirst();
     if (result.numUpdatedRows === 0n)
       throw new TemplateError("Template revision conflict or unknown template; read before removing");

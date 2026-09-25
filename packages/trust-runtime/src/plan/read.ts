@@ -29,6 +29,7 @@ import { ancestorBlocker, readComposition } from "./children.js";
 import type { EscalationStore } from "./escalation-store.js";
 import { completesPlanOnValidation } from "./intent.js";
 import type { PlanStore } from "./store.js";
+import { planTransaction } from "./transaction.js";
 
 const DEFAULT_PROCEDURE_PAGE_SIZE = 49_152;
 const MAX_PROCEDURE_PAGE_SIZE = 65_536;
@@ -74,18 +75,16 @@ export class PlanReader {
   readonly #sessions: SessionStore;
   readonly #snapshots: SnapshotStore;
   readonly #escalations: EscalationStore;
-  readonly #cursorSecret = randomBytes(32);
+  readonly #cursorSecret: Buffer;
+  readonly #dependencies: PlanReaderDependencies;
+  readonly #scoped: boolean;
 
-  constructor({
-    database,
-    attemptStore,
-    factStore,
-    planStore,
-    sessionStore,
-    snapshotStore,
-    escalationStore,
-    clock,
-  }: PlanReaderDependencies) {
+  constructor(dependencies: PlanReaderDependencies, cursorSecret: Buffer = randomBytes(32), scoped = false) {
+    const { database, attemptStore, factStore, planStore, sessionStore, snapshotStore, escalationStore, clock } =
+      dependencies;
+    this.#dependencies = dependencies;
+    this.#cursorSecret = cursorSecret;
+    this.#scoped = scoped;
     this.#database = database;
     this.#clock = clock;
     this.#attempts = attemptStore;
@@ -94,6 +93,23 @@ export class PlanReader {
     this.#sessions = sessionStore;
     this.#snapshots = snapshotStore;
     this.#escalations = escalationStore;
+  }
+
+  #using(database: Database): PlanReader {
+    return new PlanReader(
+      {
+        ...this.#dependencies,
+        database,
+        attemptStore: this.#attempts.using(database),
+        factStore: this.#facts.using(database),
+        planStore: this.#plans.using(database),
+        sessionStore: this.#sessions.using(database),
+        snapshotStore: this.#snapshots.using(database),
+        escalationStore: this.#escalations.using(database),
+      },
+      this.#cursorSecret,
+      true,
+    );
   }
 
   async readProcedure(input: ProcedureReadInput): Promise<ProcedureReadView> {
@@ -230,6 +246,10 @@ export class PlanReader {
   }
 
   async readPlanBySlug(planSlug: string, initializeIntent = false): Promise<PlanView> {
+    if (!this.#scoped)
+      return planTransaction(this.#database, planSlug, (database) =>
+        this.#using(database).readPlanBySlug(planSlug, initializeIntent),
+      );
     let plan = await this.#plans.findPlan(planSlug);
     if (!plan) {
       throw new ReadError("plan-not-found", `Plan ${planSlug} is unavailable`);
@@ -405,6 +425,10 @@ export class PlanReader {
   }
 
   async readDelegationEpisode(planSlug: string): Promise<DelegationEpisodeView> {
+    if (!this.#scoped)
+      return planTransaction(this.#database, planSlug, (database) =>
+        this.#using(database).readDelegationEpisode(planSlug),
+      );
     const root = await this.#readEpisodePlan(planSlug);
     const branches = await Promise.all(
       root.plan.invocations.map(async (invocation) => ({
@@ -427,7 +451,7 @@ export class PlanReader {
     return {
       plan: plan.slug,
       state: view.sessionState,
-      activeRevision: plan.currentRevision,
+      activeRevision: view.revision,
       workState: view.workState,
       checklistComplete: view.checklistComplete,
       satisfiedChecks: view.satisfiedChecks,
@@ -438,6 +462,8 @@ export class PlanReader {
 
   async readCheck(checkUri: string): Promise<CheckView> {
     const { check, plan } = await this.#resolve(checkUri);
+    if (!this.#scoped)
+      return planTransaction(this.#database, plan.slug, (database) => this.#using(database).readCheck(checkUri));
     const [history, activeQualifications, checks, availableSession, storedAttempts, activeEscalation, revision] =
       await Promise.all([
         this.#snapshots.listHistory(checkUri),

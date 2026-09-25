@@ -6,7 +6,7 @@ import { CatalogMetadataStore } from "./catalog/metadata.js";
 import { CredentialService } from "./credential/service.js";
 import { CredentialStore } from "./credential/store.js";
 import type { Database } from "./database/database.js";
-import { createSqliteDatabase } from "./database/sqlite.js";
+import { createDatabase, type StorageConfiguration } from "./database/storage.js";
 import { EnvironmentService } from "./environment/service.js";
 import { EnvironmentStore } from "./environment/store.js";
 import { ExtensionHost } from "./extensions/host.js";
@@ -41,7 +41,7 @@ export interface RuntimeComponents {
   readonly extensionsHttpHandler: Router;
   readonly extensionsFile: string | undefined;
   readonly extensionTimeoutMs: number;
-  readonly databasePath: string;
+  readonly storage: StorageConfiguration;
   readonly semanticAuthority: string;
   readonly database: Database;
   readonly clock: Clock;
@@ -85,7 +85,7 @@ export interface RuntimeComponents {
 export interface RuntimeContainerOptions {
   extensionsFile?: string;
   extensionTimeoutMs?: number;
-  databasePath?: string;
+  storage?: StorageConfiguration;
   database?: Database;
   semanticAuthority?: string;
   sessionDurationMs?: number;
@@ -104,6 +104,8 @@ export const createRuntimeContainer = async (
     injectionMode: InjectionMode.PROXY,
     strict: true,
   });
+  const storage = options.storage ?? { kind: "pglite", directory: ".trust/pglite" };
+  const database = options.database ?? (await createDatabase({ storage }));
 
   container.register({
     extensionsFile: asValue(options.extensionsFile),
@@ -112,7 +114,7 @@ export const createRuntimeContainer = async (
       .singleton()
       .disposer((host) => host.close()),
     extensionsHttpHandler: asFunction(createExtensionsHttpHandler).singleton(),
-    databasePath: asValue(options.databasePath ?? ".trust/trust.sqlite"),
+    storage: asValue(storage),
     semanticAuthority: asValue(options.semanticAuthority ?? "localhost:4318"),
     operations: asValue(options.operations ?? []),
     operationsDirectory: asValue(options.operationsDirectory),
@@ -123,7 +125,7 @@ export const createRuntimeContainer = async (
     sessionDurationMs: asValue(options.sessionDurationMs ?? DEFAULT_SESSION_DURATION_MS),
     database:
       options.database === undefined
-        ? asFunction(createSqliteDatabase)
+        ? asFunction(() => database)
             .singleton()
             .disposer((database) => database.destroy())
         : asValue(options.database),
@@ -159,6 +161,8 @@ export const createRuntimeContainer = async (
   });
 
   try {
+    // Resolve the owned singleton before other startup hooks so disposal also covers their failures.
+    container.resolve("database");
     await container.resolve("operationCatalog").initialize();
     await container.resolve("credentialService").initialize();
     await container.resolve("environmentService").initialize();

@@ -1,6 +1,6 @@
 import type { Selectable } from "kysely";
-
 import type { Database, PlanEscalationTable } from "../database/database.js";
+import { isDatabaseUuid } from "../database/database.js";
 import type { PlanEscalation } from "../model.js";
 
 type EscalationRow = Selectable<PlanEscalationTable>;
@@ -44,6 +44,7 @@ export class EscalationStore {
   }
 
   async find(escalationId: string): Promise<PlanEscalation | undefined> {
+    if (!isDatabaseUuid(escalationId)) return undefined;
     const row = await this.dependencies.database
       .selectFrom("plan_escalations")
       .selectAll()
@@ -53,6 +54,7 @@ export class EscalationStore {
   }
 
   async findByAttempt(attemptHandle: string): Promise<PlanEscalation | undefined> {
+    if (!isDatabaseUuid(attemptHandle)) return undefined;
     const row = await this.dependencies.database
       .selectFrom("plan_escalations")
       .selectAll()
@@ -73,6 +75,7 @@ export class EscalationStore {
   }
 
   async resume(escalationId: string, resumedAt: string, resumeReason: string): Promise<PlanEscalation | undefined> {
+    if (!isDatabaseUuid(escalationId)) return undefined;
     const row = await this.dependencies.database
       .updateTable("plan_escalations")
       .set({ resumed_at: resumedAt, resume_reason: resumeReason })

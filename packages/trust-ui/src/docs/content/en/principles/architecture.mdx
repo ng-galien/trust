@@ -109,3 +109,7 @@ The public protocol keeps the same boundaries as the product model:
 
 See the [Interface reference](/docs/screens) for operator-facing entry points and the [TRUST DSL reference](/docs/language) for the source compiled before these calls occur.
 </Details>
+
+## Storage and runtime ownership
+
+One active TRUST runtime owns each database. Many clients, agents and Runners can use it concurrently. Independent installations use distinct PostgreSQL databases or PGlite directories, each with its own Operation catalog. PostgreSQL and embedded PGlite use the same persistence rules. Starting a second owner for the same database is refused; there is no synchronization between installations. Existing SQLite history requires an explicit verified import before activation.

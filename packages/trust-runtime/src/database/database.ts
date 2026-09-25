@@ -1,6 +1,17 @@
-import type { Generated, Kysely } from "kysely";
+import type { CatalogMetadata, TemplateParameter } from "@trust/extension-sdk";
+import type { CompiledProcedure } from "@trust/procedure";
+import type { ColumnType, Generated, Kysely } from "kysely";
+import type { Attempt, CheckSnapshot, Plan, PlanCheck, PlanRevision, Session } from "../model.js";
 
-import type { Attempt, CheckSnapshot, Session } from "../model.js";
+/** JSONB reads are decoded by the driver; writes are explicit JSON, including root arrays. */
+export type JsonColumn<T> = ColumnType<T, string, string>;
+export type StoredRoleValues =
+  | PlanRevision["roleValues"]
+  | {
+      readonly contract: "trust.plan-role-values@1";
+      readonly produced: PlanRevision["roleValues"];
+      readonly imported: PlanRevision["importedValues"];
+    };
 
 export interface RegistrySourceTable {
   name: string;
@@ -12,12 +23,12 @@ export interface RegistrySourceTable {
 }
 
 export interface SourceTemplateTable {
-  deleted: number;
+  deleted: boolean;
   id: string;
   title: string;
   description: string;
   body: string;
-  parameters_json: string;
+  parameters_json: JsonColumn<TemplateParameter[]>;
   revision: number;
 }
 
@@ -47,7 +58,7 @@ export interface PublishedProcedureTable {
   definition_digest: string;
   source_name: string;
   source: string;
-  compiled_procedure_json: string;
+  compiled_procedure_json: JsonColumn<CompiledProcedure>;
   published_by: string;
   published_at: string;
 }
@@ -59,7 +70,7 @@ export interface CatalogMetadataRevisionTable {
   revision: number;
   title: string;
   description: string | null;
-  classification_json: string;
+  classification_json: JsonColumn<CatalogMetadata["classification"]>;
   updated_at: string;
 }
 
@@ -69,30 +80,30 @@ export interface PlanTable {
   procedure_version: string;
   environment: string;
   mode: string;
-  intent_chaining: number;
+  intent_chaining: boolean;
   intent_chain_state: string;
   current_intent: string | null;
   current_intent_check_uri: string | null;
   current_intent_attempt_key: string | null;
-  metadata_json: string;
-  root_inputs_json: string;
+  metadata_json: JsonColumn<Plan["metadata"]>;
+  root_inputs_json: JsonColumn<Record<string, unknown>>;
   current_revision: number;
   created_at: string;
 }
 
 export interface PlanRevisionTable {
-  resolved_procedure_json: string;
+  resolved_procedure_json: JsonColumn<PlanRevision["resolvedProcedure"]>;
   id: Generated<number>;
   plan_slug: string;
   revision: number;
   definition_digest: string;
   source: string;
-  declarations_json: string;
-  mission_declarations_json: string;
-  resolved_missions_json: string;
-  role_values_json: string;
-  check_values_json: string;
-  invocations_json: string;
+  declarations_json: JsonColumn<PlanRevision["agentDeclarations"]>;
+  mission_declarations_json: JsonColumn<PlanRevision["missionDeclarations"]>;
+  resolved_missions_json: JsonColumn<PlanRevision["resolvedMissions"]>;
+  role_values_json: JsonColumn<StoredRoleValues>;
+  check_values_json: JsonColumn<PlanRevision["checkValues"]>;
+  invocations_json: JsonColumn<PlanRevision["invocations"]>;
   compiled_at: string;
 }
 
@@ -102,6 +113,7 @@ export interface ChildGenerationTable {
   generation: number;
   child_plan: string;
   input_digest: string;
+  comparison_fingerprint: string | null;
   observed_revision: number;
   created_at: string;
   superseded_at: string | null;
@@ -112,7 +124,7 @@ export interface CompiledCheckTable {
   plan_revision: number;
   check_uri: string;
   compiled_digest: string;
-  check_json: string;
+  check_json: JsonColumn<PlanCheck>;
 }
 
 export interface SessionTable {
@@ -137,9 +149,9 @@ export interface AttemptTable {
   session_id: string;
   operation: string;
   operation_digest: string;
-  action_input_json: string;
+  action_input_json: JsonColumn<Record<string, unknown>>;
   environment: string;
-  reobserve: number;
+  reobserve: boolean;
   intent: string | null;
   next_intent: string | null;
   state: Attempt["state"];
@@ -147,7 +159,7 @@ export interface AttemptTable {
   expires_at: string;
   interrupted_at: string | null;
   finalized_at: string | null;
-  finalization_json: string | null;
+  finalization_json: ColumnType<Attempt["finalization"] | null, string | null, string | null>;
 }
 
 export interface FactTable {
@@ -158,7 +170,7 @@ export interface FactTable {
   operation: string;
   operation_digest: string;
   observed_at: string;
-  payload_json: string;
+  payload_json: JsonColumn<Record<string, unknown>>;
 }
 
 export interface AttemptFactReceiptTable {
@@ -169,6 +181,7 @@ export interface AttemptFactReceiptTable {
 }
 
 export interface CheckSnapshotTable {
+  equivalence_digest: string;
   snapshot_id: string;
   attempt_handle: string;
   plan_slug: string;
@@ -179,8 +192,8 @@ export interface CheckSnapshotTable {
   verdict: CheckSnapshot["verdict"];
   reason_code: string;
   reason: string;
-  fact_ids_json: string;
-  checklist_delta_json: string;
+  fact_ids_json: JsonColumn<string[]>;
+  checklist_delta_json: JsonColumn<CheckSnapshot["checklistDelta"]>;
   calculated_at: string;
 }
 
@@ -231,3 +244,8 @@ export interface TrustDatabase {
 }
 
 export type Database = Kysely<TrustDatabase>;
+
+/** Unknown public handles must remain a domain miss rather than a UUID cast error. */
+export function isDatabaseUuid(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
+}

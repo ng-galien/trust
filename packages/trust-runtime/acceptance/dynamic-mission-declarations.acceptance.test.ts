@@ -43,7 +43,7 @@ Feature: Observe the delegated repository
 async function setup(workspaceRoot = root) {
   const directory = await mkdtemp(path.join(tmpdir(), "trust-mission-declarations-"));
   const options = {
-    databasePath: path.join(directory, "runtime.sqlite"),
+    storage: { kind: "pglite" as const, directory: path.join(directory, "pglite") },
     operationsDirectory: path.join(root, "assets/operations"),
     environments: { local: { workspaceRoot } },
   };

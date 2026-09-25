@@ -2,6 +2,7 @@ import { normalizeAuthority } from "./check/uri.js";
 import { createRuntimeLogging } from "./logging.js";
 import { DEFAULT_SESSION_DURATION_MS } from "./plan/runtime.js";
 import { startRuntime } from "./server.js";
+import { storageFromEnvironment } from "./storage-configuration.js";
 import { DEFAULT_TRIAL_TIMEOUT_MS } from "./trial/service.js";
 
 const instance = process.env.TRUST_RUNTIME_INSTANCE;
@@ -25,7 +26,7 @@ try {
   const host = process.env.TRUST_HOST ?? "127.0.0.1";
   const rawPort = process.env.TRUST_PORT ?? "4318";
   const port = Number(rawPort);
-  const databasePath = process.env.TRUST_DATABASE_PATH ?? ".trust/trust.sqlite";
+  const storage = storageFromEnvironment(process.env);
   const semanticAuthority = normalizeAuthority(process.env.TRUST_SEMANTIC_AUTHORITY ?? "localhost:4318");
   const operationsDirectory = process.env.TRUST_OPERATIONS_DIRECTORY;
   const sessionDurationMs = durationFromEnvironment("TRUST_SESSION_DURATION_MS", DEFAULT_SESSION_DURATION_MS);
@@ -40,7 +41,7 @@ try {
       component: "process",
       host,
       port,
-      databasePath,
+      storage: storage.kind,
     },
     "TRUST runtime starting",
   );
@@ -49,7 +50,7 @@ try {
     host,
     port,
     ...(instance ? { instance } : {}),
-    databasePath,
+    storage,
     semanticAuthority,
     ...(operationsDirectory === undefined ? {} : { operationsDirectory }),
     sessionDurationMs,

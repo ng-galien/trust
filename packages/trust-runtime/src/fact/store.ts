@@ -12,7 +12,7 @@ interface FactRow {
   operation_digest: string;
   observed_at: string;
   recorded_at: string;
-  payload_json: string;
+  payload_json: Record<string, unknown>;
 }
 
 export interface FactAppendResult {
@@ -41,26 +41,38 @@ export class FactStore {
         duplicateIds.push(fact.id);
         continue;
       }
-      const existing = await database
-        .selectFrom("facts")
-        .select("fact_id")
-        .where("fact_id", "=", fact.id)
+      const inserted = await database
+        .insertInto("facts")
+        .values({
+          fact_id: fact.id,
+          check_uri: fact.checkUri,
+          compiled_digest: fact.compiledCheckDigest,
+          fact_index: fact.index,
+          operation: fact.operation,
+          operation_digest: fact.operationDigest,
+          observed_at: fact.observedAt,
+          payload_json: JSON.stringify(fact.values),
+        })
+        .onConflict((conflict) => conflict.column("fact_id").doNothing())
+        .returning("fact_id")
         .executeTakeFirst();
-      if (!existing) {
-        await database
-          .insertInto("facts")
-          .values({
-            fact_id: fact.id,
-            check_uri: fact.checkUri,
-            compiled_digest: fact.compiledCheckDigest,
-            fact_index: fact.index,
-            operation: fact.operation,
-            operation_digest: fact.operationDigest,
-            observed_at: fact.observedAt,
-            payload_json: JSON.stringify(fact.values),
-          })
-          .execute();
-      } else {
+      if (!inserted) {
+        const existing = await database
+          .selectFrom("facts")
+          .selectAll()
+          .where("fact_id", "=", fact.id)
+          .executeTakeFirstOrThrow();
+        if (
+          existing.check_uri !== fact.checkUri ||
+          existing.compiled_digest !== fact.compiledCheckDigest ||
+          existing.fact_index !== fact.index ||
+          existing.operation !== fact.operation ||
+          existing.operation_digest !== fact.operationDigest ||
+          existing.observed_at !== fact.observedAt ||
+          canonicalJson(existing.payload_json) !== canonicalJson(fact.values)
+        ) {
+          throw new Error(`Fact identity collision: ${fact.id}`);
+        }
         duplicateIds.push(fact.id);
       }
       await database
@@ -142,7 +154,7 @@ function toFact(row: FactRow): Fact {
     operationDigest: row.operation_digest,
     observedAt: row.observed_at,
     recordedAt: row.recorded_at,
-    values: JSON.parse(row.payload_json) as Record<string, unknown>,
+    values: row.payload_json as Record<string, unknown>,
   };
 }
 

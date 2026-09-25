@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer as createHttpServer } from "node:http";
 import { createServer as createNetServer } from "node:net";
 import { tmpdir } from "node:os";
@@ -14,35 +14,39 @@ import { WebSocket } from "ws";
 const execute = promisify(execFile);
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../..");
 
-test("the server manager refuses a stale SQLite schema before starting tmux", async () => {
+test("the server manager preserves a legacy SQLite database before starting tmux", async () => {
   const stateDirectory = await mkdtemp(path.join(tmpdir(), "trust-stale-schema-"));
   const session = `trust-stale-${process.pid}-${Date.now().toString(36)}`;
   const database = new DatabaseSync(path.join(stateDirectory, "runtime.sqlite"));
   database.exec("CREATE TABLE attempts (attempt_handle TEXT PRIMARY KEY) STRICT");
   database.close();
+  const original = await readFile(path.join(stateDirectory, "runtime.sqlite"));
   try {
-    await assert.rejects(
-      execute(process.execPath, [path.join(repositoryRoot, "environments/trust-test/scripts/server.ts"), "start"], {
-        cwd: repositoryRoot,
-        env: {
-          ...process.env,
-          TRUST_SERVER_STATE_DIRECTORY: stateDirectory,
-          TRUST_SERVER_TMUX_SESSION: session,
-          TRUST_SERVER_PORT: String(await availablePort()),
+    for (const command of ["start", "reset"]) {
+      await assert.rejects(
+        execute(process.execPath, [path.join(repositoryRoot, "environments/trust-test/scripts/server.ts"), command], {
+          cwd: repositoryRoot,
+          env: {
+            ...process.env,
+            TRUST_SERVER_STATE_DIRECTORY: stateDirectory,
+            TRUST_SERVER_TMUX_SESSION: session,
+            TRUST_SERVER_PORT: String(await availablePort()),
+          },
+          timeout: 30_000,
+        }),
+        (error: unknown) => {
+          const output =
+            error instanceof Error
+              ? `${error.message}\n${String((error as Error & { stderr?: unknown }).stderr ?? "")}`
+              : String(error);
+          assert.match(output, /explicit SQLite import is required/);
+          assert.match(output, /Reset cannot discard the source database/);
+          return true;
         },
-        timeout: 30_000,
-      }),
-      (error: unknown) => {
-        const output =
-          error instanceof Error
-            ? `${error.message}\n${String((error as Error & { stderr?: unknown }).stderr ?? "")}`
-            : String(error);
-        assert.match(output, /SQLite database schema is incompatible/);
-        assert.match(output, /node environments\/trust-test\/scripts\/server\.ts reset/);
-        return true;
-      },
-    );
-    await assert.rejects(execute("tmux", ["has-session", "-t", session]));
+      );
+      await assert.rejects(execute("tmux", ["has-session", "-t", session]));
+      assert.deepEqual(await readFile(path.join(stateDirectory, "runtime.sqlite")), original);
+    }
   } finally {
     await execute("tmux", ["kill-session", "-t", session]).catch(() => undefined);
     await rm(stateDirectory, { recursive: true, force: true });
@@ -118,7 +122,10 @@ test("the Node server manager resets and reuses separate backend and live-reload
     const health = await fetch(`http://127.0.0.1:${port}/health`);
     assert.equal(health.status, 200);
     assert.equal((await fetch(`http://127.0.0.1:${webPort}/health`)).status, 200);
-    assert.match(await paneStartCommand(backendSession, "backend"), /npm start/);
+    assert.match(
+      await paneStartCommand(backendSession, "backend"),
+      /node packages\/trust-runtime\/dist\/src\/index\.js/,
+    );
     assert.doesNotMatch(await pane(backendSession, "backend"), /tsx watch/);
     assert.match(await paneStartCommand(frontendSession, "frontend"), /npm run dev:web/);
     await observeFrontendLiveReload(webPort, liveReloadFile, liveReloadPath);

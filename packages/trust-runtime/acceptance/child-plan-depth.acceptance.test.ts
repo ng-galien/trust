@@ -110,7 +110,7 @@ for (const depth of [3, 4]) {
   }, async () => {
     const directory = await mkdtemp(path.join(tmpdir(), "trust-deep-plan-"));
     const options = {
-      databasePath: path.join(directory, "runtime.sqlite"),
+      storage: { kind: "pglite" as const, directory: path.join(directory, "pglite") },
       operationsDirectory: path.join(root, "assets/operations"),
       environments: { local: { workspaceRoot: root } },
     };

@@ -27,7 +27,7 @@ export function createExtension({ publishChanged, configuration }) {
       if (path === '/hang') return new Promise(() => {});
       if (path === '/signal') publishChanged();
       if (path === '/error') throw new Error('private-data secret stack');
-      return { status: 200, body: { ok: true, leaked: process.env.TRUST_DATABASE_PATH ?? null } };
+      return { status: 200, body: { ok: true, leaked: process.env.TRUST_DATABASE_URL ?? process.env.TRUST_PGLITE_DIRECTORY ?? null } };
     }
   };
 }`,

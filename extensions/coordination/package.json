@@ -10,7 +10,7 @@
     "build": "npm run build:server && npm run build:ui"
   },
   "dependencies": {
-    "pg": "^8.23.0",
+    "pg": "8.23.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "react-markdown": "^10.1.0",

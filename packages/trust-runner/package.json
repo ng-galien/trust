@@ -24,7 +24,7 @@
     "@trust/extension-sdk": "file:../trust-extension-sdk",
     "@trust/operation": "file:../trust-operation",
     "@trust/procedure": "file:../trust-procedure",
-    "pg": "^8.23.0",
+    "pg": "8.23.0",
     "pino": "^10.3.1"
   },
   "devDependencies": {

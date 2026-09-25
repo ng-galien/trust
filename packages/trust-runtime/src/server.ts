@@ -1,8 +1,9 @@
-import { createServer, type Server } from "node:http";
+import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { startTrustWebSocketLanguageServer, type TrustLanguageServerSocket } from "@trust/language-server";
 import type { CompiledOperation } from "@trust/operation";
 import type { Logger } from "pino";
 import { type RawData, type WebSocket, WebSocketServer } from "ws";
+import type { StorageConfiguration } from "./database/storage.js";
 import { createRuntimeContainer } from "./runtime.js";
 
 export interface RuntimeServerOptions {
@@ -11,7 +12,7 @@ export interface RuntimeServerOptions {
   readonly host: string;
   readonly port: number;
   readonly instance?: string;
-  readonly databasePath?: string;
+  readonly storage?: StorageConfiguration;
   readonly semanticAuthority?: string;
   readonly operations?: readonly CompiledOperation[];
   readonly operationsDirectory?: string;
@@ -58,7 +59,7 @@ export const startRuntime = async ({
   host,
   port,
   instance,
-  databasePath,
+  storage,
   semanticAuthority,
   operations,
   operationsDirectory,
@@ -69,6 +70,13 @@ export const startRuntime = async ({
   logger,
 }: RuntimeServerOptions): Promise<RunningRuntime> => {
   const server = createServer();
+  // Storage initialization is asynchronous. Requests arriving on the bound port
+  // before the application is ready must receive a response, not hang forever.
+  const starting = (_request: IncomingMessage, response: ServerResponse): void => {
+    response.writeHead(503, { "content-type": "application/json", "retry-after": "1" });
+    response.end(JSON.stringify({ status: "starting", service: "trust-runtime" }));
+  };
+  server.on("request", starting);
   const recentHttpFailures = new Map<string, number>();
   await listen(server, host, port);
 
@@ -83,7 +91,7 @@ export const startRuntime = async ({
     container = await createRuntimeContainer({
       ...(extensionsFile === undefined ? {} : { extensionsFile }),
       ...(extensionTimeoutMs === undefined ? {} : { extensionTimeoutMs }),
-      ...(databasePath ? { databasePath } : {}),
+      ...(storage ? { storage } : {}),
       ...(semanticAuthority ? { semanticAuthority } : {}),
       ...(operations ? { operations } : {}),
       ...(operationsDirectory ? { operationsDirectory } : {}),
@@ -97,6 +105,7 @@ export const startRuntime = async ({
     throw error;
   }
   const httpApp = container.resolve("httpApp");
+  server.off("request", starting);
   server.on("request", (request, response) => {
     const startedAt = Date.now();
     const requestPath = httpRequestPath(request.url);

@@ -11,7 +11,7 @@ An integration owns its business state, external connections, interpretation and
 | TRUST qualification engine | Admission, Facts, qualification, cascade, Sessions and intent | Extension schemas, mission statuses, UI-specific aggregates |
 | Generic extension host | Configured installation, lifecycle, readiness, route and UI contribution registration | PostgreSQL-specific preparation or qualification decisions |
 | Application shell | Generic extension navigation, remote loading, theme/language, error fallback and links to Plans | Knowledge of missions, sprint tickets or integration-specific fields |
-| Coordination extension | Mission storage/read API, connection pool, schema preparation and mission view | Writing TRUST SQLite or qualifying a Check |
+| Coordination extension | Mission storage/read API, connection pool, schema preparation and mission view | Writing the TRUST core database or qualifying a Check |
 
 Current entry points are `packages/trust-runtime/src/server.ts` for the runtime process and `packages/trust-shell/src/server.ts` for the common CLI/Electron deployment. The latter already starts and stops the runtime child process; Electron calls it instead of owning another server implementation. The generic extension lifecycle belongs at runtime process composition, not inside PlanRuntime. Shell and dev proxy paths must expose the same extension surface. No new domain package or import from `trust-legacy` is needed.
 

@@ -1,10 +1,14 @@
 import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { once } from "node:events";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { after } from "node:test";
 import { fileURLToPath } from "node:url";
 import type { EnvironmentValues } from "@trust/extension-sdk";
+import { Client } from "pg";
+import type { StorageConfiguration } from "../../src/database/storage.js";
 
 const buildRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 
@@ -17,7 +21,7 @@ export interface PublicRuntimeOptions {
   readonly port?: number;
   readonly processEnvironment?: Readonly<Record<string, string>>;
   readonly extensionsFile?: string;
-  readonly databasePath?: string;
+  readonly storage?: StorageConfiguration;
   readonly operationsDirectory?: string;
   readonly environments?: Readonly<Record<string, EnvironmentValues>>;
   readonly sessionDurationMs?: number;
@@ -29,14 +33,23 @@ export async function startPublicRuntime(
   options: PublicRuntimeOptions = {},
 ): Promise<PublicRuntimeProcess> {
   const dataDirectory = await mkdtemp(path.join(tmpdir(), prefix));
+  const storage = await acceptanceStorage(
+    options.storage ?? { kind: "pglite", directory: path.join(dataDirectory, "pglite") },
+  );
+  const environment = { ...process.env, ...options.processEnvironment };
+  delete environment.TRUST_DATABASE_PATH;
+  delete environment.TRUST_DATABASE_URL;
+  delete environment.TRUST_PGLITE_DIRECTORY;
   const runtime = spawn(process.execPath, [path.join(buildRoot, "src/index.js")], {
     env: {
-      ...process.env,
-      ...options.processEnvironment,
+      ...environment,
       TRUST_HOST: "127.0.0.1",
       TRUST_PORT: String(options.port ?? 0),
       ...(options.extensionsFile === undefined ? {} : { TRUST_EXTENSIONS_FILE: options.extensionsFile }),
-      TRUST_DATABASE_PATH: options.databasePath ?? path.join(dataDirectory, "trust.sqlite"),
+      TRUST_STORAGE: storage.kind,
+      ...(storage.kind === "pglite"
+        ? { TRUST_PGLITE_DIRECTORY: storage.directory }
+        : { TRUST_DATABASE_URL: storage.connectionString }),
       ...(options.operationsDirectory === undefined ? {} : { TRUST_OPERATIONS_DIRECTORY: options.operationsDirectory }),
       ...(options.sessionDurationMs === undefined
         ? {}
@@ -67,6 +80,42 @@ export async function startPublicRuntime(
     throw error;
   }
 }
+
+const postgresTargets = new Map<string, string>();
+const createdDatabases: Array<{ admin: string; name: string }> = [];
+
+/** Every acceptance process owns its databases; an explicit directory maps to one restartable target. */
+async function acceptanceStorage(storage: StorageConfiguration): Promise<StorageConfiguration> {
+  const admin = process.env.TRUST_ACCEPTANCE_POSTGRES_URL;
+  if (storage.kind === "postgresql" || !admin) return storage;
+  const existing = postgresTargets.get(storage.directory);
+  if (existing) return { kind: "postgresql", connectionString: existing };
+  const name = `trust_acceptance_${randomUUID().replaceAll("-", "")}`;
+  const client = new Client({ connectionString: admin });
+  await client.connect();
+  try {
+    await client.query(`CREATE DATABASE "${name}" TEMPLATE template0`);
+    createdDatabases.push({ admin, name });
+  } finally {
+    await client.end();
+  }
+  const target = new URL(admin);
+  target.pathname = `/${name}`;
+  postgresTargets.set(storage.directory, target.href);
+  return { kind: "postgresql", connectionString: target.href };
+}
+
+after(async () => {
+  for (const { admin, name } of createdDatabases) {
+    const client = new Client({ connectionString: admin });
+    await client.connect();
+    try {
+      await client.query(`DROP DATABASE "${name}" WITH (FORCE)`);
+    } finally {
+      await client.end();
+    }
+  }
+});
 
 async function configureEnvironment(endpoint: string, environment: string, values: EnvironmentValues): Promise<void> {
   const response = await fetch(`${endpoint}/rpc`, {

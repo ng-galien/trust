@@ -109,3 +109,7 @@ Le protocole public conserve les mêmes frontières que le modèle produit :
 
 Voir la [référence de l'interface](/docs/screens) pour les entrées destinées aux opérateurs et la [référence du DSL TRUST](/docs/language) pour la source compilée avant ces appels.
 </Details>
+
+## Stockage et runtime propriétaire
+
+Chaque base possède un seul runtime TRUST actif. Plusieurs clients, agents et Runners peuvent y accéder simultanément. Les installations indépendantes utilisent des bases PostgreSQL ou des répertoires PGlite distincts, chacun avec son catalogue d’Operations. PostgreSQL et PGlite embarqué appliquent les mêmes règles de persistance. Le démarrage d’un second propriétaire sur la même base est refusé ; les installations ne se synchronisent pas. Un historique SQLite existant nécessite un import explicite et vérifié avant activation.

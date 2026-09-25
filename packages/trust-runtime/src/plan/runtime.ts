@@ -46,6 +46,7 @@ import { completesPlanOnValidation, dependentCheckUris, isIntentValue, MAX_INTEN
 import { normalizePlanMetadata } from "./metadata.js";
 import { parseMissionDeclarations } from "./mission-declarations.js";
 import type { PlanStore } from "./store.js";
+import { planTransaction } from "./transaction.js";
 
 export const DEFAULT_SESSION_DURATION_MS = 24 * 60 * 60 * 1_000;
 
@@ -236,12 +237,14 @@ export class PlanRuntime {
         );
       }
       await this.#ensureSession(input.plan);
-      await this.#database.transaction().execute((transaction) => this.#synchronizeChildren(transaction, input.plan));
+      await planTransaction(this.#database, input.plan, (transaction) =>
+        this.#synchronizeChildren(transaction, input.plan),
+      );
       return engagement(existing.currentRevision, current);
     }
     const now = this.#now();
     const sessionId = randomUUID();
-    const created = await this.#database.transaction().execute(async (transaction) => {
+    const created = await planTransaction(this.#database, input.plan, async (transaction) => {
       const plans = this.#plans.using(transaction);
       const concurrent = await plans.findPlan(input.plan);
       if (concurrent) {
@@ -294,7 +297,7 @@ export class PlanRuntime {
     );
     const now = this.#now();
     const sessionId = randomUUID();
-    await this.#database.transaction().execute(async (transaction) => {
+    await planTransaction(this.#database, planSlug, async (transaction) => {
       await this.#requireIndependentHistory(transaction, planSlug);
       await this.#plans.using(transaction).remove(planSlug);
       await this.#saveInitialRevision(transaction, revision, now, sessionId);
@@ -310,7 +313,7 @@ export class PlanRuntime {
     if (!plan) throw new PlanRuntimeError("plan-conflict", `Plan ${planSlug} is unknown`);
     if (plan.mode !== "dry-run")
       throw new PlanRuntimeError("plan-conflict", `Plan ${planSlug} is a live Plan and cannot be removed`);
-    await this.#database.transaction().execute(async (transaction) => {
+    await planTransaction(this.#database, planSlug, async (transaction) => {
       await this.#requireIndependentHistory(transaction, planSlug);
       await this.#plans.using(transaction).remove(planSlug);
     });
@@ -332,14 +335,17 @@ export class PlanRuntime {
   }
 
   async close(planSlug: string): Promise<{ readonly plan: string; readonly closed: boolean }> {
-    const plan = await this.#plans.findPlan(planSlug);
-    if (!plan) throw new PlanRuntimeError("plan-conflict", `Plan ${planSlug} is unknown`);
-    const session = await this.#sessions.findOpen(planSlug);
-    if (!session) return { plan: planSlug, closed: false };
     const closedAt = this.#now().toISOString();
-    await this.#sessions.changeState(session.id, "closed", closedAt);
-    this.#sessionEvent(session.id, planSlug, "closed", closedAt);
-    return { plan: planSlug, closed: true };
+    const session = await planTransaction(this.#database, planSlug, async (transaction) => {
+      const plan = await this.#plans.using(transaction).findPlan(planSlug);
+      if (!plan) throw new PlanRuntimeError("plan-conflict", `Plan ${planSlug} is unknown`);
+      const sessions = this.#sessions.using(transaction);
+      const current = await sessions.findOpen(planSlug);
+      if (current) await sessions.changeState(current.id, "closed", closedAt);
+      return current;
+    });
+    if (session) this.#sessionEvent(session.id, planSlug, "closed", closedAt);
+    return { plan: planSlug, closed: session !== undefined };
   }
 
   async escalateCheck(input: CheckEscalationInput): Promise<CheckEscalationResult> {
@@ -354,9 +360,16 @@ export class PlanRuntime {
         "Escalation requires a non-empty blockingReason and forbiddenFurtherAction of at most 4096 characters",
       );
     }
+    const requested = await this.#attempts.find(input.attemptHandle);
+    if (!requested)
+      throw new PlanRuntimeError(
+        "check-not-escalatable",
+        "Escalation must reference its finalized NOT_VALIDATED Attempt",
+      );
+    const requestedPlan = requested.planSlug;
     let escalation: PlanEscalation | undefined;
     let escalationCreated = false;
-    await this.#database.transaction().execute(async (transaction) => {
+    await planTransaction(this.#database, requestedPlan, async (transaction) => {
       const plans = this.#plans.using(transaction);
       const escalations = this.#escalations.using(transaction);
       const snapshots = this.#snapshots.using(transaction);
@@ -488,7 +501,7 @@ export class PlanRuntime {
     let escalation: PlanEscalation | undefined;
     let resumed = false;
     let sessionEvents: readonly SessionChange[] = [];
-    await this.#database.transaction().execute(async (transaction) => {
+    await planTransaction(this.#database, planSlug, async (transaction) => {
       const plans = this.#plans.using(transaction);
       const plan = await plans.findPlan(planSlug);
       if (!plan) throw new PlanRuntimeError("plan-conflict", `Plan ${planSlug} is unknown`);
@@ -632,7 +645,7 @@ export class PlanRuntime {
       canonicalJson(declarations) === canonicalJson(current.agentDeclarations) &&
       canonicalJson(missionDeclarations) === canonicalJson(current.missionDeclarations)
     ) {
-      await this.#database.transaction().execute(async (transaction) => {
+      await planTransaction(this.#database, plan.slug, async (transaction) => {
         const plans = this.#plans.using(transaction);
         const transactionalPlan = await plans.findPlan(plan.slug);
         if (
@@ -714,7 +727,7 @@ export class PlanRuntime {
       );
     const now = this.#now();
     try {
-      await this.#database.transaction().execute(async (transaction) => {
+      await planTransaction(this.#database, plan.slug, async (transaction) => {
         const plans = this.#plans.using(transaction);
         const chainedPlan = await plans.findPlan(plan.slug);
         if (
@@ -900,7 +913,9 @@ export class PlanRuntime {
   }
 
   async #ingestFacts(input: FactBatchInput): Promise<FactBatchResult> {
-    return this.#database.transaction().execute(async (transaction) => {
+    const requested = await this.#attempts.find(input.attemptHandle);
+    if (!requested) throw new PlanRuntimeError("attempt-not-found", "The requested Attempt is unknown");
+    return planTransaction(this.#database, requested.planSlug, async (transaction) => {
       const attempts = this.#attempts.using(transaction);
       const attempt = await attempts.lockPending(input.attemptHandle);
       if (!attempt) {
@@ -994,8 +1009,10 @@ export class PlanRuntime {
       status: "INTERRUPTED",
       attemptHandle,
     });
+    const requested = await this.#attempts.find(attemptHandle);
+    if (!requested) throw new PlanRuntimeError("attempt-not-found", "The requested Attempt is unknown");
     let releasedPlan: string | undefined;
-    const interruption = await this.#database.transaction().execute(async (transaction) => {
+    const interruption = await planTransaction(this.#database, requested.planSlug, async (transaction) => {
       const attempts = this.#attempts.using(transaction);
       const facts = this.#facts.using(transaction);
       const plans = this.#plans.using(transaction);
@@ -1028,7 +1045,7 @@ export class PlanRuntime {
 
   async #finalize(attempt: Attempt): Promise<AttemptFinalizationResult> {
     let revisionEvent: { revision: number; at: string; result: AttemptFinalizationResult } | undefined;
-    const finalized = await this.#database.transaction().execute(async (transaction) => {
+    const finalized = await planTransaction(this.#database, attempt.planSlug, async (transaction) => {
       const attempts = this.#attempts.using(transaction);
       const factsStore = this.#facts.using(transaction);
       const plans = this.#plans.using(transaction);
@@ -1506,7 +1523,7 @@ export class PlanRuntime {
       admittedAt: now.toISOString(),
       expiresAt: resolved.session.expiresAt,
     };
-    return this.#database.transaction().execute(async (transaction) => {
+    return planTransaction(this.#database, resolved.plan.slug, async (transaction) => {
       const attempts = this.#attempts.using(transaction);
       const plans = this.#plans.using(transaction);
       const transactionalPlan = await plans.findPlan(resolved.plan.slug);
@@ -1517,6 +1534,9 @@ export class PlanRuntime {
       ) {
         throw new AdmissionPlanChangedError();
       }
+      const session = await this.#sessions.using(transaction).findById(resolved.session.id);
+      if (!session || session.state !== "open" || Date.parse(session.expiresAt) <= this.#now().getTime())
+        throw new AdmissionPlanChangedError();
       if (await this.#escalations.using(transaction).findActive(resolved.plan.slug)) {
         throw new PlanEscalatedDuringAdmissionError();
       }
@@ -1571,9 +1591,9 @@ export class PlanRuntime {
 
   async #ensureSession(plan: string): Promise<void> {
     const now = this.#now();
-    const changes = await this.#database
-      .transaction()
-      .execute((transaction) => this.#ensureSessionIn(transaction, plan, now));
+    const changes = await planTransaction(this.#database, plan, (transaction) =>
+      this.#ensureSessionIn(transaction, plan, now),
+    );
     this.#publishSessionChanges(changes);
   }
 

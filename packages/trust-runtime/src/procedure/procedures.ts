@@ -72,7 +72,7 @@ export class Procedures {
     let operations: readonly CompiledOperation[];
     let procedures: readonly CompiledProcedure[];
     let after: readonly CompiledOperation[];
-    // The file-backed Operation catalog is atomic but independent of SQLite. Retry a
+    // The file-backed Operation catalog is atomic but independent of the core database. Retry a
     // catalog read if it changed while the one-statement Procedure snapshot was read.
     do {
       operations = this.#operations.list();

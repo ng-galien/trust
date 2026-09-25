@@ -4,6 +4,7 @@ import type { ChildGenerationTable, Database } from "../database/database.js";
 import type { PlanCheck, PlanRevision } from "../model.js";
 import { SnapshotStore } from "../snapshot/store.js";
 import { buildPlanRevision } from "./build.js";
+import { semanticJson } from "./semantic-json.js";
 import { PlanStore } from "./store.js";
 
 export interface CompositionState {
@@ -273,7 +274,7 @@ export async function synchronizeChildren(input: {
           .orderBy("generation", "desc")
           .execute();
         let current = history.find((value) => value.superseded_at === null);
-        const signature = hash({
+        const signatureInput = {
           definition: invocation.definition.procedureDigest,
           inputs: invocation.rootInputs,
           checks: revision.checks
@@ -288,8 +289,9 @@ export async function synchronizeChildren(input: {
                 revision: value.childPlan ? (await plans.findPlan(value.childPlan))?.currentRevision : null,
               })),
           ),
-        });
-        if (current && (!eligible || current.input_digest !== signature)) {
+        };
+        const signature = childInputFingerprint(signatureInput);
+        if (current && (!eligible || current.comparison_fingerprint !== signature)) {
           await supersede(current);
           current = undefined;
           changed.add(slug);
@@ -313,7 +315,8 @@ export async function synchronizeChildren(input: {
             invocation_id: invocation.id,
             generation: (history[0]?.generation ?? 0) + 1,
             child_plan: childPlan,
-            input_digest: signature,
+            input_digest: hash(signatureInput),
+            comparison_fingerprint: signature,
             observed_revision: 1,
             created_at: input.at,
             superseded_at: null,
@@ -339,7 +342,7 @@ export async function synchronizeChildren(input: {
     }
     const state = await readComposition(database, slug);
     const importedValues = await collectImportedResults(database, revision);
-    const resultsChanged = hash(importedValues) !== hash(revision.importedValues);
+    const resultsChanged = semanticJson(importedValues) !== semanticJson(revision.importedValues);
     const invalid = new Set(
       revision.checks
         .filter((check) =>
@@ -448,9 +451,14 @@ async function collectImportedResults(database: Database, revision: PlanRevision
         });
     }
   }
-  return values.sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
+  return values.sort((a, b) => semanticJson(a).localeCompare(semanticJson(b)));
 }
 
 function hash(value: unknown): string {
   return createHash("sha256").update(JSON.stringify(value)).digest("hex");
+}
+
+/** Derived comparison identity; historical input_digest is retained as provenance. */
+export function childInputFingerprint(signature: unknown): string {
+  return createHash("sha256").update(semanticJson(signature)).digest("hex");
 }

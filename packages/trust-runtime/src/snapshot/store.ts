@@ -1,7 +1,9 @@
+import { createHash } from "node:crypto";
 import type { PlanMode } from "@trust/extension-sdk";
 import type { Selectable } from "kysely";
 import type { ActiveCheckQualificationTable, CheckSnapshotTable, Database } from "../database/database.js";
 import type { ActiveCheckQualification, CheckSnapshot, PlanCheck } from "../model.js";
+import { semanticJson } from "../plan/semantic-json.js";
 
 type SnapshotRow = Selectable<CheckSnapshotTable>;
 type ActiveQualificationRow = Selectable<ActiveCheckQualificationTable>;
@@ -45,6 +47,11 @@ export class SnapshotStore {
       .insertInto("check_snapshots")
       .values({
         snapshot_id: snapshot.id,
+        equivalence_digest: snapshotEquivalenceDigest(
+          snapshot.checkUri,
+          snapshot.compiledCheckDigest,
+          snapshot.factIds,
+        ),
         attempt_handle: snapshot.attemptHandle,
         plan_slug: snapshot.planSlug,
         plan_revision: snapshot.planRevision,
@@ -58,7 +65,11 @@ export class SnapshotStore {
         checklist_delta_json: JSON.stringify(snapshot.checklistDelta),
         calculated_at: snapshot.calculatedAt,
       })
+      .onConflict((conflict) => conflict.column("equivalence_digest").doNothing())
       .execute();
+    const persisted = await this.findEquivalent(snapshot.checkUri, snapshot.compiledCheckDigest, snapshot.factIds);
+    if (!persisted || !sameQualification(persisted, snapshot))
+      throw new Error(`Check Snapshot collision: ${snapshot.id}`);
   }
 
   async findEquivalent(
@@ -69,11 +80,17 @@ export class SnapshotStore {
     const row = await this.dependencies.database
       .selectFrom("check_snapshots")
       .selectAll()
-      .where("check_uri", "=", checkUri)
-      .where("compiled_digest", "=", compiledDigest)
-      .where("fact_ids_json", "=", JSON.stringify(factIds))
+      .where("equivalence_digest", "=", snapshotEquivalenceDigest(checkUri, compiledDigest, factIds))
       .executeTakeFirst();
-    return row ? toSnapshot(row) : undefined;
+    if (!row) return undefined;
+    if (
+      row.check_uri !== checkUri ||
+      row.compiled_digest !== compiledDigest ||
+      semanticJson(row.fact_ids_json) !== semanticJson(factIds)
+    ) {
+      throw new Error("Snapshot equivalence digest collision");
+    }
+    return toSnapshot(row);
   }
 
   async findLatest(checkUri: string): Promise<CheckSnapshot | undefined> {
@@ -147,7 +164,7 @@ export class SnapshotStore {
       snapshot: toSnapshot(row),
       procedure: row.procedure_name,
       mode: row.mode as PlanMode,
-      check: JSON.parse(row.check_json) as PlanCheck,
+      check: row.check_json as PlanCheck,
     }));
   }
 
@@ -200,7 +217,7 @@ function sameQualification(left: CheckSnapshot, right: CheckSnapshot): boolean {
     left.reasonCode === right.reasonCode &&
     left.reason === right.reason &&
     JSON.stringify(left.factIds) === JSON.stringify(right.factIds) &&
-    JSON.stringify(left.checklistDelta) === JSON.stringify(right.checklistDelta)
+    semanticJson(left.checklistDelta) === semanticJson(right.checklistDelta)
   );
 }
 
@@ -216,8 +233,8 @@ function toSnapshot(row: SnapshotRow): CheckSnapshot {
     verdict: row.verdict,
     reasonCode: row.reason_code,
     reason: row.reason,
-    factIds: JSON.parse(row.fact_ids_json) as string[],
-    checklistDelta: JSON.parse(row.checklist_delta_json) as CheckSnapshot["checklistDelta"],
+    factIds: row.fact_ids_json as string[],
+    checklistDelta: row.checklist_delta_json as CheckSnapshot["checklistDelta"],
     calculatedAt: row.calculated_at,
   };
 }
@@ -231,4 +248,14 @@ function toActiveQualification(row: ActiveQualificationRow): ActiveCheckQualific
     snapshotId: row.snapshot_id,
     activationDigest: row.activation_digest,
   };
+}
+
+export function snapshotEquivalenceDigest(
+  checkUri: string,
+  compiledDigest: string,
+  factIds: readonly string[],
+): string {
+  return createHash("sha256")
+    .update(semanticJson([checkUri, compiledDigest, factIds]))
+    .digest("hex");
 }

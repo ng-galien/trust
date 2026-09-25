@@ -48,7 +48,7 @@ export class CatalogMetadataStore {
       revision: row.revision,
       title: row.title,
       ...(row.description === null ? {} : { description: row.description }),
-      classification: JSON.parse(row.classification_json) as CatalogClassification,
+      classification: row.classification_json as CatalogClassification,
       updatedAt: row.updated_at,
     };
   }
@@ -73,7 +73,7 @@ export class CatalogMetadataStore {
         revision: row.revision,
         title: row.title,
         ...(row.description === null ? {} : { description: row.description }),
-        classification: JSON.parse(row.classification_json) as CatalogClassification,
+        classification: row.classification_json as CatalogClassification,
         updatedAt: row.updated_at,
       })),
     ];

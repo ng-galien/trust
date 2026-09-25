@@ -1,6 +1,6 @@
 import type { Selectable } from "kysely";
-
 import type { AttemptTable, Database } from "../database/database.js";
+import { isDatabaseUuid } from "../database/database.js";
 import type { Attempt } from "../model.js";
 
 type AttemptRow = Selectable<AttemptTable>;
@@ -34,7 +34,7 @@ export class AttemptStore {
         operation_digest: attempt.operationDigest,
         action_input_json: JSON.stringify(attempt.actionInput),
         environment: attempt.environment,
-        reobserve: attempt.reobserve ? 1 : 0,
+        reobserve: attempt.reobserve,
         intent: attempt.intent ?? null,
         next_intent: attempt.nextIntent ?? null,
         state: attempt.state,
@@ -55,12 +55,13 @@ export class AttemptStore {
   }
 
   async lockPending(handle: string): Promise<Attempt | undefined> {
+    if (!isDatabaseUuid(handle)) return undefined;
     const row = await this.dependencies.database
-      .updateTable("attempts")
-      .set({ state: "pending" })
+      .selectFrom("attempts")
+      .selectAll()
       .where("attempt_handle", "=", handle)
       .where("state", "=", "pending")
-      .returningAll()
+      .forUpdate()
       .executeTakeFirst();
     return row ? toAttempt(row) : undefined;
   }
@@ -75,6 +76,7 @@ export class AttemptStore {
   }
 
   async find(handle: string): Promise<Attempt | undefined> {
+    if (!isDatabaseUuid(handle)) return undefined;
     const row = await this.dependencies.database
       .selectFrom("attempts")
       .selectAll()
@@ -160,9 +162,9 @@ function toAttempt(row: AttemptRow): Attempt {
     sessionId: row.session_id,
     operation: row.operation,
     operationDigest: row.operation_digest,
-    actionInput: JSON.parse(row.action_input_json) as Record<string, unknown>,
+    actionInput: row.action_input_json as Record<string, unknown>,
     environment: row.environment,
-    reobserve: row.reobserve === 1,
+    reobserve: row.reobserve,
     ...(row.intent === null ? {} : { intent: row.intent }),
     ...(row.next_intent === null ? {} : { nextIntent: row.next_intent }),
     state: row.state,
@@ -170,8 +172,6 @@ function toAttempt(row: AttemptRow): Attempt {
     expiresAt: row.expires_at,
     ...(row.interrupted_at ? { interruptedAt: row.interrupted_at } : {}),
     ...(row.finalized_at ? { finalizedAt: row.finalized_at } : {}),
-    ...(row.finalization_json
-      ? { finalization: JSON.parse(row.finalization_json) as NonNullable<Attempt["finalization"]> }
-      : {}),
+    ...(row.finalization_json ? { finalization: row.finalization_json as NonNullable<Attempt["finalization"]> } : {}),
   };
 }

@@ -1,6 +1,6 @@
 import { type ChildProcess, spawn } from "node:child_process";
 import { createHash, randomUUID, timingSafeEqual } from "node:crypto";
-import { constants, createReadStream } from "node:fs";
+import { constants, createReadStream, existsSync } from "node:fs";
 import { copyFile, mkdir, readdir, stat } from "node:fs/promises";
 import {
   createServer,
@@ -102,21 +102,36 @@ export async function startTrustServer(options: TrustServerOptions): Promise<Run
     throw new TypeError("TRUST_WEB_ACCESS_PASSWORD must contain at least 20 characters");
   if (runtimePort === webPort) throw new TypeError("Runtime and web ports must be different");
   const stateDirectory = absoluteDirectory(options.stateDirectory, "Server state directory");
+  const runtimeEnvironment = { ...process.env, ...options.runtimeEnvironment };
+  delete runtimeEnvironment.TRUST_WEB_ACCESS_PASSWORD;
+  if (runtimeEnvironment.TRUST_DATABASE_PATH !== undefined) {
+    throw new TypeError("TRUST_DATABASE_PATH is retired; import SQLite explicitly before starting TRUST");
+  }
+  if (
+    runtimeEnvironment.TRUST_STORAGE !== "postgresql" &&
+    !runtimeEnvironment.TRUST_PGLITE_DIRECTORY &&
+    existsSync(path.join(stateDirectory, "runtime.sqlite"))
+  ) {
+    throw new Error(
+      "Retained SQLite database detected; import it explicitly and select the target storage before starting TRUST",
+    );
+  }
+  runtimeEnvironment.TRUST_STORAGE ??= "pglite";
+  if (runtimeEnvironment.TRUST_STORAGE === "pglite") {
+    runtimeEnvironment.TRUST_PGLITE_DIRECTORY ??= path.join(stateDirectory, "pglite");
+  }
   await mkdir(stateDirectory, { recursive: true });
   const operationsDirectory = path.join(stateDirectory, "operations");
   await prepareOperationsDirectory(options.installation.operationsDirectory, operationsDirectory);
   await Promise.all([assertPortAvailable(host, runtimePort), assertPortAvailable(host, webPort)]);
 
   const instance = randomUUID();
-  const runtimeEnvironment = { ...process.env, ...options.runtimeEnvironment };
-  delete runtimeEnvironment.TRUST_WEB_ACCESS_PASSWORD;
   const runtime = spawn(process.execPath, [options.installation.runtimeEntry], {
     cwd: options.installation.root,
     env: {
       ...runtimeEnvironment,
       TRUST_HOST: host,
       TRUST_PORT: String(runtimePort),
-      TRUST_DATABASE_PATH: path.join(stateDirectory, "runtime.sqlite"),
       TRUST_OPERATIONS_DIRECTORY: operationsDirectory,
       TRUST_RUNTIME_INSTANCE: instance,
       TRUST_RUNTIME_LOG_PATH: path.join(stateDirectory, "runtime.log"),

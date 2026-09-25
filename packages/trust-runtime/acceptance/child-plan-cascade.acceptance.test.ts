@@ -54,7 +54,7 @@ ${child ? '    Given scenario "children" is validated\n' : ""}    Then Check "fi
 async function fixture() {
   const directory = await mkdtemp(path.join(tmpdir(), "trust-child-cascade-"));
   const options = {
-    databasePath: path.join(directory, "runtime.sqlite"),
+    storage: { kind: "pglite" as const, directory: path.join(directory, "pglite") },
     operationsDirectory: path.join(root, "assets/operations"),
     environments: { local: { workspaceRoot: root } },
   };

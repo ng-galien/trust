@@ -12,12 +12,12 @@ const operationsDirectory = path.join(repositoryRoot, "assets/operations");
 
 test("environments and credential references persist without exposing credential values", async () => {
   const dataDirectory = await mkdtemp(path.join(tmpdir(), "trust-environment-configuration-"));
-  const databasePath = path.join(dataDirectory, "trust.sqlite");
+  const storage = { kind: "pglite" as const, directory: path.join(dataDirectory, "pglite") };
   const credentialValue = "acceptance-secret-that-must-not-be-returned";
 
   try {
     const first = await startPublicRuntime("trust-environment-first-", {
-      databasePath,
+      storage,
       operationsDirectory,
     });
     try {
@@ -78,7 +78,7 @@ test("environments and credential references persist without exposing credential
     }
 
     const second = await startPublicRuntime("trust-environment-second-", {
-      databasePath,
+      storage,
       operationsDirectory,
     });
     try {
@@ -157,7 +157,7 @@ test("environments and credential references persist without exposing credential
     }
 
     const third = await startPublicRuntime("trust-environment-third-", {
-      databasePath,
+      storage,
     });
     try {
       assert.deepEqual(await rpc(third.endpoint, "environment.list", {}), {

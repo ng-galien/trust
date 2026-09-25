@@ -8,13 +8,12 @@ import { createServer as createNetServer } from "node:net";
 import { parse, resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
-import { assertSqliteSchemaFile } from "../../../packages/trust-runtime/src/database/sqlite-schema.ts";
 import { publicRpc } from "./lib/public-rpc.mjs";
 
 const environmentRoot = fileURLToPath(new URL("../", import.meta.url));
 const root = fileURLToPath(new URL("../../../", import.meta.url));
 const stateDirectory = parseStateDirectory(process.env.TRUST_SERVER_STATE_DIRECTORY ?? ".trust/server");
-const database = resolve(stateDirectory, "runtime.sqlite");
+const database = resolve(stateDirectory, "pglite");
 const runtimeLog = resolve(stateDirectory, "runtime.log");
 const runnerLog = resolve(stateDirectory, "runner.log");
 const operations = resolve(root, "assets/operations");
@@ -82,7 +81,11 @@ switch (command) {
 }
 
 async function start(reset: boolean, startWeb: boolean) {
-  if (!reset) assertSqliteSchemaFile(database);
+  if (existsSync(resolve(stateDirectory, "runtime.sqlite"))) {
+    throw new Error(
+      "Retained SQLite database detected; explicit SQLite import is required. Reset cannot discard the source database.",
+    );
+  }
 
   const sessionExists = await hasBackendSession();
   let activeInstance: string | undefined;
@@ -107,9 +110,7 @@ async function start(reset: boolean, startWeb: boolean) {
   if (activeInstance === undefined) {
     await waitForAvailablePort(port, "runtime");
     if (reset) {
-      for (const suffix of ["", "-wal", "-shm", ".trust-process-lock"]) {
-        await rm(`${database}${suffix}`, { force: true });
-      }
+      await rm(database, { recursive: true, force: true });
     }
     await run(["npm", "run", "build", "--workspace=@trust/runtime"], "ignore");
     activeInstance = randomUUID();
@@ -118,7 +119,9 @@ async function start(reset: boolean, startWeb: boolean) {
         tmux.backend,
         [
           "-e",
-          `TRUST_DATABASE_PATH=${database}`,
+          "TRUST_STORAGE=pglite",
+          "-e",
+          `TRUST_PGLITE_DIRECTORY=${database}`,
           "-e",
           `TRUST_OPERATIONS_DIRECTORY=${operations}`,
           "-e",
@@ -133,7 +136,7 @@ async function start(reset: boolean, startWeb: boolean) {
           `TRUST_SEMANTIC_AUTHORITY=trust-test:${port}`,
           ...(process.env.TRUST_LOG_LEVEL ? ["-e", `TRUST_LOG_LEVEL=${process.env.TRUST_LOG_LEVEL}`] : []),
         ],
-        "exec npm start",
+        "exec node packages/trust-runtime/dist/src/index.js",
       );
       backendStarted = true;
       await waitForHealth(activeInstance);
@@ -176,6 +179,31 @@ async function ensureFrontend(instance: string) {
 
 async function stopBackend() {
   if (await hasBackendSession()) {
+    await run(["tmux", "send-keys", "-t", `${tmux.backend.session}:${tmux.backend.window}`, "C-c"], "ignore");
+    const deadline = Date.now() + 10_000;
+    while (Date.now() < deadline && (await hasBackendSession())) {
+      const dead = await capture([
+        "tmux",
+        "display-message",
+        "-p",
+        "-t",
+        `${tmux.backend.session}:${tmux.backend.window}`,
+        "#{pane_dead}",
+      ]);
+      if (dead.trim() === "1") break;
+      await delay(100);
+    }
+    if (!(await hasBackendSession())) return;
+    const dead = await capture([
+      "tmux",
+      "display-message",
+      "-p",
+      "-t",
+      `${tmux.backend.session}:${tmux.backend.window}`,
+      "#{pane_dead}",
+    ]);
+    if (dead.trim() !== "1")
+      throw new Error("TRUST runtime did not stop gracefully; storage ownership was preserved for inspection");
     await run(["tmux", "kill-session", "-t", tmux.backend.session], "ignore");
   }
 }
@@ -294,7 +322,8 @@ async function mcpTool(name: string, arguments_: Record<string, unknown>) {
 async function assertBackend(expectedInstance?: string) {
   if (!(await hasBackendSession())) throw new Error("the TRUST backend session is not running");
   for (const [name, expected] of [
-    ["TRUST_DATABASE_PATH", database],
+    ["TRUST_STORAGE", "pglite"],
+    ["TRUST_PGLITE_DIRECTORY", database],
     ["TRUST_OPERATIONS_DIRECTORY", operations],
     ["TRUST_PORT", String(port)],
     ["TRUST_RUNTIME_LOG_PATH", runtimeLog],
@@ -307,7 +336,8 @@ async function assertBackend(expectedInstance?: string) {
     }
   }
   const started = await paneStartCommand(tmux.backend);
-  if (!started.includes("npm start")) throw new Error("the TRUST backend is not running the compiled runtime");
+  if (!started.includes("node packages/trust-runtime/dist/src/index.js"))
+    throw new Error("the TRUST backend is not running the compiled runtime");
 }
 
 async function assertFrontend() {
@@ -402,7 +432,7 @@ async function requireHealth() {
 
 async function healthy(instance?: string) {
   try {
-    const response = await fetch(`${endpoint}/health`);
+    const response = await fetch(`${endpoint}/health`, { signal: AbortSignal.timeout(1_000) });
     return response.ok && (!instance || response.headers.get("x-trust-runtime-instance") === instance);
   } catch {
     return false;
@@ -411,7 +441,10 @@ async function healthy(instance?: string) {
 
 async function webHealthy(instance?: string) {
   try {
-    const [page, proxy] = await Promise.all([fetch(webEndpoint), fetch(`${webEndpoint}/health`)]);
+    const [page, proxy] = await Promise.all([
+      fetch(webEndpoint, { signal: AbortSignal.timeout(1_000) }),
+      fetch(`${webEndpoint}/health`, { signal: AbortSignal.timeout(1_000) }),
+    ]);
     return page.ok && proxy.ok && (!instance || proxy.headers.get("x-trust-runtime-instance") === instance);
   } catch {
     return false;
