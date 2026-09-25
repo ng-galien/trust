@@ -9,17 +9,29 @@ for the original checkouts, preserved history, data boundaries and verification.
 
 | Service | Address | Retained data | Current role |
 | --- | --- | --- | --- |
-| Project runtime / global MCP | `127.0.0.1:4498` | `.trust/project/runtime.sqlite` | 58 Plans; existing process left running |
+| Project runtime / global MCP | `127.0.0.1:4498` | `.trust/project/runtime.sqlite` | 58 Plans; current main build, catalog schema activated |
+| Project web | `127.0.0.1:4176` | None | Compiled main build, proxy to project runtime 4498 |
 | Mobile web gateway | `127.0.0.1:4173` | None | Main-checkout build; existing Tailscale mapping on HTTPS port 18444 |
 | Mobile runtime | `127.0.0.1:4318` | `~/Library/Application Support/TRUST/mobile-preview/state/runtime.sqlite` | 16 Plans; extension host, restarted from main |
 | Extension PostgreSQL | `127.0.0.1:15439` | Docker volume `trust-mobile-pg-data` | Existing articles, subjects, forms, responses, templates and notifications |
 
-The retained project runtime has **not** been restarted onto the newly built catalog schema.
-Its database still has the previous schema. Before restarting it, use the protected upgrade
-protocol below; never delete the database to make the new build start.
+The retained project runtime was upgraded and restarted on 2026-09-25. The additive
+catalog migration was rehearsed on a consistent backup, then applied while the runtime
+was stopped. All rows in 17 pre-existing data tables remained identical: 58 Plans,
+253 Plan revisions, 24 published Procedures and 101 Facts. Integrity and foreign-key
+checks passed. All 58 Plans are readable through paginated RPC; catalog reads succeed.
+Private backups and verification records are in `.trust/baseline-20260925-final/`.
+The opaque pagination cursor changes across restart; Plan contents remained identical.
 The mobile runtime received that additive catalog-table upgrade during relocation; all rows
 in every pre-existing table other than the schema digest were compared and remained identical.
 The extension's PostgreSQL database was not migrated or replaced during this relocation.
+
+The project runtime and compiled web preview are supervised by
+`~/Library/LaunchAgents/com.trust.project-runtime.plist` and
+`~/Library/LaunchAgents/com.trust.project-web.plist`. They use `.trust/project/start.sh`
+and `.trust/project/start-web-baseline.sh`, respectively, sourcing the retained
+`.trust/project/environment`. The web launcher runs Vite preview against `apps/trust-web`
+on loopback port 4176; it does not seed or reset the database.
 
 The mobile service is started by `~/Library/LaunchAgents/com.trust.mobile-preview.plist`.
 Its launcher is `.trust/mobile-preview-start.py` in the main checkout, and its installation file is
@@ -83,7 +95,8 @@ verifies the backup, adds the table in one transaction and checks foreign keys a
 It refuses to overwrite an existing backup. Before restart, compare Plan and published Procedure
 counts with the pre-upgrade inventory; after restart verify `operation.list`, `procedure.list`,
 `catalog.metadata.read` and retained Plans through the project MCP/RPC, plus SQLite integrity.
-No catalog metadata schema upgrade of the retained project database is recorded here yet.
+This activation was completed on 2026-09-25; see the current inventory above. The
+commands in this historical section describe the upgrade protocol, not pending work.
 
 ## Archived SQLite inventory
 

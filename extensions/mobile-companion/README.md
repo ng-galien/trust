@@ -205,3 +205,11 @@ code-moniker check . --report
 ```
 
 The extension acceptance starts a real runtime and PGlite directory, exercises prepare/start/stop, MCP publish/read, schema and answer conflicts, direct HTTP response reading, SQL constraints, restart persistence and a Runner-executed HTTP Operation qualified by a Procedure. It also upgrades a copied v1 database with an existing answer through v5 and checks the answer and timestamp through the public HTTP and MCP paths while the backup remains v1. Subject acceptance verifies transactional target identity, revision conflicts and refusal of an unanswered decision link. The push acceptance verifies a payload-free request, VAPID signature and expiry, endpoint allowlist, durable subscription, retry after a transient 503 and 410 cleanup against a fake push service. The opt-in PostgreSQL migration acceptance uses a real loopback database, migrates a closed v5 source and reads article history, responses, subjects and notification status through a second public runtime. The reader-role acceptance checks SELECT and denies write, CREATE and push-secret access. Browser acceptance exercises subject-to-source-to-subject navigation at 412 and 884 px on an isolated v5 runtime. Headless Chromium on this host reports notification permission denied even when automation grants it, so local browser acceptance does not claim a displayed OS notification. Shell acceptance checks the optional password on runtime and app routes and verifies that credentials are not forwarded. A separate local integration run used Maket's real document reader through the compiled TRUST shell and observed a live WebSocket update; that run does not prove locked-phone delivery.
+
+## Functional presentation
+
+The concise French presentation [TRUST — des procédures au suivi d’un projet](docs/fr/presentation.md)
+is user-facing content published as an autonomous article in the extension. It explains
+the three actors, Procedure/Plan execution, and the subject as an explicit aggregation
+of articles, documents, execution and decisions. It distinguishes the existing
+single-Plan execution view from future cross-Plan exploration.

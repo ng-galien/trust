@@ -34,13 +34,14 @@ This does not activate that old identity-wide schema in either retained database
 
 ## Data preserved independently
 
-- Main runtime: 58 Plans in `.trust/project/runtime.sqlite`; original process kept running.
+- Main runtime: 58 Plans in `.trust/project/runtime.sqlite`; upgraded and restarted on main after the initial consolidation.
 - Mobile runtime: 16 Plans in the retained mobile state directory; moved to the main build.
 - Extension: the existing PostgreSQL container and named volume, on port 15439.
 - Legacy PGlite directories remain as prior migration fallbacks; they are not live stores.
 - Neither runtime initially had a `catalog_metadata_revisions` table. No competing
   stored catalog metadata was observed. The mobile runtime needed the additive table
-  for the current main build; the project runtime has not been upgraded.
+  for the current main build. The project runtime subsequently received the same additive
+  upgrade, with all rows of its 17 prior data tables verified unchanged.
 
 Private recovery material is under `.trust/consolidation-20260925/`: complete tracked and
 untracked source archives for all three checkouts, binary working-copy patches, a Git bundle,
@@ -93,3 +94,30 @@ The remaining untracked quiz inputs, answer state and helper files under
 in its recovery archive, excluded from these commits pending a separate review of retained
 session data versus reusable source. No archive, response, key or database was committed.
 
+
+## Retained baseline activation
+
+The owner requested completion of the remaining schema activation and both running
+interfaces. The main build and mobile extension build passed again. The project runtime
+was stopped only after a copy rehearsal and verified SQLite/PostgreSQL backups.
+The additive catalog migration preserved every row in all 17 existing data tables.
+Runtime 4498 and the compiled web interface 4176 now run under launchd from main.
+The browser displayed retained Plans; paginated RPC returned all 58. Catalog metadata,
+Operation and Procedure reads succeeded. Four retained mobile API baselines (projects,
+article, submitted response, subject) remained identical.
+
+The first backup attempt used an incorrect PostgreSQL role and stopped before any
+service interruption. It was rerun with the documented `postgres` administrator. A
+strict API-envelope comparison subsequently detected a changed opaque pagination
+cursor across restart; Plan contents were identical. Complete paginated reading and
+the row comparison established preservation independently of that cursor.
+
+Recovery material and verification are in `.trust/baseline-20260925-final/`. Earlier
+backups remain retained. The user confirmed Tailscale access on the phone during this
+activation. HTTPS from the Mac itself failed during TLS negotiation; investigation
+was stopped at the user's direction after that phone confirmation. The existing
+18444 mapping remains unchanged.
+
+The owner explicitly deferred the pre-existing quiz/session files. They remain
+untouched and untracked; this is a recorded exception to checkout cleanup, not
+pending application implementation or a pending live database migration.
