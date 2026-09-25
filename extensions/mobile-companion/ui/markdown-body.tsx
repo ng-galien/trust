@@ -207,7 +207,7 @@ export function MarkdownBody({
                 <div className={comparative ? "mobile-table-desktop" : undefined}>
                   <section
                     className="mobile-table-viewport"
-                    aria-label={french ? "Tableau" : "Table"}
+                    aria-label={locale.startsWith("fr") ? "Tableau" : "Table"}
                     // biome-ignore lint/a11y/noNoninteractiveTabindex: This scroll region needs keyboard access.
                     tabIndex={0}
                   >
@@ -223,7 +223,7 @@ export function MarkdownBody({
                     </summary>
                     <section
                       className="mobile-table-viewport"
-                      aria-label={french ? "Tableau" : "Table"}
+                      aria-label={locale.startsWith("fr") ? "Tableau" : "Table"}
                       // biome-ignore lint/a11y/noNoninteractiveTabindex: This scroll region needs keyboard access.
                       tabIndex={0}
                     >
