@@ -1,6 +1,8 @@
 import { readFile } from "node:fs/promises";
 import { expect, test } from "@playwright/test";
 
+const runtimeRpcUrl = `http://127.0.0.1:${process.env.TRUST_WEB_ACCEPTANCE_RUNTIME_PORT ?? "4390"}/rpc`;
+
 test.beforeEach(async ({ page }) => {
   await page.goto("/overview");
   await expect(page.locator('[data-doc="shell.sidebar"]')).toBeVisible({ timeout: 30_000 });
@@ -50,7 +52,7 @@ test("PostgreSQL Operation overview and expanded step render without a page cras
 test("every canonical Operation step variant opens overview and simulation", async ({ page, request }) => {
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
-  const response = await request.post("http://127.0.0.1:4390/rpc", {
+  const response = await request.post(runtimeRpcUrl, {
     data: { jsonrpc: "2.0", id: "variants", method: "operation.list", params: {} },
   });
   const catalog = (await response.json()).result.operations;
@@ -67,13 +69,90 @@ test("every canonical Operation step variant opens overview and simulation", asy
   expect(errors).toEqual([]);
 });
 
+test("catalog search finds Operation descriptions and tags and Procedure descriptions", async ({ page, request }) => {
+  test.setTimeout(90_000);
+  const original = await readFile(new URL("../../../assets/operations/git.head-read.feature", import.meta.url), "utf8");
+  const source = original
+    .replace("@operation:git.head-read", "@operation:ui.catalog-search @x-team:observability-lab")
+    .replace(
+      "Feature: Read Git HEAD and working tree",
+      "Feature: Catalog search operation\n\n  Finds the saffron observer phrase in this description.",
+    );
+  const saved = await (
+    await request.post(runtimeRpcUrl, {
+      data: {
+        jsonrpc: "2.0",
+        id: "catalog-search-operation",
+        method: "operation.save",
+        params: { source, sourceName: "ui.catalog-search@1.0.0.feature" },
+      },
+    })
+  ).json();
+  expect(saved.error).toBeUndefined();
+
+  await page.goto("/operations?q=saffron%20observer%20phrase");
+  await expect(page.locator('main a[href^="/operations/ui.catalog-search"]')).toHaveCount(1);
+  await expect(page.locator('[data-doc="home.content"]')).toContainText("in description");
+
+  await page.goto("/operations?q=observability-lab");
+  await expect(page.locator('main a[href^="/operations/ui.catalog-search"]')).toHaveCount(1);
+  await expect(page.locator('[data-doc="home.content"]')).toContainText("@x-team:observability-lab");
+
+  await page.goto("/procedures?q=Answers%20one%20question");
+  await expect(page.locator('main a[href^="/procedures/git-status"]')).toHaveCount(1);
+  await expect(page.locator('[data-doc="home.content"]')).toContainText("in description");
+
+  await page.goto("/operations/ui.catalog-search");
+  await page.getByRole("tab", { name: "Catalog details" }).click();
+  await page.getByRole("textbox", { name: "Title", exact: true }).fill("Catalog search revised");
+  await page.getByRole("textbox", { name: "Description", exact: true }).fill("Revised cedar discovery phrase.");
+  await page.getByRole("textbox", { name: "Classification tags", exact: true }).fill("@x-team:platform-search");
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(page.locator('[data-doc="catalog.metadata"]')).toContainText("Catalog revision 1");
+  await expect(page.getByRole("heading", { name: "Catalog search revised" })).toBeVisible();
+
+  await page.goto("/operations?q=platform-search");
+  await expect(page.locator('main a[href^="/operations/ui.catalog-search"]')).toHaveCount(1);
+  await page.goto("/operations?q=Catalog%20platform-search");
+  await expect(page.locator('main a[href^="/operations/ui.catalog-search"]')).toHaveCount(1);
+  await page.goto("/operations?q=observability-lab");
+  await expect(page.locator('main a[href^="/operations/ui.catalog-search"]')).toHaveCount(0);
+  await page.goto("/operations?q=cedar%20discovery%20phrase");
+  await expect(page.locator('main a[href^="/operations/ui.catalog-search"]')).toHaveCount(1);
+
+  await page.goto("/procedures/git-status");
+  await page.getByRole("tab", { name: "Catalog details" }).click();
+  await page.getByRole("textbox", { name: "Title", exact: true }).fill("Repository status guide");
+  await page.getByRole("textbox", { name: "Description", exact: true }).fill("Finds the violet repository clue.");
+  await page.getByRole("textbox", { name: "Classification tags", exact: true }).fill("@x-team:repository-review");
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(page.locator('[data-doc="catalog.metadata"]')).toContainText("Catalog revision 1");
+  await page.goto("/procedures?q=violet%20repository%20clue");
+  await expect(page.locator('main a[href^="/procedures/git-status"]')).toHaveCount(1);
+  await page.goto("/procedures?q=repository-review");
+  await expect(page.locator('main a[href^="/procedures/git-status"]')).toHaveCount(1);
+  await page.goto("/procedures?q=Repository%20repository-review");
+  await expect(page.locator('main a[href^="/procedures/git-status"]')).toHaveCount(1);
+
+  const catalogResponse = await (
+    await request.post(runtimeRpcUrl, {
+      data: { jsonrpc: "2.0", id: "catalog-method-snapshots", method: "operation.list", params: {} },
+    })
+  ).json();
+  const operation = catalogResponse.result.operations.find(
+    (entry: { operation: string }) => entry.operation === "ui.catalog-search",
+  );
+  expect(operation.title).toBe("Catalog search operation");
+  expect(operation.source).toContain("@version:1.0.0");
+});
+
 test("catalog identities contain semantically ordered exact versions and authoring preserves older Operation sources", async ({
   page,
   request,
 }) => {
   const rpc = async (method: string, params: unknown): Promise<any> => {
     const result = await (
-      await request.post("http://127.0.0.1:4390/rpc", { data: { jsonrpc: "2.0", id: method, method, params } })
+      await request.post(runtimeRpcUrl, { data: { jsonrpc: "2.0", id: method, method, params } })
     ).json();
     expect(result.error).toBeUndefined();
     return result.result;

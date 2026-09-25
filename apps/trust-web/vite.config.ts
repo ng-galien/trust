@@ -7,6 +7,55 @@ import { trustDocsMdx } from "./mdx.mjs";
 
 const runtime = process.env.TRUST_RUNTIME_URL ?? "http://127.0.0.1:4318";
 const port = Number(process.env.TRUST_WEB_PORT ?? "4173");
+const mobileUpstreams = (() => {
+  const raw = process.env.TRUST_MOBILE_UPSTREAMS;
+  if (!raw) return {} as Record<string, ProxyOptions>;
+  const entries: unknown = JSON.parse(raw);
+  if (!entries || typeof entries !== "object" || Array.isArray(entries)) throw new Error("Invalid mobile upstream map");
+  const proxies: Record<string, ProxyOptions> = {};
+  for (const [id, value] of Object.entries(entries)) {
+    if (!/^[a-z][a-z0-9-]*$/.test(id) || !value || typeof value !== "object" || Array.isArray(value))
+      throw new Error("Invalid mobile upstream entry");
+    const entry = value as Record<string, unknown>;
+    if (
+      Object.keys(entry).some((key) => !["url", "pathMode"].includes(key)) ||
+      typeof entry.url !== "string" ||
+      (entry.pathMode !== undefined && entry.pathMode !== "strip" && entry.pathMode !== "preserve")
+    )
+      throw new Error("Invalid mobile upstream entry");
+    const target = new URL(entry.url);
+    if (
+      target.protocol !== "http:" ||
+      target.hostname !== "127.0.0.1" ||
+      !target.port ||
+      target.pathname !== "/" ||
+      target.search ||
+      target.hash ||
+      target.username ||
+      target.password
+    )
+      throw new Error("Mobile upstreams must be exact loopback HTTP origins");
+    proxies[`^/mobile/apps/${id}(?:/|$)`] = {
+      target: target.origin,
+      ws: true,
+      changeOrigin: true,
+      configure: (proxy) => {
+        proxy.on("proxyReq", (upstream, request) => {
+          if (request.headers.origin) upstream.setHeader("Origin", target.origin);
+          if (request.headers.referer) upstream.setHeader("Referer", `${target.origin}/`);
+        });
+        proxy.on("proxyReqWs", (upstream, request) => {
+          if (request.headers.origin) upstream.setHeader("Origin", target.origin);
+          if (request.headers.referer) upstream.setHeader("Referer", `${target.origin}/`);
+        });
+      },
+      ...(entry.pathMode === "preserve"
+        ? {}
+        : { rewrite: (path) => path.replace(new RegExp(`^/mobile/apps/${id}`), "") || "/" }),
+    };
+  }
+  return proxies;
+})();
 
 // An aborted upstream stream does not emit `end`; close the browser response so EventSource reconnects.
 const streamingProxy: ProxyOptions["configure"] = (proxy) => {
@@ -44,6 +93,7 @@ export default defineConfig({
       ignored: ["**/@mf-types/**", "**/.mf/**"],
     },
     proxy: {
+      ...mobileUpstreams,
       "/health": runtime,
       "/extensions": {
         target: runtime,
@@ -60,6 +110,7 @@ export default defineConfig({
     port,
     strictPort: true,
     proxy: {
+      ...mobileUpstreams,
       "/health": runtime,
       "/extensions": {
         target: runtime,

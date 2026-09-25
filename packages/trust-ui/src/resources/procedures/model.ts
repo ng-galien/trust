@@ -1,9 +1,10 @@
-import type { PlanSummaryView, PublishedProcedure, RuntimeJsonObject } from "@trust/extension-sdk";
+import type { CatalogMetadata, PlanSummaryView, PublishedProcedure } from "@trust/extension-sdk";
 import type { CompiledProcedure } from "@trust/procedure";
 import { procedureLanguage } from "@trust/procedure/language";
 import { i18next } from "../../i18n/index.js";
 import { catalogIdentities } from "../../lib/catalog-versions.js";
 import { type Family, familyOf, otherFamily } from "../operations/classification.js";
+import { catalogTags } from "../shared/catalog-tags.js";
 
 type ViewMode = "cards" | "list";
 type SortKey = "name" | "published" | "checks" | "plans";
@@ -12,6 +13,8 @@ export type GroupKey = "none" | "family";
 export interface ProcedureRow {
   published: PublishedProcedure;
   procedure: CompiledProcedure;
+  metadata: CatalogMetadata;
+  tags: string[];
   id: string;
   version: string;
   title: string;
@@ -28,26 +31,45 @@ export interface ProcedureRow {
   publishedBy: string;
 }
 
-export function toRows(procedures: PublishedProcedure[], plans: PlanSummaryView[]): ProcedureRow[] {
+export function toRows(
+  procedures: PublishedProcedure[],
+  plans: PlanSummaryView[],
+  metadata: CatalogMetadata[] = [],
+): ProcedureRow[] {
   return catalogIdentities(
     procedures,
     (value) => value.procedure.procedure,
     (value) => value.procedure.version,
   ).map((published) => {
     const procedure = published.procedure;
+    const current: CatalogMetadata = metadata.find(
+      (entry) => entry.name === procedure.procedure && entry.version === procedure.version,
+    ) ?? {
+      kind: "procedure" as const,
+      name: procedure.procedure,
+      version: procedure.version,
+      revision: 0,
+      title: procedure.title,
+      ...(procedure.description === undefined ? {} : { description: procedure.description }),
+      classification: {},
+    };
     const operations = Array.from(new Set(procedure.operations.map((used) => used.operation))).sort();
     const domains = Array.from(new Set(operations.map((operation) => operation.split(".")[0] ?? "").filter(Boolean)));
     const executing = plans.filter((plan) => plan.procedure === procedure.procedure);
     return {
       published,
       procedure,
+      metadata: current,
+      tags: catalogTags(current.classification),
       id: procedure.procedure,
       version: procedure.version,
-      title: procedure.title,
-      description: procedure.description,
+      title: current.title,
+      description: current.description,
       operations,
       domains,
-      family: dominantFamily(operations, procedure),
+      family: current.classification.family?.[0]
+        ? familyOf("", undefined, current.classification)
+        : dominantFamily(procedure),
       inputs: procedure.roles.filter((role) => role.source.kind === "plan-input").map((role) => role.name),
       scenarioCount: procedure.scenarios.length,
       checkCount: procedure.checks.length,
@@ -60,7 +82,7 @@ export function toRows(procedures: PublishedProcedure[], plans: PlanSummaryView[
 }
 
 /** Family of the operations a procedure uses (most frequent), derived until procedures carry tags. */
-function dominantFamily(operations: string[], procedure: CompiledProcedure): Family {
+function dominantFamily(procedure: CompiledProcedure): Family {
   const votes = new Map<string, { family: Family; count: number }>();
   for (const used of procedure.operations) {
     const family = familyOf(used.operation.split(".")[0] ?? "", used.definition);
@@ -118,28 +140,40 @@ export const emptyFilters: Pick<Filters, "q" | "family" | "operations" | "plans"
 
 function matchesQuery(row: ProcedureRow, needle: string): boolean {
   if (!needle) return true;
-  return (
-    `${row.id} ${row.title}`.toLowerCase().includes(needle) ||
-    row.operations.some((operation) => operation.toLowerCase().includes(needle)) ||
-    row.procedure.checks.some((check) => check.name.toLowerCase().includes(needle)) ||
-    row.inputs.some((input) => input.toLowerCase().includes(needle))
-  );
+  const classification = Object.entries(row.metadata.classification).flatMap(([key, values]) => [key, ...values]);
+  const text = [
+    row.id,
+    row.title,
+    row.description ?? "",
+    ...classification,
+    ...row.operations,
+    ...row.procedure.checks.map((check) => check.name),
+    ...row.inputs,
+  ]
+    .join(" ")
+    .toLocaleLowerCase();
+  return needle.split(/\s+/).every((term) => text.includes(term));
 }
 
 export function matchReason(row: ProcedureRow, q: string): string | undefined {
-  const needle = q.trim().toLowerCase();
-  if (!needle || `${row.id} ${row.title}`.toLowerCase().includes(needle)) return undefined;
-  const operation = row.operations.find((entry) => entry.toLowerCase().includes(needle));
+  const terms = q.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);
+  if (terms.length === 0) return undefined;
+  const matches = (value: string) => terms.some((term) => value.toLocaleLowerCase().includes(term));
+  if (terms.every((term) => `${row.id} ${row.title}`.toLocaleLowerCase().includes(term))) return undefined;
+  if (row.description && matches(row.description)) return i18next.t("procedures.model.matchDescription");
+  const tag = row.tags.find(matches);
+  if (tag) return i18next.t("procedures.model.matchTag", { tag });
+  const operation = row.operations.find(matches);
   if (operation) return i18next.t("procedures.model.matchUses", { operation });
-  const check = row.procedure.checks.find((entry) => entry.name.toLowerCase().includes(needle));
+  const check = row.procedure.checks.find((entry) => matches(entry.name));
   if (check) return i18next.t("procedures.model.matchCheck", { name: check.name });
-  const input = row.inputs.find((entry) => entry.toLowerCase().includes(needle));
+  const input = row.inputs.find(matches);
   if (input) return i18next.t("procedures.model.matchNeeds", { input });
   return undefined;
 }
 
 export function applyFacets(rows: ProcedureRow[], filters: Filters, except?: keyof Filters): ProcedureRow[] {
-  const needle = filters.q.trim().toLowerCase();
+  const needle = filters.q.trim().toLocaleLowerCase();
   return rows.filter(
     (row) =>
       (except === "q" || matchesQuery(row, needle)) &&

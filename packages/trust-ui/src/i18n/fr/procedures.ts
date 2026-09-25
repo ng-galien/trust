@@ -21,7 +21,8 @@ export const procedures: Translation<typeof en> = {
       executedOnce: "Exécutée au moins une fois",
       neverExecuted: "Jamais exécutée",
     },
-    searchPlaceholder: "Rechercher un nom, un titre, un check, une opération ou une entrée, ou choisir des filtres…",
+    searchPlaceholder:
+      "Rechercher un nom, un titre, une description, un tag, un check, une opération ou une entrée, ou choisir des filtres…",
     plansMark: {
       never: "Jamais exécutée",
       running_one: "{{active}} en cours · {{count}} plan",
@@ -183,6 +184,8 @@ export const procedures: Translation<typeof en> = {
     matchUses: "utilise {{operation}}",
     matchCheck: "check « {{name}} »",
     matchNeeds: "requiert {{input}}",
+    matchDescription: "dans la description",
+    matchTag: "tag {{tag}}",
     validRfc3339: "une date RFC 3339 valide",
     contextRole: "contexte « {{role}} »",
     checkField: "Check « {{check}} » · {{field}}",

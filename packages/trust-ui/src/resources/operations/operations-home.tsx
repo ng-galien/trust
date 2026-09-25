@@ -5,7 +5,7 @@ import { Link, useLocation } from "react-router";
 
 import { useCurrentEnvironment } from "../../lib/environment.js";
 import { cx, plural } from "../../lib/format.js";
-import { useOperationEnvironments, useOperations, useProcedures } from "../../lib/runtime-context.js";
+import { useOperationCatalog, useOperationEnvironments, useProcedures } from "../../lib/runtime-context.js";
 import { type FacetGroupSpec, FilterBox } from "../../ui/filter-box.js";
 import { Popover } from "../../ui/menu.js";
 import { facetHelpers } from "../shared/facets.js";
@@ -31,7 +31,7 @@ import {
 
 export function OperationsHome() {
   const { t } = useTranslation();
-  const operations = useOperations();
+  const operations = useOperationCatalog();
   const procedures = useProcedures();
   const operationEnvironments = useOperationEnvironments();
   const location = useLocation();
@@ -39,7 +39,13 @@ export function OperationsHome() {
   const overlayOpen = location.pathname !== "/operations" && location.pathname !== "/operations/";
 
   const rows = useMemo(
-    () => toRows(operations.data ?? [], procedures.data ?? [], operationEnvironments.data),
+    () =>
+      toRows(
+        operations.data?.operations ?? [],
+        procedures.data ?? [],
+        operationEnvironments.data,
+        operations.data?.metadata,
+      ),
     [operations.data, procedures.data, operationEnvironments.data],
   );
   const visible = useMemo(() => applyFilters(rows, filters), [rows, filters]);
@@ -309,8 +315,9 @@ function CardsView({ rows, search, q }: { rows: OperationRow[]; search: string; 
             </>
           }
           version={row.operation.version}
-          title={row.operation.title}
-          description={row.operation.description}
+          title={row.metadata.title}
+          description={row.metadata.description}
+          tags={row.tags}
           id={row.id}
           note={matchReason(row, q) ? t("operations.home.matches", { reason: matchReason(row, q) ?? "" }) : undefined}
           facts={[
@@ -352,10 +359,11 @@ function ListView({ rows, search, q }: { rows: OperationRow[]; search: string; q
         <TitleCell
           key="t"
           to={`/operations/${encodeURIComponent(row.id)}${search}`}
-          title={row.operation.title}
+          title={row.metadata.title}
           id={row.id}
           version={row.operation.version}
-          description={row.operation.description}
+          description={row.metadata.description}
+          tags={row.tags}
           note={matchReason(row, q) ? t("operations.home.matches", { reason: matchReason(row, q) ?? "" }) : undefined}
         />,
         <div key="i" className="flex flex-col gap-1">

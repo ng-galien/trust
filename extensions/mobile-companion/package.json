@@ -1,0 +1,33 @@
+{
+  "name": "@trust-extension/mobile-companion",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build:server": "node build-server.mjs",
+    "build:ui": "vite build --config vite.config.ts",
+    "watch:ui": "node scripts/watch-ui.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "build": "npm run build:server && npm run build:ui",
+    "test:acceptance": "npm run build --workspace=@trust/runtime && npm run package:skill --workspace=@trust/runner && npm run build:server && node --test acceptance/*.acceptance.test.mjs"
+  },
+  "dependencies": {
+    "@electric-sql/pglite": "0.5.8",
+    "ajv": "^8.20.0",
+    "liquidjs": "10.29.0",
+    "mermaid": "^11.16.1",
+    "pg": "8.23.0",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1",
+    "zustand": "^5.0.15"
+  },
+  "devDependencies": {
+    "@module-federation/vite": "^1.21.3",
+    "@trust/extension-sdk": "file:../../packages/trust-extension-sdk",
+    "@vitejs/plugin-react": "^6.0.5",
+    "esbuild": "^0.28.2",
+    "vite": "^8.2.1"
+  }
+}

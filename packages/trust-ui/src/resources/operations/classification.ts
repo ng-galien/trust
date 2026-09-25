@@ -1,3 +1,4 @@
+import type { CatalogMetadata } from "@trust/extension-sdk";
 import type { CompiledOperation } from "@trust/operation";
 import { matchOperationStep } from "@trust/operation/match";
 import { i18next } from "../../i18n/index.js";
@@ -66,8 +67,12 @@ export const otherFamily: Family = {
   domains: [],
 };
 
-export function familyOf(domain: string, operation?: CompiledOperation): Family {
-  const tagged = operation?.classification?.family?.[0];
+export function familyOf(
+  domain: string,
+  operation?: CompiledOperation,
+  classification: CatalogMetadata["classification"] | undefined = operation?.classification,
+): Family {
+  const tagged = classification?.family?.[0];
   if (tagged)
     return families.find((family) => family.id === tagged) ?? { id: tagged, label: labelOf(tagged), domains: [] };
   return families.find((family) => family.domains.includes(domain)) ?? otherFamily;
@@ -81,8 +86,11 @@ const actingSuffixes =
   /(release|build|record|deploy|load|promote|rotat|publish|write|create|apply|push|delete|remove|start|stop|restart|admission)/i;
 
 /** Observe: reads a system without changing it. Act: performs an effect (POST, build, release…). */
-export function natureOf(operation: CompiledOperation): Nature {
-  const tagged = operation.classification?.nature?.[0];
+export function natureOf(
+  operation: CompiledOperation,
+  classification: CatalogMetadata["classification"] = operation.classification ?? {},
+): Nature {
+  const tagged = classification.nature?.[0];
   if (tagged === "observe" || tagged === "act") return tagged;
   const posts = operation.steps.some((step) =>
     matchOperationStep(step, {

@@ -4,7 +4,7 @@ import { useTranslation } from "react-i18next";
 import { Link, useLocation } from "react-router";
 
 import { plural, relativeTime } from "../../lib/format.js";
-import { usePlans, useProcedures } from "../../lib/runtime-context.js";
+import { usePlans, useProcedureCatalog } from "../../lib/runtime-context.js";
 import { Badge } from "../../ui/badge.js";
 import { type FacetGroupSpec, FilterBox } from "../../ui/filter-box.js";
 import { families, otherFamily } from "../operations/classification.js";
@@ -27,14 +27,17 @@ import {
 } from "./model.js";
 
 export function ProceduresHome() {
-  const procedures = useProcedures();
+  const procedures = useProcedureCatalog();
   const plans = usePlans();
   const location = useLocation();
   const { t } = useTranslation();
   const [filters, update] = useUrlFilters(readFilters, writeFilters, "procedures");
   const overlayOpen = location.pathname !== "/procedures" && location.pathname !== "/procedures/";
 
-  const rows = useMemo(() => toRows(procedures.data ?? [], plans.data ?? []), [procedures.data, plans.data]);
+  const rows = useMemo(
+    () => toRows(procedures.data?.procedures ?? [], plans.data ?? [], procedures.data?.metadata),
+    [procedures.data, plans.data],
+  );
   const visible = useMemo(() => applyFilters(rows, filters), [rows, filters]);
   const groups = useMemo(() => groupRows(visible, filters.group), [visible, filters.group]);
 
@@ -199,6 +202,7 @@ function CardsView({ rows, search, q }: { rows: ProcedureRow[]; search: string; 
           version={row.version}
           title={row.title}
           description={row.description}
+          tags={row.tags}
           id={row.id}
           note={matchReason(row, q)}
           facts={[
@@ -233,6 +237,7 @@ function ListView({ rows, search, q }: { rows: ProcedureRow[]; search: string; q
           id={row.id}
           version={row.version}
           description={row.description}
+          tags={row.tags}
           note={matchReason(row, q)}
         />,
         <div key="s" className="flex flex-col gap-1">

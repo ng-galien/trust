@@ -21,6 +21,8 @@ export const operations = {
     matchProduces: "produces {{name}}",
     matchNeedsInput: "needs input {{name}}",
     matchNeedsEnvironment: "needs environment {{name}}",
+    matchDescription: "in description",
+    matchTag: "tag {{tag}}",
   },
   home: {
     title: "Operations",
@@ -43,7 +45,7 @@ export const operations = {
       hasEnvironment: "Has a compatible environment",
       noEnvironment: "No environment can run it",
     },
-    searchPlaceholder: "Search name, title or field, or pick filters…",
+    searchPlaceholder: "Search name, title, description, tag or field, or pick filters…",
     runnable: {
       notOnCurrent: "Not on {{current}}",
       notOnCurrentHint: "Not runnable on the current environment {{current}} — runnable on {{names}}",

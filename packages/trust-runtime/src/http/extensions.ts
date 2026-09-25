@@ -90,6 +90,21 @@ export function createExtensionsHttpHandler({
           return;
         }
       }
+      if (surface === "trust" && rest[0] === "episodes" && rest.length === 2) {
+        extension.requireGrant("plans.read");
+        try {
+          const episode = await planReader.readDelegationEpisode(decodeURIComponent(rest[1]!));
+          if (episode.root.plan.environment !== extension.installation.environment) throw new Error();
+          if (
+            episode.branches.some(({ child }) => child && child.plan.environment !== extension.installation.environment)
+          )
+            throw new Error();
+          response.json(episode);
+        } catch {
+          throw new ExtensionError(404, "plan-not-found");
+        }
+        return;
+      }
       if (surface === "events" && rest.length === 0) {
         extension.requireGrant("plans.read");
         extension.requireGrant("plans.subscribe");

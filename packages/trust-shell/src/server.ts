@@ -1,5 +1,5 @@
 import { type ChildProcess, spawn } from "node:child_process";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID, timingSafeEqual } from "node:crypto";
 import { constants, createReadStream } from "node:fs";
 import { copyFile, mkdir, readdir, stat } from "node:fs/promises";
 import {
@@ -17,6 +17,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import type { TrustInstallation } from "./installation.js";
 
 const PROXY_PATHS = ["/health", "/rpc", "/mcp", "/otlp", "/events", "/extensions"];
+const mobileGatewaySockets = new WeakMap<Server, Set<Duplex>>();
 
 export interface TrustServerOptions {
   readonly installation: TrustInstallation;
@@ -25,6 +26,59 @@ export interface TrustServerOptions {
   readonly webPort?: number;
   readonly stateDirectory: string;
   readonly runtimeEnvironment?: Readonly<Record<string, string>>;
+  /** Trusted loopback upstreams; browser paths never select a target URL. */
+  readonly mobileUpstreams?: Readonly<Record<string, { url: string; pathMode?: "strip" | "preserve" }>>;
+  /** Optional password gate for every browser-visible web route and upgrade. */
+  readonly webAccessPassword?: string;
+}
+
+type MobileUpstream = { readonly host: "127.0.0.1"; readonly port: number; readonly pathMode: "strip" | "preserve" };
+
+export function parseMobileUpstreams(value: string | undefined): Readonly<Record<string, MobileUpstream>> {
+  if (value === undefined || value === "") return {};
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(value);
+  } catch {
+    throw new TypeError("Invalid TRUST_MOBILE_UPSTREAMS JSON");
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed))
+    throw new TypeError("Invalid TRUST_MOBILE_UPSTREAMS map");
+  const result: Record<string, MobileUpstream> = {};
+  for (const [id, raw] of Object.entries(parsed)) {
+    if (!/^[a-z][a-z0-9-]*$/.test(id) || !raw || typeof raw !== "object" || Array.isArray(raw))
+      throw new TypeError("Invalid mobile upstream entry");
+    const entry = raw as Record<string, unknown>;
+    if (
+      Object.keys(entry).some((key) => !["url", "pathMode"].includes(key)) ||
+      typeof entry.url !== "string" ||
+      (entry.pathMode !== undefined && entry.pathMode !== "strip" && entry.pathMode !== "preserve")
+    )
+      throw new TypeError("Invalid mobile upstream entry");
+    let target: URL;
+    try {
+      target = new URL(entry.url);
+    } catch {
+      throw new TypeError("Invalid mobile upstream URL");
+    }
+    if (
+      target.protocol !== "http:" ||
+      target.hostname !== "127.0.0.1" ||
+      !target.port ||
+      target.pathname !== "/" ||
+      target.search ||
+      target.hash ||
+      target.username ||
+      target.password
+    )
+      throw new TypeError("Mobile upstreams must be exact loopback HTTP origins");
+    result[id] = {
+      host: "127.0.0.1",
+      port: validatePort(Number(target.port), "mobile upstream"),
+      pathMode: entry.pathMode === "preserve" ? "preserve" : "strip",
+    };
+  }
+  return result;
 }
 
 export interface TrustServerStatus {
@@ -43,6 +97,9 @@ export async function startTrustServer(options: TrustServerOptions): Promise<Run
   const host = options.host ?? "127.0.0.1";
   const runtimePort = validatePort(options.runtimePort ?? 4318, "runtime");
   const webPort = validatePort(options.webPort ?? 4173, "web");
+  const webAccessPassword = options.webAccessPassword ?? process.env.TRUST_WEB_ACCESS_PASSWORD;
+  if (webAccessPassword && webAccessPassword.length < 20)
+    throw new TypeError("TRUST_WEB_ACCESS_PASSWORD must contain at least 20 characters");
   if (runtimePort === webPort) throw new TypeError("Runtime and web ports must be different");
   const stateDirectory = absoluteDirectory(options.stateDirectory, "Server state directory");
   await mkdir(stateDirectory, { recursive: true });
@@ -51,11 +108,12 @@ export async function startTrustServer(options: TrustServerOptions): Promise<Run
   await Promise.all([assertPortAvailable(host, runtimePort), assertPortAvailable(host, webPort)]);
 
   const instance = randomUUID();
+  const runtimeEnvironment = { ...process.env, ...options.runtimeEnvironment };
+  delete runtimeEnvironment.TRUST_WEB_ACCESS_PASSWORD;
   const runtime = spawn(process.execPath, [options.installation.runtimeEntry], {
     cwd: options.installation.root,
     env: {
-      ...process.env,
-      ...options.runtimeEnvironment,
+      ...runtimeEnvironment,
       TRUST_HOST: host,
       TRUST_PORT: String(runtimePort),
       TRUST_DATABASE_PATH: path.join(stateDirectory, "runtime.sqlite"),
@@ -68,7 +126,17 @@ export async function startTrustServer(options: TrustServerOptions): Promise<Run
   });
   try {
     await waitForRuntime(runtime, `http://${host}:${runtimePort}/health`, instance);
-    const web = createWebServer(options.installation.webDirectory, host, runtimePort);
+    const mobileUpstreams =
+      options.mobileUpstreams === undefined
+        ? parseMobileUpstreams(process.env.TRUST_MOBILE_UPSTREAMS)
+        : parseMobileUpstreams(JSON.stringify(options.mobileUpstreams));
+    const web = createWebServer(
+      options.installation.webDirectory,
+      host,
+      runtimePort,
+      mobileUpstreams,
+      webAccessPassword,
+    );
     await listen(web, host, webPort);
     return {
       url: `http://${host}:${webPort}`,
@@ -102,9 +170,12 @@ export async function readTrustServerStatus(host = "127.0.0.1", webPort = 4173):
   validatePort(webPort, "web");
   const url = `http://${host}:${webPort}`;
   try {
+    const headers = process.env.TRUST_WEB_ACCESS_PASSWORD
+      ? { authorization: `Basic ${Buffer.from(`mobile:${process.env.TRUST_WEB_ACCESS_PASSWORD}`).toString("base64")}` }
+      : undefined;
     const [page, health] = await Promise.all([
-      fetch(url, { signal: AbortSignal.timeout(1_500) }),
-      fetch(`${url}/health`, { signal: AbortSignal.timeout(1_500) }),
+      fetch(url, { ...(headers ? { headers } : {}), signal: AbortSignal.timeout(1_500) }),
+      fetch(`${url}/health`, { ...(headers ? { headers } : {}), signal: AbortSignal.timeout(1_500) }),
     ]);
     const runtimeAvailable = health.ok && (await isTrustHealthResponse(health));
     const pageIsTrust = page.ok && (await page.text()).includes("<title>TRUST</title>");
@@ -123,9 +194,40 @@ async function isTrustHealthResponse(response: Response): Promise<boolean> {
   }
 }
 
-function createWebServer(webDirectory: string, runtimeHost: string, runtimePort: number): Server {
+function createWebServer(
+  webDirectory: string,
+  runtimeHost: string,
+  runtimePort: number,
+  mobileUpstreams: Readonly<Record<string, MobileUpstream>>,
+  webAccessPassword?: string,
+): Server {
+  const expectedAuthorization = webAccessPassword
+    ? `Basic ${Buffer.from(`mobile:${webAccessPassword}`).toString("base64")}`
+    : null;
   const server = createServer((request, response) => {
+    if (!authorized(request, expectedAuthorization)) {
+      response.writeHead(401, accessChallenge()).end();
+      return;
+    }
     const pathname = requestPath(request.url);
+    if (pathname === "/mobile/mobile-comp" || pathname === "/mobile/mobile-comp/") {
+      if (request.method !== "GET" && request.method !== "HEAD") {
+        response.writeHead(405, { allow: "GET, HEAD" }).end();
+        return;
+      }
+      const query = new URL(request.url ?? "", "http://localhost").search;
+      response.writeHead(302, { location: `/mobile/mobile-companion/${query}`, "cache-control": "no-store" }).end();
+      return;
+    }
+    const gateway = mobileGatewayRequest(request.url, mobileUpstreams);
+    if (gateway) {
+      proxyHttp(request, response, gateway.upstream.host, gateway.upstream.port, gateway.path, true);
+      return;
+    }
+    if (pathname.startsWith("/mobile/apps/")) {
+      response.writeHead(404).end();
+      return;
+    }
     const extensionNavigation =
       request.method === "GET" &&
       (request.headers.accept ?? "").split(",").some((value) => value.trim().split(";", 1)[0] === "text/html") &&
@@ -139,7 +241,22 @@ function createWebServer(webDirectory: string, runtimeHost: string, runtimePort:
     }
     void serveWebFile(webDirectory, pathname, request, response);
   });
+  const upgraded = new Set<Duplex>();
+  mobileGatewaySockets.set(server, upgraded);
   server.on("upgrade", (request, socket, head) => {
+    if (!authorized(request, expectedAuthorization)) {
+      socket.end(
+        'HTTP/1.1 401 Unauthorized\r\nWWW-Authenticate: Basic realm="TRUST mobile", charset="UTF-8"\r\nConnection: close\r\n\r\n',
+      );
+      return;
+    }
+    const gateway = mobileGatewayRequest(request.url, mobileUpstreams);
+    if (gateway) {
+      upgraded.add(socket);
+      socket.once("close", () => upgraded.delete(socket));
+      proxyWebSocket(request, socket, head, gateway.upstream.host, gateway.upstream.port, gateway.path, true);
+      return;
+    }
     if (requestPath(request.url) !== "/lsp") {
       socket.end("HTTP/1.1 404 Not Found\r\nConnection: close\r\n\r\n");
       return;
@@ -149,14 +266,39 @@ function createWebServer(webDirectory: string, runtimeHost: string, runtimePort:
   return server;
 }
 
-function proxyHttp(request: IncomingMessage, response: ServerResponse, runtimeHost: string, runtimePort: number): void {
+function authorized(request: IncomingMessage, expected: string | null): boolean {
+  if (expected === null) return true;
+  const received = typeof request.headers.authorization === "string" ? request.headers.authorization : "";
+  const digest = (value: string) => createHash("sha256").update(value).digest();
+  return timingSafeEqual(digest(received), digest(expected));
+}
+
+function accessChallenge(): Record<string, string> {
+  return { "www-authenticate": 'Basic realm="TRUST mobile", charset="UTF-8"', "cache-control": "no-store" };
+}
+
+function proxyHttp(
+  request: IncomingMessage,
+  response: ServerResponse,
+  runtimeHost: string,
+  runtimePort: number,
+  upstreamPath = request.url,
+  rewriteOrigin = false,
+): void {
+  const headers = { ...request.headers };
+  if (headers.authorization?.startsWith("Basic ")) delete headers.authorization;
   const upstream = httpRequest(
     {
       host: runtimeHost,
       port: runtimePort,
       method: request.method,
-      path: request.url,
-      headers: { ...request.headers, host: `${runtimeHost}:${runtimePort}` },
+      path: upstreamPath,
+      headers: {
+        ...headers,
+        host: `${runtimeHost}:${runtimePort}`,
+        ...(rewriteOrigin && request.headers.origin ? { origin: `http://${runtimeHost}:${runtimePort}` } : {}),
+        ...(rewriteOrigin && request.headers.referer ? { referer: `http://${runtimeHost}:${runtimePort}/` } : {}),
+      },
     },
     (incoming) => {
       response.writeHead(incoming.statusCode ?? 502, incoming.headers);
@@ -177,14 +319,22 @@ function proxyWebSocket(
   head: Buffer,
   runtimeHost: string,
   runtimePort: number,
+  upstreamPath = request.url,
+  rewriteOrigin = false,
 ): void {
   const upstream = connectSocket(runtimePort, runtimeHost);
   upstream.once("connect", () => {
-    upstream.write(`${request.method ?? "GET"} ${request.url ?? "/lsp"} HTTP/${request.httpVersion}\r\n`);
+    upstream.write(`${request.method ?? "GET"} ${upstreamPath ?? "/lsp"} HTTP/${request.httpVersion}\r\n`);
     for (let index = 0; index < request.rawHeaders.length; index += 2) {
       const name = request.rawHeaders[index];
       const value = request.rawHeaders[index + 1];
-      if (name !== undefined && value !== undefined) upstream.write(`${name}: ${value}\r\n`);
+      if (name?.toLowerCase() === "authorization" && value?.startsWith("Basic ")) continue;
+      if (name?.toLowerCase() === "host") upstream.write(`Host: ${runtimeHost}:${runtimePort}\r\n`);
+      else if (name?.toLowerCase() === "origin" && rewriteOrigin)
+        upstream.write(`Origin: http://${runtimeHost}:${runtimePort}\r\n`);
+      else if (name?.toLowerCase() === "referer" && rewriteOrigin)
+        upstream.write(`Referer: http://${runtimeHost}:${runtimePort}/\r\n`);
+      else if (name !== undefined && value !== undefined) upstream.write(`${name}: ${value}\r\n`);
     }
     upstream.write("\r\n");
     if (head.byteLength > 0) upstream.write(head);
@@ -192,6 +342,25 @@ function proxyWebSocket(
   });
   upstream.on("error", () => socket.destroy());
   socket.on("error", () => upstream.destroy());
+}
+
+function mobileGatewayRequest(
+  raw: string | undefined,
+  upstreams: Readonly<Record<string, MobileUpstream>>,
+): { upstream: MobileUpstream; path: string } | undefined {
+  if (raw === undefined) return undefined;
+  let url: URL;
+  try {
+    url = new URL(raw, "http://trust.invalid");
+  } catch {
+    return undefined;
+  }
+  const match = /^\/mobile\/apps\/([a-z][a-z0-9-]*)(\/.*)?$/.exec(url.pathname);
+  if (!match?.[1]) return undefined;
+  const upstream = upstreams[match[1]];
+  if (!upstream) return undefined;
+  const path = upstream.pathMode === "preserve" ? url.pathname : match[2] || "/";
+  return { upstream, path: `${path}${url.search}` };
 }
 
 async function serveWebFile(
@@ -224,7 +393,10 @@ async function serveWebFile(
     response.writeHead(200, {
       "content-length": information.size,
       "content-type": contentType(file),
-      "cache-control": file.endsWith("index.html") ? "no-cache" : "public, max-age=31536000, immutable",
+      "cache-control":
+        file.endsWith("index.html") || file.endsWith("/sw.js") || file.endsWith(".webmanifest")
+          ? "no-cache"
+          : "public, max-age=31536000, immutable",
     });
     if (request.method === "HEAD") response.end();
     else createReadStream(file).pipe(response);
@@ -251,6 +423,8 @@ function contentType(file: string): string {
       return "text/css; charset=utf-8";
     case ".json":
       return "application/json; charset=utf-8";
+    case ".webmanifest":
+      return "application/manifest+json; charset=utf-8";
     case ".svg":
       return "image/svg+xml";
     case ".png":
@@ -289,6 +463,7 @@ function listen(server: Server, host: string, port: number): Promise<void> {
 
 function closeServer(server: Server): Promise<void> {
   return new Promise((resolve, reject) => {
+    for (const socket of mobileGatewaySockets.get(server) ?? []) socket.destroy();
     server.close((error) => (error ? reject(error) : resolve()));
     server.closeAllConnections();
   });

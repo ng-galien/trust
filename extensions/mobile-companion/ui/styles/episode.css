@@ -1,0 +1,400 @@
+.mobile-episode {
+  scroll-margin-top: 82px;
+  margin: 24px 0 30px;
+  padding: 22px 0 20px;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  color: var(--text);
+}
+.mobile-episode-header,
+.mobile-episode-lane-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+}
+.mobile-episode-eyebrow {
+  display: block;
+  margin-bottom: 5px;
+  color: var(--accent);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.mobile-episode-header h2 {
+  margin: 0;
+  font-size: clamp(21px, 4vw, 26px);
+  letter-spacing: -0.035em;
+  line-height: 1.15;
+}
+.mobile-episode-count {
+  padding-top: 15px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+.mobile-episode-work {
+  margin-top: 19px;
+}
+.mobile-episode-work h3 {
+  margin: 0 0 8px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+.mobile-episode-steps {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.mobile-episode-steps li {
+  display: grid;
+  grid-template-columns: 15px minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 10px;
+  min-height: 46px;
+  padding: 13px 0;
+  border-top: 1px solid var(--line);
+}
+.mobile-episode-step-marker {
+  display: block;
+  width: 9px;
+  height: 9px;
+  margin-top: 5px;
+  border: 1.5px solid var(--muted);
+  border-radius: 50%;
+}
+.mobile-episode-steps li[data-state="COMPLETE"] .mobile-episode-step-marker,
+.mobile-episode-steps li[data-state="SATISFIED"] .mobile-episode-step-marker {
+  border-color: var(--accent);
+  background: var(--accent);
+}
+.mobile-episode-steps li[data-state="ESCALATED"] .mobile-episode-step-marker {
+  border-color: var(--error-text);
+}
+.mobile-episode-step-content {
+  min-width: 0;
+}
+.mobile-episode-step-title {
+  display: block;
+  min-width: 0;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.3;
+}
+.mobile-episode-step-content p {
+  margin: 5px 0 0;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.mobile-episode-step-content p.mobile-episode-report-date {
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: 11px;
+}
+.mobile-episode-report-detail {
+  margin-top: 5px;
+}
+.mobile-episode-report-detail summary {
+  color: var(--accent-strong);
+  font-size: 12px;
+  cursor: pointer;
+}
+.mobile-episode-report-detail p {
+  max-width: 68ch;
+  padding-left: 9px;
+  border-left: 2px solid var(--line);
+}
+.mobile-episode-step-state {
+  padding-top: 2px;
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+.mobile-episode-steps li[data-state="RUNNING"] .mobile-episode-step-state,
+.mobile-episode-steps li[data-state="IN_PROGRESS"] .mobile-episode-step-state {
+  color: var(--accent-strong);
+  font-weight: 700;
+}
+.mobile-episode-steps li[data-state="ESCALATED"] .mobile-episode-step-state {
+  color: var(--error-text);
+  font-weight: 700;
+}
+.mobile-episode details.mobile-episode-technical {
+  margin: 18px 0 0;
+  border-top: 1px solid var(--line);
+}
+.mobile-episode details.mobile-episode-technical > summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  min-height: 58px;
+  padding: 9px 0;
+  color: var(--accent);
+  list-style: none;
+}
+.mobile-episode-technical > summary::-webkit-details-marker {
+  display: none;
+}
+.mobile-episode-technical > summary span {
+  font-size: 13px;
+  font-weight: 700;
+}
+.mobile-episode-technical > summary small {
+  grid-column: 1;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 500;
+}
+.mobile-episode-technical > summary::after {
+  grid-column: 2;
+  grid-row: 1 / 3;
+  content: "⌄";
+  padding: 0 5px;
+  font-size: 20px;
+  font-weight: 400;
+}
+.mobile-episode-technical[open] > summary::after {
+  transform: rotate(180deg);
+}
+.mobile-episode-technical > summary:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+.mobile-episode-overview {
+  margin: 13px 0 0;
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 650;
+}
+.mobile-episode-decision {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin: 18px 0;
+  padding: 11px 13px;
+  border-left: 3px solid var(--accent);
+  background: var(--accent-soft);
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 650;
+}
+.mobile-episode-layout {
+  display: grid;
+  gap: 21px;
+  margin-top: 16px;
+}
+.mobile-episode-lane {
+  min-width: 0;
+  scroll-margin-top: 82px;
+}
+.mobile-episode-lane-heading {
+  padding-bottom: 15px;
+  border-bottom: 1px solid var(--line);
+}
+.mobile-episode-lane-heading h3 {
+  margin: 0;
+  font-size: 17px;
+  letter-spacing: -0.02em;
+  line-height: 1.25;
+}
+.mobile-episode-state {
+  display: inline-block;
+  flex: none;
+  padding: 5px 7px;
+  border-radius: 3px;
+  background: var(--surface-muted);
+  color: var(--text-secondary);
+  font-size: 10px;
+  font-weight: 750;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.mobile-episode-state[data-state="COMPLETE"] {
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+}
+.mobile-episode-state[data-state="ESCALATED"] {
+  color: var(--error-text);
+  background: var(--error-bg);
+}
+.mobile-episode-checks {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.mobile-episode-check {
+  position: relative;
+  padding: 13px 0 13px 21px;
+  border-left: 1px solid var(--line);
+  margin-left: 5px;
+}
+.mobile-episode-check:last-child {
+  border-left-color: transparent;
+}
+.mobile-episode-check-heading {
+  display: flex;
+  gap: 10px;
+}
+.mobile-episode-node {
+  position: absolute;
+  left: -5px;
+  top: 19px;
+  width: 9px;
+  height: 9px;
+  border: 2px solid var(--muted);
+  border-radius: 50%;
+  background: var(--surface);
+}
+.mobile-episode-check[data-state="SATISFIED"] .mobile-episode-node {
+  border-color: var(--accent);
+  background: var(--accent);
+}
+.mobile-episode-check-heading strong {
+  display: block;
+  font-size: 14px;
+  line-height: 1.35;
+}
+.mobile-episode-check-heading span:not(.mobile-episode-node) {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+.mobile-episode-check p {
+  margin: 7px 0 0;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+.mobile-episode details {
+  margin: 10px 0 0;
+  min-width: 0;
+}
+.mobile-episode summary {
+  min-height: 34px;
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.mobile-episode dl {
+  margin: 3px 0 9px;
+}
+.mobile-episode dl div {
+  display: grid;
+  grid-template-columns: minmax(70px, 0.35fr) minmax(0, 1fr);
+  gap: 8px;
+  padding: 4px 0;
+}
+.mobile-episode dt {
+  color: var(--muted);
+  font-size: 11px;
+}
+.mobile-episode dd {
+  min-width: 0;
+  margin: 0;
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+.mobile-episode pre {
+  max-height: 200px;
+  margin: 6px 0 12px;
+  padding: 10px;
+  overflow: auto;
+  border-radius: 5px;
+  background: var(--surface-muted);
+  color: var(--text-secondary);
+  font-size: 11px;
+  line-height: 1.45;
+}
+.mobile-episode-fact small {
+  color: var(--muted);
+  font-size: 10px;
+}
+.mobile-episode-branches {
+  min-width: 0;
+  display: grid;
+  gap: 0;
+}
+.mobile-episode-branches h3 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+}
+.mobile-episode details.mobile-episode-branch {
+  min-width: 0;
+  margin: 0;
+  border-top: 1px solid var(--line);
+}
+.mobile-episode-branch > summary {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  min-height: 44px;
+}
+.mobile-episode-branch > summary small {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 500;
+}
+.mobile-episode-branch-content {
+  padding: 0 0 16px 12px;
+  border-left: 1px solid var(--line);
+}
+.mobile-episode-waiting {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 0;
+  font-size: 13px;
+}
+.mobile-episode-waiting span {
+  color: var(--muted);
+}
+.mobile-episode-results {
+  padding: 8px 0;
+  border-top: 1px solid var(--line);
+}
+.mobile-episode-results strong,
+.mobile-episode-results small {
+  display: block;
+  overflow-wrap: anywhere;
+}
+.mobile-episode-results small {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 10px;
+}
+.mobile-episode-provenance {
+  border-top: 1px solid var(--line);
+}
+.mobile-episode-branch > details {
+  color: var(--muted);
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+.mobile-episode-branch > details ol {
+  padding-left: 18px;
+}
+@media (max-width: 600px) {
+  .mobile-episode {
+    margin: 19px 0 25px;
+    padding: 17px 0 15px;
+  }
+  .mobile-episode-header {
+    display: block;
+  }
+  .mobile-episode-count {
+    display: block;
+    padding-top: 5px;
+  }
+  .mobile-episode-decision {
+    margin: 13px 0;
+  }
+}

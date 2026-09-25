@@ -1,6 +1,8 @@
 import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import type {
   CheckView,
+  DelegationEpisodePlanView,
+  DelegationEpisodeView,
   HistoryListInput,
   HistoryView,
   PlanCheckView,
@@ -400,6 +402,23 @@ export class PlanReader {
       })),
       sessions: (await this.#sessions.listForPlan(plan.slug)).map(sessionRecord),
     };
+  }
+
+  async readDelegationEpisode(planSlug: string): Promise<DelegationEpisodeView> {
+    const root = await this.#readEpisodePlan(planSlug);
+    const branches = await Promise.all(
+      root.plan.invocations.map(async (invocation) => ({
+        invocation,
+        child: invocation.childPlan ? await this.#readEpisodePlan(invocation.childPlan) : null,
+      })),
+    );
+    return { contract: "trust.delegation-episode@1", root, branches };
+  }
+
+  async #readEpisodePlan(planSlug: string): Promise<DelegationEpisodePlanView> {
+    const plan = await this.readPlanBySlug(planSlug);
+    const checks = await Promise.all(plan.checks.map((check) => this.readCheck(check.checkUri)));
+    return { plan, checks };
   }
 
   async readSession(checkUri: string): Promise<SessionView> {

@@ -1,9 +1,10 @@
-import type { OperationEnvironments, PublishedProcedure } from "@trust/extension-sdk";
+import type { CatalogMetadata, OperationEnvironments, PublishedProcedure } from "@trust/extension-sdk";
 import type { CompiledOperation, ObjectSchema, OperationStep } from "@trust/operation";
 import { operationLanguage } from "@trust/operation/language";
 import { compareVersions } from "@trust/operation/version";
 import { i18next } from "../../i18n/index.js";
 import { catalogIdentities } from "../../lib/catalog-versions.js";
+import { catalogTags } from "../shared/catalog-tags.js";
 import { type Family, familyOf, type Nature, natureOf } from "./classification.js";
 
 type ViewMode = "cards" | "list";
@@ -24,6 +25,8 @@ export function stepTypeLabel(type: StepType): string {
 
 export interface OperationRow {
   operation: CompiledOperation;
+  metadata: CatalogMetadata;
+  tags: string[];
   id: string;
   domain: string;
   action: string;
@@ -47,18 +50,32 @@ export function toRows(
   operations: CompiledOperation[],
   procedures: PublishedProcedure[],
   environments?: OperationEnvironments[],
+  metadata: CatalogMetadata[] = [],
 ): OperationRow[] {
   return catalogIdentities(
     operations,
     (value) => value.operation,
     (value) => value.version,
   ).map((operation) => {
+    const current: CatalogMetadata = metadata.find(
+      (entry) => entry.name === operation.operation && entry.version === operation.version,
+    ) ?? {
+      kind: "operation" as const,
+      name: operation.operation,
+      version: operation.version,
+      revision: 0,
+      title: operation.title,
+      ...(operation.description === undefined ? {} : { description: operation.description }),
+      classification: operation.classification ?? {},
+    };
     const known = environments?.find(
       (entry) => entry.operation === operation.operation && entry.version === operation.version,
     );
     const [domain, ...rest] = operation.operation.split(".");
     return {
       operation,
+      metadata: current,
+      tags: catalogTags(current.classification),
       id: operation.operation,
       domain: rest.length ? domain! : "",
       action: rest.length ? rest.join(".") : operation.operation,
@@ -69,8 +86,8 @@ export function toRows(
       usedBy: procedures.filter(({ procedure }) =>
         procedure.operations.some((used) => used.operation === operation.operation),
       ),
-      family: familyOf(rest.length ? domain! : "", operation),
-      nature: natureOf(operation),
+      family: familyOf(rest.length ? domain! : "", operation, current.classification),
+      nature: natureOf(operation, current.classification),
       runnableOn: known ? known.environments.filter((entry) => entry.compatible).map((entry) => entry.name) : undefined,
     };
   });
@@ -139,10 +156,15 @@ export const emptyFilters: Pick<Filters, "q" | "family" | "domains" | "types" | 
 
 /** Why a row matches the free-text query, when it is not the id or the title. */
 export function matchReason(row: OperationRow, q: string): string | undefined {
-  const needle = q.trim().toLowerCase();
-  if (!needle) return undefined;
-  if (`${row.id} ${row.operation.title}`.toLowerCase().includes(needle)) return undefined;
-  const hit = (names: string[]) => names.find((name) => name.toLowerCase().includes(needle));
+  const terms = q.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);
+  if (terms.length === 0) return undefined;
+  const matches = (value: string) => terms.some((term) => value.toLocaleLowerCase().includes(term));
+  if (terms.every((term) => `${row.id} ${row.metadata.title}`.toLocaleLowerCase().includes(term))) return undefined;
+  if (row.metadata.description && matches(row.metadata.description))
+    return i18next.t("operations.model.matchDescription");
+  const tag = row.tags.find(matches);
+  if (tag) return i18next.t("operations.model.matchTag", { tag });
+  const hit = (names: string[]) => names.find(matches);
   const produced = hit(row.produced);
   if (produced) return i18next.t("operations.model.matchProduces", { name: produced });
   const input = hit(row.inputs);
@@ -154,15 +176,24 @@ export function matchReason(row: OperationRow, q: string): string | undefined {
 
 function matchesQuery(row: OperationRow, needle: string): boolean {
   if (!needle) return true;
-  return (
-    `${row.id} ${row.operation.title}`.toLowerCase().includes(needle) ||
-    [...row.produced, ...row.inputs, ...row.environment].some((name) => name.toLowerCase().includes(needle))
-  );
+  const classification = Object.entries(row.metadata.classification).flatMap(([key, values]) => [key, ...values]);
+  const text = [
+    row.id,
+    row.metadata.title,
+    row.metadata.description ?? "",
+    ...classification,
+    ...row.produced,
+    ...row.inputs,
+    ...row.environment,
+  ]
+    .join(" ")
+    .toLocaleLowerCase();
+  return needle.split(/\s+/).every((term) => text.includes(term));
 }
 
 /** Applies every facet except `except`, so facet counts reflect the other selections. */
 export function applyFacets(rows: OperationRow[], filters: Filters, except?: keyof Filters): OperationRow[] {
-  const needle = filters.q.trim().toLowerCase();
+  const needle = filters.q.trim().toLocaleLowerCase();
   return rows.filter(
     (row) =>
       (except === "q" || matchesQuery(row, needle)) &&

@@ -1,4 +1,11 @@
-import type { PublishedProcedure, RuntimeJsonObject, TrialRecord, TrialSummary } from "@trust/extension-sdk";
+import type {
+  CatalogMetadata,
+  CatalogMetadataUpdate,
+  PublishedProcedure,
+  RuntimeJsonObject,
+  TrialRecord,
+  TrialSummary,
+} from "@trust/extension-sdk";
 import {
   type CompiledOperation,
   compileOperation,
@@ -7,6 +14,13 @@ import {
   simulateOperation,
 } from "@trust/operation";
 import { CatalogProcedureCompilationError, type CompiledProcedure } from "@trust/procedure";
+import {
+  type CatalogClassification,
+  type CatalogKind,
+  CatalogMetadataError,
+  type CatalogMetadataStore,
+  matchesCatalogQuery,
+} from "../catalog/metadata.js";
 import type { EnvironmentService } from "../environment/service.js";
 import { EnvironmentConfigurationError } from "../environment/validation.js";
 import { type OperationCatalog, OperationCatalogError } from "../operation/catalog.js";
@@ -40,11 +54,13 @@ export const AUTHORING_TOOL_NAMES = [
   "trust_published_procedure_read",
   "trust_procedure_compile",
   "trust_procedure_publish",
+  "trust_catalog_metadata_update",
 ] as const;
 
 export type AuthoringToolName = (typeof AUTHORING_TOOL_NAMES)[number];
 
 export interface McpAuthoringDependencies {
+  readonly catalogMetadata: CatalogMetadataStore;
   readonly environmentService: EnvironmentService;
   readonly operationCatalog: OperationCatalog;
   readonly procedures: Procedures;
@@ -119,15 +135,22 @@ export async function callAuthoringTool(
         return { text: `ENVIRONMENT REMOVAL\nEnvironment: ${args.environment}\nRemoved: ${removed ? "yes" : "no"}\n` };
       }
       case "trust_operation_list": {
-        exactEmpty(args, tool);
-        return { text: renderOperationList(dependencies.operationCatalog) };
+        const query = exactCatalogQuery(args, tool);
+        return { text: await renderOperationList(dependencies.operationCatalog, dependencies.catalogMetadata, query) };
       }
       case "trust_operation_read": {
         const { operation, version } = exactIdentity(args, "operation", tool);
         const entry = dependencies.operationCatalog.entry(operation, version);
         return entry === undefined
           ? rejected(`Operation ${operation}@${version} is not in the catalog.`)
-          : { text: renderOperation("OPERATION", entry.operation, entry.sourceName) };
+          : {
+              text: renderOperation(
+                "OPERATION",
+                entry.operation,
+                entry.sourceName,
+                await dependencies.catalogMetadata.read("operation", operation, version),
+              ),
+            };
       }
       case "trust_operation_compile": {
         const input = exactSource(args, tool, false);
@@ -200,15 +223,24 @@ export async function callAuthoringTool(
         return { text: renderTrialSummary("OPERATION TRIAL CANCELLED", dependencies.trialService.cancel(trial)) };
       }
       case "trust_procedure_list": {
-        exactEmpty(args, tool);
-        return { text: renderProcedureList(await dependencies.procedures.list()) };
+        const query = exactCatalogQuery(args, tool);
+        return {
+          text: await renderProcedureList(await dependencies.procedures.list(), dependencies.catalogMetadata, query),
+        };
       }
       case "trust_published_procedure_read": {
         const { operation: procedure, version } = exactIdentity(args, "procedure", tool);
         const published = await dependencies.procedures.find(procedure, version);
         return published === undefined
           ? rejected(`Procedure ${procedure}@${version} is not published.`)
-          : { text: renderProcedure("PUBLISHED PROCEDURE", published.procedure, published) };
+          : {
+              text: renderProcedure(
+                "PUBLISHED PROCEDURE",
+                published.procedure,
+                published,
+                await dependencies.catalogMetadata.read("procedure", procedure, version),
+              ),
+            };
       }
       case "trust_procedure_compile": {
         const input = exactSource(args, tool, false);
@@ -218,6 +250,11 @@ export async function callAuthoringTool(
         const input = exactSource(args, tool, false);
         const published = await dependencies.procedures.publish(input, "mcp-agent");
         return { text: renderProcedure("PROCEDURE PUBLISHED", published.procedure, published) };
+      }
+      case "trust_catalog_metadata_update": {
+        const input = exactCatalogMetadataUpdate(args, tool);
+        const metadata = await dependencies.catalogMetadata.update(input);
+        return { text: renderCatalogMetadata("CATALOG METADATA UPDATED", metadata) };
       }
     }
   } catch (error) {
@@ -231,6 +268,7 @@ export async function callAuthoringTool(
       error instanceof ProcedureConflictError ||
       error instanceof TrialError ||
       error instanceof EnvironmentConfigurationError ||
+      error instanceof CatalogMetadataError ||
       error instanceof TypeError
     ) {
       return rejected(renderAuthoringError(tool, error));
@@ -257,25 +295,55 @@ function renderAuthoringError(tool: AuthoringToolName, error: Error): string {
   return `${tool} rejected the request.${reason ? `\nReason: ${reason}` : ""}\nMessage: ${error.message}${location}`;
 }
 
-function renderOperationList(catalog: OperationCatalog): string {
+async function renderOperationList(
+  catalog: OperationCatalog,
+  metadataStore: CatalogMetadataStore,
+  query?: string,
+): Promise<string> {
   const entries = catalog.list();
+  const results = await Promise.all(
+    entries.map(async (operation) => ({
+      operation,
+      metadata: await metadataStore.read("operation", operation.operation, operation.version),
+    })),
+  );
+  const matching = results.filter(
+    (entry): entry is { operation: CompiledOperation; metadata: CatalogMetadata } =>
+      entry.metadata !== undefined && (query === undefined || matchesCatalogQuery(entry.metadata, query)),
+  );
   return [
     "OPERATION CATALOG",
-    `Count: ${entries.length}`,
-    ...entries.map((operation) => {
+    ...(query === undefined ? [] : [`Query: ${query}`]),
+    `Count: ${matching.length}`,
+    ...matching.map(({ operation, metadata }) => {
       const sourceName = catalog.entry(operation.operation, operation.version)?.sourceName;
-      return `- ${operation.operation}@${operation.version}: ${operation.title}${sourceName ? ` [${sourceName}]` : ""}`;
+      return [
+        `- ${operation.operation}@${operation.version}: ${metadata.title}${sourceName ? ` [${sourceName}]` : ""}`,
+        ...(metadata.description ? [`  Description: ${metadata.description}`] : []),
+        `  Tags: ${formatClassification(metadata.classification)}`,
+        `  Metadata revision: ${metadata.revision}`,
+      ].join("\n");
     }),
     "",
   ].join("\n");
 }
 
-function renderOperation(heading: string, operation: CompiledOperation, sourceName?: string): string {
+function renderOperation(
+  heading: string,
+  operation: CompiledOperation,
+  sourceName?: string,
+  metadata?: CatalogMetadata,
+): string {
   return [
     heading,
     `Operation: ${operation.operation}@${operation.version}`,
-    `Title: ${operation.title}`,
-    ...(operation.description ? [`Description: ${operation.description}`] : []),
+    `Title: ${metadata?.title ?? operation.title}`,
+    ...((metadata === undefined ? operation.description : metadata.description)
+      ? [`Description: ${metadata === undefined ? operation.description : metadata.description}`]
+      : []),
+    ...(metadata
+      ? [`Tags: ${formatClassification(metadata.classification)}`, `Metadata revision: ${metadata.revision}`]
+      : []),
     ...(sourceName ? [`Source name: ${sourceName}`] : []),
     `Input fields: ${Object.keys(operation.input.properties).join(", ") || "none"}`,
     `Environment fields: ${Object.keys(operation.environment.properties).join(", ") || "none"}`,
@@ -288,24 +356,53 @@ function renderOperation(heading: string, operation: CompiledOperation, sourceNa
   ].join("\n");
 }
 
-function renderProcedureList(procedures: readonly PublishedProcedure[]): string {
+async function renderProcedureList(
+  procedures: readonly PublishedProcedure[],
+  metadataStore: CatalogMetadataStore,
+  query?: string,
+): Promise<string> {
+  const results = await Promise.all(
+    procedures.map(async (published) => ({
+      published,
+      metadata: await metadataStore.read("procedure", published.procedure.procedure, published.procedure.version),
+    })),
+  );
+  const matching = results.filter(
+    (entry): entry is { published: PublishedProcedure; metadata: CatalogMetadata } =>
+      entry.metadata !== undefined && (query === undefined || matchesCatalogQuery(entry.metadata, query)),
+  );
   return [
     "PROCEDURE CATALOG",
-    `Count: ${procedures.length}`,
-    ...procedures.map(
-      ({ procedure, sourceName }) =>
-        `- ${procedure.procedure}@${procedure.version}: ${procedure.title} [${sourceName}]`,
+    ...(query === undefined ? [] : [`Query: ${query}`]),
+    `Count: ${matching.length}`,
+    ...matching.map(({ published: { procedure, sourceName }, metadata }) =>
+      [
+        `- ${procedure.procedure}@${procedure.version}: ${metadata.title} [${sourceName}]`,
+        ...(metadata.description ? [`  Description: ${metadata.description}`] : []),
+        `  Tags: ${formatClassification(metadata.classification)}`,
+        `  Metadata revision: ${metadata.revision}`,
+      ].join("\n"),
     ),
     "",
   ].join("\n");
 }
 
-function renderProcedure(heading: string, procedure: CompiledProcedure, published?: PublishedProcedure): string {
+function renderProcedure(
+  heading: string,
+  procedure: CompiledProcedure,
+  published?: PublishedProcedure,
+  metadata?: CatalogMetadata,
+): string {
   return [
     heading,
     `Procedure: ${procedure.procedure}@${procedure.version}`,
-    `Title: ${procedure.title}`,
-    ...(procedure.description ? [`Description: ${procedure.description}`] : []),
+    `Title: ${metadata?.title ?? procedure.title}`,
+    ...((metadata === undefined ? procedure.description : metadata.description)
+      ? [`Description: ${metadata === undefined ? procedure.description : metadata.description}`]
+      : []),
+    ...(metadata
+      ? [`Tags: ${formatClassification(metadata.classification)}`, `Metadata revision: ${metadata.revision}`]
+      : []),
     `Definition digest: ${procedure.definitionDigest}`,
     `Intent chaining: ${procedure.intentChaining ? "enabled" : "disabled"}`,
     `Operations: ${procedure.operations.map((operation) => `${operation.operation}@${operation.version}`).join(", ") || "none"}`,
@@ -327,6 +424,24 @@ function renderProcedure(heading: string, procedure: CompiledProcedure, publishe
     procedure.source,
     "",
   ].join("\n");
+}
+
+function renderCatalogMetadata(heading: string, metadata: CatalogMetadata): string {
+  return [
+    heading,
+    `Entry: ${metadata.kind} ${metadata.name}@${metadata.version}`,
+    `Title: ${metadata.title}`,
+    ...(metadata.description ? [`Description: ${metadata.description}`] : []),
+    `Tags: ${formatClassification(metadata.classification)}`,
+    `Metadata revision: ${metadata.revision}`,
+    ...(metadata.updatedAt ? [`Updated at: ${metadata.updatedAt}`] : []),
+    "",
+  ].join("\n");
+}
+
+function formatClassification(classification: CatalogClassification): string {
+  const tags = Object.entries(classification).flatMap(([key, values]) => values.map((value) => `${key}:${value}`));
+  return tags.join(", ") || "none";
 }
 
 function renderTrialSummary(heading: string, trial: TrialSummary): string {
@@ -370,6 +485,39 @@ function renderTrial(trial: TrialRecord, after: number): string {
 
 function exactEmpty(args: Record<string, unknown>, tool: AuthoringToolName): void {
   if (Object.keys(args).length !== 0) invalid(tool);
+}
+
+function exactCatalogQuery(args: Record<string, unknown>, tool: AuthoringToolName): string | undefined {
+  if (!hasOnlyKeys(args, ["query"]) || (args.query !== undefined && !bounded(args.query, 200))) invalid(tool);
+  return args.query as string | undefined;
+}
+
+function exactCatalogMetadataUpdate(args: Record<string, unknown>, tool: AuthoringToolName): CatalogMetadataUpdate {
+  if (
+    !hasOnlyKeys(args, ["kind", "name", "version", "expectedRevision", "title", "description", "classification"]) ||
+    (args.kind !== "operation" && args.kind !== "procedure") ||
+    !bounded(args.name, 256) ||
+    !bounded(args.version, 64) ||
+    !Number.isSafeInteger(args.expectedRevision) ||
+    Number(args.expectedRevision) < 0 ||
+    !bounded(args.title, 200) ||
+    !String(args.title).trim() ||
+    (args.description !== undefined && (typeof args.description !== "string" || args.description.length > 10_000)) ||
+    !isRecord(args.classification) ||
+    !Object.values(args.classification).every(
+      (values) => Array.isArray(values) && values.every((value) => typeof value === "string"),
+    )
+  )
+    invalid(tool);
+  return {
+    kind: args.kind as CatalogKind,
+    name: args.name as string,
+    version: args.version as string,
+    expectedRevision: args.expectedRevision as number,
+    title: args.title as string,
+    ...(typeof args.description === "string" ? { description: args.description } : {}),
+    classification: args.classification as CatalogClassification,
+  };
 }
 
 function exactIdentity(
@@ -564,15 +712,15 @@ export function authoringTools(): readonly unknown[] {
       },
       annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
     },
-    noArgumentTool(
+    catalogListTool(
       "trust_operation_list",
       "List Operations",
-      "List the persisted Operation catalog before reading or editing an Operation.",
+      "List persisted Operations with current catalog title, description and tags. Optionally search canonical name, title, description and tags.",
     ),
     identityTool(
       "trust_operation_read",
       "Read an Operation",
-      "Read one persisted Operation, including its complete Gherkin source.",
+      "Read one persisted Operation with current catalog metadata and its original complete Gherkin source.",
       "operation",
     ),
     sourceTool(
@@ -692,15 +840,15 @@ export function authoringTools(): readonly unknown[] {
         additionalProperties: false,
       },
     },
-    noArgumentTool(
+    catalogListTool(
       "trust_procedure_list",
       "List Procedures",
-      "List published Procedures before reading or editing one.",
+      "List published Procedures with current catalog title, description and tags. Optionally search canonical name, title, description and tags.",
     ),
     identityTool(
       "trust_published_procedure_read",
       "Read a published Procedure",
-      "Read one published Procedure, including its complete Gherkin source.",
+      "Read one published Procedure with current catalog metadata and its original complete Gherkin source.",
       "procedure",
     ),
     sourceTool(
@@ -715,11 +863,55 @@ export function authoringTools(): readonly unknown[] {
       "Compile and immutably publish Procedure Gherkin against the current Operation catalog.",
       false,
     ),
+    {
+      name: "trust_catalog_metadata_update",
+      title: "Update catalog metadata",
+      description:
+        "Edit the current title, description and classification tags of one published Operation or Procedure version without changing its executable definition. Read the entry first for its metadata revision; send the complete replacement metadata with expectedRevision. An empty description clears it, and omitted tag keys are removed.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          kind: { type: "string", enum: ["operation", "procedure"] },
+          name: { type: "string", minLength: 1, maxLength: 256, description: "Canonical catalog name" },
+          version: versionProperty,
+          expectedRevision: { type: "integer", minimum: 0, description: "Revision returned by a catalog read" },
+          title: { type: "string", minLength: 1, maxLength: 200 },
+          description: {
+            type: "string",
+            maxLength: 10_000,
+            description: "Existing human description; empty clears it",
+          },
+          classification: {
+            type: "object",
+            propertyNames: { pattern: "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$" },
+            additionalProperties: {
+              type: "array",
+              items: { type: "string", minLength: 1, pattern: "^[^\\s:]+$" },
+              uniqueItems: true,
+            },
+            description: 'Complete map of editable classification tags; for example {"family":["delivery"]}',
+          },
+        },
+        required: ["kind", "name", "version", "expectedRevision", "title", "classification"],
+        additionalProperties: false,
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+    },
   ];
 }
 
-function noArgumentTool(name: AuthoringToolName, title: string, description: string): unknown {
-  return { name, title, description, inputSchema: { type: "object", properties: {}, additionalProperties: false } };
+function catalogListTool(name: AuthoringToolName, title: string, description: string): unknown {
+  return {
+    name,
+    title,
+    description,
+    inputSchema: {
+      type: "object",
+      properties: { query: { type: "string", minLength: 1, maxLength: 200, description: "All terms must match" } },
+      additionalProperties: false,
+    },
+    annotations: { readOnlyHint: true, openWorldHint: false },
+  };
 }
 
 function identityTool(

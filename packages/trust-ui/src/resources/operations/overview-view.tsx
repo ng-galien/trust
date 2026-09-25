@@ -1,3 +1,4 @@
+import type { CatalogMetadata } from "@trust/extension-sdk";
 import type { CompiledOperation, OperationStep } from "@trust/operation";
 import { matchHttpFormat, matchOperationStep, matchShellArgument } from "@trust/operation/match";
 import type { TFunction } from "i18next";
@@ -13,9 +14,11 @@ import { describeAcceptedStatuses, describeHttpBodyKind, describeHttpLocation } 
 /** Plain-language reading of an operation: description, then needs → does → produces; step contracts and projection in expert mode. */
 export function OverviewView({
   compiled,
+  metadata,
   error,
 }: {
   compiled: CompiledOperation | undefined;
+  metadata?: CatalogMetadata | undefined;
   error?: string | undefined;
 }) {
   const { t } = useTranslation();
@@ -27,15 +30,14 @@ export function OverviewView({
     );
   }
   const inputs = schemaProperties(compiled.input);
+  const description = metadata ? metadata.description : compiled.description;
   const environment = schemaProperties(compiled.environment);
   const produced = schemaProperties(compiled.produced);
 
   return (
     <div className="flex h-full flex-col gap-3 overflow-y-auto bg-bg p-4 [&>*]:shrink-0">
       <section className="rounded-(--radius-3) border border-border bg-surface p-4" data-doc="operation.summary">
-        {compiled.description ? (
-          <Description text={compiled.description} className="mb-3 max-w-3xl text-ui leading-relaxed" />
-        ) : null}
+        {description ? <Description text={description} className="mb-3 max-w-3xl text-ui leading-relaxed" /> : null}
         <div className="grid gap-3 md:grid-cols-[max-content_1fr] md:gap-x-6">
           <SummaryTerm>{t("operations.overview.needs")}</SummaryTerm>
           <p className="text-ui leading-relaxed">

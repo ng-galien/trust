@@ -8,6 +8,7 @@ import {
   FlaskConical,
   Network,
   Pencil,
+  Tags,
   TerminalSquare,
   Upload,
 } from "lucide-react";
@@ -19,12 +20,13 @@ import { catalogIdentities, orderedVersions } from "../../lib/catalog-versions.j
 import { plural } from "../../lib/format.js";
 import { mutationError, usePublishProcedure } from "../../lib/mutations.js";
 import { useExpert, usePreference, useResolvedTheme } from "../../lib/preferences.js";
-import { useOperations, usePlans, useProcedures, useRuntime } from "../../lib/runtime-context.js";
-import { Badge, StatusBadge } from "../../ui/badge.js";
+import { usePlans, useProcedureCatalog, useProcedures, useRuntime } from "../../lib/runtime-context.js";
+import { StatusBadge } from "../../ui/badge.js";
 import { Button } from "../../ui/button.js";
 import { Expert } from "../../ui/expert.js";
 import { JsonViewer } from "../../ui/json-viewer.js";
 import { EmptyState, ErrorBox, LoadingState } from "../../ui/states.js";
+import { CatalogMetadataEditor } from "../shared/catalog-metadata-editor.js";
 import { EmptyRelation, InspectorSection, RelationLink } from "../shared/inspector.js";
 import { useCloseTo } from "../shared/origin.js";
 import { useOverlayViewState } from "../shared/overlay-state.js";
@@ -38,8 +40,8 @@ import { ProcedureOverview } from "./procedure-overview.js";
 import { ProcedureSimulation } from "./procedure-simulation.js";
 import { PlansMark } from "./procedures-home.js";
 
-type Tab = "overview" | "source" | "dag" | "simulation" | "contract";
-const TABS: readonly Tab[] = ["overview", "source", "dag", "simulation", "contract"];
+type Tab = "overview" | "catalog" | "source" | "dag" | "simulation" | "contract";
+const TABS: readonly Tab[] = ["overview", "catalog", "source", "dag", "simulation", "contract"];
 /** The Compiled JSON tab is expert-only: in operator mode a `?tab=contract` URL falls back to the default tab. */
 const OPERATOR_TABS: readonly Tab[] = TABS.filter((tab) => tab !== "contract");
 
@@ -54,7 +56,7 @@ export function ProcedureOverlay({ mode = "item" }: { mode?: "item" | "new" }) {
   const theme = useResolvedTheme();
   const editorFontSize = usePreference("editorFontSize");
   const procedures = useProcedures();
-  const operations = useOperations();
+  const procedureCatalog = useProcedureCatalog();
   const plans = usePlans();
 
   const id = mode === "new" ? undefined : decodeURIComponent(params.procedure ?? "");
@@ -69,6 +71,9 @@ export function ProcedureOverlay({ mode = "item" }: { mode?: "item" | "new" }) {
         (value) => value.procedure.procedure,
         (value) => value.procedure.version,
       )[0];
+  const metadata = procedureCatalog.data?.metadata.find(
+    (entry) => entry.name === published?.procedure.procedure && entry.version === published.procedure.version,
+  );
   const draft = useSourceDraft({
     mode,
     id,
@@ -86,7 +91,10 @@ export function ProcedureOverlay({ mode = "item" }: { mode?: "item" | "new" }) {
   });
   const { source, setDraft, authoring, listSearch, compileError, markers } = draft;
   const seed = draft.from ? procedures.data?.find(({ procedure }) => procedure.procedure === draft.from) : undefined;
-  const view = useOverlayViewState<Tab>(expert ? TABS : OPERATOR_TABS, mode === "new" ? "source" : "overview");
+  const view = useOverlayViewState<Tab>(
+    (expert ? TABS : OPERATOR_TABS).filter((value) => mode === "item" || value !== "catalog"),
+    mode === "new" ? "source" : "overview",
+  );
   const { tab, setTab, sel: selectedNode, setSel: setSelectedNode } = view;
   const close = useCloseTo(`/procedures${listSearch}`);
   const compiled: CompiledProcedure | undefined = authoring ? draft.compiled : published?.procedure;
@@ -124,7 +132,10 @@ export function ProcedureOverlay({ mode = "item" }: { mode?: "item" | "new" }) {
   const inputs = compiled?.roles.filter((role) => role.source.kind === "plan-input") ?? [];
 
   const title =
-    compiled?.title ?? published?.procedure.title ?? (mode === "new" ? t("procedures.overlay.newTitle") : (id ?? ""));
+    (authoring
+      ? (compiled?.title ?? metadata?.title ?? published?.procedure.title)
+      : (metadata?.title ?? published?.procedure.title)) ??
+    (mode === "new" ? t("procedures.overlay.newTitle") : (id ?? ""));
   const version = compiled?.version ?? published?.procedure.version;
   const displayId =
     compiled?.procedure ??
@@ -149,6 +160,18 @@ export function ProcedureOverlay({ mode = "item" }: { mode?: "item" | "new" }) {
         </>
       ),
     },
+    ...(mode === "item"
+      ? [
+          {
+            value: "catalog" as const,
+            label: (
+              <>
+                <Tags size={13} /> {t("common.catalog.title")}
+              </>
+            ),
+          },
+        ]
+      : []),
     {
       value: "source",
       label: (
@@ -377,7 +400,23 @@ export function ProcedureOverlay({ mode = "item" }: { mode?: "item" | "new" }) {
         </>
       }
     >
-      {tab === "overview" ? <ProcedureOverview compiled={compiled} error={compileError?.detail} /> : null}
+      {tab === "overview" ? (
+        <ProcedureOverview
+          compiled={compiled}
+          metadata={authoring ? undefined : metadata}
+          error={compileError?.detail}
+        />
+      ) : null}
+      {tab === "catalog" ? (
+        metadata ? (
+          <CatalogMetadataEditor
+            key={`${metadata.name}@${metadata.version}:${metadata.revision}`}
+            metadata={metadata}
+          />
+        ) : (
+          <LoadingState />
+        )
+      ) : null}
       {tab === "source" ? (
         <div className="flex h-full min-h-0 flex-col">
           {authoring ? (

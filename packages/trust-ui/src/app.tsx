@@ -32,6 +32,7 @@ export function TrustApplication({ runtimeUrl }: { runtimeUrl: string }) {
       <RuntimeContext.Provider value={client}>
         <BrowserRouter>
           <Routes>
+            <Route path="/mobile/:extension" element={<ExtensionPage bare />} />
             <Route element={<AppShell />}>
               <Route path="/overview" element={<OverviewHome />} />
               <Route path="/operations" element={<OperationsHome />}>

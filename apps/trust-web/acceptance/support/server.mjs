@@ -6,8 +6,8 @@ import { fileURLToPath } from "node:url";
 
 const applicationRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const repositoryRoot = path.resolve(applicationRoot, "../..");
-const runtimePort = 4390;
-const webPort = 4174;
+const runtimePort = process.env.TRUST_WEB_ACCEPTANCE_RUNTIME_PORT ?? "4390";
+const webPort = process.env.TRUST_WEB_ACCEPTANCE_WEB_PORT ?? "4174";
 const stateDirectory = await mkdtemp(path.join(tmpdir(), "trust-web-acceptance-"));
 const children = [];
 const operationDirectory = path.join(stateDirectory, "operations");

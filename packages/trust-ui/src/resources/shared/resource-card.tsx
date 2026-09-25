@@ -13,6 +13,7 @@ export function ResourceCard({
   version,
   title,
   description,
+  tags,
   id,
   note,
   facts,
@@ -25,6 +26,7 @@ export function ResourceCard({
   version?: string | undefined;
   title: string;
   description?: string | undefined;
+  tags?: readonly string[];
   id: string;
   /** e.g. the search match reason */
   note?: ReactNode;
@@ -56,6 +58,12 @@ export function ResourceCard({
           ) : null}
         </div>
         <p className="mono mt-1 truncate-1 text-label text-muted">{id}</p>
+        {tags?.length ? (
+          <p className="mono mt-1 truncate-1 text-caption text-muted" title={tags.join(", ")}>
+            {tags.slice(0, 2).join(" · ")}
+            {tags.length > 2 ? ` +${tags.length - 2}` : ""}
+          </p>
+        ) : null}
         {note ? <p className="mt-1 text-caption text-accent">{note}</p> : null}
       </div>
       {facts.length ? (

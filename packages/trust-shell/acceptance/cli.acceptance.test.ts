@@ -9,6 +9,7 @@ import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
+import WebSocket, { WebSocketServer } from "ws";
 
 const execute = promisify(execFile);
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../..");
@@ -72,12 +73,37 @@ test("trust server start serves the compiled UI and server status observes its p
   const runtimePort = await availablePort();
   let webPort = await availablePort();
   while (webPort === runtimePort) webPort = await availablePort();
+  let mobilePort = await availablePort();
+  while (mobilePort === runtimePort || mobilePort === webPort) mobilePort = await availablePort();
+  const mobile = createHttpServer((request, response) => {
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end(
+      JSON.stringify({
+        path: request.url,
+        host: request.headers.host,
+        origin: request.headers.origin,
+        referer: request.headers.referer,
+      }),
+    );
+  });
+  const mobileSockets = new WebSocketServer({ noServer: true });
+  mobile.on("upgrade", (request, socket, head) =>
+    mobileSockets.handleUpgrade(request, socket, head, (client) => {
+      if (request.headers.origin && request.headers.origin !== `http://127.0.0.1:${mobilePort}`) {
+        client.close(1008);
+        return;
+      }
+      client.send("mobile-ws");
+    }),
+  );
+  await new Promise<void>((resolve) => mobile.listen(mobilePort, "127.0.0.1", resolve));
   const environment = {
     ...process.env,
     TRUST_INSTALL_ROOT: repositoryRoot,
     TRUST_SERVER_STATE_DIRECTORY: stateDirectory,
     TRUST_PORT: String(runtimePort),
     TRUST_WEB_PORT: String(webPort),
+    TRUST_MOBILE_UPSTREAMS: JSON.stringify({ maket: { url: `http://127.0.0.1:${mobilePort}`, pathMode: "strip" } }),
   };
   const server = spawn(process.execPath, [trustCli, "server", "start"], {
     cwd: repositoryRoot,
@@ -102,6 +128,36 @@ test("trust server start serves the compiled UI and server status observes its p
     const extensions = await fetch(`http://127.0.0.1:${webPort}/extensions`);
     assert.equal(extensions.status, 200);
     assert.deepEqual(await extensions.json(), { extensions: [] });
+    const shortMobileLink = await fetch(`http://127.0.0.1:${webPort}/mobile/mobile-comp?project=trust`, {
+      redirect: "manual",
+    });
+    assert.equal(shortMobileLink.status, 302);
+    assert.equal(shortMobileLink.headers.get("location"), "/mobile/mobile-companion/?project=trust");
+    assert.equal(shortMobileLink.headers.get("cache-control"), "no-store");
+    assert.equal((await fetch(`http://127.0.0.1:${webPort}${shortMobileLink.headers.get("location")}`)).status, 200);
+    const proxied = await fetch(`http://127.0.0.1:${webPort}/mobile/apps/maket/documents/example/read?mode=phone`, {
+      headers: { origin: "https://private-tailnet.invalid", referer: "https://private-tailnet.invalid/mobile/" },
+    });
+    assert.equal(proxied.status, 200);
+    assert.deepEqual(await proxied.json(), {
+      path: "/documents/example/read?mode=phone",
+      host: `127.0.0.1:${mobilePort}`,
+      origin: `http://127.0.0.1:${mobilePort}`,
+      referer: `http://127.0.0.1:${mobilePort}/`,
+    });
+    assert.equal((await fetch(`http://127.0.0.1:${webPort}/mobile/apps/unknown/`)).status, 404);
+    const websocket = new WebSocket(`ws://127.0.0.1:${webPort}/mobile/apps/maket/ws`);
+    const message = await new Promise<string>((resolve, reject) => {
+      const timeout = setTimeout(() => reject(new Error("Mobile gateway WebSocket timed out")), 5000);
+      websocket.onmessage = (event) => {
+        clearTimeout(timeout);
+        resolve(String(event.data));
+      };
+      websocket.onerror = () => reject(new Error("Mobile gateway WebSocket failed"));
+      websocket.onclose = () => clearTimeout(timeout);
+    });
+    assert.equal(message, "mobile-ws");
+    websocket.close();
     for (const route of ["/extensions", "/extensions/coordination"]) {
       const navigation = await fetch(`http://127.0.0.1:${webPort}${route}`, { headers: { accept: "text/html" } });
       assert.equal(navigation.status, 200);
@@ -132,6 +188,73 @@ test("trust server start serves the compiled UI and server status observes its p
       await new Promise<void>((resolve) => server.once("exit", () => resolve()));
     }
     await rm(stateDirectory, { recursive: true, force: true });
+    for (const client of mobileSockets.clients) client.terminate();
+    await new Promise<void>((resolve) => mobileSockets.close(() => resolve()));
+    await new Promise<void>((resolve) => mobile.close(() => resolve()));
+  }
+});
+
+test("the optional web password protects runtime and app routes without forwarding credentials", async () => {
+  const stateDirectory = await mkdtemp(path.join(tmpdir(), "trust-shell-access-"));
+  const runtimePort = await availablePort();
+  let webPort = await availablePort();
+  while (webPort === runtimePort) webPort = await availablePort();
+  let mobilePort = await availablePort();
+  while (mobilePort === runtimePort || mobilePort === webPort) mobilePort = await availablePort();
+  const mobile = createHttpServer((request, response) => {
+    response.setHeader("content-type", "application/json");
+    response.end(JSON.stringify({ authorization: request.headers.authorization ?? null }));
+  });
+  const mobileSockets = new WebSocketServer({ noServer: true });
+  mobile.on("upgrade", (request, socket, head) =>
+    mobileSockets.handleUpgrade(request, socket, head, (client) =>
+      client.send(request.headers.authorization === undefined ? "credential-private" : "credential-leaked"),
+    ),
+  );
+  await new Promise<void>((resolve) => mobile.listen(mobilePort, "127.0.0.1", resolve));
+  const password = "local-acceptance-password-12345";
+  const authorization = `Basic ${Buffer.from(`mobile:${password}`).toString("base64")}`;
+  const environment = {
+    ...process.env,
+    TRUST_INSTALL_ROOT: repositoryRoot,
+    TRUST_SERVER_STATE_DIRECTORY: stateDirectory,
+    TRUST_PORT: String(runtimePort),
+    TRUST_WEB_PORT: String(webPort),
+    TRUST_WEB_ACCESS_PASSWORD: password,
+    TRUST_MOBILE_UPSTREAMS: JSON.stringify({ maket: { url: `http://127.0.0.1:${mobilePort}` } }),
+  };
+  const server = startCliServer(environment);
+  let stderr = "";
+  server.stderr?.on("data", (chunk: Buffer) => {
+    stderr += chunk.toString();
+  });
+  const origin = `http://127.0.0.1:${webPort}`;
+  try {
+    await waitFor(`${origin}/health`, server, () => stderr, { authorization });
+    for (const route of ["/mobile/mobile-companion", "/rpc", "/mcp", "/extensions", "/mobile/apps/maket/"]) {
+      const denied = await fetch(`${origin}${route}`);
+      assert.equal(denied.status, 401, route);
+      assert.match(denied.headers.get("www-authenticate") ?? "", /Basic/);
+    }
+    assert.equal((await fetch(`${origin}/extensions`, { headers: { authorization: "Basic wrong" } })).status, 401);
+    const allowed = await fetch(`${origin}/mobile/apps/maket/`, { headers: { authorization } });
+    assert.equal(allowed.status, 200);
+    assert.deepEqual(await allowed.json(), { authorization: null });
+    const socket = new WebSocket(`ws://127.0.0.1:${webPort}/mobile/apps/maket/ws`, { headers: { authorization } });
+    const message = await new Promise<string>((resolve, reject) => {
+      socket.on("message", (value) => resolve(value.toString()));
+      socket.on("error", reject);
+    });
+    assert.equal(message, "credential-private");
+    socket.close();
+    const status = await runCli(["server", "status"], environment);
+    assert.match(status.stdout, /TRUST server: running/);
+  } finally {
+    await stopCliServer(server);
+    await rm(stateDirectory, { recursive: true, force: true });
+    for (const client of mobileSockets.clients) client.terminate();
+    await new Promise<void>((resolve, reject) => mobileSockets.close((error) => (error ? reject(error) : resolve())));
+    await new Promise<void>((resolve, reject) => mobile.close((error) => (error ? reject(error) : resolve())));
   }
 });
 
@@ -328,14 +451,19 @@ async function availablePort(): Promise<number> {
   return port;
 }
 
-async function waitFor(url: string, child: ReturnType<typeof spawn>, stderr: () => string): Promise<void> {
+async function waitFor(
+  url: string,
+  child: ReturnType<typeof spawn>,
+  stderr: () => string,
+  headers?: Record<string, string>,
+): Promise<void> {
   const deadline = Date.now() + 20_000;
   while (Date.now() < deadline) {
     if (child.exitCode !== null || child.signalCode !== null) {
       throw new Error(`TRUST shell exited during acceptance startup\n${stderr()}`);
     }
     try {
-      const response = await fetch(url, { signal: AbortSignal.timeout(1_000) });
+      const response = await fetch(url, { ...(headers ? { headers } : {}), signal: AbortSignal.timeout(1_000) });
       if (response.ok) return;
     } catch {}
     await new Promise((resolve) => setTimeout(resolve, 100));

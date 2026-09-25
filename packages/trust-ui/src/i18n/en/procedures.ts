@@ -18,7 +18,7 @@ export const procedures = {
       executedOnce: "Executed at least once",
       neverExecuted: "Never executed",
     },
-    searchPlaceholder: "Search name, title, check, operation or input, or pick filters…",
+    searchPlaceholder: "Search name, title, description, tag, check, operation or input, or pick filters…",
     plansMark: {
       never: "Never executed",
       running_one: "{{active}} running · {{count}} plan",
@@ -180,6 +180,8 @@ export const procedures = {
     matchUses: "uses {{operation}}",
     matchCheck: "check “{{name}}”",
     matchNeeds: "needs {{input}}",
+    matchDescription: "in description",
+    matchTag: "tag {{tag}}",
     validRfc3339: "a valid RFC 3339 date",
     contextRole: "context “{{role}}”",
     checkField: "Check “{{check}}” · {{field}}",

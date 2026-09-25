@@ -9,6 +9,9 @@ independently compiled extension using public contracts, with lifecycle and
 integration behavior verified at the host boundary. Distribution bundles are a
 separate, deferred task.
 
+The [mobile companion](../../extensions/mobile-companion/README.md) documents a
+standalone federated page, extension-owned PostgreSQL or legacy PGlite data, and a controlled web gateway.
+
 ## Steps
 
 1. Define what belongs to the integration. External game or mission storage,

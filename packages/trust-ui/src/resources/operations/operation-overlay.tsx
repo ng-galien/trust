@@ -1,5 +1,5 @@
 import type { CompiledOperation } from "@trust/operation";
-import { BookOpen, Braces, Copy, FileCode2, FlaskConical, GitBranch, Pencil, Play, Save } from "lucide-react";
+import { BookOpen, Braces, Copy, FileCode2, FlaskConical, GitBranch, Pencil, Play, Save, Tags } from "lucide-react";
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useParams, useSearchParams } from "react-router";
@@ -8,12 +8,19 @@ import { catalogIdentities, orderedVersions } from "../../lib/catalog-versions.j
 import { plural } from "../../lib/format.js";
 import { mutationError, useSaveOperation } from "../../lib/mutations.js";
 import { useExpert, usePreference, useResolvedTheme } from "../../lib/preferences.js";
-import { useOperationEnvironments, useOperations, useProcedures, useRuntime } from "../../lib/runtime-context.js";
+import {
+  useOperationCatalog,
+  useOperationEnvironments,
+  useOperations,
+  useProcedures,
+  useRuntime,
+} from "../../lib/runtime-context.js";
 import { Badge, StatusBadge } from "../../ui/badge.js";
 import { Button } from "../../ui/button.js";
 import { Expert } from "../../ui/expert.js";
 import { constraintLabel, schemaProperties, typeLabel } from "../../ui/schema.js";
 import { EmptyState, ErrorBox, LoadingState } from "../../ui/states.js";
+import { CatalogMetadataEditor } from "../shared/catalog-metadata-editor.js";
 import { EmptyRelation, InspectorSection, RelationLink } from "../shared/inspector.js";
 import { useCloseTo } from "../shared/origin.js";
 import { useOverlayViewState } from "../shared/overlay-state.js";
@@ -27,8 +34,8 @@ import { OverviewView } from "./overview-view.js";
 import { RunView } from "./run-view.js";
 import { SimulationView } from "./simulation-view.js";
 
-type Tab = "overview" | "source" | "simulation" | "run" | "contract";
-const TABS: readonly Tab[] = ["overview", "source", "simulation", "run", "contract"];
+type Tab = "overview" | "catalog" | "source" | "simulation" | "run" | "contract";
+const TABS: readonly Tab[] = ["overview", "catalog", "source", "simulation", "run", "contract"];
 /** The Contract JSON tab is expert-only; a `?tab=contract` URL falls back to the default tab in operator mode. */
 const OPERATOR_TABS: readonly Tab[] = TABS.filter((tab) => tab !== "contract");
 
@@ -43,6 +50,7 @@ export function OperationOverlay({ mode = "item" }: { mode?: "item" | "new" }) {
   const expert = useExpert();
   const editorFontSize = usePreference("editorFontSize");
   const operations = useOperations();
+  const operationCatalog = useOperationCatalog();
   const procedures = useProcedures();
   const operationEnvironments = useOperationEnvironments();
 
@@ -58,6 +66,9 @@ export function OperationOverlay({ mode = "item" }: { mode?: "item" | "new" }) {
         (value) => value.operation,
         (value) => value.version,
       )[0];
+  const metadata = operationCatalog.data?.metadata.find(
+    (entry) => entry.name === catalog?.operation && entry.version === catalog.version,
+  );
   const draft = useSourceDraft({
     mode,
     id,
@@ -76,7 +87,7 @@ export function OperationOverlay({ mode = "item" }: { mode?: "item" | "new" }) {
   const { source, setDraft, authoring, listSearch, compileError, markers } = draft;
   const seed = draft.from ? operations.data?.find((operation) => operation.operation === draft.from) : undefined;
   const { tab, setTab } = useOverlayViewState<Tab>(
-    expert ? TABS : OPERATOR_TABS,
+    (expert ? TABS : OPERATOR_TABS).filter((value) => mode === "item" || value !== "catalog"),
     mode === "new" ? "source" : "overview",
   );
   const close = useCloseTo(`/operations${listSearch}`);
@@ -114,7 +125,9 @@ export function OperationOverlay({ mode = "item" }: { mode?: "item" | "new" }) {
   );
   const canSave = Boolean(compiled) && !occupied && !compileError && !draft.compiling && authoring && !save.isPending;
 
-  const title = compiled?.title ?? catalog?.title ?? (mode === "new" ? t("operations.overlay.newTitle") : (id ?? ""));
+  const title =
+    (authoring ? (compiled?.title ?? metadata?.title ?? catalog?.title) : (metadata?.title ?? catalog?.title)) ??
+    (mode === "new" ? t("operations.overlay.newTitle") : (id ?? ""));
   const version = compiled?.version ?? catalog?.version;
   const displayId =
     compiled?.operation ?? catalog?.operation ?? (mode === "new" ? t("operations.overlay.unnamed") : (id ?? ""));
@@ -225,6 +238,18 @@ export function OperationOverlay({ mode = "item" }: { mode?: "item" | "new" }) {
             </>
           ),
         },
+        ...(mode === "item"
+          ? [
+              {
+                value: "catalog" as const,
+                label: (
+                  <>
+                    <Tags size={13} /> {t("common.catalog.title")}
+                  </>
+                ),
+              },
+            ]
+          : []),
         {
           value: "source",
           label: (
@@ -322,7 +347,19 @@ export function OperationOverlay({ mode = "item" }: { mode?: "item" | "new" }) {
           <ErrorBox message={saveError} />
         </div>
       ) : null}
-      {tab === "overview" ? <OverviewView compiled={compiled} error={compileError?.detail} /> : null}
+      {tab === "overview" ? (
+        <OverviewView compiled={compiled} metadata={authoring ? undefined : metadata} error={compileError?.detail} />
+      ) : null}
+      {tab === "catalog" ? (
+        metadata ? (
+          <CatalogMetadataEditor
+            key={`${metadata.name}@${metadata.version}:${metadata.revision}`}
+            metadata={metadata}
+          />
+        ) : (
+          <LoadingState />
+        )
+      ) : null}
       {tab === "source" ? (
         <div className="flex h-full min-h-0 flex-col">
           {authoring ? (

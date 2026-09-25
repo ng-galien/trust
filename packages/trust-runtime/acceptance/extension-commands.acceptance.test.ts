@@ -78,7 +78,7 @@ export function createExtension() {
   try {
     const core = await catalog();
     assert.equal(
-      core.some((tool) => tool.name.startsWith("trust_extension_")),
+      core.some((tool) => tool.name === "trust_extension_sample_extension"),
       false,
     );
     const initialized = await rpc("initialize", {
@@ -155,6 +155,105 @@ export function createExtension() {
     assert.deepEqual(await catalog(), core);
   } finally {
     await reader?.cancel();
+    await runtime.close();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("extension lifecycle MCP tools expose actual states and control only a named installation", {
+  timeout: 30_000,
+}, async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), "trust-extension-lifecycle-mcp-"));
+  const healthyServer = path.join(directory, "healthy.mjs");
+  const failingServer = path.join(directory, "failing.mjs");
+  await writeFile(
+    healthyServer,
+    "export function createExtension(){return{async prepare(){},async start(){},async stop(){},async read(){return{status:200,body:{ok:true}}}}}",
+  );
+  await writeFile(
+    failingServer,
+    "export function createExtension(){return{async prepare(){},async start(){throw new Error('private-start-detail')},async stop(){},async read(){return{status:200,body:{ok:true}}}}}",
+  );
+  const manifests = [
+    { id: "healthy", server: "./healthy.mjs" },
+    { id: "failing", server: "./failing.mjs" },
+  ];
+  for (const entry of manifests)
+    await writeFile(
+      path.join(directory, `${entry.id}.json`),
+      JSON.stringify({
+        contract: "trust.extension@1",
+        id: entry.id,
+        title: entry.id,
+        version: "1",
+        server: entry.server,
+        configuration: {},
+        requestedCapabilities: [],
+      }),
+    );
+  const registry = path.join(directory, "registry.json");
+  await writeFile(
+    registry,
+    JSON.stringify({
+      extensions: manifests.map((entry) => ({
+        manifest: path.join(directory, `${entry.id}.json`),
+        configuration: {},
+        environment: "local",
+        grants: [],
+      })),
+    }),
+  );
+  const runtime = await startPublicRuntime("trust-extension-lifecycle-mcp-runtime-", { extensionsFile: registry });
+  const rpc = async (name: string, args: object = {}) => {
+    const response = await fetch(`${runtime.endpoint}/mcp`, {
+      method: "POST",
+      headers: { "content-type": "application/json", "mcp-protocol-version": "2025-03-26" },
+      body: JSON.stringify({ jsonrpc: "2.0", id: name, method: "tools/call", params: { name, arguments: args } }),
+    });
+    return (await response.json()) as any;
+  };
+  const content = (response: any) => JSON.parse(response.result.content[0].text);
+  try {
+    const listedTools = (await fetch(`${runtime.endpoint}/mcp`, {
+      method: "POST",
+      headers: { "content-type": "application/json", "mcp-protocol-version": "2025-03-26" },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list" }),
+    }).then((response) => response.json())) as any;
+    for (const name of [
+      "trust_extensions_list",
+      "trust_extension_status",
+      "trust_extension_prepare",
+      "trust_extension_start",
+      "trust_extension_stop",
+      "trust_extension_restart",
+    ])
+      assert.equal(
+        listedTools.result.tools.some((tool: any) => tool.name === name),
+        true,
+      );
+    assert.deepEqual(
+      content(await rpc("trust_extensions_list")).extensions.map((entry: any) => [entry.id, entry.state]),
+      [
+        ["healthy", "STOPPED"],
+        ["failing", "STOPPED"],
+      ],
+    );
+    assert.equal(content(await rpc("trust_extension_prepare", { extension: "healthy" })).extension.state, "STOPPED");
+    assert.equal(content(await rpc("trust_extension_start", { extension: "healthy" })).extension.state, "RUNNING");
+    assert.equal(content(await rpc("trust_extension_restart", { extension: "healthy" })).extension.state, "RUNNING");
+    assert.equal(content(await rpc("trust_extension_stop", { extension: "healthy" })).extension.state, "STOPPED");
+    assert.equal(content(await rpc("trust_extension_status", { extension: "healthy" })).extension.state, "STOPPED");
+    const failed = await rpc("trust_extension_start", { extension: "failing" });
+    assert.equal(failed.result.isError, true);
+    assert.equal(content(failed).extension.state, "FAILED");
+    assert.doesNotMatch(JSON.stringify(failed), /private-start-detail/);
+    assert.equal(content(await rpc("trust_extension_status", { extension: "failing" })).extension.state, "FAILED");
+    const missing = await rpc("trust_extension_restart", { extension: "absent" });
+    assert.equal(missing.result.isError, true);
+    assert.equal(content(missing).error, "extension-not-found");
+    assert.equal((await rpc("trust_extension_stop", { extension: "../healthy" })).result.isError, true);
+    assert.equal(content(await rpc("trust_extension_status", { extension: "healthy" })).extension.state, "STOPPED");
+  } finally {
     await runtime.close();
     await rm(directory, { recursive: true, force: true });
   }

@@ -29,6 +29,7 @@ import {
   documentationTools,
   isDocumentationToolName,
 } from "./mcp-documentation.js";
+import { callExtensionTool, extensionTools, isExtensionToolName } from "./mcp-extensions.js";
 
 export const MCP_JSON_LIMIT_BYTES = 1_048_576;
 
@@ -159,7 +160,9 @@ async function dispatch(
       if (!validToolsListParams(message.params)) {
         return failure(id, INVALID_PARAMS, "Invalid tools/list parameters");
       }
-      return success(id, { tools: [...tools(), ...documentationTools(), ...dependencies.extensionHost.tools()] });
+      return success(id, {
+        tools: [...tools(), ...extensionTools(), ...documentationTools(), ...dependencies.extensionHost.tools()],
+      });
     case "tools/call":
       return callTool(id, message.params, dependencies);
     default:
@@ -168,6 +171,11 @@ async function dispatch(
 }
 
 async function callTool(id: JsonRpcId, value: unknown, dependencies: McpHttpDependencies): Promise<JsonRpcResponse> {
+  if (isRecord(value) && isExtensionToolName(value.name)) {
+    if (!isRecord(value.arguments)) return failure(id, INVALID_PARAMS, "Invalid extension arguments");
+    const result = await callExtensionTool(value.name, value.arguments, dependencies.extensionHost);
+    return result.isError ? toolError(id, result.text) : textResult(id, result.text);
+  }
   if (isRecord(value) && typeof value.name === "string" && isDocumentationToolName(value.name)) {
     if (!isRecord(value.arguments)) return failure(id, INVALID_PARAMS, "Invalid documentation arguments");
     try {

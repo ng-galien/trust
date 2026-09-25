@@ -1,0 +1,115 @@
+.mobile-wide-rail {
+  display: none;
+}
+@media (min-width: 650px) {
+  .mobile-frame {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: 64px minmax(calc(100dvh - 64px), auto);
+  }
+  .mobile-frame[data-rail-open="true"] {
+    grid-template-columns: 220px minmax(0, 1fr);
+  }
+  .mobile-rail-toggle {
+    display: flex;
+  }
+  .mobile-header {
+    grid-column: 1 / -1;
+    grid-row: 1;
+  }
+  .mobile-wide-rail {
+    display: block;
+    grid-column: 1;
+    grid-row: 2;
+    padding: 27px 12px;
+    border-right: 1px solid var(--line);
+    background: var(--surface-muted);
+  }
+  .mobile-wide-rail[hidden] {
+    display: none;
+  }
+  .mobile-wide-rail-title {
+    margin: 0 11px 9px;
+    color: var(--muted);
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+  .mobile-wide-rail nav {
+    display: grid;
+    gap: 3px;
+    margin-bottom: 26px;
+  }
+  .mobile-wide-rail button {
+    width: 100%;
+    min-height: 42px;
+    padding: 9px 12px;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--text-secondary);
+    font: inherit;
+    font-size: 13px;
+    font-weight: 650;
+    text-align: left;
+    cursor: pointer;
+  }
+  .mobile-wide-rail button.selected {
+    background: var(--accent-soft-strong);
+    color: var(--accent-strong);
+  }
+  .mobile-wide-rail .mobile-nav-app {
+    padding-left: 28px;
+    color: var(--accent);
+    font-size: 12px;
+  }
+  .mobile-main {
+    grid-column: 1;
+    grid-row: 2;
+    min-width: 0;
+  }
+  .mobile-frame[data-rail-open="true"] .mobile-main {
+    grid-column: 2;
+  }
+}
+@media (max-width: 380px) {
+  .mobile-header {
+    padding: 0 15px;
+  }
+  .mobile-home-heading,
+  .mobile-conversation-heading,
+  .mobile-detail {
+    padding-right: 18px;
+    padding-left: 18px;
+  }
+  .mobile-conversation-row {
+    padding-right: 14px;
+    padding-left: 16px;
+    gap: 11px;
+  }
+  .mobile-conversation-top time {
+    font-size: 10px;
+  }
+  .mobile-thread {
+    padding-right: 17px;
+    padding-left: 17px;
+  }
+  .mobile-layout-horizontal {
+    grid-template-columns: 1fr;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mobile-drawer {
+    animation: none;
+  }
+  .mobile-conversation-row {
+    transition: none;
+  }
+  .mobile-conversation-front {
+    transition: none;
+  }
+  .mobile-conversation-delete[data-holding="true"]::after {
+    animation: none;
+  }
+}

@@ -58,6 +58,18 @@ export const SQLITE_SCHEMA = `
     UNIQUE (definition_digest)
   ) STRICT;
 
+  CREATE TABLE IF NOT EXISTS catalog_metadata_revisions (
+    kind TEXT NOT NULL CHECK (kind IN ('operation', 'procedure')),
+    name TEXT NOT NULL,
+    version TEXT NOT NULL,
+    revision INTEGER NOT NULL CHECK (revision >= 1),
+    title TEXT NOT NULL,
+    description TEXT,
+    classification_json TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY (kind, name, version, revision)
+  ) STRICT;
+
   CREATE TRIGGER IF NOT EXISTS published_procedures_cannot_change
   BEFORE UPDATE ON published_procedures
   BEGIN
@@ -326,6 +338,8 @@ export const SQLITE_SCHEMA = `
 `;
 
 export const SQLITE_SCHEMA_DIGEST = createHash("sha256").update(SQLITE_SCHEMA).digest("hex");
+/** Previous exact schema, accepted only by the explicit catalog metadata upgrade command. */
+export const PRE_CATALOG_METADATA_SCHEMA_DIGEST = "c6a911aa26bb1959a1f8a09206b9e6decc4542d6523312d5dfcc9b1ca7bd29ba";
 
 const SCHEMA_METADATA = `
   CREATE TABLE trust_schema (
@@ -340,7 +354,7 @@ export class IncompatibleSqliteSchemaError extends Error {
   constructor(actualDigest: string | undefined) {
     super(
       "SQLite database schema is incompatible with this TRUST runtime. " +
-        "Run 'node environments/trust-test/scripts/server.ts reset' to replace and reseed the local database.",
+        "Identify the database before changing it. A retained database requires a verified backup and an explicit data-preserving upgrade; disposable test databases may be reseeded.",
     );
     this.name = "IncompatibleSqliteSchemaError";
     this.actualDigest = actualDigest;
@@ -359,6 +373,28 @@ export function initializeSqliteSchema(sqlite: DatabaseSync): void {
     sqlite.exec(SQLITE_SCHEMA);
     sqlite.exec(SCHEMA_METADATA);
     sqlite.prepare("INSERT INTO trust_schema (singleton, digest) VALUES (1, ?)").run(SQLITE_SCHEMA_DIGEST);
+    sqlite.exec("COMMIT");
+  } catch (error) {
+    sqlite.exec("ROLLBACK");
+    throw error;
+  }
+}
+
+/** One-off additive upgrade. Call only after making and checking a consistent database backup. */
+export function upgradeCatalogMetadataSchema(sqlite: DatabaseSync): void {
+  const state = sqliteSchemaState(sqlite);
+  if (state.kind !== "incompatible" || state.digest !== PRE_CATALOG_METADATA_SCHEMA_DIGEST) {
+    throw new IncompatibleSqliteSchemaError(state.kind === "incompatible" ? state.digest : undefined);
+  }
+  sqlite.exec("BEGIN IMMEDIATE");
+  try {
+    sqlite.exec(SQLITE_SCHEMA);
+    sqlite.prepare("UPDATE trust_schema SET digest = ? WHERE singleton = 1").run(SQLITE_SCHEMA_DIGEST);
+    const foreignKeys = sqlite.prepare("PRAGMA foreign_key_check").all();
+    const integrity = sqlite.prepare("PRAGMA integrity_check").get() as { integrity_check: string };
+    if (foreignKeys.length !== 0 || integrity.integrity_check !== "ok") {
+      throw new Error("Catalog metadata schema upgrade failed integrity checks");
+    }
     sqlite.exec("COMMIT");
   } catch (error) {
     sqlite.exec("ROLLBACK");

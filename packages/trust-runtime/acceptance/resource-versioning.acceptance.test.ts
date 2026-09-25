@@ -137,6 +137,114 @@ async function gate(
   return rpc(endpoint, "plan.read", { plan });
 }
 
+test("catalog presentation can change without republishing or changing an engaged Plan", async () => {
+  const fixture = await setup();
+  try {
+    await fixture.operation("1.0.0");
+    await fixture.publish(procedure("catalog-presentation"));
+    await fixture.engage("catalog-presentation", "catalog-presentation-plan");
+
+    const before = await rpc(fixture.endpoint, "plan.read", { plan: "catalog-presentation-plan" });
+    const originalOperation = await rpc(fixture.endpoint, "operation.read", {
+      operation: "version.observe",
+      version: "1.0.0",
+    });
+    const originalProcedure = await rpc(fixture.endpoint, "procedure.read", {
+      procedure: "catalog-presentation",
+      version: "1.0.0",
+    });
+
+    const operationMetadata = await rpc(fixture.endpoint, "catalog.metadata.update", {
+      kind: "operation",
+      name: "version.observe",
+      version: "1.0.0",
+      expectedRevision: 0,
+      title: "Inspect repository state",
+      description: "Read the current repository status for a review.",
+      classification: { domain: ["repository"], nature: ["inspection"] },
+    });
+    assert.equal(operationMetadata.revision, 1);
+    const procedureMetadata = await rpc(fixture.endpoint, "catalog.metadata.update", {
+      kind: "procedure",
+      name: "catalog-presentation",
+      version: "1.0.0",
+      expectedRevision: 0,
+      title: "Review a repository",
+      description: "Confirm a clean repository before follow-up work.",
+      classification: { purpose: ["review"] },
+    });
+    assert.equal(procedureMetadata.revision, 1);
+
+    const foundOperations = await rpc(fixture.endpoint, "operation.list", { query: "repository inspection" });
+    assert.equal(foundOperations.operations.length, 1);
+    assert.equal(foundOperations.metadata[0].title, "Inspect repository state");
+    const foundProcedures = await rpc(fixture.endpoint, "procedure.list", { query: "follow-up review" });
+    assert.equal(foundProcedures.procedures.length, 1);
+    assert.equal(foundProcedures.metadata[0].title, "Review a repository");
+    const operationSummary = await rpc(fixture.endpoint, "operation.list", { summary: true, query: "inspection" });
+    assert.equal(operationSummary.operations[0].title, "Inspect repository state");
+    const procedureSummary = await rpc(fixture.endpoint, "procedure.list", { summary: true, query: "review" });
+    assert.equal(procedureSummary.procedures[0].procedure.title, "Review a repository");
+
+    assert.deepEqual(
+      await rpc(fixture.endpoint, "operation.read", {
+        operation: "version.observe",
+        version: "1.0.0",
+      }),
+      originalOperation,
+    );
+    assert.deepEqual(
+      await rpc(fixture.endpoint, "procedure.read", {
+        procedure: "catalog-presentation",
+        version: "1.0.0",
+      }),
+      originalProcedure,
+    );
+    assert.deepEqual(await rpc(fixture.endpoint, "plan.read", { plan: "catalog-presentation-plan" }), before);
+
+    const conflict = await request(fixture.endpoint, "catalog.metadata.update", {
+      kind: "operation",
+      name: "version.observe",
+      version: "1.0.0",
+      expectedRevision: 0,
+      title: "Stale title",
+      classification: {},
+    });
+    assert.match(conflict.error?.message ?? "", /revision is 1/);
+
+    await fixture.restart();
+    const afterRestart = await rpc(fixture.endpoint, "catalog.metadata.read", {
+      kind: "procedure",
+      name: "catalog-presentation",
+      version: "1.0.0",
+    });
+    assert.deepEqual(afterRestart, procedureMetadata);
+    const cleared = await rpc(fixture.endpoint, "catalog.metadata.update", {
+      kind: "procedure",
+      name: "catalog-presentation",
+      version: "1.0.0",
+      expectedRevision: 1,
+      title: "Review a repository",
+      classification: {},
+    });
+    assert.equal(cleared.revision, 2);
+    assert.deepEqual(cleared.classification, {});
+    assert.equal(cleared.description, undefined);
+    const history = await rpc(fixture.endpoint, "catalog.metadata.history", {
+      kind: "procedure",
+      name: "catalog-presentation",
+      version: "1.0.0",
+    });
+    assert.deepEqual(
+      history.history.map((entry: { revision: number }) => entry.revision),
+      [0, 1, 2],
+    );
+    assert.equal(history.history[0].title, originalProcedure.procedure.title);
+  } finally {
+    await fixture.close();
+  }
+});
+
 test("public compiler resolves standard SemVer selectors and refuses malformed, missing and incompatible references", {
   timeout: 60_000,
 }, async () => {

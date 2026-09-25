@@ -38,6 +38,18 @@ export const common: Translation<typeof en> = {
     none: "Aucun",
     technicalDetails: "Détails techniques",
   },
+  catalog: {
+    title: "Fiche du catalogue",
+    hint: "Ces informations aident à trouver et choisir cette version publiée. Leur modification ne change ni sa méthode ni sa version.",
+    displayTitle: "Titre",
+    description: "Description",
+    tags: "Tags de classement",
+    tagsHint: "Un tag @x-key:value par ligne. Ajoutez, modifiez ou retirez des lignes pour mettre à jour le catalogue.",
+    invalidTags:
+      "Utilisez un tag @x-key:value par ligne, avec une clé en minuscules et une valeur sans espace ni deux-points.",
+    saveFailed: "La fiche du catalogue n’a pas pu être enregistrée.",
+    revision: "Révision du catalogue {{revision}}",
+  },
   count: {
     check_one: "{{count}} check",
     check_other: "{{count}} checks",

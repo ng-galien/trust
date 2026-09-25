@@ -13,7 +13,7 @@ const contentRoot = path.resolve(
   "../../../packages/trust-ui/src/docs/content",
 );
 const capturesRoot = path.resolve(contentRoot, "../captures");
-const runtimeUrl = "http://127.0.0.1:4390";
+const runtimeUrl = `http://127.0.0.1:${process.env.TRUST_WEB_ACCEPTANCE_RUNTIME_PORT ?? "4390"}`;
 
 async function mdxFiles(dir: string): Promise<string[]> {
   const out: string[] = [];

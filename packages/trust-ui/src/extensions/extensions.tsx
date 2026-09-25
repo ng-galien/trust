@@ -1,6 +1,6 @@
 import { loadRemote, registerRemotes } from "@module-federation/enhanced/runtime";
 import { ArrowUpRight, Play, Puzzle, RefreshCw, Square, Wrench } from "lucide-react";
-import { Component, type ComponentType, type ReactNode, useEffect, useMemo, useState } from "react";
+import { Component, type ComponentType, type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useLocation, useNavigate, useParams } from "react-router";
 import { useExtensions } from "../lib/extensions.js";
@@ -142,7 +142,7 @@ class RemoteBoundary extends Component<{ children: ReactNode; fallback: ReactNod
     return this.state.failed ? this.props.fallback : this.props.children;
   }
 }
-export function ExtensionPage() {
+export function ExtensionPage({ bare = false }: { bare?: boolean }) {
   const { extension: id } = useParams();
   const location = useLocation();
   const navigate = useNavigate();
@@ -173,6 +173,16 @@ export function ExtensionPage() {
   const remoteName = remote?.name;
   const remoteEntry = remote?.entry;
   const remoteModule = remote?.module;
+  const reportMobile = useCallback(
+    (stage: string, code: string) => {
+      if (bare && id === "mobile-companion")
+        (window as Window & { __trustMobileReport?: (stage: string, code: string) => void }).__trustMobileReport?.(
+          stage,
+          code,
+        );
+    },
+    [bare, id],
+  );
   useEffect(() => {
     let active = true;
     setRemote(null);
@@ -187,15 +197,31 @@ export function ExtensionPage() {
     )
       .then((module) => {
         if (!module?.default) throw new Error("No extension page");
-        if (active) setRemote(() => module.default);
+        if (active) {
+          reportMobile("remote-import", "loaded");
+          setRemote(() => module.default);
+        }
       })
-      .catch(() => {
-        if (active) setFailed(true);
+      .catch((error: unknown) => {
+        if (!active) return;
+        const name = error instanceof Error ? error.name : "unknown";
+        reportMobile(
+          "remote-import",
+          ["TypeError", "SyntaxError", "ReferenceError", "Error"].includes(name) ? name : "unknown",
+        );
+        if (retry < 2)
+          setTimeout(
+            () => {
+              if (active) setRetry((value) => value + 1);
+            },
+            500 * (retry + 1),
+          );
+        else setFailed(true);
       });
     return () => {
       active = false;
     };
-  }, [remoteName, remoteEntry, remoteModule, baseUrl, retry]);
+  }, [remoteName, remoteEntry, remoteModule, baseUrl, retry, reportMobile]);
   const fallback = (
     <div role="alert" className="p-6">
       <p>{t("extensions.failed")}</p>
@@ -205,15 +231,17 @@ export function ExtensionPage() {
     </div>
   );
   return (
-    <div className="extension-workspace min-h-full min-w-0 flex-1 bg-bg">
-      <div className="bg-surface px-6 pt-4 pb-2">
-        <Breadcrumb
-          items={[
-            { label: t("extensions.title"), to: "/extensions" },
-            { label: extension?.title ?? t("extensions.loading") },
-          ]}
-        />
-      </div>
+    <div className={bare ? "min-h-dvh min-w-0 bg-bg text-text" : "extension-workspace min-h-full min-w-0 flex-1 bg-bg"}>
+      {!bare && (
+        <div className="bg-surface px-6 pt-4 pb-2">
+          <Breadcrumb
+            items={[
+              { label: t("extensions.title"), to: "/extensions" },
+              { label: extension?.title ?? t("extensions.loading") },
+            ]}
+          />
+        </div>
+      )}
       {catalog.isError || failed ? (
         fallback
       ) : catalog.isLoading ? (

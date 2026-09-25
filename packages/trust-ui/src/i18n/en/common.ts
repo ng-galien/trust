@@ -34,6 +34,17 @@ export const common = {
     none: "None",
     technicalDetails: "Technical details",
   },
+  catalog: {
+    title: "Catalog details",
+    hint: "These details help people find and choose this published version. Editing them does not change its method or version.",
+    displayTitle: "Title",
+    description: "Description",
+    tags: "Classification tags",
+    tagsHint: "One @x-key:value tag per line. Add, change or remove lines to update the catalog.",
+    invalidTags: "Use one @x-key:value tag per line, with a lower-case key and a value without spaces or colons.",
+    saveFailed: "Catalog details could not be saved.",
+    revision: "Catalog revision {{revision}}",
+  },
   count: {
     check_one: "{{count}} check",
     check_other: "{{count}} checks",

@@ -1,5 +1,7 @@
 import type {
   AttemptFinalizationResult,
+  CatalogMetadata,
+  CatalogMetadataUpdate,
   CheckAttemptAdmissionResult,
   CheckView,
   CredentialReference,
@@ -106,13 +108,17 @@ export class TrustRuntimeClient {
     return response.json() as Promise<{ status: string }>;
   };
 
-  operations = async () =>
-    (
-      await this.call<{
-        contract: "trust.operation-catalog@1";
-        operations: CompiledOperation[];
-      }>("operation.list")
-    ).operations;
+  operationCatalog = () =>
+    this.call<{
+      contract: "trust.operation-catalog@1";
+      operations: CompiledOperation[];
+      metadata: CatalogMetadata[];
+    }>("operation.list");
+  operations = async () => (await this.operationCatalog()).operations;
+  catalogMetadata = (kind: CatalogMetadata["kind"], name: string, version: string) =>
+    this.call<CatalogMetadata>("catalog.metadata.read", { kind, name, version });
+  updateCatalogMetadata = (input: CatalogMetadataUpdate) =>
+    this.call<CatalogMetadata>("catalog.metadata.update", { ...input });
   compileOperation = (source: string, sourceName = "editor.feature") =>
     this.call<CompiledOperation>("operation.compile", { source, sourceName });
   /** Writes a new immutable source file into the runtime catalog directory and recompiles it. */
@@ -145,13 +151,13 @@ export class TrustRuntimeClient {
   renderTemplate = (request: TemplateRenderRequest) =>
     this.call<TemplateRenderResult>("template.render", { ...request, values: { ...request.values } });
 
-  procedures = async () =>
-    (
-      await this.call<{
-        contract: "trust.procedure-catalog@1";
-        procedures: PublishedProcedure[];
-      }>("procedure.list")
-    ).procedures;
+  procedureCatalog = () =>
+    this.call<{
+      contract: "trust.procedure-catalog@1";
+      procedures: PublishedProcedure[];
+      metadata: CatalogMetadata[];
+    }>("procedure.list");
+  procedures = async () => (await this.procedureCatalog()).procedures;
   compileProcedure = (source: string, sourceName = "editor.feature") =>
     this.call<CompiledProcedure>("procedure.compile", { source, sourceName });
   publishProcedure = (source: string) =>

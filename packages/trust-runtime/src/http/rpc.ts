@@ -1,3 +1,4 @@
+import type { CatalogMetadata, CatalogMetadataUpdate } from "@trust/extension-sdk";
 import {
   compileOperation,
   OperationCompilationError,
@@ -6,6 +7,7 @@ import {
 } from "@trust/operation";
 import { CatalogProcedureCompilationError, type ProcedureCompilationErrorCode } from "@trust/procedure";
 import express, { type ErrorRequestHandler, type RequestHandler, type Router } from "express";
+import { CatalogMetadataError, type CatalogMetadataStore, matchesCatalogQuery } from "../catalog/metadata.js";
 import type { CredentialService } from "../credential/service.js";
 import type { EnvironmentService } from "../environment/service.js";
 import { EnvironmentConfigurationError } from "../environment/validation.js";
@@ -45,6 +47,9 @@ const OPERATION_READ_METHOD = "operation.read" as const;
 const OPERATION_SIMULATE_METHOD = "operation.simulate" as const;
 const OPERATION_SAVE_METHOD = "operation.save" as const;
 const OPERATION_REMOVE_METHOD = "operation.remove" as const;
+const CATALOG_METADATA_READ_METHOD = "catalog.metadata.read" as const;
+const CATALOG_METADATA_HISTORY_METHOD = "catalog.metadata.history" as const;
+const CATALOG_METADATA_UPDATE_METHOD = "catalog.metadata.update" as const;
 const PROCEDURE_COMPILATION_ERROR_CONTRACT = "trust.procedure-compilation-error@1" as const;
 const OPERATION_COMPILATION_ERROR_CONTRACT = "trust.operation-compilation-error@1" as const;
 
@@ -138,6 +143,7 @@ interface RpcHttpDependencies {
   readonly procedures: Procedures;
   readonly templateService: TemplateService;
   readonly operationCatalog: OperationCatalog;
+  readonly catalogMetadata: CatalogMetadataStore;
   readonly planRuntime: PlanRuntime;
   readonly registryService: RegistryService;
 }
@@ -198,10 +204,58 @@ const readParams = (value: unknown): ProcedureReadParams | undefined => {
   return { procedure: value.procedure, version: value.version };
 };
 
-const listParams = (value: unknown): { readonly summary: boolean } | undefined => {
-  if (!isRecord(value) || !hasOnlyKeys(value, ["summary"])) return undefined;
+const listParams = (value: unknown): { readonly summary: boolean; readonly query: string } | undefined => {
+  if (!isRecord(value) || !hasOnlyKeys(value, ["summary", "query"])) return undefined;
   if (value.summary !== undefined && typeof value.summary !== "boolean") return undefined;
-  return { summary: value.summary === true };
+  if (value.query !== undefined && (typeof value.query !== "string" || value.query.length > 200)) return undefined;
+  return { summary: value.summary === true, query: (value.query as string | undefined) ?? "" };
+};
+
+const catalogMetadataReadParams = (
+  value: unknown,
+): { kind: "operation" | "procedure"; name: string; version: string } | undefined => {
+  if (!isRecord(value) || !hasOnlyKeys(value, ["kind", "name", "version"])) return undefined;
+  if (
+    (value.kind !== "operation" && value.kind !== "procedure") ||
+    typeof value.name !== "string" ||
+    !value.name ||
+    typeof value.version !== "string" ||
+    !value.version
+  )
+    return undefined;
+  return { kind: value.kind, name: value.name, version: value.version };
+};
+
+const catalogMetadataUpdateParams = (value: unknown): CatalogMetadataUpdate | undefined => {
+  if (
+    !isRecord(value) ||
+    !hasOnlyKeys(value, ["kind", "name", "version", "expectedRevision", "title", "description", "classification"])
+  )
+    return undefined;
+  if (
+    (value.kind !== "operation" && value.kind !== "procedure") ||
+    typeof value.name !== "string" ||
+    !value.name ||
+    typeof value.version !== "string" ||
+    !value.version ||
+    typeof value.title !== "string" ||
+    (value.description !== undefined && typeof value.description !== "string") ||
+    typeof value.expectedRevision !== "number" ||
+    !isRecord(value.classification) ||
+    !Object.values(value.classification).every(
+      (items) => Array.isArray(items) && items.every((item) => typeof item === "string"),
+    )
+  )
+    return undefined;
+  return {
+    kind: value.kind,
+    name: value.name,
+    version: value.version,
+    title: value.title,
+    ...(value.description === undefined ? {} : { description: value.description }),
+    expectedRevision: value.expectedRevision,
+    classification: value.classification as Record<string, string[]>,
+  };
 };
 
 const operationReadParams = (value: unknown): OperationReadParams | undefined => {
@@ -264,6 +318,9 @@ const processMessage = async (message: unknown, dependencies: RpcHttpDependencie
     message.method !== OPERATION_SIMULATE_METHOD &&
     message.method !== OPERATION_SAVE_METHOD &&
     message.method !== OPERATION_REMOVE_METHOD &&
+    message.method !== CATALOG_METADATA_READ_METHOD &&
+    message.method !== CATALOG_METADATA_HISTORY_METHOD &&
+    message.method !== CATALOG_METADATA_UPDATE_METHOD &&
     !isPlanRuntimeRpcMethod(message.method) &&
     !isTemplateRpcMethod(message.method) &&
     !isConfigurationRpcMethod(message.method) &&
@@ -279,6 +336,38 @@ const processMessage = async (message: unknown, dependencies: RpcHttpDependencie
       return respond({ jsonrpc: "2.0", id, result });
     } catch (error) {
       if (error instanceof TemplateError) return respond(failure(id, INVALID_PARAMS, error.message));
+      return respond(failure(id, INTERNAL_ERROR, "Internal error"));
+    }
+  }
+
+  if (message.method === CATALOG_METADATA_READ_METHOD) {
+    const params = catalogMetadataReadParams(message.params);
+    if (!params) return respond(failure(id, INVALID_PARAMS, "Invalid params"));
+    const metadata = await dependencies.catalogMetadata.read(params.kind, params.name, params.version);
+    return respond(
+      metadata ? { jsonrpc: "2.0", id, result: metadata } : failure(id, INVALID_PARAMS, "Catalog entry not found"),
+    );
+  }
+
+  if (message.method === CATALOG_METADATA_HISTORY_METHOD) {
+    const params = catalogMetadataReadParams(message.params);
+    if (!params) return respond(failure(id, INVALID_PARAMS, "Invalid params"));
+    const history = await dependencies.catalogMetadata.history(params.kind, params.name, params.version);
+    return respond(
+      history
+        ? { jsonrpc: "2.0", id, result: { contract: "trust.catalog-metadata-history@1", history } }
+        : failure(id, INVALID_PARAMS, "Catalog entry not found"),
+    );
+  }
+
+  if (message.method === CATALOG_METADATA_UPDATE_METHOD) {
+    const params = catalogMetadataUpdateParams(message.params);
+    if (!params) return respond(failure(id, INVALID_PARAMS, "Invalid params"));
+    try {
+      const metadata = await dependencies.catalogMetadata.update(params);
+      return respond({ jsonrpc: "2.0", id, result: metadata });
+    } catch (error) {
+      if (error instanceof CatalogMetadataError) return respond(failure(id, INVALID_PARAMS, error.message));
       return respond(failure(id, INTERNAL_ERROR, "Internal error"));
     }
   }
@@ -357,13 +446,25 @@ const processMessage = async (message: unknown, dependencies: RpcHttpDependencie
   if (message.method === OPERATION_LIST_METHOD) {
     const params = listParams(message.params);
     if (!params) return respond(failure(id, INVALID_PARAMS, "Invalid params"));
-    const operations = dependencies.operationCatalog.list();
+    const entries = await Promise.all(
+      dependencies.operationCatalog.list().map(async (operation) => ({
+        operation,
+        metadata: await dependencies.catalogMetadata.read("operation", operation.operation, operation.version),
+      })),
+    );
+    const found = entries.filter(
+      (entry): entry is { operation: typeof entry.operation; metadata: CatalogMetadata } =>
+        entry.metadata !== undefined && matchesCatalogQuery(entry.metadata, params.query),
+    );
     return respond({
       jsonrpc: "2.0",
       id,
       result: {
         contract: "trust.operation-catalog@1",
-        operations: params.summary ? operations.map(operationSummary) : operations,
+        operations: found.map(({ operation, metadata }) =>
+          params.summary ? operationSummary(operation, metadata) : operation,
+        ),
+        metadata: found.map(({ metadata }) => metadata),
       },
     });
   }
@@ -496,13 +597,29 @@ const processMessage = async (message: unknown, dependencies: RpcHttpDependencie
     const params = listParams(message.params);
     if (!params) return respond(failure(id, INVALID_PARAMS, "Invalid params"));
     try {
-      const procedures = await dependencies.procedures.list();
+      const entries = await Promise.all(
+        (await dependencies.procedures.list()).map(async (published) => ({
+          published,
+          metadata: await dependencies.catalogMetadata.read(
+            "procedure",
+            published.procedure.procedure,
+            published.procedure.version,
+          ),
+        })),
+      );
+      const found = entries.filter(
+        (entry): entry is { published: typeof entry.published; metadata: CatalogMetadata } =>
+          entry.metadata !== undefined && matchesCatalogQuery(entry.metadata, params.query),
+      );
       return respond({
         jsonrpc: "2.0",
         id,
         result: {
           contract: "trust.procedure-catalog@1",
-          procedures: params.summary ? procedures.map(procedureSummary) : procedures,
+          procedures: found.map(({ published, metadata }) =>
+            params.summary ? procedureSummary(published, metadata) : published,
+          ),
+          metadata: found.map(({ metadata }) => metadata),
         },
       });
     } catch {
@@ -625,25 +742,28 @@ const processMessage = async (message: unknown, dependencies: RpcHttpDependencie
   }
 };
 
-function operationSummary(operation: ReturnType<OperationCatalog["list"]>[number]) {
+function operationSummary(operation: ReturnType<OperationCatalog["list"]>[number], metadata: CatalogMetadata) {
   return {
     contract: operation.contract,
     operation: operation.operation,
     version: operation.version,
-    title: operation.title,
-    ...(operation.description === undefined ? {} : { description: operation.description }),
-    ...(operation.classification === undefined ? {} : { classification: operation.classification }),
+    title: metadata.title,
+    ...(metadata.description === undefined ? {} : { description: metadata.description }),
+    classification: metadata.classification,
+    metadataRevision: metadata.revision,
   };
 }
 
-function procedureSummary(published: Awaited<ReturnType<Procedures["list"]>>[number]) {
+function procedureSummary(published: Awaited<ReturnType<Procedures["list"]>>[number], metadata: CatalogMetadata) {
   const procedure = published.procedure;
   return {
     procedure: {
       procedure: procedure.procedure,
       version: procedure.version,
-      title: procedure.title,
-      ...(procedure.description === undefined ? {} : { description: procedure.description }),
+      title: metadata.title,
+      ...(metadata.description === undefined ? {} : { description: metadata.description }),
+      classification: metadata.classification,
+      metadataRevision: metadata.revision,
       definitionDigest: procedure.definitionDigest,
     },
     sourceName: published.sourceName,

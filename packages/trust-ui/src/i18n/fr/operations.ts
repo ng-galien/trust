@@ -24,6 +24,8 @@ export const operations: Translation<typeof en> = {
     matchProduces: "produit {{name}}",
     matchNeedsInput: "requiert l'entrée {{name}}",
     matchNeedsEnvironment: "requiert l'environnement {{name}}",
+    matchDescription: "dans la description",
+    matchTag: "tag {{tag}}",
   },
   home: {
     title: "Opérations",
@@ -46,7 +48,7 @@ export const operations: Translation<typeof en> = {
       hasEnvironment: "A un environnement compatible",
       noEnvironment: "Aucun environnement ne peut l'exécuter",
     },
-    searchPlaceholder: "Rechercher un nom, un titre ou un champ, ou choisir des filtres…",
+    searchPlaceholder: "Rechercher un nom, un titre, une description, un tag ou un champ, ou choisir des filtres…",
     runnable: {
       notOnCurrent: "Pas sur {{current}}",
       notOnCurrentHint: "Non exécutable sur l'environnement courant {{current}} — exécutable sur {{names}}",

@@ -1,5 +1,7 @@
 /** Public extension and client contracts. No runtime implementation dependency. */
 
+export type { CatalogMetadata, CatalogMetadataUpdate } from "./catalog.js";
+
 export type {
   ExtensionContext,
   ExtensionDescriptor,
@@ -205,6 +207,22 @@ export interface PlanView {
   readonly escalations: readonly PlanEscalationView[];
   readonly revisions: readonly PlanRevisionView[];
   readonly sessions: readonly SessionRecordView[];
+}
+
+/** Read-only episode assembled from the current Plan, its Checks, and accepted child missions.
+    The source views retain their own revision, Fact, and qualification provenance. */
+export interface DelegationEpisodeView {
+  readonly contract: "trust.delegation-episode@1";
+  readonly root: DelegationEpisodePlanView;
+  readonly branches: readonly {
+    readonly invocation: InvocationView;
+    readonly child: DelegationEpisodePlanView | null;
+  }[];
+}
+
+export interface DelegationEpisodePlanView {
+  readonly plan: PlanView;
+  readonly checks: readonly CheckView[];
 }
 
 export interface PlanSummaryView {

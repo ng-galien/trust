@@ -1,5 +1,7 @@
 import { defineConfig } from "@playwright/test";
 
+const webPort = process.env.TRUST_WEB_ACCEPTANCE_WEB_PORT ?? "4174";
+
 export default defineConfig({
   testDir: "./acceptance",
   fullyParallel: false,
@@ -19,13 +21,13 @@ export default defineConfig({
     { name: "docs-capture", testMatch: /\.capture\.ts$/, timeout: 60_000 },
   ],
   use: {
-    baseURL: "http://127.0.0.1:4174",
+    baseURL: `http://127.0.0.1:${webPort}`,
     viewport: { width: 1440, height: 900 },
     trace: "retain-on-failure",
   },
   webServer: {
     command: "node acceptance/support/server.mjs",
-    url: "http://127.0.0.1:4174/health",
+    url: `http://127.0.0.1:${webPort}/health`,
     reuseExistingServer: false,
     timeout: 120_000,
   },

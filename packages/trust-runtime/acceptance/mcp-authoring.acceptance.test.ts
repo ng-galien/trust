@@ -27,6 +27,7 @@ const expectedAuthoringTools = [
   "trust_published_procedure_read",
   "trust_procedure_compile",
   "trust_procedure_publish",
+  "trust_catalog_metadata_update",
 ] as const;
 
 test("MCP exposes the UI Operation and Procedure authoring lifecycle through runtime authorities", async () => {
@@ -190,6 +191,111 @@ test("MCP exposes the UI Operation and Procedure authoring lifecycle through run
     await runtime.close();
     await rm(operationsDirectory, { recursive: true, force: true });
     await rm(workspaceRoot, { recursive: true, force: true });
+  }
+});
+
+test("MCP finds and revises catalog presentation without changing published sources", async () => {
+  const operationsDirectory = await mkdtemp(path.join(tmpdir(), "trust-mcp-catalog-operations-"));
+  const runtime = await startPublicRuntime("trust-mcp-catalog-metadata-", { operationsDirectory });
+  try {
+    await mcpTool(runtime.endpoint, "trust_operation_save", {
+      source: operationSource("test.mcp-authoring"),
+      sourceName: "test.mcp-authoring.feature",
+    });
+    await mcpTool(runtime.endpoint, "trust_procedure_publish", {
+      source: procedureSource(),
+      sourceName: "test.mcp-procedure.feature",
+    });
+
+    assert.match(await mcpTool(runtime.endpoint, "trust_operation_list", { query: "MCP authoring" }), /Count: 1/);
+    assert.match(await mcpTool(runtime.endpoint, "trust_procedure_list", { query: "MCP Procedure" }), /Count: 1/);
+    assert.match(await mcpTool(runtime.endpoint, "trust_operation_list", { query: "catalogneedle" }), /Count: 0/);
+
+    const operationMetadata = {
+      kind: "operation",
+      name: "test.mcp-authoring",
+      version: "1.0.0",
+      expectedRevision: 0,
+      title: "Catalog operation",
+      description: "Catalogneedle performs the declared shell action.",
+      classification: { family: ["catalog-needle"], nature: ["verification"] },
+    };
+    assert.match(
+      await mcpTool(runtime.endpoint, "trust_catalog_metadata_update", operationMetadata),
+      /Metadata revision: 1/,
+    );
+    const operationSearch = await mcpTool(runtime.endpoint, "trust_operation_list", { query: "catalogneedle" });
+    assert.match(operationSearch, /Count: 1/);
+    assert.match(operationSearch, /Description: Catalogneedle performs the declared shell action/);
+    assert.match(operationSearch, /Tags: family:catalog-needle, nature:verification/);
+    assert.match(await mcpTool(runtime.endpoint, "trust_operation_list", { query: "catalog-needle" }), /Count: 1/);
+    const operationRead = await mcpTool(runtime.endpoint, "trust_operation_read", {
+      operation: "test.mcp-authoring",
+      version: "1.0.0",
+    });
+    assert.match(operationRead, /Title: Catalog operation/);
+    assert.match(
+      operationRead,
+      /SOURCE\n# language: en\n@trust-dsl:1 @operation:test\.mcp-authoring @version:1\.0\.0\nFeature: Exercise MCP authoring/,
+    );
+
+    const conflict = await mcpRequest(runtime.endpoint, "tools/call", {
+      name: "trust_catalog_metadata_update",
+      arguments: operationMetadata,
+    });
+    assert.equal((conflict.result as { isError?: boolean }).isError, true);
+    assert.match(JSON.stringify(conflict), /revision-conflict/);
+
+    assert.match(
+      await mcpTool(runtime.endpoint, "trust_catalog_metadata_update", {
+        ...operationMetadata,
+        expectedRevision: 1,
+        title: "Catalog operation revised",
+        description: "",
+        classification: {},
+      }),
+      /Metadata revision: 2/,
+    );
+    assert.match(await mcpTool(runtime.endpoint, "trust_operation_list", { query: "catalogneedle" }), /Count: 0/);
+    assert.match(await mcpTool(runtime.endpoint, "trust_operation_list", { query: "catalog-needle" }), /Count: 0/);
+    const revisedOperation = await mcpTool(runtime.endpoint, "trust_operation_read", {
+      operation: "test.mcp-authoring",
+      version: "1.0.0",
+    });
+    assert.doesNotMatch(
+      revisedOperation.slice(0, revisedOperation.indexOf("SOURCE\n")),
+      /Description:|family:catalog-needle/,
+    );
+    assert.match(revisedOperation, /Metadata revision: 2/);
+
+    assert.match(
+      await mcpTool(runtime.endpoint, "trust_catalog_metadata_update", {
+        kind: "procedure",
+        name: "test-mcp-procedure",
+        version: "1.0.0",
+        expectedRevision: 0,
+        title: "Catalog procedure",
+        description: "Catalogneedle coordinates the Operation Check.",
+        classification: { purpose: ["catalog-review"] },
+      }),
+      /Metadata revision: 1/,
+    );
+    const procedureSearch = await mcpTool(runtime.endpoint, "trust_procedure_list", { query: "catalog-review" });
+    assert.match(procedureSearch, /Count: 1/);
+    assert.match(procedureSearch, /Catalog procedure/);
+    assert.match(procedureSearch, /Description: Catalogneedle coordinates the Operation Check/);
+    const procedureRead = await mcpTool(runtime.endpoint, "trust_published_procedure_read", {
+      procedure: "test-mcp-procedure",
+      version: "1.0.0",
+    });
+    assert.match(procedureRead, /Metadata revision: 1/);
+    assert.match(
+      procedureRead,
+      /SOURCE\n# language: en\n@trust-dsl:1 @procedure:test-mcp-procedure @version:1\.0\.0\nFeature: Exercise MCP Procedure authoring/,
+    );
+  } finally {
+    await runtime.close();
+    await rm(operationsDirectory, { recursive: true, force: true });
   }
 });
 

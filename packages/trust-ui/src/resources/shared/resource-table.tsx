@@ -71,6 +71,7 @@ export function TitleCell({
   id,
   version,
   description,
+  tags,
   note,
 }: {
   to: string;
@@ -78,6 +79,7 @@ export function TitleCell({
   id: string;
   version?: string | undefined;
   description?: string | undefined;
+  tags?: readonly string[];
   note?: ReactNode;
 }) {
   return (
@@ -88,6 +90,12 @@ export function TitleCell({
           {id}
           {version ? <span className="text-faint"> · v{version}</span> : null}
         </span>
+        {tags?.length ? (
+          <span className="mono block truncate-1 text-caption text-muted" title={tags.join(", ")}>
+            {tags.slice(0, 2).join(" · ")}
+            {tags.length > 2 ? ` +${tags.length - 2}` : ""}
+          </span>
+        ) : null}
         {note ? <span className="block text-caption text-accent">{note}</span> : null}
       </Link>
       {description ? (

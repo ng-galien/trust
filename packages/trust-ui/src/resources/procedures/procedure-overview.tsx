@@ -1,3 +1,4 @@
+import type { CatalogMetadata } from "@trust/extension-sdk";
 import type { CompiledProcedure } from "@trust/procedure";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
@@ -13,9 +14,11 @@ import { orderedScenarios } from "./model.js";
 /** Reading of a procedure: its description, what it needs, what it does (Scenarios and their Checks); the Check qualifications for experts. */
 export function ProcedureOverview({
   compiled,
+  metadata,
   error,
 }: {
   compiled: CompiledProcedure | undefined;
+  metadata?: CatalogMetadata | undefined;
   error?: string | undefined;
 }) {
   const origin = useOrigin();
@@ -28,16 +31,15 @@ export function ProcedureOverview({
     );
   }
   const inputs = compiled.roles.filter((role) => role.source.kind === "plan-input");
+  const description = metadata ? metadata.description : compiled.description;
   const scenarios = orderedScenarios(compiled);
   const checksOf = (slug: string) => compiled.checks.filter((check) => check.scenario === slug);
 
   return (
     <div className="flex h-full flex-col gap-3 overflow-y-auto bg-bg p-4 [&>*]:shrink-0">
       <section className="rounded-(--radius-3) border border-border bg-surface p-4" data-doc="procedure.summary">
-        {compiled.description ? (
-          <Description text={compiled.description} className="max-w-3xl text-ui leading-relaxed" />
-        ) : null}
-        <div className={cx("grid gap-3 md:grid-cols-[max-content_1fr] md:gap-x-6", compiled.description && "mt-3")}>
+        {description ? <Description text={description} className="max-w-3xl text-ui leading-relaxed" /> : null}
+        <div className={cx("grid gap-3 md:grid-cols-[max-content_1fr] md:gap-x-6", description && "mt-3")}>
           <Term>{t("procedures.overview.needs")}</Term>
           <p className="text-ui leading-relaxed">
             {inputs.length ? (

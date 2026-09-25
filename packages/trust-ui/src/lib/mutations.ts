@@ -1,4 +1,5 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import type { CatalogMetadataUpdate } from "@trust/extension-sdk";
 
 import { RuntimeError } from "../runtime.js";
 import { useRuntime } from "./runtime-context.js";
@@ -22,7 +23,11 @@ export function usePublishProcedure() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (source: string) => runtime.publishProcedure(source),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["procedures"] }),
+    onSuccess: () =>
+      Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["procedures"] }),
+        queryClient.invalidateQueries({ queryKey: ["procedure.catalog"] }),
+      ]),
   });
 }
 
@@ -33,6 +38,18 @@ export function useSaveOperation() {
     mutationFn: ({ source, sourceName }: { source: string; sourceName: string }) =>
       runtime.saveOperation(source, sourceName),
     onSuccess: () => invalidateCatalog(queryClient),
+  });
+}
+
+export function useUpdateCatalogMetadata() {
+  const runtime = useRuntime();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: CatalogMetadataUpdate) => runtime.updateCatalogMetadata(input),
+    onSuccess: (_metadata, input) =>
+      queryClient.invalidateQueries({
+        queryKey: [input.kind === "operation" ? "operation.catalog" : "procedure.catalog"],
+      }),
   });
 }
 
@@ -131,6 +148,7 @@ type Client = ReturnType<typeof useQueryClient>;
 const invalidateCatalog = (client: Client) =>
   Promise.all([
     client.invalidateQueries({ queryKey: ["operations"] }),
+    client.invalidateQueries({ queryKey: ["operation.catalog"] }),
     client.invalidateQueries({ queryKey: ["operation.environments"] }),
     client.invalidateQueries({ queryKey: ["environments"] }),
   ]);
