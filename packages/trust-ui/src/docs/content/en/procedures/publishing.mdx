@@ -22,9 +22,11 @@ The interface compiles on every keystroke (Source tab); publication compiles aga
 A published Procedure is `procedure@version`, immutable, containing: whether intent chaining is enabled, its action scope, roles, Scenarios (with prerequisites), Checks (target, bindings, materializations, qualification, success reason), the embedded Operations with their digests, and a digest of the whole definition.
 
 - The revision is autonomous: it depends on no catalog state after publication.
-- Publishing again the same `procedure@version` with a different definition is refused (`already published with another immutable definition`); the same definition is accepted as-is. Raise `@version` to publish a change.
+- Publishing again the same `procedure@version` with a different executable source is refused (`already published with another immutable definition`); the same definition is accepted as-is. Raise `@version` to publish a method change.
 - Two versions of a Procedure coexist; a Plan names the version it was engaged from.
 - There is no delete: a published version stays for the Plans and history that reference it.
+
+The **Catalog** tab holds the current human title, existing Feature description and classification tags for each exact published version. You can correct them with a separate editorial revision. Catalog lists and search use the current values, while the original source and every engaged Plan stay unchanged. A catalog edit cannot alter scope, roles, dependencies, Checks or qualification.
 
 <Callout kind="rule">
   Source formatting, comments, continuation lines, qualification formatting and the description do not change the digest; the title, a role, a Scenario title, a binding, qualification semantics, a reason, the order of roles, Scenarios or Checks, or an Operation used, do.

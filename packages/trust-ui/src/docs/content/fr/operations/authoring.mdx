@@ -1,6 +1,6 @@
 ---
 title: "Les Opérations dans l'interface"
-summary: "Le catalogue, la page d'Opération et ses onglets — Aperçu, Source, Simuler, Exécuter, Contrat — brouillons et versions publiées immuables."
+summary: "Le catalogue, la page d'Opération et ses onglets — Aperçu, Catalogue, Source, Simuler, Exécuter, Contrat — brouillons et versions publiées."
 order: 6
 screen: /operations
 ---
@@ -11,7 +11,7 @@ L'entrée **Opérations** de la barre latérale ouvre le catalogue. Sélectionne
 
 <Screenshot id="operations-catalog" caption="Le catalogue des Opérations, vue cartes." legend={{
   "home.header": "Titre et nombre d'Opérations visibles ; Nouvelle opération ouvre une source vide.",
-  "home.filters": "Recherche (nom, titre, champs produits…) et facettes : famille, domaine, sorte d'étape, nature, usage par des Procédures, exécutable.",
+  "home.filters": "Recherche (nom, titre courant, description, tags, champs produits…) et facettes : famille, domaine, sorte d'étape, nature, usage par des Procédures, exécutable.",
   "home.display": "Cartes ou liste ; regroupement par domaine ou famille ; tri par nom, version, étapes ou usage.",
   "home.card": "Une Opération : sortes d'étapes, domaine, version, titre, description, ce qu'elle requiert et produit, quelles Procédures l'utilisent.",
   "operations.runnable": "Si l'environnement courant peut l'exécuter (il déclare chaque valeur d'Environment dont l'Opération a besoin).",
@@ -25,7 +25,7 @@ La barre latérale regroupe chaque identité d'Opération une seule fois. Ouvrez
 <Screenshot id="operation-overview" caption="Une Opération, onglet Aperçu." legend={{
   "overlay.header": "Version, état de compilation, marque « exécutable », titre. En mode expert l'identifiant est répété ici.",
   "overlay.actions": "Dupliquer · Simuler · Exécuter · Ouvrir la source (si elle n'est pas déjà affichée) · Annuler les modifications (du brouillon modifié) · Publier (une nouvelle version valide).",
-  "overlay.tabs": "Aperçu, Source, Simuler, Exécuter — et Contrat JSON en mode expert.",
+  "overlay.tabs": "Aperçu, Détails du catalogue, Source, Simuler, Exécuter — et Contrat JSON en mode expert.",
   "overlay.status": "L'état de compilation : le diagnostic et sa ligne, ou le nombre d'étapes et de champs produits.",
   "operation.summary": "Description, puis Requiert (Input et Environment), Fait (les étapes en mots), Produit (les champs et leurs énumérations).",
   "overlay.inspector": "Utilisée par : les Procédures qui embarquent cette Opération. En mode expert : Interface (les trois tables) et Étapes. Le panneau se replie avec le bouton à droite des onglets.",

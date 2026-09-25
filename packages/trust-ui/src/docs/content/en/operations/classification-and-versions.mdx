@@ -29,9 +29,13 @@ Free, repeatable, opaque to execution: `@x-family:software-delivery`, `@x-nature
 
 The catalog screen uses `family` and `nature` for its facets; anything else is yours to define.
 
+The published source keeps its original tags. In the **Catalog** tab, you can add, remove or correct the current classification tags for this exact published version. The catalog list and search use the current tags; the compiled Operation and any engaged Plan keep the source values they were published with.
+
 ## Title and description
 
 `Feature: <title>` is the human title, copied verbatim. The free-text block under it is the **description**: what the Operation observes, its assumptions, what an accepted exit means. It is shown on the Operation overview and in the graph of the Procedures that use it. It is never executed. Indentation and repeated blank lines are normalised.
+
+The **Catalog** tab edits the current human title and this same description without publishing another executable version. These edits have their own catalog revision. The **Source** and **Contract JSON** tabs still show the original published snapshot.
 
 ## Versions
 
@@ -42,7 +46,7 @@ The catalog screen uses `family` and `nature` for its facets; anything else is y
 - Runnable marks (✓ on the catalog, on the Environment screen) are computed per catalog entry against the values each Environment declares.
 
 <Callout kind="rule">
-  Published versions are immutable. A floating reference can select a newer version for a new Plan, but the composition of an engaged Plan remains fixed.
+  Published executable versions are immutable. Catalog title, description and tags may receive an editorial revision without changing SemVer. A floating reference can select a newer executable version for a new Plan, but the composition of an engaged Plan remains fixed.
 </Callout>
 
 <Details title="Compiled Operation and digest" expert>

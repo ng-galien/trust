@@ -1,53 +1,106 @@
 ---
 name: trust-operations
-description: Author and verify TRUST Operations, Procedures and extensions, or coordinate and execute assigned TRUST Plans. Use for TRUST operational work; route Check execution to the packaged Runner skill. Do not use for generic software tasks merely tracked by a Plan.
+description: Model TRUST Procedures, related context, progressive delegation and external system input/output; author and verify Operations, or execute assigned Plans. Use for operational TRUST work, including turning a feature into governed work. Route Check execution to the Runner skill.
 ---
 
-# TRUST operations
+# Use TRUST for the next task
 
-Determine the requested task, assigned Plan or source, and authorized scope from
-the user's request and current context. Preserve existing authorization; ask only
-when a required input or permission is missing. Authoring does not authorize
-publication, and a Plan assignment does not authorize installation or engagement
-of additional Plans.
+## Clarify the method before choosing a guide
 
-## Select the instructions
+When the intended Procedure or its scope is unclear, interview the user before
+committing to a model. Use a **grill-me-style scoping conversation**: investigate
+the decisions that change the method, following the user's answers rather than
+running a fixed questionnaire. Start from the request and existing decisions;
+do not ask again for information already supplied.
 
-Read only the reference needed for the current task:
-
-| Assignment | Instructions |
+| Unclear decision | Example question |
 | --- | --- |
-| Create or revise an external action and its Produced schema | [Author an Operation](author-operation.md) |
-| Create or revise governed intent, dependencies and qualification | [Author a Procedure](author-procedure.md) |
-| Create, customize or instantiate reusable authoring templates | [Create and instantiate templates](templates.md) |
-| Verify a proposed change or investigate a failed acceptance | [Verify and test](verify-and-test.md) |
-| Execute or coordinate an assigned Plan | [Execute and coordinate](execute-and-coordinate.md), then the [Runner skill](../../assets/skills/trust/SKILL.md) for Check execution |
-| Implement an extension or its page | [Author an extension](author-extension.md) |
+| Purpose and outcome | What should this Procedure establish when it is complete? |
+| Scope | Which feature or perimeters does it cover, and what remains outside? |
+| Who does the work | Will you perform the work yourself, will one agent do it, or will several agents receive delegated parts? |
+| External systems | Which systems supply inputs or receive outputs, and what can we read or change there? |
+| Conditions for continuing | Which observations or decisions allow the next stage? Does a user answer in an external system gate it? |
+| Remaining unknowns | What must be decided now, and what can be investigated later through reserved work? |
+
+Ask the most consequential unanswered question first, normally one at a time.
+Offer concrete alternatives when helpful; investigate a vague or contradictory
+answer before choosing a structure. Do not infer multi-agent execution, an external
+service or an approval policy merely because a recipe illustrates one.
+
+Stop questioning when the next modeling step has a clear purpose, boundary,
+participants, data sources and success criterion. Summarize those decisions
+briefly, distinguish explicit design assumptions and deferred unknowns, then select
+the relevant guides below. Reopen a question if a later discovery changes that
+scope. Do not require every future detail to be settled or repeat permission that
+the user has already given. In a design exercise, an assumed connector contract
+can be sufficient; actual execution needs its real contract.
+
+The name refers to the interview pattern described by
+[Matt Pocock's grill-me](https://github.com/mattpocock/skills#1-the-agent-didnt-do-what-i-want).
+This guidance is self-contained; no additional skill installation is required.
+
+## I want to…
+
+Read the matching example, adapt its names, business rules and external contract,
+then verify it. These examples describe particular methods, not a mandatory
+development process for every project.
+
+| I want to… | Start here | Concrete result |
+| --- | --- | --- |
+| Use TRUST from another project | [Project installation](install-in-project.md) | Discoverable local skills, connected MCP and packaged Runner |
+| Refine a feature, delegate backend/frontend work, then review | [Feature lifecycle](recipes/feature-refinement.md) | Connected form model, stage gates, scoped child Results and review feedback |
+| Model a feature, its usages and their descriptions | [Related context](recipes/related-context.md) | Complete Procedure, correlated declaration payload, expected Check inputs |
+| Delegate known work or investigate a discovery | [Delegation](recipes/delegation.md) | Child and parent sources, inline mission, host handoff, Result mapping |
+| Read a document or write a result in another system | [External input/output](recipes/external-io.md) | HTTP Operations, nested JSON projection, verified stored reply |
+| Make continuation depend on an external answer, such as a user's confirmation | [External gate](recipes/human-confirmation.md) | An ordinary Check observes yes/no; its prerequisites control what follows |
+| Resume an assigned Plan | [Execution card](recipes/run-plan.md), then the [Runner skill](../../assets/skills/trust/SKILL.md) | Supplied Check URI, explicit TRUST verdict |
+| Diagnose a compiler error or refine a source | [Procedure authoring](author-procedure.md) / [Operation authoring](author-operation.md) | Corrected draft using canonical grammar |
+| Prove behavior | [Verification](verify-and-test.md) | Compilation, simulation, dry-run or live evidence, labelled accurately |
+| Reuse an authoring pattern | [Templates](templates.md) | Editable rendered source; publication stays separate |
+| Add an extension | [Extension authoring](author-extension.md) | Extension using the public SDK |
+
+For a **design or comprehension exercise**, assume or draft a missing Operation's
+interface and example response, label that assumption, and continue designing the
+Procedure. An unavailable connector is an implementation gap, not a reason to stop
+the model. For actual execution, verify the installed contract first. Do not claim
+that an assumed Operation or endpoint already exists.
+
+## Make the first modeling decision
+
+```text
+Value known when starting?          → root input
+Value chosen later by the agent?    → declared by agent
+Value read from the outside world?  → Check materializes a Produced field
+Value obtained by delegated work?   → Invocation materializes a returned Result
+Value belongs to another value?     → for / for each, with explicit parent bindings
+Unknown work may appear?            → reserve a mission collection in the Procedure
+Rich document already lives outside?→ keep its reference; observe the fields the method needs
+```
+
+Example: a feature has several usages; each usage has its own description.
+Use related roles for these relationships. Keep the full editable document in its
+external system. TRUST records observed values and qualifies the authored criteria.
+A worker's prose or an HTTP success does not establish Plan progress.
+
+## Use the connected runtime
 
 For an existing Plan, read that Plan before considering engagement. Distinguish
 your assigned Plan from its ancestors and children; creating a child does not
 authorize host dispatch or assign its execution to you.
+For detailed state transitions, use [execution and coordination](execute-and-coordinate.md).
 
 Discover the connected runtime's tools and read the schemas for the calls you
 need. Use `trust_documentation_list` to locate references and
 `trust_documentation_read` to read them, following page cursors to the end of the
-selected document. Packaged `trust-doc:///` links are document identifiers for
+selected document. Start with `trust_documentation_read({"document":"agents/SKILL"})`;
+a recipe is `{"document":"agents/recipes/delegation"}`. Packaged `trust-doc:///` links are document identifiers for
 that reader, not browser URLs. If a required reference is marked repository-only,
 read it from an available checkout; report missing access when it blocks the task.
 
-## Configure ordinary Environment values
-
-For authorized Environment setup, call `trust_environment_list` first. Use
-`trust_environment_save` with `environment` and the complete `values` map to create
-or replace ordinary configuration. Omitted ordinary values are removed. Never put
-secrets in this map; credential management remains on the operator RPC/UI surface.
-Use `trust_environment_remove` only for requested removal. It refuses Environments
-with attached credentials so that MCP cannot delete secrets indirectly.
-Read the list again to verify the result. Use `trust_operation_environment_list`
-with a draft source or exact Operation identity to check compatibility before execution.
-
 ## Preserve the execution contract
 
+- Use the assignment's scope and existing authorization. Authoring alone does not
+  authorize publication, live Trials, additional Plans or host dispatch.
 - Use the canonical [Operation](../../packages/trust-ui/src/docs/content/en/language/operations.mdx)
   or [Procedure](../../packages/trust-ui/src/docs/content/en/language/procedures.mdx)
   reference for authoring, and [public SDK contracts](../../packages/trust-extension-sdk/README.md)
@@ -58,6 +111,8 @@ with a draft source or exact Operation identity to check compatibility before ex
 - Keep published versions immutable. Leave source changes as drafts unless
   publication is authorized; publish a new version. Use exact SemVer or standard
   ranges in `name@selector` references. Existing Plans retain their pinned composition.
+- Keep accepted missions immutable too. Inline sources remain in Plan history;
+  consolidate them into reusable catalog versions only when authorized.
 - Use approved disposable resources for validation. Do not reset a shared preview
   or run an unrelated demonstration as part of an ordinary task.
 

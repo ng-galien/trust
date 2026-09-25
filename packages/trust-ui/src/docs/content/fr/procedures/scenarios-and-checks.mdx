@@ -4,7 +4,7 @@ summary: "Regrouper les Checks en Scénarios, déclarer des prérequis, lier l'I
 order: 3
 ---
 
-Un **Scénario** regroupe des Checks et les ordonne : il est satisfait quand chaque Check est validé, et ses Checks ne sont actionnables qu'une fois ses Scénarios prérequis validés. Un **Check** exécute une Opération sur une cible et énonce ce que ses champs produits doivent établir.
+Un **Scénario** regroupe des Checks et des Invocations : il est satisfait quand tous ses Checks et toutes ses Invocations enfants sont satisfaits. Son travail devient actionnable une fois ses Scénarios prérequis validés. Un Scénario peut ne contenir que des Invocations. Un **Check** exécute une Opération sur une cible et énonce ce que ses champs produits doivent établir.
 
 ```gherkin fragment title="Un Scénario"
   @scenario:verification
@@ -33,7 +33,7 @@ Un **Scénario** regroupe des Checks et les ordonne : il est satisfait quand cha
 | `@scenario:<slug>` | exactement un tag par Scénario, un slug en minuscules, unique dans la Procédure |
 | `Scenario: <title>` | titre libre, affiché dans l'interface |
 | `Given scenario "<slug>" is validated` | zéro ou plusieurs prérequis (`Given` ou `And`), **avant** les Checks ; le slug doit exister ; pas de dépendance à soi-même ni circulaire ; les diamants sont acceptés |
-| Checks | un ou plusieurs |
+| Checks et Invocations | un ou plusieurs au total ; un Scénario composé uniquement d'Invocations est valide |
 
 `Scenario Outline`, `Examples`, `Rule` et les étapes libres sont hors grammaire.
 

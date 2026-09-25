@@ -17,6 +17,10 @@ build or an inferred checklist verdict.
 | Dry-run Plan | Admission, operator Facts, qualification and cascade | External action; no Environment values are delegated |
 | Live Plan with Runner | Actual action, reported Facts and TRUST verdict | Safety of unrelated or untested actions |
 
+For a small automated example, use [rehearse a Procedure](recipes/rehearse-procedure.md):
+temporary runtime and catalog, complete RPC envelopes, operator Facts and expected
+verdicts. Do not read acceptance implementation merely to reconstruct these calls.
+
 ## Verify the requested change
 
 1. Select the boundary that can establish the requested behavior. Compile changed

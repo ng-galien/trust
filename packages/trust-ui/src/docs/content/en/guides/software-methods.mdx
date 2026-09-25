@@ -1,0 +1,309 @@
+---
+title: "Software production methods"
+summary: "Progressively describe a feature, its scope and contexts, then consolidate the Procedures and Operations that support the work."
+order: 0
+---
+
+TRUST can support software production in the same way that a methods department supports industrial production: the people responsible for a product define how work should be prepared, performed and checked; TRUST makes that method explicit and maintains the record of its application to each piece of work. This begins with understanding the feature itself: its purpose, scope, uses, data and constraints. That model can become more precise as work proceeds. [Handle changes and improve the method](#handle-changes-and-improve-the-method) explains how to formalize newly discovered contexts through inline missions, delegate the work and consolidate reusable Procedures from the retained experience.
+
+Here, **production** means the whole process of producing software: defining a feature, establishing its boundaries and contexts, designing and writing its code, verifying it and evaluating its continuous integration (CI) results. CI contributes selected checks within this broader method. Production includes development work, not only the environment where a released application runs.
+
+## The methods department analogy
+
+The important parallel is the relationship between the product, its method and the means used to produce it. A manufacturing method must suit the item being made and the capabilities of its workshop. A software method must suit the software, its constraints, its team and its tools.
+
+| In the industrial analogy | In a software project using TRUST |
+| --- | --- |
+| Product requirements | The feature's intended behavior and acceptance criteria |
+| Methods preparation | The project's agreed activities, checkpoints, dependencies and responses to failure |
+| Work instructions and control plan | A versioned Procedure describing scope, Checks and qualification rules |
+| Tooling and means of inspection | Operations connected to the project's repository, test tools and services |
+| One production order | A Plan applying one Procedure version to concrete work |
+| Production and inspection record | Accepted Facts, qualification reasons and Plan history |
+| Method improvement | A reviewed new Procedure or Operation version for subsequent work |
+
+The analogy explains responsibilities; it does not add industrial objects or a manufacturing workflow to TRUST. A **Check can perform an action as well as observe a result**. The method therefore describes how work progresses, including permitted changes, rather than only adding an audit at the end.
+
+<Callout kind="rule" title="People own the method">
+  The product and engineering authorities decide the method. TRUST is its support: it applies the rules accepted for the Plan, including its inline missions, admits the actions allowed by the current Plan and qualifies the observations returned. It does not choose the project's engineering policy or judge whether that policy is sufficient.
+</Callout>
+
+## Each software project has its own methods
+
+A common TRUST runtime does not imply a common development method. Projects can share an Operation that reads CI results while using different Procedures to decide which results matter and when they are required.
+
+For example, a team might choose the following methods. These are illustrations of possible decisions, not built-in TRUST requirements:
+
+| Software and change | Possible method chosen by its owners |
+| --- | --- |
+| An internal reporting tool | Agree the expected calculation, implement it, verify representative inputs, then check the selected CI jobs |
+| A public API | Define compatibility expectations, verify the public contract and review the candidate change before accepting its CI result |
+| A database change | Describe invariants and recovery conditions, rehearse against approved disposable data, review the result and verify the migration checks |
+
+Even one software product may need several Procedures: feature development, incident correction and dependency upgrades need not follow identical paths. Shared templates and Operations are useful where the meaning is actually shared. The owners select and review the applicable method; TRUST does not infer it from the repository or classify the work automatically.
+
+Keep the parts of the method that express professional judgment in human decisions. When a Procedure depends on such a decision, an Operation can observe it in the chosen review system, including its subject and revision. TRUST applies the stated conditions to that observation; it does not replace the reviewer.
+
+## Prepare a reusable method
+
+When a method is already understood, prepare it for repeated use as follows. Work that is still being understood can use the progressive mission workflow described at the end of this guide.
+
+1. **Choose the software and the kind of work.** State the expected outcome and who can decide when the written scope is insufficient. Identify the repository and services involved.
+2. **Describe the checkpoints.** For each one, name the question, the permitted action, the required observations, the acceptance conditions and a useful failure reason. Declare only the dependencies the method actually needs.
+3. **Choose or author the Operations.** Each Operation performs the concrete interaction and returns its complete Produced fields. The Product Action Contract owns the reusable Fact shape. Decide how each producer will reliably observe the result.
+4. **Write the Procedure.** Express the inputs, authorized and forbidden scope, Scenarios, Checks and qualification rules in the canonical language. A compiler check establishes that the definition is valid, not that the external method works.
+5. **Rehearse and verify.** Use simulation for projections, a dry-run Plan for qualification and dependency behavior, and authorized disposable resources for actual Runner execution. Include a negative result, a wrong target or revision, and an incomplete observation where relevant.
+6. **Publish the reviewed versions and prepare execution.** Configure the selected Environment and deploy the Runner where the external tools and permissions are available. Procedure publication is independent of Runner availability.
+
+The authoring paths are [Write an Operation](/docs/guides/first-operation), [Write a Procedure](/docs/guides/first-procedure) and [Rehearse](/docs/guides/rehearse). [Templates](/docs/procedures/templates) and [registries](/docs/guides/registries) help reuse chosen definitions across projects.
+
+## Apply it to one feature, from intent to CI
+
+Consider a feature that adds a CSV export to one application. Its owners choose a method that establishes the requested fields and access rules, implements the change, verifies the public behavior, reviews the candidate and checks CI for that candidate.
+
+The table is a **method design example**. Its checkpoint names and observations are illustrative; it is not an installed Procedure or a universal sequence.
+
+| Stage | What people or agents do | What the authored Check could establish |
+| --- | --- | --- |
+| Define the feature | Clarify exported fields, access rules and acceptance examples; record the decision | The selected feature revision has the required decision and criteria |
+| Prepare the change | Identify affected components and choose the implementation and verification approach | The preparation record addresses the method's required questions for that feature revision |
+| Implement | Write the code within the authorized scope and produce an identifiable candidate | The candidate exists in the intended repository and is linked to the feature |
+| Verify behavior | Run the project's selected acceptance scenarios against the candidate | The required scenarios ran against the observed candidate revision and met their conditions |
+| Review | Have the designated review process examine that candidate | The required review decision applies to that same revision |
+| Evaluate CI | Run or inspect the selected workflow for the candidate | The expected jobs completed successfully for that repository and revision |
+
+The Procedure expresses prerequisites where these stages depend on one another. Independent Checks can remain available together. The team decides whether, for example, review must precede CI evaluation; TRUST does not supply that ordering.
+
+Engage the published Procedure with an explicit Environment and its required root inputs, such as the repository and feature reference. A candidate revision known only after implementation belongs to a Check-produced value or an explicitly declared agent input, as the Procedure defines it. Do not supply future Check outputs at engagement. The Plan is the concrete application of this method; Sessions allow work on that Plan to pause and resume while retaining its history.
+
+The agent reads the Plan, supplies only declarations that the Procedure permits, and selects an actionable Check. It gives the Runner the Check invocation URI returned by TRUST. The Runner executes the admitted Operation and reports observations; TRUST qualifies them. Coding and reasoning between checkpoints remain within the agreed scope. The agent does not reconstruct or execute a governed Operation itself, and its account of completed work cannot satisfy a Check.
+
+Use [Engage a Plan](/docs/plans/engage), [Connect an agent](/docs/guides/connect-an-agent) and [What the agent does](/docs/plans/agent) for the exact setup and execution loop.
+
+## Make the CI result about the right work
+
+A successful workflow is useful only if the method can establish what it tested. Author the CI Operation to observe the repository, actual tested revision, run identity, terminal status and required job results from the external system. Author the Procedure to compare those observations with the expected candidate and required checks.
+
+Returning an input revision unchanged does not demonstrate that the tool tested it. Similarly, observing one successful job cannot establish that every job required by the method ran. These are responsibilities of the Operation and Procedure authors, not automatic guarantees of the TRUST engine.
+
+There are two possible integration arrangements, depending on the project's tooling:
+
+- **Observe the existing CI.** CI runs through its normal trigger. An authored Operation reads the relevant run through its API; TRUST qualifies that observation for the Plan.
+- **Invoke a Check from a CI job.** Configure the job to run the deployed Runner with a current invocation URI supplied for the intended Plan. Provide runtime access and the Runner's required tools and permissions. The job must inspect the structured result before deciding its own status.
+
+Neither arrangement comes from merely installing TRUST. The project supplies the Operations, configuration and the integration that associates a CI run with its Plan. If an Operation launches a workflow, the Check's qualification must distinguish successful submission from the eventual workflow result.
+
+<Callout kind="rule" title="A Runner exit code is not a Check verdict">
+  Runner exit code 0 can accompany a refusal or a completed attempt whose qualification is negative. A CI wrapper that is meant to require this Check must inspect both `result.status` and `result.qualification.verdict`: only `COMPLETED` with `VALIDATED` establishes its success. Missing Facts or interrupted execution establish no qualification. Whether CI requires one Check or the completed Plan is a decision in the project's method and integration.
+</Callout>
+
+TRUST governs the actions admitted through its Checks. Repository protections, CI permissions and the permissions of external tools remain necessary to enforce the project's chosen boundaries outside TRUST. A completed development Plan establishes the outcomes described by its Procedure; deployment requires its own explicit scope and criteria if it is part of the method.
+
+## Handle changes and improve the method
+
+<Callout kind="rule" title="Learn progressively, always within TRUST">
+  A complete feature model or reference method does not have to exist before useful work can begin. The initial Procedure reserves room for unknowns: contexts still to clarify and work to delegate. As those needs become clearer, create inline child Procedures with their context and Operations within the declared mission collections. Delegation is the mechanism for this progressive learning. Retain its history, then consolidate the useful contexts and Operations into reusable methods. The learning and its memory remain within TRUST.
+</Callout>
+
+In the industrial analogy, the methods function develops its understanding of the product alongside the means of producing it. A newly identified use, an overlooked constraint, an unexpected difficulty or a successful approach can enrich that understanding. In TRUST, this learning can remain inside the same governed record from the first mission. **The feature model, its contexts and the method are formalized progressively, and each accepted mission is retained.**
+
+### 1. Reserve room for unknowns in the initial Procedure
+
+Start with the feature description and scope that are currently understood. Record the known context, the questions still to resolve and the decisions that belong to the product authority in the work's explicit definition and referenced documents. **Provide for reserves of unknowns from the outset**: usages still to investigate, a perimeter to clarify, a contextual dependency whose consequences are not yet understood. Describe what can be delegated to resolve them and which decisions remain outside the granted authority.
+
+Express that room for discovery through one or more agent-declared mission collections in the parent Procedure. Where the parent will need a value or a child Result, declare the corresponding typed role and Result mapping in advance. A "reserved context" is this methodological allowance for information yet to be established; it is expressed through existing context and delegation contracts, not a freely mutable context bag.
+
+The initial Procedure defines the purpose and the places where further work can be delegated; it need not enumerate every future child Procedure. Engage it as a Plan. As a need is understood, give it an explicit inline child definition. An empty mission collection waits for work; emptiness does not establish that the unknown has been resolved. If the current Plan has no suitable collection, use an appropriate new Procedure and Plan rather than assuming that arbitrary work can be appended to any Plan.
+
+This complete parent Procedure reserves unknown work in "context-work"; each child must return an observed description. The names and criteria illustrate a method chosen for this example.
+
+```gherkin procedure title="Reserve contexts through delegation" marks="7,8,14"
+@trust-dsl:1 @procedure:feature-contexts @version:1.0.0
+Feature: Clarify the contexts of a feature
+  Background: Plan context
+    Given Procedure scope
+      | check | authorized | forbidden |
+      | all | Read feature context records. | Change product decisions. |
+    And one reference "feature"
+    And missions "context-work" declared by agent
+    And many string "context descriptions"
+  @scenario:contexts
+  Scenario: Establish the declared contexts
+    Then Invocation "clarify contexts" runs each declared Procedure
+      in "context-work"
+      and materializes "context descriptions" from Result "context description"
+      and must establish "the declared context descriptions are available"
+```
+
+<Legend items={{
+  "The feature": <><strong>The feature</strong> is a known engagement input, for example <code>feature: "csv-export"</code>.</>,
+  "The reserve of unknowns": <><strong>The reserve of unknowns</strong> is a collection of missions to declare as work proceeds.</>,
+  "The enriched context": <><strong>The enriched context</strong> receives descriptions returned by validated children.</>,
+}} />
+
+### 2. Delegate a discovered context to an inline child Procedure
+
+For the CSV feature, suppose the initial description covers a person exporting data for immediate use. Discussion then reveals a second use: another system consumes the export automatically. This can affect the feature's perimeter, the meaning and stability of its fields, the recipients and the expected format. These product decisions must be clarified before deciding which implementation or checks are appropriate.
+
+Use the reserved delegation space to define an inline mission for that context: the usage to examine, the relevant sources and people, the decision sought, its scope and the observations needed to establish the result. Supply a complete canonical child Procedure with its own context roles and inputs, accompanied by complete inline Operation sources where the existing catalog does not provide the required interactions. Depending on the chosen method, these Operations could read a versioned specification, observe a recorded product decision or examine representative data; an inline mission is useful well before CI.
+
+The overall approach grows progressively; each individual mission still has an explicit executable definition before its governed actions run. Read the current Plan, then submit the additional mission through its declaration operation using the current revision. TRUST validates and pins the composition before creating the child Plan. Its sources are retained without requiring reusable catalog publications.
+
+For example, the description of the newly discovered use can be recorded in an issue summary. This complete child Procedure reads that summary through the installed `jira.issue-read@1.1.0` Operation and returns it to the parent. The inherited Environment must provide `jiraIssueUrl`. The Check establishes that the description is available; the adequacy and approval of its scope remain product decisions to address through the chosen method.
+
+```gherkin procedure title="Return an observed context description" marks="7,8,13,16"
+@trust-dsl:1 @procedure:read-feature-context @version:1.0.0
+Feature: Observe one recorded feature context
+  Background: Plan context
+    Given Procedure scope
+      | check | authorized | forbidden |
+      | all | Read the assigned context issue. | Edit or approve its content. |
+    And one reference "context issue"
+    And one string "context description" returned
+  @scenario:context
+  Scenario: Read the context description
+    Then Check "read context" runs Operation "jira.issue-read@1.1.0"
+      on "context issue" as Input "issue"
+      and materializes "context description" from field "summary"
+      and must establish "the recorded context description is available"
+      """js
+      fact.summary !== "" || fail("the context description is empty")
+      """
+```
+
+<Legend items={{
+  "The mission input": <><strong>The mission input</strong> identifies the issue dedicated to the new context.</>,
+  "The Result": <><strong>The Result</strong> exposes the observed description to the parent.</>,
+  "Materialization": <><strong>Materialization</strong> takes the value returned by the Operation.</>,
+  "Qualification": <><strong>Qualification</strong> here checks only that a description was observed and is not empty.</>,
+}} />
+
+Then prepare the following argument for `trust_plan_declarations_replace`. This JavaScript assembles a payload; it is not a standalone MCP client. `childSource` is the complete Gherkin string above; `planId`, `currentRevision` and `acceptedMissions` come from the current Plan read. For the first mission, `acceptedMissions` is `[]`. This parent has no scalar agent declarations, hence `declarations: {}`. Choose an unused mission identifier and replace the illustrative issue with the real reference.
+
+```javascript title="Append one inline mission" marks="3,6,13,16"
+const mission = {
+  id: "automated-consumer",
+  rootInputs: { "context issue": "EXPORT-42" },
+  definition: {
+    kind: "inline",
+    procedureSource: childSource,
+    operationSources: [],
+  },
+};
+
+const argumentsForDeclarations = {
+  plan: planId,
+  expectedRevision: currentRevision,
+  declarations: {},
+  missionDeclarations: {
+    "context-work": [...acceptedMissions, mission],
+  },
+};
+```
+
+<Legend items={{
+  "The concrete context": <><strong>The concrete context</strong> is passed to the child through its root inputs.</>,
+  "The inline source": <><strong>The inline source</strong> contains the complete Procedure without publishing the child first.</>,
+  "The current revision": <><strong>The current revision</strong> prevents a declaration based on an outdated Plan state.</>,
+  "Accepted missions": <><strong>Accepted missions</strong> are preserved unchanged before adding the new one.</>,
+}} />
+
+<Details title="When an additional Operation is needed">
+
+For a project-specific context service, this complete Operation can be supplied inline. The parent's Environment must provide `contextRecordUrl`, and the service must return a JSON object with a string `summary` field.
+
+```gherkin operation title="Read a project context service inline" marks="6,12,14,18"
+@trust-dsl:1 @operation:feature.context-read @version:1.0.0
+Feature: Read a context record from the project's service
+  Background: Operation interface
+    Given Environment
+      | name             | type |
+      | contextRecordUrl | url  |
+    And Input
+      | input | type      | cardinality |
+      | issue | reference | one         |
+    And Produced fields
+      | field   | type   | cardinality | domain |
+      | summary | string | one         | any    |
+  Scenario: Run
+    When HTTP "context" sends "GET" to Environment "contextRecordUrl"
+      appending Input "issue" and reads JSON
+    Then Produce with JSONata
+      """
+      { "summary": steps.context.body.summary }
+      """
+```
+
+<Legend items={{
+  "The service": <><strong>The service</strong> is supplied by the inherited Environment.</>,
+  "The produced field": <><strong>The produced field</strong> declares the expected observation shape.</>,
+  "The action": <><strong>The action</strong> reads the requested context from that service.</>,
+  "The projection": <><strong>The projection</strong> extracts the description TRUST will qualify.</>,
+}} />
+
+The `operationSource` variable holds that complete source. Use the following variant **instead of** `mission` in the preceding payload, before its first acceptance. The replacement changes the Operation referenced by the child while retaining the same input and observed field. This inline Operation identity must not already be installed in the catalog.
+
+```javascript title="Supply the additional Operation with the mission"
+const missionWithInlineOperation = {
+  ...mission,
+  definition: {
+    kind: "inline",
+    procedureSource: childSource.replace(
+      "jira.issue-read@1.1.0", "feature.context-read@1.0.0",
+    ),
+    operationSources: [operationSource],
+  },
+};
+```
+
+</Details>
+
+### 3. Delegate, execute and record the result
+
+Give the child Plan to the assigned worker through the authorized host dispatch mechanism. Mission acceptance creates the child Plan; launching an agent is a separate host action. The worker reads its Plan and executes its Checks through the Runner. TRUST retains the accepted observations, qualifications and execution history; the worker's narrative alone does not establish completion.
+
+The coordinator reads the current child and parent Plans to decide what work is available next. If another context or omission is discovered, append another mission while preserving all accepted missions unchanged. The additional work reopens dependent parent qualification until the required work is complete. An accepted mission cannot be silently edited or removed to rewrite the earlier approach.
+
+### 4. Bring the established context into the working model
+
+Use the mission's outcome to make the feature description and perimeter more precise under the product authority. Represent the values needed for execution through the Procedure's declared context: initial inputs, permitted agent declarations and roles materialized by Checks. A child can return verified Results to compatible roles explicitly mapped by its parent. Referenced specification versions and decision records give those values their product meaning; merely supplying a declaration does not make it a verified observation.
+
+In an existing Plan, agent declarations change only the values of roles already declared for that purpose. New observations and child Results populate the observed roles provided by the definition. Adding a new kind of context or a new Operation requires an appropriate definition: a new inline mission can carry it immediately within the allowed collection, and a later consolidated Procedure can incorporate it for reuse. This enriches the work without silently changing the compiled definition or immutable inputs of an accepted mission.
+
+These two declarations, already present in the sources above, carry the concrete child-to-parent relation. The value reaches the parent only after the child Plan is fully validated.
+
+```gherkin fragment title="Child Result to parent context" marks="2,5,8"
+# Child: an observed role exposed as a Result
+And one string "context description" returned
+
+# Parent: a collection populated by the child Results
+And many string "context descriptions"
+Then Invocation "clarify contexts" runs each declared Procedure
+  in "context-work"
+  and materializes "context descriptions" from Result "context description"
+  and must establish "the declared context descriptions are available"
+```
+
+<Legend items={{
+  "The child exposes": <><strong>The child exposes</strong> an observed description.</>,
+  "The parent provides": <><strong>The parent provides</strong> a collection for contexts still to establish.</>,
+  "The Invocation connects": <><strong>The Invocation connects</strong> this Result to the parent's context.</>,
+}} />
+
+### 5. Handle a blockage or a changed candidate
+
+When a Check is not satisfied, use its reason to correct the condition within scope and retry. If continuing requires a forbidden action or a decision outside that scope, follow the [escalation path](/docs/plans/agent). Resuming a Plan is an operator decision; it does not itself validate the failed Check.
+
+New accepted Facts can replace a Check's active qualification and reopen dependent work while preserving history. This is driven by the Plan's declared dependencies and accepted observations. TRUST does not automatically watch repository changes or discover that an external review has become obsolete. A satisfied live Check cannot simply be re-observed; explicit re-observation is available in dry-run mode.
+
+For the feature example, a simple method is to engage a new Plan for each new candidate revision and require its review and CI observations again. If the project instead uses declared candidate values in a continuing Plan, design and verify the associated dependency behavior explicitly. Never carry a green result from one revision over to another merely because the feature identifier stayed the same. Adding a newly discovered mission and changing the candidate of an already accepted mission are different operations; the latter cannot rewrite that mission's fixed inputs.
+
+### 6. Consolidate the model and capitalize on the experience
+
+Review the mission definitions and Plan history: the initial feature description, the contexts introduced afterward, the scope decisions, the approach tried, what was observed and why further work was added. This is a memory of the work declared, executed and observed through TRUST. An inline definition remains useful history even if it is never published as a reusable resource.
+
+When the enriched approach deserves reuse, take the retained sources as a starting point and consolidate the Procedures: incorporate the useful context roles, clarify their scope and dependencies, add the necessary Operations and review the acceptance criteria. Distinguish reusable concepts from values belonging to the particular feature, then verify the resulting generalization. It can become an authoring template or a new published Operation or Procedure version. This capitalization is an explicit authoring and review activity; mission acceptance does not automatically promote its sources into the catalog.
+
+The resulting reference method should preserve appropriate reserves of unknowns and delegation spaces for future contexts. Consolidation need not close every possibility of exploration. Reuse and exploration can coexist throughout a software project's life. Published versions remain immutable, and existing Plans keep their pinned composition: improving the method preserves the meaning of the earlier work.
+
+For context roles, see [Context](/docs/procedures/context). For the declaration contract, child Results and a complete inline example, see [Delegating a mission](/docs/procedures/delegation). To reuse the retained material, see [Templates](/docs/procedures/templates) and [Publishing](/docs/procedures/publishing).

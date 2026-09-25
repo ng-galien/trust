@@ -36,6 +36,22 @@ assets/operations/        Operation catalog and design direction
 environments/trust-test/  retained Kind environment: projects, cluster, manifests, connectors and scripts
 ```
 
+## Retained shared development database
+
+`.trust/project/runtime.sqlite` is the retained SQLite database behind the local project MCP
+runtime at `127.0.0.1:4498` and its UI. Although this is a development database, it contains
+Plans, published Procedures and history used to author and run procedures across the owner's
+local development projects. It is **not** a disposable test fixture. Do not reset, reseed,
+replace or delete it (or its WAL/SHM companions) as a routine response to a schema mismatch.
+
+`.trust/project/backups/runtime-before-results-20260918.sqlite` is a consistent SQLite backup
+made before the 2026-09-18 runtime restart. At creation it passed `PRAGMA integrity_check` and
+contained 17 Plans and 105 Plan revisions. Keep this local backup; it is not tracked in Git.
+It may be replaced by a newer verified snapshot only on the owner's explicit direction, never
+by routine cleanup. Before changing the retained runtime or database, identify the exact active
+database, make and verify a consistent backup, use a data-preserving approach, and verify the
+MCP and retained data afterward. See [local runtime inventory](docs/verification/local-runtime/README.md).
+
 ## Non-negotiable design rules
 
 - Canonical language types belong to `trust-operation` and `trust-procedure`;
@@ -112,9 +128,12 @@ environments/trust-test/  retained Kind environment: projects, cluster, manifest
   recursive composition; later publications do not change existing Plans, delayed children, resumed
   execution or replacement child generations. Select the highest matching version before compatibility
   validation and refuse incompatibility rather than silently falling back.
-- Published Operation and Procedure versions are immutable and cannot be deleted, even when unused.
-  Source edits are unpublished drafts and must publish under a new version. Discarding a draft is not
-  deleting a published version. Catalog interfaces group one identity with its versions in the detail view.
+- Published Operation and Procedure executable versions are immutable and cannot be deleted, even when unused.
+  Source edits to the executable definition are unpublished drafts and must publish under a new version.
+  The catalog presentation for each exact published version (human title, existing Feature description
+  and classification tags) has independent, revision-checked editorial updates. Those updates do not
+  recompile the definition, replace the source snapshot, alter an engaged Plan or change SemVer.
+  Discarding a draft is not deleting a published version. Catalog interfaces group one identity with its versions in the detail view.
 - A Procedure may declare mission collections whose entries select an installed Procedure or supply
   inline canonical Procedure and Operation sources. TRUST validates and pins each complete composition
   when the mission is accepted, before creating its child Plan. Inline definitions are persistent Plan
@@ -135,7 +154,10 @@ environments/trust-test/  retained Kind environment: projects, cluster, manifest
   `checks.refresh`, compatibility adapters or another product module.
 - Use OpenTelemetry traces only. Logs and metrics are outside the governance contract.
 - The Awilix-injected database driver is a singleton. Runtime code never fetches the container.
-- There are no schema or data migrations before release. Replace the schema and reseed manually.
+- There is no generic schema or data migration framework before release. Disposable test databases
+  may be replaced and reseeded manually; this does **not** authorize resetting the retained shared
+  development database described above. Handle its incompatibilities through an explicit,
+  data-preserving protocol.
 - No `MEMORY.md` or Codex memory is used for this project.
 
 ## Integrated documentation
@@ -175,3 +197,7 @@ Use Code Moniker as the single architecture analyzer when relationship or depend
 required. Do not create a parallel import checker.
 
 Commit only when explicitly requested.
+
+## Git checkout policy
+
+Git worktrees are strictly forbidden in every project owned by Alexandre. Never create a worktree, including for isolation, delegation, testing, or a new task. Work in the existing main repository checkout on its main branch. Configure delegated tasks to use that local checkout. Preserve existing changes and coordinate edits in the shared checkout.

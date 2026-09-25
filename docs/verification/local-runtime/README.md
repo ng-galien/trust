@@ -1,6 +1,39 @@
-# Local runtime inventory — 2026-09-12
+# Local runtime inventory
 
-## Project entry point
+
+## Current consolidation — 2026-09-25
+
+All development now uses the main branch in `/Users/alexandreboyer/dev/projects/trust`.
+Git worktrees are forbidden. See [the consolidation audit](2026-09-25-main-consolidation.md)
+for the original checkouts, preserved history, data boundaries and verification.
+
+| Service | Address | Retained data | Current role |
+| --- | --- | --- | --- |
+| Project runtime / global MCP | `127.0.0.1:4498` | `.trust/project/runtime.sqlite` | 58 Plans; existing process left running |
+| Mobile web gateway | `127.0.0.1:4173` | None | Main-checkout build; existing Tailscale mapping on HTTPS port 18444 |
+| Mobile runtime | `127.0.0.1:4318` | `~/Library/Application Support/TRUST/mobile-preview/state/runtime.sqlite` | 16 Plans; extension host, restarted from main |
+| Extension PostgreSQL | `127.0.0.1:15439` | Docker volume `trust-mobile-pg-data` | Existing articles, subjects, forms, responses, templates and notifications |
+
+The retained project runtime has **not** been restarted onto the newly built catalog schema.
+Its database still has the previous schema. Before restarting it, use the protected upgrade
+protocol below; never delete the database to make the new build start.
+The mobile runtime received that additive catalog-table upgrade during relocation; all rows
+in every pre-existing table other than the schema digest were compared and remained identical.
+The extension's PostgreSQL database was not migrated or replaced during this relocation.
+
+The mobile service is started by `~/Library/LaunchAgents/com.trust.mobile-preview.plist`.
+Its launcher is `.trust/mobile-preview-start.py` in the main checkout, and its installation file is
+`~/Library/Application Support/TRUST/mobile-preview/extensions.json`. The launcher reads the
+existing private PostgreSQL password locally into the child environment; it does not print it.
+The Workbench connection and its reader account are unchanged.
+
+At the initial inventory, an additional PostgreSQL test container
+`trust-mobile-pg-test-2026-09-25` was running on loopback port 61194, and a Module Federation
+build broker was listening on port 16322. Neither is an additional production TRUST runtime.
+No project UI was listening on port 4176. The sections below are dated historical records,
+not evidence that their old UI processes are still running.
+
+## Project entry point — historical 2026-09-12
 
 The project UI is http://127.0.0.1:4176/plans. Its RPC, events and LSP proxy target is
 http://127.0.0.1:4498, matching the repository MCP configuration.
@@ -12,13 +45,53 @@ Do not point this UI at the empty templates preview or run the test seeding/rese
 command against the project database.
 
 The UI previously targeted port 4501 and `.trust/templates-preview/runtime.sqlite`.
-That database has zero Plans. The project database contains nine Plans. On 2026-09-12,
+That database has zero Plans. The project database contained nine Plans on 2026-09-12;
 the UI proxy returned those nine Plans and the browser displayed `Plans · 9`, including
 `templates-authority-correction-20260910` as Complete with 2/2 Checks.
 
+## Shared development data and retained backup — 2026-09-18
+
+The database at `.trust/project/runtime.sqlite` is a development database, but it is the
+shared local authoring and execution history for Procedures used across the owner's
+development projects. It is not disposable seed data. Do not reset or reseed it to work around
+a schema mismatch. The project MCP on port 4498 and the project UI on port 4176 use this same
+runtime and database.
+
+Before restarting onto the runtime with child Plan Results, a consistent SQLite online backup
+was saved at `.trust/project/backups/runtime-before-results-20260918.sqlite`. The snapshot
+passed `PRAGMA integrity_check` and contained 17 Plans and 105 Plan revisions. The restart
+required no migration or reseeding; afterward the MCP read all 17 Plans and the active database
+still had 105 revisions with a clean integrity check. The backup is local and ignored by Git:
+retain it, and replace it only with a deliberately created and verified newer snapshot when the
+owner chooses to do so. Do not treat it as an automatically refreshed or temporary test file.
+
+## Catalog metadata schema activation — prepared 2026-09-23
+
+The catalog metadata implementation adds one append-only `catalog_metadata_revisions` table.
+The retained project database still has the prior schema digest. Do not reset or reseed it.
+After the implementation gates pass, identify the active database and stop the project runtime
+under a controlled protocol. Use a new backup path and run:
+
+```sh
+node packages/trust-runtime/scripts/upgrade-catalog-metadata.mjs \
+  .trust/project/runtime.sqlite \
+  .trust/project/backups/runtime-before-catalog-metadata-20260923.sqlite
+```
+
+The command accepts only the exact preceding schema digest, makes a consistent SQLite backup,
+verifies the backup, adds the table in one transaction and checks foreign keys and integrity.
+It refuses to overwrite an existing backup. Before restart, compare Plan and published Procedure
+counts with the pre-upgrade inventory; after restart verify `operation.list`, `procedure.list`,
+`catalog.metadata.read` and retained Plans through the project MCP/RPC, plus SQLite integrity.
+No catalog metadata schema upgrade of the retained project database is recorded here yet.
+
 ## Archived SQLite inventory
 
-Only `.trust/project/runtime.sqlite` remains outside the archive. Secondary runtimes 4318 and 4501 and the old UI 4173 were stopped. The following paths describe their original locations; retired files now live below `.trust/archive/20260912-rationalization/retired/`, with SHA-256 hashes and original paths in `manifest.json`.
+At the 2026-09-12 inventory, only `.trust/project/runtime.sqlite` remained outside the archive;
+the retained backup above was added later. Secondary runtimes 4318 and 4501 and the old UI 4173
+were stopped. The following paths describe their original locations; retired files now live below
+`.trust/archive/20260912-rationalization/retired/`, with SHA-256 hashes and original paths in
+`manifest.json`.
 
 Counts are physical stored Plan rows, read before archiving the databases.
 WAL and SHM files are companions, not separate databases.

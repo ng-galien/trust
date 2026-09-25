@@ -7,6 +7,14 @@ order: 0
 
 TRUST is a system that coordinates and delegates action to agents within a controlled scope.
 
+## Support for the project's methods
+
+In software production, TRUST supports the methods function: the people responsible for a software product build an explicit understanding of each feature, its scope, uses and constraints, then organize its implementation and verification. TRUST carries that method in Procedures and follows its application to concrete work, including the context and product decisions that give the work meaning.
+
+The relationship is the same as between an industrial methods department and its workshop: the method belongs to a particular product and its production context. Different software projects, and different kinds of change within one project, can require different methods. Sharing TRUST or its tools does not impose a common development process.
+
+The feature model and the method can take shape progressively through delegation. The initial Procedure reserves room for unknowns; inline child Procedures address contexts as they emerge, with their definitions and execution history retained in TRUST. Consolidate the Procedures with the useful contexts and Operations to form a reusable reference method. See [Software production methods](/docs/guides/software-methods) for the industrial analogy, an example from feature description to verification and the practical guide to handling changes and improving the method.
+
 ## Structure without automation
 
 TRUST frames the work of agents, not through an accumulation of instructions written in prose, but by structuring the expected work as Procedures.
@@ -43,7 +51,7 @@ Relying on the result requires an independent record that connects the authorize
 
 ## Procedure and authority
 
-A Procedure is written and published by people before work starts. It fixes what the agent may not rewrite while acting:
+A Procedure makes the decisions governing its actions explicit before those actions run. It can be published for reuse or supplied inline as an accepted mission within a Plan that allows such declarations. People retain authority over the method and the scope in which agents may propose work. Each accepted definition fixes what the agent may not rewrite while acting:
 
 - the questions that must be answered, including any order that must be respected
 - the actions allowed for each question and their limits
@@ -51,10 +59,10 @@ A Procedure is written and published by people before work starts. It fixes what
 - the dependencies that can make earlier work current or obsolete
 - the authority to which a decision must be returned when it falls outside the defined scope
 
-A Procedure is never the final authority. It carries decisions made beforehand, but always provides for escalation to a higher authority. When a situation requires a new rule, an exception or authority that was not granted, the agent does not complete the Procedure itself: it returns the decision to that authority.
+A Procedure is never the final authority. It carries the decisions governing its work and provides for escalation to a higher authority. When a situation requires an exception to those limits or authority that was not granted, the agent returns the decision to that authority. Declaring further missions remains possible within the delegation scope already granted.
 
-When that Procedure is engaged as a Plan, TRUST acts as its authority. It authorizes only actions that fit the current Check and context, accepts only complete observations, applies the published qualification rules and reopens dependent work when its basis changes. TRUST applies that version throughout the execution of the Plan.
+When that Procedure is instantiated as a Plan, TRUST acts as its authority. It authorizes only actions that fit the current Check and context, accepts only complete observations, applies the accepted qualification rules and reopens dependent work when its basis changes. TRUST preserves the accepted definition throughout the execution of the Plan; adding missions does not rewrite earlier accepted work.
 
 <Callout kind="rule" title="Who decides what">
-  The agent chooses among the work currently allowed. TRUST applies the published Procedure and maintains the resulting Plan. The operator decides whenever continuing would require a new rule, new authority or action outside the written scope.
+  The agent chooses among the work currently allowed and can propose missions where the Procedure permits it. TRUST applies the accepted definitions and maintains the resulting Plans. The operator decides whenever continuing would exceed the authority or scope already granted.
 </Callout>

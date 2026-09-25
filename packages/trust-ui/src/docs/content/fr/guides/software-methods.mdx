@@ -1,0 +1,309 @@
+---
+title: "Méthodes de production logicielle"
+summary: "Décrire progressivement une feature, ses périmètres et ses contextes, puis consolider les Procedures et Operations qui accompagnent le travail."
+order: 0
+---
+
+TRUST peut accompagner la production logicielle comme un service méthodes accompagne la production industrielle : les personnes responsables du produit définissent comment préparer, réaliser et contrôler le travail ; TRUST rend cette méthode explicite et conserve le suivi de son application à chaque travail concret. Cela commence par la compréhension de la feature elle-même : son but, ses périmètres, ses usages, ses données et ses contraintes. Ce modèle peut se préciser au fil du travail. [Traiter les changements et améliorer la méthode](#traiter-les-changements-et-améliorer-la-méthode) explique comment formaliser les contextes découverts dans des missions inline, déléguer le travail et consolider des Procedures réutilisables à partir de l'expérience conservée.
+
+Ici, la **production** désigne tout le processus de fabrication du logiciel : définir une feature, établir ses périmètres et ses contextes, concevoir et écrire son code, le vérifier et examiner les résultats de son intégration continue (CI). La CI apporte certains contrôles dans cette méthode plus large. La production comprend le travail de développement, et pas seulement l'environnement dans lequel fonctionne l'application livrée.
+
+## Le parallèle avec le service méthodes
+
+Le parallèle essentiel est la relation entre le produit, sa méthode et les moyens employés pour le fabriquer. Une méthode de fabrication doit convenir à la pièce produite et aux capacités de l'atelier. Une méthode logicielle doit convenir au logiciel, à ses contraintes, à son équipe et à ses outils.
+
+| Dans le parallèle industriel | Dans un projet logiciel utilisant TRUST |
+| --- | --- |
+| Exigences du produit | Comportement attendu de la feature et critères d'acceptation |
+| Préparation par les méthodes | Activités, points de contrôle, dépendances et réponses aux échecs décidés pour le projet |
+| Instructions de travail et plan de contrôle | Une Procedure versionnée décrivant le périmètre, les Checks et les règles de qualification |
+| Outillage et moyens de contrôle | Des Operations reliées au dépôt, aux outils de test et aux services du projet |
+| Un ordre de fabrication | Un Plan appliquant une version de Procedure à un travail concret |
+| Dossier de fabrication et de contrôle | Facts acceptés, motifs de qualification et historique du Plan |
+| Amélioration de la méthode | Une nouvelle version de Procedure ou d'Operation revue pour les travaux suivants |
+
+Ce parallèle explique les responsabilités ; il n'ajoute pas d'objets industriels ou de circuit de fabrication dans TRUST. Un **Check peut réaliser une action aussi bien qu'observer un résultat**. La méthode décrit donc la progression du travail, y compris les modifications permises, plutôt que d'ajouter uniquement un audit final.
+
+<Callout kind="rule" title="Les personnes sont responsables de la méthode">
+  Les autorités produit et techniques décident de la méthode. TRUST en est le support : il applique les règles acceptées pour le Plan, y compris ses missions inline, admet les actions permises par le Plan courant et qualifie les observations retournées. Il ne choisit pas la politique d'ingénierie du projet et ne juge pas si elle est suffisante.
+</Callout>
+
+## Chaque logiciel a ses propres méthodes
+
+Un même moteur TRUST n'implique pas une même méthode de développement. Plusieurs projets peuvent partager une Operation qui lit les résultats de CI tout en utilisant des Procedures différentes pour décider quels résultats comptent et à quel moment ils sont requis.
+
+Une équipe pourrait, par exemple, choisir les méthodes suivantes. Elles illustrent des décisions possibles, et ne sont pas des exigences intégrées à TRUST :
+
+| Logiciel et changement | Méthode possible décidée par ses responsables |
+| --- | --- |
+| Un outil de reporting interne | Convenir du calcul attendu, l'implémenter, vérifier des entrées représentatives, puis contrôler les jobs de CI retenus |
+| Une API publique | Définir les attentes de compatibilité, vérifier le contrat public et revoir le changement candidat avant d'accepter son résultat de CI |
+| Une évolution de base de données | Décrire les invariants et les conditions de reprise, répéter sur des données jetables autorisées, revoir le résultat et vérifier les contrôles de migration |
+
+Un même logiciel peut avoir plusieurs Procedures : développement d'une feature, correction d'un incident et mise à jour des dépendances n'ont pas nécessairement le même parcours. Les templates et Operations communs sont utiles lorsque leur sens est réellement partagé. Les responsables sélectionnent et revoient la méthode applicable ; TRUST ne la déduit pas du dépôt et ne classe pas automatiquement le travail.
+
+Les parties de la méthode qui relèvent d'un jugement professionnel restent des décisions humaines. Lorsqu'une Procedure dépend d'une telle décision, une Operation peut l'observer dans le système de revue choisi, avec son objet et sa révision. TRUST applique les conditions écrites à cette observation ; il ne remplace pas la personne chargée de la revue.
+
+## Préparer une méthode réutilisable
+
+Lorsqu'une méthode est déjà comprise, la préparer pour un usage répété selon les étapes suivantes. Un travail que l'on découvre encore peut utiliser le parcours progressif par missions décrit à la fin de ce guide.
+
+1. **Choisir le logiciel et la nature du travail.** Préciser le résultat attendu et qui peut décider lorsque le périmètre écrit ne suffit plus. Identifier le dépôt et les services concernés.
+2. **Décrire les points de passage.** Pour chacun, nommer la question, l'action permise, les observations requises, les conditions d'acceptation et un motif d'échec utile. Déclarer uniquement les dépendances dont la méthode a besoin.
+3. **Choisir ou écrire les Operations.** Chaque Operation réalise l'interaction concrète et retourne l'ensemble de ses champs Produced. Le Product Action Contract porte la forme réutilisable des Facts. Déterminer comment chaque producteur observera le résultat de manière fiable.
+4. **Écrire la Procedure.** Exprimer les entrées, les périmètres autorisé et interdit, les Scenarios, les Checks et les règles de qualification dans le langage canonique. La compilation établit que la définition est valide, pas que la méthode fonctionne avec les systèmes externes.
+5. **Répéter et vérifier.** Utiliser la simulation pour les projections, un Plan dry-run pour les qualifications et les dépendances, et des ressources jetables autorisées pour une véritable exécution par le Runner. Inclure, lorsque c'est pertinent, un résultat négatif, une mauvaise cible ou révision et une observation incomplète.
+6. **Publier les versions revues et préparer l'exécution.** Configurer l'Environment retenu et déployer le Runner là où les outils externes et les permissions sont disponibles. La publication d'une Procedure est indépendante de la disponibilité du Runner.
+
+Les parcours de rédaction sont [Écrire une Operation](/docs/guides/first-operation), [Écrire une Procedure](/docs/guides/first-procedure) et [Répéter](/docs/guides/rehearse). Les [templates](/docs/procedures/templates) et les [registres](/docs/guides/registries) permettent de réutiliser les définitions choisies entre projets.
+
+## Appliquer la méthode à une feature, de l'intention à la CI
+
+Prenons une feature qui ajoute un export CSV à une application. Ses responsables choisissent une méthode qui établit les champs demandés et les règles d'accès, réalise le changement, vérifie le comportement public, fait revoir le candidat et contrôle la CI de ce candidat.
+
+Ce tableau est un **exemple de conception de méthode**. Les noms des points de passage et les observations sont illustratifs ; il ne s'agit ni d'une Procedure installée ni d'une séquence universelle.
+
+| Étape | Ce que font les personnes ou les agents | Ce que le Check rédigé pourrait établir |
+| --- | --- | --- |
+| Définir la feature | Préciser les champs exportés, les règles d'accès et les exemples d'acceptation ; enregistrer la décision | La révision retenue de la feature possède la décision et les critères requis |
+| Préparer le changement | Identifier les composants concernés et choisir l'approche de réalisation et de vérification | Le document de préparation traite les questions requises par la méthode pour cette révision de la feature |
+| Implémenter | Écrire le code dans le périmètre autorisé et produire un candidat identifiable | Le candidat existe dans le dépôt attendu et est relié à la feature |
+| Vérifier le comportement | Exécuter les scénarios d'acceptation retenus par le projet sur le candidat | Les scénarios requis ont été exécutés sur la révision observée du candidat et satisfont leurs conditions |
+| Revoir | Faire examiner ce candidat selon le processus de revue désigné | La décision de revue requise porte sur cette même révision |
+| Évaluer la CI | Exécuter ou consulter le workflow retenu pour le candidat | Les jobs attendus sont terminés avec succès pour ce dépôt et cette révision |
+
+La Procedure exprime les prérequis lorsque ces étapes dépendent les unes des autres. Les Checks indépendants peuvent rester accessibles simultanément. L'équipe décide, par exemple, si la revue doit précéder l'évaluation de la CI ; TRUST ne fournit pas cet ordre.
+
+Engager la Procedure publiée avec un Environment explicite et ses entrées racines requises, comme le dépôt et la référence de la feature. Une révision candidate connue seulement après l'implémentation relève d'une valeur produite par un Check ou d'une entrée explicitement déclarée par l'agent, selon la Procedure. Ne pas fournir à l'engagement les futures sorties des Checks. Le Plan est l'application concrète de cette méthode ; les Sessions permettent d'interrompre et de reprendre le travail sur ce Plan en conservant son historique.
+
+L'agent lit le Plan, fournit uniquement les déclarations permises par la Procedure et sélectionne un Check accessible. Il transmet au Runner l'URI d'invocation du Check retournée par TRUST. Le Runner exécute l'Operation admise et rapporte les observations ; TRUST les qualifie. Le codage et le raisonnement entre les points de passage restent dans le périmètre convenu. L'agent ne reconstruit pas et n'exécute pas lui-même une Operation gouvernée, et son récit du travail accompli ne peut pas satisfaire un Check.
+
+Consulter [Engager un Plan](/docs/plans/engage), [Connecter un agent](/docs/guides/connect-an-agent) et [Ce que fait l'agent](/docs/plans/agent) pour la configuration précise et la boucle d'exécution.
+
+## Relier le résultat de CI au bon travail
+
+Un workflow réussi n'est utile que si la méthode permet d'établir ce qu'il a testé. Écrire l'Operation de CI pour observer, dans le système externe, le dépôt, la révision réellement testée, l'identité de l'exécution, son état terminal et les résultats des jobs requis. Écrire la Procedure pour comparer ces observations au candidat attendu et aux contrôles requis.
+
+Retourner sans modification une révision reçue en entrée ne démontre pas que l'outil l'a testée. De même, observer un job réussi ne permet pas d'établir que tous les jobs requis par la méthode ont été exécutés. Ces responsabilités appartiennent aux auteurs des Operations et des Procedures ; ce ne sont pas des garanties automatiques du moteur TRUST.
+
+Deux montages d'intégration sont possibles, selon l'outillage du projet :
+
+- **Observer la CI existante.** La CI s'exécute avec son déclenchement habituel. Une Operation rédigée pour cela lit l'exécution concernée par son API ; TRUST qualifie cette observation pour le Plan.
+- **Invoquer un Check depuis un job de CI.** Configurer le job pour appeler le Runner déployé avec une URI d'invocation courante fournie pour le Plan voulu. Prévoir l'accès au runtime ainsi que les outils et permissions nécessaires au Runner. Le job doit examiner le résultat structuré avant de décider de son propre statut.
+
+Aucun de ces montages ne résulte de la seule installation de TRUST. Le projet fournit les Operations, la configuration et l'intégration qui associe une exécution de CI à son Plan. Si une Operation lance un workflow, la qualification du Check doit distinguer la réussite du déclenchement du résultat final du workflow.
+
+<Callout kind="rule" title="Le code de sortie du Runner n'est pas le verdict du Check">
+  Le code de sortie 0 du Runner peut accompagner un refus ou une tentative terminée dont la qualification est négative. Un script de CI destiné à exiger ce Check doit examiner `result.status` et `result.qualification.verdict` : seul `COMPLETED` avec `VALIDATED` établit sa réussite. Des Facts manquants ou une exécution interrompue n'établissent aucune qualification. Exiger un Check ou le Plan terminé relève de la méthode et de l'intégration choisies par le projet.
+</Callout>
+
+TRUST gouverne les actions admises par ses Checks. Les protections du dépôt, les permissions de CI et celles des outils externes restent nécessaires pour faire respecter les limites choisies par le projet en dehors de TRUST. Un Plan de développement terminé établit les résultats décrits par sa Procedure ; le déploiement exige son propre périmètre explicite et ses critères s'il fait partie de la méthode.
+
+## Traiter les changements et améliorer la méthode
+
+<Callout kind="rule" title="Apprendre progressivement, toujours dans TRUST">
+  Il n'est pas nécessaire de disposer d'un modèle complet de la feature ou d'une méthode cadre avant de commencer un travail utile. La Procedure initiale prévoit des réserves d'inconnus : des contextes à préciser et du travail à déléguer. À mesure que ces besoins se précisent, créer des sous-procédures inline avec leur contexte et leurs Operations dans les collections de missions déclarées. La délégation est le mécanisme de cet apprentissage progressif. Conserver son historique, puis consolider les contextes et Operations utiles dans des méthodes réutilisables. L'apprentissage et sa mémoire restent dans TRUST.
+</Callout>
+
+Dans le parallèle industriel, la fonction méthodes développe sa compréhension du produit en même temps que les moyens de le fabriquer. Un usage nouvellement identifié, une contrainte oubliée, une difficulté imprévue ou une approche qui a fonctionné peuvent enrichir cette compréhension. Dans TRUST, cet apprentissage peut rester dans le même dossier gouverné dès la première mission. **Le modèle de la feature, ses contextes et la méthode se formalisent progressivement, et chaque mission acceptée est conservée.**
+
+### 1. Prévoir des réserves d'inconnus dans la Procedure initiale
+
+Partir de la description de la feature et des périmètres actuellement compris. Consigner le contexte connu, les questions encore ouvertes et les décisions qui relèvent de l'autorité produit dans la définition explicite du travail et les documents auxquels elle se réfère. **Prévoir dès le départ des réserves d'inconnus** : des usages encore à explorer, un périmètre à préciser, une dépendance de contexte dont les conséquences ne sont pas encore comprises. Décrire ce qui peut être délégué pour les résoudre et les décisions qui restent hors de l'autorité accordée.
+
+Exprimer cette réserve par une ou plusieurs collections de missions déclarées par l'agent dans la Procedure parente. Lorsque le parent aura besoin d'une valeur ou d'un Result enfant, prévoir le rôle typé et la correspondance de Result nécessaires. Un « contexte de réserve » désigne cette place méthodologique laissée à des informations encore à établir ; il s'exprime par les contrats existants de contexte et de délégation, sans devenir un contexte arbitrairement modifiable.
+
+La Procedure initiale définit le but et les endroits où déléguer du travail complémentaire ; elle n'a pas besoin d'énumérer toutes les futures sous-procédures. L'engager sous forme de Plan. Lorsqu'un besoin est compris, lui donner une définition enfant explicite inline. Une collection de missions vide reste en attente de travail ; son absence de contenu n'établit pas que l'inconnu est résolu. Si le Plan courant ne possède pas de collection adaptée, utiliser une nouvelle Procedure et un nouveau Plan appropriés, sans supposer que l'on peut ajouter un travail arbitraire à n'importe quel Plan.
+
+Voici une Procedure parente complète pour l'exemple. La collection « context-work » réserve le travail encore inconnu ; chaque enfant devra retourner une description observée. Les noms et critères illustrent un choix de méthode pour cet exemple.
+
+```gherkin procedure title="Reserve contexts through delegation" marks="7,8,14"
+@trust-dsl:1 @procedure:feature-contexts @version:1.0.0
+Feature: Clarify the contexts of a feature
+  Background: Plan context
+    Given Procedure scope
+      | check | authorized | forbidden |
+      | all | Read feature context records. | Change product decisions. |
+    And one reference "feature"
+    And missions "context-work" declared by agent
+    And many string "context descriptions"
+  @scenario:contexts
+  Scenario: Establish the declared contexts
+    Then Invocation "clarify contexts" runs each declared Procedure
+      in "context-work"
+      and materializes "context descriptions" from Result "context description"
+      and must establish "the declared context descriptions are available"
+```
+
+<Legend items={{
+  "La feature": <><strong>La feature</strong> est une entrée connue à l'engagement, par exemple <code>feature: "csv-export"</code>.</>,
+  "La réserve d'inconnus": <><strong>La réserve d'inconnus</strong> est une collection de missions à déclarer au fil du travail.</>,
+  "Le contexte enrichi": <><strong>Le contexte enrichi</strong> reçoit les descriptions retournées par les enfants validés.</>,
+}} />
+
+### 2. Déléguer un contexte découvert à une sous-procédure inline
+
+Pour la feature d'export CSV, supposons que la description initiale couvre une personne qui exporte des données pour un usage immédiat. La discussion révèle ensuite un second usage : un autre système consomme automatiquement cet export. Cela peut toucher le périmètre de la feature, le sens et la stabilité des champs, les destinataires et le format attendu. Ces décisions produit doivent être clarifiées pour choisir une réalisation et des contrôles adaptés.
+
+Utiliser la réserve de délégation pour définir une mission inline consacrée à ce contexte : l'usage à examiner, les sources et les personnes concernées, la décision recherchée, son périmètre et les observations nécessaires pour établir le résultat. Fournir une Procedure enfant canonique complète avec ses propres rôles de contexte et entrées, accompagnée de sources complètes d'Operations inline lorsque le catalogue existant ne fournit pas les interactions nécessaires. Selon la méthode choisie, ces Operations peuvent lire une spécification versionnée, observer une décision produit enregistrée ou examiner des données représentatives ; une mission inline est utile bien avant la CI.
+
+La démarche d'ensemble se construit progressivement ; chaque mission possède néanmoins une définition exécutable explicite avant l'exécution de ses actions gouvernées. Lire le Plan courant, puis soumettre la mission supplémentaire par son opération de déclaration en utilisant la révision courante. TRUST valide et fige la composition avant de créer le Plan enfant. Ses sources sont conservées sans exiger de publications réutilisables au catalogue.
+
+Par exemple, la description du nouvel usage peut être consignée dans le résumé d'un ticket. Cette Procedure enfant complète lit ce résumé avec l'Operation installée `jira.issue-read@1.1.0` et le retourne au parent. L'Environment hérité doit fournir `jiraIssueUrl`. Le Check établit que la description est disponible ; la pertinence du périmètre et son approbation restent des décisions produit à traiter selon la méthode choisie.
+
+```gherkin procedure title="Return an observed context description" marks="7,8,13,16"
+@trust-dsl:1 @procedure:read-feature-context @version:1.0.0
+Feature: Observe one recorded feature context
+  Background: Plan context
+    Given Procedure scope
+      | check | authorized | forbidden |
+      | all | Read the assigned context issue. | Edit or approve its content. |
+    And one reference "context issue"
+    And one string "context description" returned
+  @scenario:context
+  Scenario: Read the context description
+    Then Check "read context" runs Operation "jira.issue-read@1.1.0"
+      on "context issue" as Input "issue"
+      and materializes "context description" from field "summary"
+      and must establish "the recorded context description is available"
+      """js
+      fact.summary !== "" || fail("the context description is empty")
+      """
+```
+
+<Legend items={{
+  "L'entrée de la mission": <><strong>L'entrée de la mission</strong> désigne le ticket consacré au nouveau contexte.</>,
+  "Le Result": <><strong>Le Result</strong> rend la description observée accessible au parent.</>,
+  "La matérialisation": <><strong>La matérialisation</strong> prend la valeur retournée par l'Operation.</>,
+  "La qualification": <><strong>La qualification</strong> vérifie ici uniquement qu'une description a été observée et n'est pas vide.</>,
+}} />
+
+Préparer ensuite l'argument suivant pour `trust_plan_declarations_replace`. C'est un assemblage JavaScript de la charge utile, pas un client MCP autonome : `childSource` est la chaîne Gherkin complète ci-dessus ; `planId`, `currentRevision` et `acceptedMissions` viennent de la lecture courante du Plan. Pour la première mission, `acceptedMissions` vaut `[]`. Le parent de cet exemple ne possède aucune déclaration scalaire par agent, d'où `declarations: {}`. Choisir un identifiant de mission encore inutilisé et remplacer le ticket illustratif par la référence réelle.
+
+```javascript title="Append one inline mission" marks="3,6,13,16"
+const mission = {
+  id: "automated-consumer",
+  rootInputs: { "context issue": "EXPORT-42" },
+  definition: {
+    kind: "inline",
+    procedureSource: childSource,
+    operationSources: [],
+  },
+};
+
+const argumentsForDeclarations = {
+  plan: planId,
+  expectedRevision: currentRevision,
+  declarations: {},
+  missionDeclarations: {
+    "context-work": [...acceptedMissions, mission],
+  },
+};
+```
+
+<Legend items={{
+  "Le contexte concret": <><strong>Le contexte concret</strong> est transmis à l'enfant dans ses entrées initiales.</>,
+  "La source inline": <><strong>La source inline</strong> contient la Procedure complète, sans publication préalable de l'enfant.</>,
+  "La révision courante": <><strong>La révision courante</strong> protège contre une déclaration fondée sur un ancien état du Plan.</>,
+  "Les missions acceptées": <><strong>Les missions acceptées</strong> sont conservées à l'identique avant d'ajouter la nouvelle.</>,
+}} />
+
+<Details title="Si une Operation supplémentaire est nécessaire">
+
+Pour un service de contexte propre au projet, cette Operation complète peut être fournie inline. L'Environment du parent doit fournir `contextRecordUrl` et le service doit retourner un objet JSON avec un champ `summary` contenant une chaîne.
+
+```gherkin operation title="Read a project context service inline" marks="6,12,14,18"
+@trust-dsl:1 @operation:feature.context-read @version:1.0.0
+Feature: Read a context record from the project's service
+  Background: Operation interface
+    Given Environment
+      | name             | type |
+      | contextRecordUrl | url  |
+    And Input
+      | input | type      | cardinality |
+      | issue | reference | one         |
+    And Produced fields
+      | field   | type   | cardinality | domain |
+      | summary | string | one         | any    |
+  Scenario: Run
+    When HTTP "context" sends "GET" to Environment "contextRecordUrl"
+      appending Input "issue" and reads JSON
+    Then Produce with JSONata
+      """
+      { "summary": steps.context.body.summary }
+      """
+```
+
+<Legend items={{
+  "Le service": <><strong>Le service</strong> est fourni par l'Environment hérité.</>,
+  "Le champ produit": <><strong>Le champ produit</strong> annonce la forme de l'observation attendue.</>,
+  "L'action": <><strong>L'action</strong> lit le contexte demandé dans ce service.</>,
+  "La projection": <><strong>La projection</strong> extrait la description qui sera qualifiée par TRUST.</>,
+}} />
+
+La variable `operationSource` contient cette source complète. Utiliser la variante suivante **à la place** de `mission` dans la charge utile précédente, avant sa première acceptation. Le remplacement change la référence de l'Operation appelée par l'enfant, qui conserve les mêmes entrée et champ observé. L'identité de cette Operation inline ne doit pas être déjà installée dans le catalogue.
+
+```javascript title="Supply the additional Operation with the mission"
+const missionWithInlineOperation = {
+  ...mission,
+  definition: {
+    kind: "inline",
+    procedureSource: childSource.replace(
+      "jira.issue-read@1.1.0", "feature.context-read@1.0.0",
+    ),
+    operationSources: [operationSource],
+  },
+};
+```
+
+</Details>
+
+### 3. Déléguer, exécuter et enregistrer le résultat
+
+Confier le Plan enfant au travailleur désigné par le mécanisme de lancement autorisé de l'hôte. L'acceptation de la mission crée le Plan enfant ; lancer un agent est une action distincte de l'hôte. Le travailleur lit son Plan et exécute ses Checks par le Runner. TRUST conserve les observations acceptées, les qualifications et l'historique d'exécution ; le seul récit du travailleur n'établit pas l'achèvement.
+
+Le coordinateur lit les Plans enfant et parent courants pour déterminer quel travail est ensuite accessible. Si un autre contexte ou oubli apparaît, ajouter une mission en conservant toutes les missions acceptées à l'identique. Le travail supplémentaire rouvre la qualification parente dépendante jusqu'à ce que le travail requis soit terminé. Une mission acceptée ne peut pas être discrètement modifiée ou retirée pour réécrire la démarche précédente.
+
+### 4. Intégrer le contexte établi au modèle de travail
+
+Utiliser le résultat de la mission pour préciser la description et les périmètres de la feature sous l'autorité produit. Représenter les valeurs utiles à l'exécution dans le contexte déclaré de la Procedure : entrées initiales, déclarations permises à l'agent et rôles matérialisés par les Checks. Un enfant peut retourner des Results vérifiés vers des rôles compatibles explicitement associés par son parent. Les versions de spécification référencées et les décisions enregistrées donnent leur sens produit à ces valeurs ; fournir une déclaration n'en fait pas à elle seule une observation vérifiée.
+
+Dans un Plan existant, les déclarations de l'agent changent seulement les valeurs des rôles déjà déclarés à cet effet. Les nouvelles observations et les Results enfants alimentent les rôles observés prévus par la définition. Ajouter une nouvelle nature de contexte ou une nouvelle Operation demande une définition adaptée : une nouvelle mission inline peut la porter immédiatement dans la collection autorisée, puis une Procedure consolidée peut l'intégrer pour les réutilisations suivantes. Le travail s'enrichit ainsi sans changer silencieusement la définition compilée ou les entrées immuables d'une mission acceptée.
+
+Ces deux déclarations, déjà présentes dans les sources ci-dessus, portent le lien concret entre enfant et parent. La valeur n'arrive dans le parent qu'après validation complète du Plan enfant.
+
+```gherkin fragment title="Child Result to parent context" marks="2,5,8"
+# Child: an observed role exposed as a Result
+And one string "context description" returned
+
+# Parent: a collection populated by the child Results
+And many string "context descriptions"
+Then Invocation "clarify contexts" runs each declared Procedure
+  in "context-work"
+  and materializes "context descriptions" from Result "context description"
+  and must establish "the declared context descriptions are available"
+```
+
+<Legend items={{
+  "L'enfant expose": <><strong>L'enfant expose</strong> une description observée.</>,
+  "Le parent prévoit": <><strong>Le parent prévoit</strong> une collection pour les contextes à établir.</>,
+  "L'Invocation relie": <><strong>L'Invocation relie</strong> ce Result au contexte du parent.</>,
+}} />
+
+### 5. Traiter un blocage ou un changement de candidat
+
+Lorsqu'un Check n'est pas satisfait, utiliser son motif pour corriger la situation dans le périmètre autorisé et réessayer. Si poursuivre exige une action interdite ou une décision hors de ce périmètre, suivre le [parcours d'escalade](/docs/plans/agent). Reprendre un Plan est une décision de l'opérateur ; cette reprise ne valide pas elle-même le Check en échec.
+
+De nouveaux Facts acceptés peuvent remplacer la qualification active d'un Check et rouvrir le travail dépendant tout en préservant l'historique. Ce mécanisme repose sur les dépendances déclarées du Plan et les observations acceptées. TRUST ne surveille pas automatiquement les changements du dépôt et ne découvre pas qu'une revue externe est devenue obsolète. Un Check live satisfait ne peut pas être simplement réobservé ; la réobservation explicite est disponible en mode dry-run.
+
+Pour l'exemple de la feature, une méthode simple consiste à engager un nouveau Plan pour chaque nouvelle révision candidate et à exiger à nouveau ses observations de revue et de CI. Si le projet utilise plutôt des valeurs candidates déclarées dans un Plan qui se poursuit, concevoir et vérifier explicitement le comportement des dépendances associées. Ne jamais reporter un résultat vert d'une révision sur une autre au seul motif que l'identifiant de la feature est resté le même. Ajouter une mission nouvellement découverte et changer le candidat d'une mission déjà acceptée sont des opérations différentes ; la seconde ne peut pas réécrire les entrées figées de cette mission.
+
+### 6. Consolider le modèle et capitaliser l'expérience
+
+Relire les définitions des missions et l'historique des Plans : la description initiale de la feature, les contextes introduits ensuite, les décisions de périmètre, l'approche tentée, ce qui a été observé et les raisons d'ajouter du travail. C'est une mémoire du travail déclaré, exécuté et observé à travers TRUST. Une définition inline reste un historique utile même si elle n'est jamais publiée comme ressource réutilisable.
+
+Lorsque la démarche enrichie mérite d'être réutilisée, reprendre les sources conservées et consolider les Procedures : intégrer les rôles de contexte utiles, préciser leurs périmètres et dépendances, ajouter les Operations nécessaires et revoir les critères d'acceptation. Distinguer les concepts réutilisables des valeurs propres à la feature, puis vérifier la généralisation obtenue. Elle peut devenir un template de rédaction ou une nouvelle version publiée d'Operation ou de Procedure. Cette capitalisation est une activité explicite de rédaction et de revue ; l'acceptation d'une mission ne promeut pas automatiquement ses sources dans le catalogue.
+
+La méthode cadre obtenue doit conserver les réserves d'inconnus et les espaces de délégation adaptés aux futurs contextes. Consolider n'oblige pas à fermer toute possibilité d'exploration. Réutilisation et exploration peuvent coexister pendant toute la vie d'un logiciel. Les versions publiées restent immuables et les Plans existants conservent leur composition figée : améliorer la méthode préserve le sens du travail antérieur.
+
+Pour les rôles de contexte, voir [Contexte](/docs/procedures/context). Pour le contrat de déclaration, les Results enfants et un exemple inline complet, voir [Déléguer une mission](/docs/procedures/delegation). Pour réutiliser le contenu conservé, voir [Templates](/docs/procedures/templates) et [Publication](/docs/procedures/publishing).

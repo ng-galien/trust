@@ -4,7 +4,7 @@ summary: "Grouping Checks into Scenarios, declaring prerequisites, binding an Op
 order: 3
 ---
 
-A **Scenario** groups Checks and orders them: it is satisfied when every Check is validated, and its Checks are actionable only once its prerequisite Scenarios are validated. A **Check** runs one Operation on one target and states what its produced fields must establish.
+A **Scenario** groups Checks and Invocations: it is satisfied when all its Checks and child Invocations are satisfied. Its work becomes actionable only once its prerequisite Scenarios are validated. A Scenario may contain only Invocations. A **Check** runs one Operation on one target and states what its produced fields must establish.
 
 ```gherkin fragment title="One Scenario"
   @scenario:verification
@@ -33,7 +33,7 @@ A **Scenario** groups Checks and orders them: it is satisfied when every Check i
 | `@scenario:<slug>` | exactly one tag per Scenario, a lowercase slug, unique in the Procedure |
 | `Scenario: <title>` | free title, shown in the interface |
 | `Given scenario "<slug>" is validated` | zero or more prerequisites (`Given` or `And`), **before** the Checks; the slug must exist; no self or circular dependency; diamonds are fine |
-| Checks | one or more |
+| Checks and Invocations | one or more in total; an Invocation-only Scenario is valid |
 
 `Scenario Outline`, `Examples`, `Rule` and free steps are outside the grammar.
 

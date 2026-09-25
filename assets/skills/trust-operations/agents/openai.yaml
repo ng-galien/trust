@@ -1,0 +1,4 @@
+interface:
+  display_name: "TRUST operations"
+  short_description: "Model methods with TRUST operational recipes"
+  default_prompt: "Use $trust-operations to clarify the scope and design this project's TRUST Procedure."

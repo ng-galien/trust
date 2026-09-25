@@ -4,36 +4,58 @@ summary: "Déclarer des missions enfants et distinguer leur exécution de l'int�
 order: 5
 ---
 
-## Transmettre des Results vérifiés entre Plans
+Une délégation a deux parties : TRUST crée et suit un **Plan enfant** ; un hôte d'agents affecte un exécutant à ce Plan. L'existence du Plan enfant ne signifie pas que le travail a commencé.
 
-Les Inputs du parent vers l'enfant sont explicites et figés pour chaque génération enfant. Dans l'autre sens, la Procedure enfant marque un rôle observé `returned` ; l'Invocation parente relie explicitement ce Result à l'un de ses propres rôles typés. L'enfant n'écrit pas arbitrairement les variables du parent et ne modifie pas ses entrées racines immuables.
+Prenons une tâche : vérifier que le dépôt `repo-a` est propre. La Procedure parente porte la liste des travaux. Une Procedure enfant contient le Check qui lit `repo-a`. L'agent exécute ce Check avec le Runner. TRUST détermine à partir du Fact observé si l'enfant est validé ; le parent peut alors poursuivre.
+
+| Je veux… | Je l'écris dans la Procedure | À l'exécution |
+| --- | --- | --- |
+| Déléguer une tâche connue | Une Invocation d'une Procedure enfant publiée | L'engagement crée son Plan enfant avec des Inputs fixés. |
+| Découvrir les tâches ensuite | Une collection de missions, par exemple `work` | L'agent ajoute une mission ; TRUST la valide et crée son Plan enfant. |
+| Affecter un agent | Utiliser le mécanisme de l'hôte après lecture du Plan enfant | L'agent reçoit l'identifiant du Plan, le périmètre et le résultat attendu. |
+| Utiliser le résultat enfant | Marquer un rôle observé de l'enfant `returned` et relier son Result dans l'Invocation parente | L'enfant validé fournit la valeur ; un message de l'agent ne suffit pas. |
+
+## Suivre une mission
+
+1. **Réserver le travail.** La source parente ci-dessous déclare `missions "work" declared by agent`. Son Invocation attend chaque mission acceptée dans cette collection. Une collection vide attend du travail.
+2. **Décrire une tâche.** Après lecture du Plan parent, le coordinateur appelle `trust_plan_declarations_replace` avec sa révision courante et une mission pour `repo-a`. Il fournit l'Input racine `repository` de l'enfant et soit une référence de Procedure publiée, soit les sources inline complètes.
+3. **Lire et affecter.** TRUST crée le Plan enfant et le rend visible depuis le parent. L'hôte transmet à l'agent désigné son identifiant, son objectif, son périmètre et le Result attendu. Cette affectation est distincte de la déclaration de mission.
+4. **Exécuter et observer.** L'agent lit le Plan enfant et donne au Runner l'URI de Check fournie. L'Operation lit le dépôt ; TRUST valide ou refuse le Check d'après les Facts reçus. Le coordinateur relit le parent pour voir si son Invocation peut poursuivre.
+5. **Apprendre d'une nouvelle tâche.** Si `repo-b` apparaît, ajouter une mission en gardant `repo-a` inchangé. La Procedure inline acceptée et ses Operations restent dans l'historique du Plan ; elles deviennent des versions réutilisables du catalogue seulement après une publication distincte.
+
+Les lignes décisives du parent sont :
 
 ```gherkin fragment
-  # In the child Procedure's Plan context and producing Scenario:
-  And one reference "revision" returned
-  Then Check "read revision" runs Operation "git.head-read@1.0.0"
-    on "repository" as Input "project"
-    and materializes "revision" from field "headRevision"
-    and must establish "the revision is observed"
-    """js
-    fact.workingTree === "clean" || fail("the working tree is not clean")
-    """
-
-  # In the parent Procedure's Plan context and child Scenario:
-  And one reference "child revision"
-  Then Invocation "observe child" runs Procedure "result-child@1.0.0"
-    on "repository" as Input "repository"
-    and materializes "child revision" from Result "revision"
-    and must establish "the child observation is complete"
+And missions "work" declared by agent
+Then Invocation "execute-work" runs each declared Procedure in "work"
+  and must establish "the declared observations are complete"
 ```
 
-Le compilateur refuse un Result absent, non marqué `returned`, incompatible ou fourni plusieurs fois. Un Result enfant sans rattachement peut alimenter un rôle parent sans rattachement ; `on each` peut relier un Result par cible à un rôle parent `for each` correspondant. Les autres topologies de Result ne sont pas encore prises en charge. Pour une collection de missions déclarées, la cible parente est un rôle `many` sans rattachement et le contrat de Result de chaque Procedure enfant proposée est vérifié avant l'acceptation de sa mission.
+Voici la forme courte d'une mission avec **enfant publié**. Il s'agit de la partie `missionDeclarations` de `trust_plan_declarations_replace` ; transmettre aussi l'identifiant du Plan, son dernier `expectedRevision` et l'instantané complet des déclarations scalaires `declarations`. La référence enfant doit déjà être publiée.
 
-Seul le **Plan enfant courant entièrement validé** fournit ses valeurs de Result. Une nouvelle observation validée les remplace dans une nouvelle révision du parent. Si l'enfant est requalifié négativement, escaladé ou si sa génération est remplacée, TRUST retire ces valeurs et rouvre les Checks parents dépendants ; les enfants sans lien gardent leur identité. `plan.read` expose les `importedResults` courants avec la provenance de l'enfant et de sa génération ; les révisions conservent leurs projections antérieures. Aucun hook ni qualification indépendante de l'Invocation n'intervient.
+```json
+{
+  "work": [
+    {
+      "id": "repo-a",
+      "rootInputs": { "repository": "repo-a" },
+      "definition": { "kind": "published", "reference": "documentation-observation@1.0.0" }
+    }
+  ]
+}
+```
+
+Utiliser l'exemple inline complet ci-dessous lorsque la méthode enfant naît pendant le travail. `procedureSource` contient alors toute la source enfant ; `operationSources` contient les sources complètes des seules Operations qui ne sont pas déjà installées.
+
+<Callout kind="rule">
+TRUST crée le Plan enfant, qualifie ses Checks et importe ses Results. L'hôte affecte l'agent. Ni le message de l'agent ni la réussite d'une commande externe ne qualifient un Check.
+</Callout>
 
 ## Collections de missions dynamiques
 
 Une Procedure peut exposer des collections de missions qu'un agent remplit après engagement. TRUST valide chaque mission et fige sa composition complète avant de créer son Plan enfant. Chaque enfant possède ses Checks, sa Session et son historique. Une collection vide attend du travail.
+
+<Details title="Sources complètes du parent, de l’enfant et de la mission inline">
 
 Ces Procedures complètes déclarent la collection parente et le Check exécutable du worker. Celui-ci exige l'Operation installée `git.head-read@1.0.0` et un dépôt accessible au Runner dans un Environment compatible. Le Check qualifie l'état observé du dépôt, pas le rapport du worker.
 
@@ -89,13 +111,46 @@ Pour une mission inline, transmettre la table `missionDeclarations` suivante à 
 }
 ```
 
+</Details>
+
 Une mission publiée utilise plutôt `definition: { kind: "published", reference: "documentation-observation@^1.0.0" }` ; cette Procedure doit déjà être installée. Les références acceptent des versions SemVer exactes ou des plages standard. TRUST choisit la version la plus élevée satisfaisant le sélecteur avant de valider sa compatibilité et fige toute la composition récursive à l'acceptation. Les publications ultérieures ne modifient pas les missions acceptées. Les définitions inline restent dans l'historique persistant du Plan sans publier de versions réutilisables au catalogue.
 
 Lire le Plan enfant obtenu et, lorsque le lancement est autorisé, transmettre son identifiant au worker affecté. Déclarer une mission ne lance pas d'agent : ce lancement reste à la charge de l'hôte. Le worker lit son enfant et transmet uniquement l'URI de Check fournie au Runner. Le coordinateur lit les états courants de l'enfant et du parent ; une réponse du worker ne suffit pas à satisfaire une Invocation. L'escalade d'un enfant bloque le travail dépendant et utilise la reprise existante par l'opérateur.
 
 Les missions acceptées ne permettent que l'ajout. Conserver les identifiants, définitions et entrées racines acceptés inchangés lors d'un ajout. Une resoumission identique garde la même résolution et le même enfant ; supprimer ou modifier est refusé. Omettre `missionDeclarations` conserve les missions existantes. Un lot invalide est rejeté atomiquement avant toute création d'enfant. L'ajout de travail retire la qualification parente dépendante jusqu'à la fin du travail requis.
 
-## Recette de l'extension de coordination
+<Details title="Comment un enfant renvoie un Result vérifié">
+
+Les Inputs du parent vers l'enfant sont explicites et figés pour chaque génération enfant. Dans l'autre sens, la Procedure enfant marque un rôle observé `returned` ; l'Invocation parente relie explicitement ce Result à l'un de ses propres rôles typés. L'enfant n'écrit pas arbitrairement les variables du parent et ne modifie pas ses entrées racines immuables.
+
+```gherkin fragment
+  # In the child Procedure's Plan context and producing Scenario:
+  And one reference "revision" returned
+  Then Check "read revision" runs Operation "git.head-read@1.0.0"
+    on "repository" as Input "project"
+    and materializes "revision" from field "headRevision"
+    and must establish "the revision is observed"
+    """js
+    fact.workingTree === "clean" || fail("the working tree is not clean")
+    """
+
+  # In the parent Procedure's Plan context and child Scenario:
+  And one reference "child revision"
+  Then Invocation "observe child" runs Procedure "result-child@1.0.0"
+    on "repository" as Input "repository"
+    and materializes "child revision" from Result "revision"
+    and must establish "the child observation is complete"
+```
+
+Le compilateur refuse un Result absent, non marqué `returned`, incompatible ou fourni plusieurs fois. Un Result enfant sans rattachement peut alimenter un rôle parent sans rattachement ; `on each` peut relier un Result par cible à un rôle parent `for each` correspondant. Les autres topologies de Result ne sont pas encore prises en charge. Pour une collection de missions déclarées, la cible parente est un rôle `many` sans rattachement et le contrat de Result de chaque Procedure enfant proposée est vérifié avant l'acceptation de sa mission.
+
+Seul le **Plan enfant courant entièrement validé** fournit ses valeurs de Result. Une nouvelle observation validée les remplace dans une nouvelle révision du parent. Si l'enfant est requalifié négativement, escaladé ou si sa génération est remplacée, TRUST retire ces valeurs et rouvre les Checks parents dépendants ; les enfants sans lien gardent leur identité. `plan.read` expose les `importedResults` courants avec la provenance de l'enfant et de sa génération ; les révisions conservent leurs projections antérieures. Aucun hook ni qualification indépendante de l'Invocation n'intervient.
+
+</Details>
+
+<Details title="Extension de coordination (PostgreSQL)">
+
+**Recette de l'extension de coordination.**
 
 Le workflow PostgreSQL suivant est une recette d'intégration distincte. Sa demande conservée, la prise en charge par le worker et sa réponse ne remplacent pas les collections de missions ni le cycle de vie des Plans enfants du moteur.
 
@@ -120,10 +175,12 @@ L'identifiant d'une mission ne peut pas être réutilisé pour une autre demande
 La fin signifie que l'agent a rendu et enregistré une réponse déclarée terminée. Ce n'est pas une vérification indépendante de son exactitude. Ajouter des Checks ou une Procedure de revue lorsque cela est nécessaire.
 </Callout>
 
-## Périmètre actuel
+**Périmètre actuel.**
 
 Cette première recette fonctionne sur un hôte local de confiance. Le nom d'agent déclaré permet de relier les travaux ; il n'authentifie pas l'appelant. Le périmètre en texte n'est pas une politique de permissions exécutable pour les autres capacités de l'agent. Le lancement des agents, la découverte des missions en attente et la reprise des processus de l'hôte restent en dehors de cette Procedure.
 
 Le déploiement PostgreSQL de test ne possède pas de volume persistant : il survit au redémarrage des clients, pas au remplacement du pod. Conserver PostgreSQL et l'historique SQLite de TRUST avant d'en faire un stockage de production durable.
 
 Le fichier `environments/trust-test/delegations/README.md` du dépôt contient les commandes d'installation, la première demande réelle et la recette d'acceptance publique. Cette première demande appartient à son Plan conservé : choisir de nouveaux identifiants pour un nouveau travail.
+
+</Details>

@@ -1,6 +1,6 @@
 ---
 title: "Operations in the interface"
-summary: "The catalog, the Operation page and its tabs — Overview, Source, Simulate, Run, Contract — drafts and immutable published versions."
+summary: "The catalog, the Operation page and its tabs — Overview, Catalog, Source, Simulate, Run, Contract — drafts and published versions."
 order: 6
 screen: /operations
 ---
@@ -11,7 +11,7 @@ The **Operations** entry of the sidebar opens the catalog. Selecting an Operatio
 
 <Screenshot id="operations-catalog" caption="The Operations catalog, cards view." legend={{
   "home.header": "Title and count of visible Operations; New operation opens an empty source.",
-  "home.filters": "Search (name, title, produced fields…) and facets: family, domain, kind of step, nature, usage by Procedures, runnable.",
+  "home.filters": "Search (name, current title, description, tags, produced fields…) and facets: family, domain, kind of step, nature, usage by Procedures, runnable.",
   "home.display": "Cards or list; group by domain or family; sort by name, version, steps or usage.",
   "home.card": "One Operation: kinds of steps, domain, version, title, description, what it needs and produces, which Procedures use it.",
   "operations.runnable": "Whether the current Environment can run it (it declares every Environment value the Operation needs).",
@@ -25,7 +25,7 @@ The sidebar groups each Operation identity once. Open its detail to select a pub
 <Screenshot id="operation-overview" caption="An Operation, Overview tab." legend={{
   "overlay.header": "Version, compile status, runnable mark, title. In expert mode the identifier is repeated here.",
   "overlay.actions": "Duplicate · Simulate · Run · Open source (when not already there) · Discard changes (for a modified draft) · Publish (for a new valid version).",
-  "overlay.tabs": "Overview, Source, Simulate, Run — and Contract JSON in expert mode.",
+  "overlay.tabs": "Overview, Catalog details, Source, Simulate, Run — and Contract JSON in expert mode.",
   "overlay.status": "The compile status: the diagnostic and its line, or the count of steps and produced fields.",
   "operation.summary": "Description, then Needs (Input and Environment), Does (the steps in words), Produces (the fields and their enumerations).",
   "overlay.inspector": "Used by: the Procedures embedding this Operation. In expert mode: Interface (the three tables) and Steps. The panel folds with the button at the right of the tabs.",

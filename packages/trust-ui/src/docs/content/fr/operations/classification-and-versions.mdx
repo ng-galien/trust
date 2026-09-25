@@ -29,9 +29,13 @@ Libre, répétable, opaque pour l'exécution : `@x-family:software-delivery`, `@
 
 L'écran du catalogue utilise `family` et `nature` pour ses facettes ; tout le reste est à vous de le définir.
 
+La source publiée garde ses tags d'origine. Dans l'onglet **Catalogue**, vous pouvez ajouter, retirer ou corriger les tags de classement courants de cette version exacte. La liste et la recherche utilisent ces tags courants ; l'Opération compilée et les Plans déjà engagés gardent les valeurs de la source publiée.
+
 ## Titre et description
 
 `Feature: <title>` est le titre humain, copié tel quel. Le bloc de texte libre en dessous est la **description** : ce que l'Opération observe, ses hypothèses, ce que signifie une sortie acceptée. Elle est affichée sur l'aperçu de l'Opération et dans le graphe des Procédures qui l'utilisent. Elle n'est jamais exécutée. L'indentation et les lignes vides répétées sont normalisées.
+
+L'onglet **Catalogue** permet de corriger le titre humain et cette même description sans publier une autre version exécutable. Ces corrections ont leur propre révision de catalogue. Les onglets **Source** et **Contrat JSON** montrent toujours la source publiée d'origine.
 
 ## Versions
 
@@ -42,7 +46,7 @@ L'écran du catalogue utilise `family` et `nature` pour ses facettes ; tout le r
 - Les marques « exécutable » (✓ sur le catalogue, sur l'écran Environnement) sont calculées par entrée de catalogue contre les valeurs que chaque Environnement déclare.
 
 <Callout kind="rule">
-  Les versions publiées sont immuables. Une référence flottante peut sélectionner une version plus récente pour un nouveau Plan, mais la composition d'un Plan engagé reste fixe.
+  Les versions exécutables publiées sont immuables. Le titre, la description et les tags du catalogue peuvent avoir une révision éditoriale sans changer la SemVer. Une référence flottante peut sélectionner une version exécutable plus récente pour un nouveau Plan, mais la composition d'un Plan engagé reste fixe.
 </Callout>
 
 <Details title="Opération compilée et digest" expert>

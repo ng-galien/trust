@@ -4,36 +4,58 @@ summary: "Declare child missions and distinguish their execution from the coordi
 order: 5
 ---
 
-## Passing verified Results between Plans
+A delegation has two parts: TRUST creates and follows a **child Plan**; an agent host assigns a worker to it. A child Plan existing in TRUST does not mean anyone has started work.
 
-Parent-to-child Inputs are explicit and fixed for each child generation. In the other direction, a child Procedure marks an observed role `returned`; the parent Invocation explicitly maps that Result to one of its own typed roles. The child does not write arbitrary parent variables or change the parent's immutable root Inputs.
+Take one task: check whether repository `repo-a` is clean. The parent Procedure owns the list of work. A child Procedure contains the Check that reads `repo-a`. The worker executes that Check with the Runner. TRUST decides from the observed Fact whether the child is validated; the parent can then continue.
+
+| I want to… | Put this in the Procedure | What happens at runtime |
+| --- | --- | --- |
+| Delegate a known task | An Invocation of a published child Procedure | Engagement creates its child Plan with fixed Inputs. |
+| Discover tasks later | A mission collection, such as `work` | The agent appends a mission; TRUST validates it and creates its child Plan. |
+| Assign a worker | Use the agent host's dispatch mechanism after reading the child Plan | The worker receives that Plan identifier, scope and expected result. |
+| Use the child's output | Mark an observed child role `returned` and map its Result in the parent Invocation | A validated child supplies the value; a message from the worker alone does not. |
+
+## Follow one mission
+
+1. **Reserve work.** The parent source below declares `missions "work" declared by agent`. Its Invocation waits for every accepted mission in that collection. An empty collection waits for work.
+2. **Describe a task.** After reading the parent Plan, the coordinator calls `trust_plan_declarations_replace` with its current revision and a mission for `repo-a`. It supplies the child's root Input `repository` and either a published Procedure reference or complete inline sources.
+3. **Read and assign.** TRUST creates the child Plan and returns it through the parent. The agent host gives its identifier, purpose, scope and expected Result to the assigned worker. This host action is separate from the mission declaration.
+4. **Execute and observe.** The worker reads the child Plan and gives its supplied Check URI to the Runner. The Operation reads the repository; TRUST validates or rejects the Check from the returned Facts. The coordinator rereads the parent to see whether its Invocation can continue.
+5. **Learn from new work.** If `repo-b` appears, append a new mission while preserving `repo-a` unchanged. An accepted inline Procedure and its Operations remain in Plan history; they become reusable catalog versions only after separate publication.
+
+The parent's decisive lines are:
 
 ```gherkin fragment
-  # In the child Procedure's Plan context and producing Scenario:
-  And one reference "revision" returned
-  Then Check "read revision" runs Operation "git.head-read@1.0.0"
-    on "repository" as Input "project"
-    and materializes "revision" from field "headRevision"
-    and must establish "the revision is observed"
-    """js
-    fact.workingTree === "clean" || fail("the working tree is not clean")
-    """
-
-  # In the parent Procedure's Plan context and child Scenario:
-  And one reference "child revision"
-  Then Invocation "observe child" runs Procedure "result-child@1.0.0"
-    on "repository" as Input "repository"
-    and materializes "child revision" from Result "revision"
-    and must establish "the child observation is complete"
+And missions "work" declared by agent
+Then Invocation "execute-work" runs each declared Procedure in "work"
+  and must establish "the declared observations are complete"
 ```
 
-The compiler rejects an undeclared, non-returned, mismatched or multiply provided Result. A flat child Result can be mapped to an unscoped parent role; `on each` may map one Result per target through a matching `for each` parent role. Other Result parent topologies are not yet supported. For a declared mission collection, the parent target is an unscoped `many` role and each proposed child Procedure's Result contract is checked before that mission is accepted.
+Here is the small, **published-child** form of the mission declaration. It is the `missionDeclarations` part of `trust_plan_declarations_replace`; also pass the Plan identifier, its latest `expectedRevision` and the complete scalar `declarations` snapshot. The child reference must already be published.
 
-Only the **fully validated current child Plan** contributes its Result values. A changed validated observation replaces them in a new parent revision. If the child is requalified negatively, escalated, or its generation is superseded, TRUST withdraws the values and reopens dependent parent Checks; unrelated children retain their identities. `plan.read` exposes current `importedResults` with their child and generation provenance, and revisions retain their prior projections. No hook or independent Invocation qualification is involved.
+```json
+{
+  "work": [
+    {
+      "id": "repo-a",
+      "rootInputs": { "repository": "repo-a" },
+      "definition": { "kind": "published", "reference": "documentation-observation@1.0.0" }
+    }
+  ]
+}
+```
+
+Use the complete inline example below when the child method is created during the work. In that case, `procedureSource` contains the whole child source; `operationSources` contains complete sources only for Operations that are not already installed.
+
+<Callout kind="rule">
+TRUST owns child Plan creation, Check qualification and Result import. The host owns worker dispatch. Neither a worker's message nor a successful external command qualifies a Check.
+</Callout>
 
 ## Dynamic mission collections
 
 A Procedure can expose mission collections that an agent fills after engagement. TRUST validates each mission and pins its complete composition before creating its child Plan. Each child has its own Checks, Session and history. An empty collection waits for work.
+
+<Details title="Complete parent, child and inline mission sources">
 
 These complete Procedures declare the parent collection and its worker's executable Check. The worker requires the installed `git.head-read@1.0.0` Operation and a repository accessible to the Runner in a compatible Environment. The Check qualifies observed repository state, not the worker's report.
 
@@ -89,13 +111,46 @@ For an inline mission, pass the following `missionDeclarations` map to `trust_pl
 }
 ```
 
+</Details>
+
 A published mission instead uses `definition: { kind: "published", reference: "documentation-observation@^1.0.0" }`; that Procedure must already be installed. References accept exact SemVer versions or standard ranges. TRUST selects the highest matching version before compatibility validation and pins the full recursive composition on acceptance. Later publications do not change accepted missions. Inline definitions remain persistent Plan history without publishing reusable catalog versions.
 
 Read the resulting child Plan and, when dispatch is authorized, give its identifier to the assigned worker. Declaring a mission does not launch an agent: host dispatch remains outside TRUST. The worker reads its child and gives only its supplied Check URI to the Runner. The coordinator reads current child and parent states; a worker response alone cannot satisfy an Invocation. A child escalation blocks dependent work and uses the existing operator resume path.
 
 Accepted missions are append-only. Preserve accepted IDs, definitions and root inputs unchanged when adding work. Identical resubmission retains the same resolution and child; removal or modification is refused. Omit `missionDeclarations` to preserve existing missions. Invalid batches are rejected atomically before child creation. Appending work withdraws dependent parent qualification until the required work is complete.
 
-## Coordination extension recipe
+<Details title="How a child returns a verified Result">
+
+Parent-to-child Inputs are explicit and fixed for each child generation. In the other direction, a child Procedure marks an observed role `returned`; the parent Invocation explicitly maps that Result to one of its own typed roles. The child does not write arbitrary parent variables or change the parent's immutable root Inputs.
+
+```gherkin fragment
+  # In the child Procedure's Plan context and producing Scenario:
+  And one reference "revision" returned
+  Then Check "read revision" runs Operation "git.head-read@1.0.0"
+    on "repository" as Input "project"
+    and materializes "revision" from field "headRevision"
+    and must establish "the revision is observed"
+    """js
+    fact.workingTree === "clean" || fail("the working tree is not clean")
+    """
+
+  # In the parent Procedure's Plan context and child Scenario:
+  And one reference "child revision"
+  Then Invocation "observe child" runs Procedure "result-child@1.0.0"
+    on "repository" as Input "repository"
+    and materializes "child revision" from Result "revision"
+    and must establish "the child observation is complete"
+```
+
+The compiler rejects an undeclared, non-returned, mismatched or multiply provided Result. A flat child Result can be mapped to an unscoped parent role; `on each` may map one Result per target through a matching `for each` parent role. Other Result parent topologies are not yet supported. For a declared mission collection, the parent target is an unscoped `many` role and each proposed child Procedure's Result contract is checked before that mission is accepted.
+
+Only the **fully validated current child Plan** contributes its Result values. A changed validated observation replaces them in a new parent revision. If the child is requalified negatively, escalated, or its generation is superseded, TRUST withdraws the values and reopens dependent parent Checks; unrelated children retain their identities. `plan.read` exposes current `importedResults` with their child and generation provenance, and revisions retain their prior projections. No hook or independent Invocation qualification is involved.
+
+</Details>
+
+<Details title="Coordination extension (PostgreSQL)">
+
+**Coordination extension recipe.**
 
 The following PostgreSQL workflow is a separate integration recipe. Its stored request, worker claim and response do not replace core mission collections or child Plan lifecycle.
 
@@ -120,10 +175,12 @@ The same mission identifier cannot be reused for another request. Claiming with 
 Completion means that the agent returned and stored a completed response. It is not independent verification of the response's correctness. Use additional Checks or a review Procedure when that is required.
 </Callout>
 
-## Current boundary
+**Current boundary.**
 
 This first recipe runs on a trusted local host. The declared agent name correlates work; it does not authenticate a caller. Scope text is not an executable permission policy for the agent's other capabilities. Launching workers, discovering pending missions and recovering interrupted host processes remain outside this Procedure.
 
 The retained test PostgreSQL deployment has no persistent volume: it survives client restarts, not pod replacement. Preserve both PostgreSQL and TRUST's SQLite history before treating this as durable production storage.
 
 The repository's `environments/trust-test/delegations/README.md` contains setup commands, the first actual request and the public acceptance recipe. The supplied first request belongs to its retained Plan: choose new identifiers for new work.
+
+</Details>

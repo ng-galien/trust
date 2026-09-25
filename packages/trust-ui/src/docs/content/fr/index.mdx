@@ -7,6 +7,14 @@ order: 0
 
 TRUST est un système qui coordonne et délègue l'action aux agents dans un périmètre contrôlé.
 
+## Le support des méthodes du projet
+
+Dans la production logicielle, TRUST accompagne la fonction méthodes : les personnes responsables d'un logiciel construisent une compréhension explicite de chaque feature, de ses périmètres, de ses usages et de ses contraintes, puis organisent sa réalisation et sa vérification. TRUST porte cette méthode dans des Procedures et suit son application à un travail concret, avec les contextes et les décisions produit qui lui donnent son sens.
+
+Le rapport est le même qu'entre un service méthodes industriel et son atelier : la méthode appartient à un produit particulier et à son contexte de production. Des projets logiciels différents, comme des changements de natures différentes dans un même projet, peuvent demander des méthodes différentes. Partager TRUST ou ses outils n'impose pas un processus de développement commun.
+
+Le modèle de la feature et la méthode peuvent se construire progressivement par la délégation. La Procedure initiale prévoit des réserves d'inconnus ; des sous-procédures inline traitent les contextes à mesure qu'ils apparaissent, avec leurs définitions et leur historique d'exécution conservés dans TRUST. Consolider les Procedures avec les contextes et les Operations utiles pour former une méthode cadre réutilisable. Voir [Méthodes de production logicielle](/docs/guides/software-methods) pour le parallèle industriel, un exemple allant de la description de la feature à sa vérification et le guide opératoire pour traiter les changements et améliorer la méthode.
+
 ## Encadrer sans automatiser
 
 TRUST encadre le travail des agents, non par une accumulation d'instructions écrites en prose, mais en structurant le travail attendu sous forme de Procedures.
@@ -43,7 +51,7 @@ Pour pouvoir se fier au résultat, il faut un registre indépendant qui relie le
 
 ## Procedure et autorité
 
-Une Procedure est écrite et publiée par des personnes avant le début du travail. Elle fixe ce que l'agent ne peut pas réécrire pendant qu'il agit :
+Une Procedure rend explicites les décisions qui gouvernent ses actions avant leur exécution. Elle peut être publiée pour être réutilisée ou fournie inline comme mission acceptée dans un Plan qui permet ces déclarations. Les personnes conservent l'autorité sur la méthode et sur le périmètre dans lequel les agents peuvent proposer du travail. Chaque définition acceptée fixe ce que l'agent ne peut pas réécrire pendant qu'il agit :
 
 - les questions auxquelles il faut répondre, ainsi que l'ordre à respecter lorsqu'il est nécessaire
 - les actions permises pour chaque question et leurs limites
@@ -51,10 +59,10 @@ Une Procedure est écrite et publiée par des personnes avant le début du trava
 - les dépendances qui peuvent rendre un travail antérieur actuel ou obsolète
 - l'autorité à laquelle remettre la décision lorsqu'elle sort du cadre prévu
 
-Une Procedure n'est jamais l'autorité finale. Elle porte des décisions prises en amont, mais prévoit toujours une escalade vers une autorité supérieure. Lorsqu'une situation exige une nouvelle règle, une exception ou une autorisation qui n'a pas été donnée, l'agent ne complète pas lui-même la Procedure : il remet la décision à cette autorité.
+Une Procedure n'est jamais l'autorité finale. Elle porte les décisions qui gouvernent son travail et prévoit une escalade vers une autorité supérieure. Lorsqu'une situation exige une exception à ces limites ou une autorisation qui n'a pas été donnée, l'agent remet la décision à cette autorité. Déclarer des missions supplémentaires reste possible dans le périmètre de délégation déjà accordé.
 
-Lorsque cette Procedure est engagée sous forme de Plan, TRUST agit comme son autorité. Il autorise uniquement les actions conformes au Check et au contexte courants, n'accepte que des observations complètes, applique les règles de qualification publiées et rouvre le travail dépendant lorsque sa base change. TRUST applique cette version pendant toute l'exécution du Plan.
+Lorsque cette Procedure est instanciée sous forme de Plan, TRUST agit comme son autorité. Il autorise uniquement les actions conformes au Check et au contexte courants, n'accepte que des observations complètes, applique les règles de qualification acceptées et rouvre le travail dépendant lorsque sa base change. TRUST préserve la définition acceptée pendant toute l'exécution du Plan ; ajouter des missions ne réécrit pas le travail déjà accepté.
 
 <Callout kind="rule" title="Qui décide de quoi">
-  L'agent choisit parmi le travail actuellement permis. TRUST applique la Procedure publiée et maintient le Plan qui en résulte. L'opérateur décide dès que poursuivre demanderait une nouvelle règle, une nouvelle autorité ou une action hors du périmètre écrit.
+  L'agent choisit parmi le travail actuellement permis et peut proposer des missions lorsque la Procedure le permet. TRUST applique les définitions acceptées et maintient les Plans qui en résultent. L'opérateur décide dès que poursuivre dépasserait l'autorité ou le périmètre déjà accordés.
 </Callout>

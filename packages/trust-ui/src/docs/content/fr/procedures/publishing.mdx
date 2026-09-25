@@ -22,9 +22,11 @@ L'interface compile à chaque frappe (onglet Source) ; la publication compile à
 Une Procédure publiée est `procedure@version`, immuable, contenant : l'activation éventuelle du chaînage d'intention, son périmètre d'action, ses rôles, ses Scénarios (avec prérequis), ses Checks (cible, liaisons, matérialisations, qualification, raison de succès), les Opérations embarquées avec leurs digests, et un digest de toute la définition.
 
 - La révision est autonome : elle ne dépend d'aucun état du catalogue après publication.
-- Publier à nouveau le même `procedure@version` avec une définition différente est refusé (`already published with another immutable definition`) ; la même définition est acceptée telle quelle. Montez `@version` pour publier un changement.
+- Publier à nouveau le même `procedure@version` avec une source exécutable différente est refusé (`already published with another immutable definition`) ; la même définition est acceptée telle quelle. Montez `@version` pour publier un changement de méthode.
 - Deux versions d'une Procédure coexistent ; un Plan nomme la version à partir de laquelle il a été engagé.
 - Il n'y a pas de suppression : une version publiée reste pour les Plans et l'historique qui la référencent.
+
+L'onglet **Catalogue** contient le titre humain courant, la description Feature existante et les tags de classement de chaque version publiée exacte. Vous pouvez les corriger avec une révision éditoriale distincte. Les listes et la recherche utilisent les valeurs courantes ; la source d'origine et les Plans déjà engagés restent inchangés. Une correction du catalogue ne peut pas modifier le périmètre, les rôles, les dépendances, les Checks ou la qualification.
 
 <Callout kind="rule">
   Le formatage de la source, les commentaires, les lignes de continuation, le formatage de la qualification et la description ne changent pas le digest ; le titre, un rôle, un titre de Scénario, une liaison, la sémantique d'une qualification, une raison, l'ordre des rôles, des Scénarios ou des Checks, ou une Opération utilisée, le changent.
