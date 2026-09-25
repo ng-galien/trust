@@ -48,3 +48,36 @@ Cette réunion donne deux lectures complémentaires : **ce que le travail produi
 **Faire évoluer l’extension** : l’humain exprime le besoin ; le coordinateur prépare une proposition et répartit les missions ; les spécialistes produisent et vérifient ; le sujet rassemble l’article, la maquette et le Plan. L’humain consulte cet ensemble et répond lorsqu’un arbitrage lui est présenté.
 
 Le prototype propose déjà ce rapprochement par liens explicites. Sa vue d’exécution suit actuellement un Plan principal et ses missions. L’exploration transversale de plusieurs Plans et l’organisation automatique des connaissances restent à concevoir.
+
+## Comment les données circulent entre TRUST et l’extension
+
+L’extension est une application distincte du moteur TRUST, hébergée dans son interface. Elle conserve les sujets, articles, documents référencés et réponses. TRUST conserve les procédures et l’historique de leur exécution. Un identifiant de Plan relie le contenu présenté à l’exécution suivie.
+
+| Moment | Dans TRUST | Dans l’extension |
+| --- | --- | --- |
+| Construction | L’agent décrit le contexte, les étapes, les opérations et les critères des Checks ; TRUST compile la procédure. | L’agent peut publier une présentation ou une proposition. Cette publication est explicite. |
+| Engagement | TRUST crée un Plan et fixe les versions des procédures utilisées. | Un élément du fil référence ce Plan ; le sujet rassemble cet élément avec les autres productions. |
+| Exécution | Le Runner réalise les opérations et rapporte des faits ; TRUST qualifie les Checks et actualise le Plan. | L’écran relit les missions, les Checks et les résultats du Plan lié. |
+| Production | Une opération peut écrire dans un système externe et rapporter le résultat observé. | Un contenu est publié par une commande MCP de l’agent ou par une opération conçue pour appeler l’API. |
+| Réponse humaine | Une opération lit la réponse ; le Check applique les critères de la procédure. | Le formulaire conserve la réponse et sa révision. |
+
+**Lecture et actualisation.** L’extension lit une projection du Plan par HTTP, avec les permissions `plans.read` et `plans.subscribe`, dans l’environnement autorisé. Un abonnement SSE signale les changements ; l’écran relit alors les données. Les changements de contenu de l’extension suivent également ce mécanisme d’actualisation.
+
+**Échange par opération.** Le parcours ci-dessous s’applique lorsqu’une procédure prévoit cet échange avec l’extension. Le connecteur de lecture d’une réponse existe ; chaque publication automatisée doit être définie dans l’opération correspondante.
+
+```mermaid
+sequenceDiagram
+  participant T as TRUST
+  participant R as Runner
+  participant E as Extension
+  T->>R: Déléguer un Check
+  R->>E: Lire une réponse ou publier un contenu
+  E-->>R: Données ou reçu de publication
+  R->>T: Rapporter les faits observés
+  Note over T: Qualifier le Check et actualiser le Plan
+  T-->>E: Signaler le changement
+  E->>T: Relire le Plan lié
+  T-->>E: Missions, Checks et résultats
+```
+
+Le **contenu éditorial** et l’**état d’exécution** se rejoignent dans le sujet. Leurs sources restent identifiables : une publication vient de l’agent ou d’une opération ; l’avancement vérifié vient de TRUST.
