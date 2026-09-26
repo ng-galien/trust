@@ -8,6 +8,49 @@ This methodology belongs to the coordination integration, not to the generic TRU
 engine. See [the extension setup](README.md) for installation and lifecycle.
 Commands below run from the repository root.
 
+## Verification-bearing implementation missions
+
+For authorized implementation work requiring observed tests, use
+`agent-delegation@1.1.0`, authored in
+[`agent-delegation-verified.feature`](../../assets/procedures/agent-delegation-verified.feature).
+The original `1.0.0` remains immutable and retains its response-only semantics.
+Existing Plans do not acquire the new gates automatically.
+
+Read the [verification contract and limits](../../docs/verification/abac/delegation/README.md)
+and its [engagement example](../../docs/verification/abac/delegation/engagement.example.json).
+Alongside the original mission roots, engage a distinct `reviewer` and three
+immutable JSON-string contracts: `unit verification`, `integration verification`,
+`database verification`. Each binds requirement IDs to exact test names/files and
+the source plus executed artifact closure. These tests need explicit task
+authorization; the ABAC delegation implementation authorized all three layers.
+
+The worker claims, implements and executes all three `verify` Checks using the
+supplied Runner URIs. `coordination.verification-run@1.0.0` launches actual Node
+test processes; a completed response, global exit status or authored report cannot
+replace the named results. Missing/failed/skipped/crashed tests and stale bytes do
+not qualify. Review Checks appear only after upstream digests are materialized.
+
+The worker then hands over to the independent coordinator. That coordinator must
+inspect the assertions, real service/database targets, build provenance and
+declared source/artifact closure before executing all three `review` Checks.
+Those Checks repeat the tests against the worker's observed digests. The named
+reviewer is a procedural host boundary, not authenticated identity in the current
+runtime. Do not let a worker execute its own review Checks. After review, the
+worker may submit its response; final observation remains the coordinator's job.
+
+If code changes after a satisfied live verification, create a linked replacement
+mission and repeat verification. Do not reset live Checks or change immutable
+contracts. Labels such as `database` do not certify test quality: real assertions
+and independent review establish what was actually checked. Hashing `dist` and
+source records both states but does not by itself prove their build relationship.
+
+The new Operation requires Environment `workspaceRoot` at the exact authorized
+checkout, alongside the existing coordination database configuration. Installation
+configuration changes need their own authorization; a worker must not silently
+edit a shared Environment to make verification run. The sections below describe
+the original persisted mission transitions, also reused by `1.1.0` around its new
+verification and review gates.
+
 ## MCP access and the host boundary
 
 Use native TRUST MCP tools when they are loaded in the agent session. In the current

@@ -1,0 +1,34 @@
+
+0 violation(s) across 0 file(s) (696 scanned, elapsed 1576 ms).
+
+Rule report:
+- refs.authority-dependency-excludes-consumer-contract-relays: domain=refs, evaluated=85399, matches=123, violations=0, antecedent_matches=123
+- refs.authority-dependency-never-reaches-ui: domain=refs, evaluated=85399, matches=8088, violations=0, antecedent_matches=8088
+- refs.authority-dependency-uses-matcher-subpath: domain=refs, evaluated=85399, matches=27, violations=0, antecedent_matches=27
+- refs.coordination-dependency-excludes-runtime-and-ui-implementation: domain=refs, evaluated=85399, matches=1275, violations=0, antecedent_matches=1275
+- refs.coordination-ui-dependency-excludes-server-implementation: domain=refs, evaluated=85399, matches=878, violations=0, antecedent_matches=878
+- refs.dragon-heist-dependency-excludes-runtime-and-ui-implementation: domain=refs, evaluated=85399, matches=958, violations=0, antecedent_matches=958
+- refs.dragon-heist-ui-dependency-excludes-server-implementation: domain=refs, evaluated=85399, matches=485, violations=0, antecedent_matches=485
+- refs.editor-dependency-on-authority-language-behavior-goes-through-language-server: domain=refs, evaluated=85399, matches=783, violations=0, antecedent_matches=783
+- refs.extension-host-dependency-excludes-coordination: domain=refs, evaluated=85399, matches=913, violations=0, antecedent_matches=913
+- refs.extension-sdk-dependency-excludes-runtime-implementation: domain=refs, evaluated=85399, matches=471, violations=0, antecedent_matches=471
+- refs.gherkin-takes-no-downstream-dependency: domain=refs, evaluated=85399, matches=1532, violations=0, antecedent_matches=1532
+- refs.only-runtime-takes-a-dependency-on-language-server: domain=refs, evaluated=85399, matches=50478, violations=0, antecedent_matches=50478
+- refs.operation-takes-no-downstream-dependency: domain=refs, evaluated=85399, matches=2838, violations=0, antecedent_matches=2838
+- refs.procedure-takes-no-downstream-dependency: domain=refs, evaluated=85399, matches=3718, violations=0, antecedent_matches=3718
+- refs.runtime-dependency-excludes-dragon-heist: domain=refs, evaluated=85399, matches=31389, violations=0, antecedent_matches=31389
+- refs.ui-dependency-on-authority-language-behavior-is-forbidden: domain=refs, evaluated=85399, matches=21349, violations=0, antecedent_matches=21349
+- ts.function.language-server.language-server-step-completion-call-flow-enters-gherkin: domain=function, evaluated=2999, matches=142, violations=0, antecedent_matches=142
+- ts.function.operation.operation-step-parser-call-flow-enters-gherkin: domain=function, evaluated=2999, matches=101, violations=0, antecedent_matches=101
+- ts.function.procedure.procedure-plan-context-call-flow-enters-step-parser: domain=function, evaluated=2999, matches=1, violations=0, antecedent_matches=1
+- ts.function.procedure.procedure-step-parser-call-flow-enters-gherkin: domain=function, evaluated=2999, matches=129, violations=0, antecedent_matches=129
+- ts.interface.ui-dependency-uses-canonical-contract-definitions: domain=interface, evaluated=364, matches=20, violations=0, antecedent_matches=20
+- ts.module.authority-call-flow-keeps-discriminants-in-matchers: domain=module, evaluated=302, matches=14, violations=0, antecedent_matches=14
+- ts.module.authority-call-flow-rejects-variant-assertions: domain=module, evaluated=302, matches=14, violations=0, antecedent_matches=14
+- ts.module.authority-call-flow-uses-canonical-dispatch: domain=module, evaluated=302, matches=14, violations=0, antecedent_matches=14
+- ts.module.language-server.language-server-dependency-on-operation-and-procedure-step-grammar-is-explicit: domain=module, evaluated=302, matches=1, violations=0, antecedent_matches=1
+- ts.module.operation.operation-compiler-dependency-on-operation-step-grammar-is-explicit: domain=module, evaluated=302, matches=1, violations=0, antecedent_matches=1
+- ts.module.procedure.procedure-compiler-dependency-on-procedure-step-grammar-is-explicit: domain=module, evaluated=302, matches=1, violations=0, antecedent_matches=1
+- tsx.module.authority-call-flow-keeps-discriminants-in-matchers: domain=module, evaluated=94, matches=3, violations=0, antecedent_matches=3
+- tsx.module.authority-call-flow-rejects-variant-assertions: domain=module, evaluated=94, matches=3, violations=0, antecedent_matches=3
+- tsx.module.authority-call-flow-uses-canonical-dispatch: domain=module, evaluated=94, matches=3, violations=0, antecedent_matches=3
