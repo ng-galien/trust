@@ -1,0 +1,106 @@
+{
+  "observedAt": "2026-09-26T10:04:41.270Z",
+  "docker": {
+    "configuredDiskMiB": 65536,
+    "filesystemGiB": 62.7,
+    "usedGiB": 56.8,
+    "availableGiB": 2.7
+  },
+  "host": {
+    "capacityGiB": 460,
+    "usedGiB": 362,
+    "availableGiB": 68
+  },
+  "remainingTaskCreatedPrivateCache": [
+    {
+      "id": "uie59wbaxpccz27usxyq7buic",
+      "size": "1.622kB",
+      "description": "local source for dockerfile",
+      "createdAt": "2026-09-26 09:40:12.226913089 +0000 UTC",
+      "parents": null,
+      "shared": false,
+      "reclaimable": true
+    },
+    {
+      "id": "aq1695yme4fo4vezw3v82gpe1",
+      "size": "676.6kB",
+      "description": "mount / from exec /bin/sh -c npm prune --omit=dev --no-audit --no-fund",
+      "createdAt": "2026-09-26 09:48:52.151042469 +0000 UTC",
+      "parents": [
+        "o0e4whiz3epk7c78hbsx60kec"
+      ],
+      "shared": false,
+      "reclaimable": true
+    },
+    {
+      "id": "br0r2njradvwlcwe1bguzyrin",
+      "size": "22.65MB",
+      "description": "[build 3/6] COPY . .",
+      "createdAt": "2026-09-26 09:40:19.177394801 +0000 UTC",
+      "parents": [
+        "hg8kzjof543nvx1pa9z7aviyz"
+      ],
+      "shared": false,
+      "reclaimable": true
+    },
+    {
+      "id": "yuosgmlpi154ck6wsb8398cwn",
+      "size": "22.65MB",
+      "description": "local source for context",
+      "createdAt": "2026-09-26 09:40:15.177707174 +0000 UTC",
+      "parents": null,
+      "shared": false,
+      "reclaimable": true
+    },
+    {
+      "id": "vcq1c8aovxcwre51ddme4fm7f",
+      "size": "22.67MB",
+      "description": "[build 3/6] COPY . .",
+      "createdAt": "2026-09-26 09:45:59.08290675 +0000 UTC",
+      "parents": [
+        "hg8kzjof543nvx1pa9z7aviyz"
+      ],
+      "shared": false,
+      "reclaimable": true
+    },
+    {
+      "id": "z0yxvfigu8zgh2hxril80d2xy",
+      "size": "22.67MB",
+      "description": "[build 3/6] COPY . .",
+      "createdAt": "2026-09-26 09:47:57.574084222 +0000 UTC",
+      "parents": [
+        "hg8kzjof543nvx1pa9z7aviyz"
+      ],
+      "shared": false,
+      "reclaimable": true
+    },
+    {
+      "id": "o0e4whiz3epk7c78hbsx60kec",
+      "size": "60.31MB",
+      "description": "mount / from exec /bin/sh -c npx tsc -b  && npm run package:documentation --workspace=@trust/runtime  && npm run build --workspace=@trust/web  && npm run package:skill --workspace=@trust/runner  && npm run build --workspace=@trust-extension/coordination  && npm run build --workspace=@trust-extension/mobile-companion  && npm run build --workspace=@trust-extension/dragon-heist",
+      "createdAt": "2026-09-26 09:48:52.116562261 +0000 UTC",
+      "parents": [
+        "v8odh1eoij3azjli61ry21a82"
+      ],
+      "shared": false,
+      "reclaimable": true
+    },
+    {
+      "id": "v8odh1eoij3azjli61ry21a82",
+      "size": "788.1MB",
+      "description": "mount / from exec /bin/sh -c npm ci --no-audit --no-fund",
+      "createdAt": "2026-09-26 09:48:12.304962798 +0000 UTC",
+      "parents": [
+        "z0yxvfigu8zgh2hxril80d2xy"
+      ],
+      "shared": false,
+      "reclaimable": true
+    }
+  ],
+  "deletedAdditionalResources": false,
+  "recommendation": {
+    "proposedDiskLimitGiB": 96,
+    "changePerformed": false,
+    "restartPerformed": false
+  }
+}

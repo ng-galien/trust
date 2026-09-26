@@ -1,0 +1,23 @@
+{
+  "startedAt": "2026-09-26T10:37:00.258Z",
+  "cluster": "trust-helm-f1870710",
+  "image": "trust-server:helm-20260926-local",
+  "commands": [
+    "kind create cluster --name trust-helm-f1870710 --kubeconfig <temporary> --wait 120s",
+    "helm install smoke charts/trust --namespace trust --create-namespace -f <temporary-values> --wait --timeout 180s",
+    "helm upgrade smoke charts/trust --namespace trust -f <temporary-values> --set environment.TRUST_LOG_LEVEL=warn --wait --timeout 180s"
+  ],
+  "checks": [
+    "One ready non-root TRUST Pod installed from the actual local image",
+    "Actual Service serves health, built browser entry and anonymous RPC refusal",
+    "Recreate upgrade produces one new ready Pod and preserves its PVC marker",
+    "Uninstall retains the state PVC before disposable cluster removal"
+  ],
+  "published": false,
+  "imageId": "sha256:46e26dbc7f955db48506be627bf5db0b6e20a0f00e466fe74ad8c363586bfda5",
+  "sourceRevision": "7d651cce67e1556e6a05d3036a2089dc49854300",
+  "architecture": "arm64",
+  "status": "passed",
+  "clusterRemoved": true,
+  "endedAt": "2026-09-26T10:38:26.904Z"
+}

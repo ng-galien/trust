@@ -1,0 +1,50 @@
+{
+  "buildx.build.provenance": {
+    "builder": {
+      "id": ""
+    },
+    "buildType": "https://mobyproject.org/buildkit@v1",
+    "materials": [
+      {
+        "uri": "pkg:docker/docker/dockerfile@1",
+        "digest": {
+          "sha256": "ecfaec9ed6d810b56388c508f4121597bfbba70d41a6dfeee4d8cad5f295fc32"
+        }
+      },
+      {
+        "uri": "pkg:docker/node@24-bookworm-slim?platform=linux%2Farm64",
+        "digest": {
+          "sha256": "0e0ff40c39bc087845bfb27465a0df4ea419520094bc35842ff83dd8cbe6f9b6"
+        }
+      }
+    ],
+    "invocation": {
+      "configSource": {
+        "entryPoint": "Dockerfile"
+      },
+      "parameters": {
+        "frontend": "gateway.v0",
+        "args": {
+          "build-arg:SOURCE_REVISION": "7d651cce67e1556e6a05d3036a2089dc49854300",
+          "cmdline": "docker/dockerfile:1",
+          "source": "docker/dockerfile:1"
+        },
+        "locals": [
+          {
+            "name": "context"
+          },
+          {
+            "name": "dockerfile"
+          }
+        ]
+      },
+      "environment": {
+        "platform": "linux/arm64"
+      }
+    }
+  },
+  "buildx.build.ref": "desktop-linux/desktop-linux/7naqhf7belw0e6iasx6wcpy3p",
+  "containerimage.config.digest": "sha256:46e26dbc7f955db48506be627bf5db0b6e20a0f00e466fe74ad8c363586bfda5",
+  "containerimage.digest": "sha256:46e26dbc7f955db48506be627bf5db0b6e20a0f00e466fe74ad8c363586bfda5",
+  "image.name": "docker.io/library/trust-server:helm-20260926-local"
+}

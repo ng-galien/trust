@@ -1,0 +1,86 @@
+# This repository does not publish an image automatically. Build container/Dockerfile,
+# push it to your own registry, and select the resulting immutable digest.
+image:
+  repository: trust-server
+  tag: "0.1.0"
+  digest: ""
+  pullPolicy: IfNotPresent
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+replicaCount: 1
+
+# Canonical TRUST configuration. Environment overrides these values; defaults last.
+# Keep secrets out of this object, which is stored in a ConfigMap and Helm release.
+config:
+  server:
+    host: 0.0.0.0
+    port: 4318
+    webPort: 4173
+    stateDirectory: /var/lib/trust
+    semanticAuthority: trust.example.com
+  storage:
+    kind: postgresql
+  authentication:
+    profile: shared
+    access:
+      mode: local-jwt
+      issuer: https://issuer.example.com
+      audience: urn:trust:runtime
+      discovery: oidc
+      algorithms: [RS256]
+      tokenProfile:
+        headerType: at+jwt
+      maxTokenAgeSeconds: 300
+      clockToleranceSeconds: 0
+    resourceUrl: https://trust.example.com/mcp
+    browser:
+      issuer: https://issuer.example.com
+      clientId: trust-browser
+      redirectUri: https://trust.example.com/auth/callback
+      postLogoutRedirectUri: https://trust.example.com/
+      scope: openid offline_access trust.plan.read.own trust.plan.list.own trust.extension.list
+      resource: urn:trust:runtime
+  shell:
+    installRoot: /opt/trust
+
+# Non-secret scalar overrides. Do not override chart-managed ports/paths here.
+environment: {}
+# Existing Kubernetes Secrets only: credentials never appear in values or ConfigMaps.
+secretEnvironment:
+  - name: TRUST_DATABASE_URL
+    secretName: trust-database
+    key: url
+
+# Read-only existing ConfigMaps/Secrets, e.g. CA certificates or extension registry.
+# Files are mounted below /etc/trust-extra/<name>; no inline secret data is accepted.
+configurationMounts: []
+
+# Operations and state need durable storage even with external PostgreSQL.
+persistence:
+  existingClaim: ""
+  size: 10Gi
+  storageClass: null
+  accessModes: [ReadWriteOnce]
+  retain: true
+
+service:
+  type: ClusterIP
+  port: 80
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  host: trust.example.com
+  tls: []
+resources:
+  requests:
+    cpu: 250m
+    memory: 512Mi
+  limits:
+    cpu: "2"
+    memory: 2Gi
+terminationGracePeriodSeconds: 60
+nodeSelector: {}
+tolerations: []
+affinity: {}

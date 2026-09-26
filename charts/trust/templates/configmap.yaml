@@ -1,0 +1,10 @@
+{{- include "trust.validate" . -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "trust.fullname" . }}-config
+  labels:
+    {{- include "trust.labels" . | nindent 4 }}
+data:
+  trust.json: |
+    {{- .Values.config | toPrettyJson | nindent 4 }}

@@ -1,0 +1,9 @@
+TRUST uses exactly one runtime owner per database and Recreate upgrades.
+Back up the external PostgreSQL database and persistent Operations/state volume
+before upgrades. Planned upgrades have downtime; do not scale this release.
+
+The public service is {{ include "trust.fullname" . }}:{{ .Values.service.port }}.
+Configure your external issuer, browser client redirects, TLS, and image digest
+before exposing it. The example issuer and trust.example.com are placeholders.
+
+No image or chart is published by this installation.

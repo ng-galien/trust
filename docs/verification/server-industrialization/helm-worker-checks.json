@@ -1,0 +1,77 @@
+[
+  {
+    "layer": "unit",
+    "status": "COMPLETED",
+    "verdict": "VALIDATED",
+    "attempt": "41a03655-2a48-4a19-bb08-081451e2edf7",
+    "runId": "c57b06d6-8f58-4a0a-b8aa-926a6bc12d02",
+    "digest": "c106d16e2d331c1c5a09a622e1f62a1dded6f9e84866116d59d28dc3e5fd18e8",
+    "afterDigest": "c106d16e2d331c1c5a09a622e1f62a1dded6f9e84866116d59d28dc3e5fd18e8",
+    "files": 2148,
+    "tested": 1,
+    "passed": 1,
+    "failed": 0,
+    "skipped": 0,
+    "crashed": 0,
+    "missing": 0,
+    "stale": 0,
+    "assertions": [
+      {
+        "requirement": "HELM-UNIT",
+        "name": "HELM-CONTRACT chart validates and renders supported configuration",
+        "file": "charts/trust/acceptance/render.acceptance.test.mjs",
+        "status": "passed"
+      }
+    ]
+  },
+  {
+    "layer": "integration",
+    "status": "COMPLETED",
+    "verdict": "VALIDATED",
+    "attempt": "2175b3b2-3597-45e5-940e-2f553a953ff4",
+    "runId": "485151dd-a63c-4a70-be77-6a8009ce4848",
+    "digest": "f6e987a7d6be16d5f8e7c04cbb26ff7e2048dccc8bf5e74834daeec2ec4f2b25",
+    "afterDigest": "f6e987a7d6be16d5f8e7c04cbb26ff7e2048dccc8bf5e74834daeec2ec4f2b25",
+    "files": 2148,
+    "tested": 1,
+    "passed": 1,
+    "failed": 0,
+    "skipped": 0,
+    "crashed": 0,
+    "missing": 0,
+    "stale": 0,
+    "assertions": [
+      {
+        "requirement": "HELM-INTEGRATION",
+        "name": "HELM-RUNTIME rendered deployment starts the real configured TRUST server",
+        "file": "charts/trust/acceptance/runtime.acceptance.test.mjs",
+        "status": "passed"
+      }
+    ]
+  },
+  {
+    "layer": "database",
+    "status": "COMPLETED",
+    "verdict": "VALIDATED",
+    "attempt": "0d9b6b38-b9d0-442d-b25f-a99b78ea05cd",
+    "runId": "0979aa0f-4e63-48b4-8b20-39d85cbe085a",
+    "digest": "d0cf36219ebec5786459f75ccfa7dedcc07ae44c8cca2c99b295c93d0211cfa1",
+    "afterDigest": "d0cf36219ebec5786459f75ccfa7dedcc07ae44c8cca2c99b295c93d0211cfa1",
+    "files": 2148,
+    "tested": 1,
+    "passed": 1,
+    "failed": 0,
+    "skipped": 0,
+    "crashed": 0,
+    "missing": 0,
+    "stale": 0,
+    "assertions": [
+      {
+        "requirement": "HELM-DATABASE",
+        "name": "HELM-LIFECYCLE single-owner rollout and persistence contracts hold",
+        "file": "charts/trust/acceptance/lifecycle.acceptance.test.mjs",
+        "status": "passed"
+      }
+    ]
+  }
+]

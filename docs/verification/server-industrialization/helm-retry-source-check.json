@@ -1,0 +1,13 @@
+{
+  "checkedAt": "2026-09-26T10:36:38.636Z",
+  "imageFiles": 1067,
+  "verifiedFiles": 2148,
+  "changes": [],
+  "after": {
+    "checkedAt": "2026-09-26T10:39:04.011Z",
+    "changes": [],
+    "imageId": "sha256:46e26dbc7f955db48506be627bf5db0b6e20a0f00e466fe74ad8c363586bfda5",
+    "clusters": "",
+    "dockerFilesystem": "Filesystem                Size      Used Available Use% Mounted on\noverlay                  62.7G     48.3G     11.2G  81% /"
+  }
+}

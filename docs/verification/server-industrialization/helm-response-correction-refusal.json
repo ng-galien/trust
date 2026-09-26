@@ -1,0 +1,16 @@
+{
+  "observedAt": "2026-09-26T10:08:14.506Z",
+  "plan": "trust-server-helm-v3-20260926",
+  "declarationRevision": 13,
+  "requestedAction": "Resubmit response with corrected diagnostic attribution",
+  "outcome": "REFUSED",
+  "error": "PostgreSQL statement failed: The submitted response is immutable",
+  "newQualification": false,
+  "recovery": {
+    "restoredDeclarationRevision": 14,
+    "identicalResponseAttempt": "076832ef-694c-415a-8acd-f588b459f414",
+    "status": "COMPLETED",
+    "verdict": "VALIDATED"
+  },
+  "historicalResponseOverwritten": false
+}
