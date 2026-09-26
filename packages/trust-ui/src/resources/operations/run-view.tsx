@@ -6,6 +6,7 @@ import { AlertTriangle, Check, ChevronRight, Copy, Loader2, Play, Square, X } fr
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router";
+import { AuthenticatedEventSource } from "../../lib/authenticated-events.js";
 import { useCurrentEnvironment } from "../../lib/environment.js";
 import { cx, formatTime, plural, relativeTime } from "../../lib/format.js";
 import { mutationError } from "../../lib/mutations.js";
@@ -354,7 +355,7 @@ function useTrial(trialId: string, onSettled: () => void) {
   const settled = useRef(false);
 
   useEffect(() => {
-    let source: EventSource | undefined;
+    let source: AuthenticatedEventSource | undefined;
     let cancelled = false;
     settled.current = false;
     setTrial(null);
@@ -371,9 +372,8 @@ function useTrial(trialId: string, onSettled: () => void) {
           return;
         }
         const last = view.events.at(-1)?.sequence ?? 0;
-        source = new EventSource(`${runtime.trialStreamUrl(trialId)}?after=${last}`);
+        source = new AuthenticatedEventSource(`${runtime.trialStreamUrl(trialId)}?after=${last}`);
         setConnection("live");
-        source.onmessage = () => undefined;
         const onEvent = (raw: MessageEvent<string>) => {
           const event = JSON.parse(raw.data) as TrialEvent;
           setEvents((current) =>
@@ -406,7 +406,7 @@ function useTrial(trialId: string, onSettled: () => void) {
           setConnection("closed");
         });
         source.onerror = () => {
-          if (source?.readyState === EventSource.CLOSED) setConnection("closed");
+          if (source?.readyState === 2) setConnection("closed");
           else setConnection("error");
         };
       })

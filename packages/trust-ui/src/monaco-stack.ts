@@ -1,3 +1,4 @@
+import { authenticatedWebSocket } from "./lib/authentication.js";
 import "@codingame/monaco-vscode-standalone-json-language-features";
 import EditorWorker from "@codingame/monaco-vscode-editor-api/esm/vs/editor/editor.worker.js?worker";
 import JsonWorker from "@codingame/monaco-vscode-standalone-json-language-features/worker?worker";
@@ -43,27 +44,28 @@ export async function ensureTrustLanguageClient(url: string): Promise<void> {
   if (languageServerUrl !== undefined && languageServerUrl !== url) {
     throw new Error(`The TRUST language client is already connected to ${languageServerUrl}`);
   }
-  if (languageServerUrl === undefined) {
-    languageServerUrl = url;
-    languageClients.setConfig({
-      languageId: "trust",
-      connection: {
-        options: {
-          $type: "WebSocketUrl",
-          url,
-          stopOptions: { onCall: languageClientDisconnected },
-        },
-      },
-      clientOptions: {
-        documentSelector: ["trust-operation", "trust-procedure"],
-      },
-    });
-  }
   if (languageClients.isStarted()) {
     updateLanguageServerStatus("ready");
     return;
   }
-  languageClientStart ??= startLanguageClient();
+  if (languageClientStart !== undefined) {
+    await languageClientStart;
+    return;
+  }
+  languageServerUrl = url;
+  languageClientStart = (async () => {
+    const webSocket = await authenticatedWebSocket(url);
+    languageClients.setConfig({
+      languageId: "trust",
+      connection: {
+        options: { $type: "WebSocketDirect", webSocket, stopOptions: { onCall: languageClientDisconnected } },
+      },
+      clientOptions: { documentSelector: ["trust-operation", "trust-procedure"] },
+    });
+    await startLanguageClient();
+  })().finally(() => {
+    languageClientStart = undefined;
+  });
   await languageClientStart;
 }
 

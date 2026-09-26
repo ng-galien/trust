@@ -102,12 +102,12 @@ const labels = {
     blocked: "Bloquée",
   },
 };
-async function read<T>(url: string, signal?: AbortSignal): Promise<T> {
-  const result = await fetch(url, signal ? { signal } : undefined);
+async function read<T>(transport: ExtensionPageProps["transport"], url: string, signal?: AbortSignal): Promise<T> {
+  const result = await transport.fetch(url, signal ? { signal } : undefined);
   if (!result.ok) throw new Error("Read unavailable");
   return result.json();
 }
-export default function Page({ apiBase, trustBase, eventsUrl, language, navigation }: ExtensionPageProps) {
+export default function Page({ apiBase, trustBase, eventsUrl, language, navigation, transport }: ExtensionPageProps) {
   const t = language.startsWith("fr") ? labels.fr : labels.en;
   const fr = language.startsWith("fr");
   const query = new URLSearchParams(navigation?.search);
@@ -225,14 +225,18 @@ export default function Page({ apiBase, trustBase, eventsUrl, language, navigati
           let count = 0;
           for (let offset = 0; offset < 2000; offset += 100) {
             if (current !== sequence.current) break;
-            const page = await command<MissionPage>(apiBase, "missions.list", { ...source, offset, limit: 100 });
+            const page = await command<MissionPage>(transport, apiBase, "missions.list", {
+              ...source,
+              offset,
+              limit: 100,
+            });
             collected.push(...page.missions);
             count = page.total;
             if (collected.length >= count || page.missions.length < 100) break;
           }
           return { missions: collected, total: count };
         })(),
-        read<{ plans: PlanSummaryView[] }>(`${trustBase}/plans`).catch(() => null),
+        read<{ plans: PlanSummaryView[] }>(transport, `${trustBase}/plans`).catch(() => null),
       ]);
       if (current !== sequence.current) return;
       setMissions(missionData.missions);
@@ -241,20 +245,28 @@ export default function Page({ apiBase, trustBase, eventsUrl, language, navigati
       setPlansAvailable(planData !== null);
       setError(false);
       setRevision((value) => value + 1);
-    } catch {
-      if (current === sequence.current) setError(true);
+    } catch (cause) {
+      if (current === sequence.current) {
+        if (cause instanceof Error && (cause.cause === 401 || cause.cause === 403)) {
+          setMissions([]);
+          setPlans([]);
+          setTotal(0);
+        }
+        setError(true);
+      }
     } finally {
       if (current === sequence.current) setLoading(false);
     }
-  }, [apiBase, trustBase, filters.search, filters.project, filters.assignee, filters.tag]);
+  }, [transport, apiBase, trustBase, filters.search, filters.project, filters.assignee, filters.tag]);
   useEffect(() => {
     void refresh();
     return () => {
       sequence.current++;
     };
   }, [refresh]);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: A changed public stream URL must reopen the subscription even if the transport object is reused.
   useEffect(() => {
-    const events = new EventSource(eventsUrl);
+    const events = transport.openEvents();
     events.addEventListener("change", () => {
       setConnected(true);
       void refresh();
@@ -262,7 +274,7 @@ export default function Page({ apiBase, trustBase, eventsUrl, language, navigati
     events.onopen = () => setConnected(true);
     events.onerror = () => setConnected(false);
     return () => events.close();
-  }, [eventsUrl, refresh]);
+  }, [transport, eventsUrl, refresh]);
   const mission = missions.find((item) => item.mission === selected);
   const visible = missions
     .filter((item) => {
@@ -310,7 +322,7 @@ export default function Page({ apiBase, trustBase, eventsUrl, language, navigati
     setSavingTags(true);
     setTagError("");
     try {
-      await command(apiBase, "tags.replace", {
+      await command(transport, apiBase, "tags.replace", {
         mission: mission.mission,
         expectedRevision: tagRevision,
         tags: draftTags,
@@ -348,13 +360,13 @@ export default function Page({ apiBase, trustBase, eventsUrl, language, navigati
     const controller = new AbortController();
     setDetail(null);
     if (availablePlanId)
-      void read<PlanView>(`${trustBase}/plans/${encodeURIComponent(availablePlanId)}`, controller.signal)
+      void read<PlanView>(transport, `${trustBase}/plans/${encodeURIComponent(availablePlanId)}`, controller.signal)
         .then((plan) => {
           if (!controller.signal.aborted) setDetail({ request: detailRequest, plan });
         })
         .catch(() => {});
     return () => controller.abort();
-  }, [availablePlanId, trustBase, detailRequest]);
+  }, [transport, availablePlanId, trustBase, detailRequest]);
   const date = (value: string) => new Date(value).toLocaleString(language);
   const shortDate = (value: string) =>
     new Date(value).toLocaleString(language, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
@@ -445,6 +457,7 @@ export default function Page({ apiBase, trustBase, eventsUrl, language, navigati
         </button>
       </header>
       <FilterBar
+        transport={transport}
         apiBase={apiBase}
         filters={filters}
         onChange={setFilters}

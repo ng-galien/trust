@@ -1,15 +1,19 @@
 import express, { type Response, Router } from "express";
+import { AccessError } from "../access/error.js";
+import type { AccessService } from "../access/service.js";
 import { ExtensionError, type ExtensionHost } from "../extensions/host.js";
-import { confinedPath } from "../extensions/manifest.js";
 import type { PlanEvents } from "../plan/events.js";
 import type { PlanReader } from "../plan/read.js";
+import { expireAccessStream, guardAccessStream, requestAccess } from "./access.js";
 
 export function createExtensionsHttpHandler({
   extensionHost,
+  accessService,
   planReader,
   planEvents,
 }: {
   extensionHost: ExtensionHost;
+  accessService: AccessService;
   planReader: PlanReader;
   planEvents: PlanEvents;
 }): Router {
@@ -17,7 +21,9 @@ export function createExtensionsHttpHandler({
   router.use(express.json({ limit: "64kb" }));
   router.use((request, response) => {
     const run = async () => {
+      const access = requestAccess(request);
       if (request.path === "/" && request.method === "GET") {
+        accessService.authorize(access, "extension.list");
         response.json({ extensions: extensionHost.list().map((value) => value.descriptor()) });
         return;
       }
@@ -26,15 +32,18 @@ export function createExtensionsHttpHandler({
       if (["prepare", "start", "stop"].includes(surface ?? "") && rest.length === 0 && request.method === "POST") {
         if (!request.body || Array.isArray(request.body) || Object.keys(request.body).length)
           throw new ExtensionError(400, "invalid-extension-request");
+        accessService.authorize(access, `extension.${surface}`);
         response.json({ extension: await extension.transition(surface as "prepare" | "start" | "stop") });
         return;
       }
       if (surface === "commands" && rest.length === 0 && request.method === "POST") {
-        const result = await extension.command(request.body);
+        const result = await extension.command(request.body, access);
         response.status(result.status).json(result.body);
         return;
       }
       if (request.method !== "GET") throw new ExtensionError(405, "extension-read-only");
+      if (surface === "trust" || surface === "events") accessService.authorizeExtension(access, id);
+      else if (surface !== "api") accessService.authorize(access, "extension.status");
       extension.requireRunning();
       if (surface === "api") {
         const query: Record<string, string> = {};
@@ -42,7 +51,7 @@ export function createExtensionsHttpHandler({
           if (typeof value !== "string") throw new ExtensionError(400, "invalid-extension-query");
           query[key] = value;
         }
-        const result = await extension.read({ path: "/" + rest.join("/"), query });
+        const result = await extension.read({ path: "/" + rest.join("/"), query }, access);
         if (
           !result ||
           !Number.isInteger(result.status) ||
@@ -55,24 +64,13 @@ export function createExtensionsHttpHandler({
         response.status(result.status).json(result.body);
         return;
       }
-      if (surface === "assets" && extension.installation.ui) {
-        try {
-          const file = await confinedPath(extension.installation.ui.assets, decodeURIComponent(rest.join("/")));
-          response.sendFile(file, (error) => {
-            if (error && !response.headersSent) response.status(404).end();
-          });
-        } catch {
-          throw new ExtensionError(404, "extension-asset-not-found");
-        }
-        return;
-      }
       if (surface === "trust" && rest[0] === "plans") {
         extension.requireGrant("plans.read");
         if (rest.length === 1) {
           const plans = [];
           let cursor: string | undefined;
           do {
-            const page = await planReader.listPlans(cursor === undefined ? {} : { cursor });
+            const page = await planReader.listPlans(cursor === undefined ? {} : { cursor }, access);
             plans.push(...page.plans.filter((plan) => plan.environment === extension.installation.environment));
             cursor = page.nextCursor;
           } while (cursor !== undefined);
@@ -81,7 +79,7 @@ export function createExtensionsHttpHandler({
         }
         if (rest.length === 2) {
           try {
-            const plan = await planReader.readPlanBySlug(decodeURIComponent(rest[1]!));
+            const plan = await planReader.readPlanBySlug(decodeURIComponent(rest[1]!), false, access);
             if (plan.environment !== extension.installation.environment) throw new Error();
             response.json(plan);
           } catch {
@@ -93,7 +91,7 @@ export function createExtensionsHttpHandler({
       if (surface === "trust" && rest[0] === "episodes" && rest.length === 2) {
         extension.requireGrant("plans.read");
         try {
-          const episode = await planReader.readDelegationEpisode(decodeURIComponent(rest[1]!));
+          const episode = await planReader.readDelegationEpisode(decodeURIComponent(rest[1]!), access);
           if (episode.root.plan.environment !== extension.installation.environment) throw new Error();
           if (
             episode.branches.some(({ child }) => child && child.plan.environment !== extension.installation.environment)
@@ -106,29 +104,45 @@ export function createExtensionsHttpHandler({
         return;
       }
       if (surface === "events" && rest.length === 0) {
-        extension.requireGrant("plans.read");
-        extension.requireGrant("plans.subscribe");
         response
           .status(200)
           .set({ "Content-Type": "text/event-stream", "Cache-Control": "no-cache", Connection: "keep-alive" });
         response.flushHeaders();
+        expireAccessStream(access, response);
+        guardAccessStream(accessService, request, response, [`extension.${id}.use`]);
         let closed = false;
-        const send = (value: unknown) => {
-          if (!closed) response.write(`event: change\ndata: ${JSON.stringify(value)}\n\n`);
+        const send = (value: unknown, planSlug?: string) => {
+          void accessService
+            .authenticate(request.get("authorization"))
+            .then(async (current) => {
+              accessService.authorizeExtension(current, id);
+              if (planSlug) await planReader.readPlanBySlug(planSlug, false, current);
+              if (!closed) response.write(`event: change\ndata: ${JSON.stringify(value)}\n\n`);
+            })
+            .catch(() => response.end());
         };
         send({ type: "resync" });
         const unsubscribe = planEvents.subscribe((event) => {
-          if (!event.plan) {
+          if (
+            !extension.installation.grants.includes("plans.read") ||
+            !extension.installation.grants.includes("plans.subscribe")
+          )
+            return;
+          if (!event.plan || event.type === "plan.removed") {
             send({ type: "resync" });
             return;
           }
-          void planReader
-            .readPlanBySlug(event.plan)
+          void accessService
+            .authenticate(request.get("authorization"))
+            .then((current) => {
+              accessService.authorizeExtension(current, id);
+              return planReader.readPlanBySlug(event.plan!, false, current);
+            })
             .then((plan) => {
               if (plan.environment === extension.installation.environment)
-                send({ type: "plan.changed", plan: event.plan });
+                send({ type: "plan.changed", plan: event.plan }, event.plan);
             })
-            .catch(() => send({ type: "resync" }));
+            .catch(() => undefined);
         });
         const changed = () => send({ type: "extension.changed" });
         const stop = () => {
@@ -160,6 +174,10 @@ export function createExtensionsHttpHandler({
 function sendError(response: Response, error: unknown) {
   if (response.headersSent) {
     response.end();
+    return;
+  }
+  if (error instanceof AccessError) {
+    response.status(error.status).json({ error: { code: error.code, message: "Access denied" } });
     return;
   }
   const known = error instanceof ExtensionError;

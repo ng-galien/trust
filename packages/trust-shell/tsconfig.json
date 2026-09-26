@@ -6,5 +6,10 @@
     "outDir": "dist",
     "tsBuildInfoFile": "dist/.tsbuildinfo"
   },
-  "include": ["src/**/*.ts", "acceptance/**/*.ts"]
+  "include": ["src/**/*.ts", "acceptance/**/*.ts"],
+  "references": [
+    {
+      "path": "../trust-extension-sdk"
+    }
+  ]
 }

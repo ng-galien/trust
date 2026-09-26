@@ -75,6 +75,8 @@ export interface CatalogMetadataRevisionTable {
 }
 
 export interface PlanTable {
+  creator_issuer: Generated<string | null>;
+  creator_subject: Generated<string | null>;
   plan_slug: string;
   procedure_name: string;
   procedure_version: string;
@@ -137,6 +139,8 @@ export interface SessionTable {
 }
 
 export interface AttemptTable {
+  actor_issuer: Generated<string | null>;
+  actor_subject: Generated<string | null>;
   invocation_digest: string | null;
   attempt_order: Generated<number>;
   attempt_handle: string;

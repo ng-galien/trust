@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { readItem } from "./api";
+import { useMobileApi } from "./transport";
 import type { Item, Subject, SubjectLink } from "./types";
 import { useDelegationEpisode } from "./use-delegation-episode";
 
@@ -30,6 +30,7 @@ export function SubjectView({
   eventsUrl: string;
   onOpenItem(id: string): void;
 }) {
+  const { readItem } = useMobileApi();
   const [sources, setSources] = useState<Record<string, Item | null>>({});
   const [loading, setLoading] = useState(true);
   const planIdentity = subject.links.find((link) => link.kind === "plan")?.targetIdentity ?? null;
@@ -53,7 +54,7 @@ export function SubjectView({
       }
     });
     return () => controller.abort();
-  }, [apiBase, subject.id, subject.revision]);
+  }, [apiBase, subject.id, subject.revision, readItem]);
 
   const plan = episode?.root.plan;
   const children = episode?.branches.filter((branch) => branch.child) ?? [];

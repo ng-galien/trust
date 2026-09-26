@@ -7,6 +7,7 @@ import { EmbeddedContent } from "./embedded-content";
 import { MobileNavigation } from "./navigation";
 import { useMobileUi } from "./store";
 import { SubjectView } from "./subject-view";
+import { MobileTransport, useMobileTransport } from "./transport";
 import { useMobileData } from "./use-mobile-data";
 import { useNotifications } from "./use-notifications";
 import { usePreviewReload } from "./use-preview-reload";
@@ -14,7 +15,15 @@ import "./style.css";
 
 type RouteChange = Partial<Record<"project" | "item" | "version" | "app" | "reader" | "subject", string | null>>;
 
-export default function MobileCompanion({ apiBase, trustBase, eventsUrl, language, navigation }: ExtensionPageProps) {
+export default function MobileCompanion(props: ExtensionPageProps) {
+  return (
+    <MobileTransport.Provider value={props.transport}>
+      <MobilePage {...props} />
+    </MobileTransport.Provider>
+  );
+}
+function MobilePage({ apiBase, trustBase, eventsUrl, language, navigation }: ExtensionPageProps) {
+  const transport = useMobileTransport();
   const locale = window.location.pathname.startsWith("/mobile/") ? "fr" : language;
   const t = locale.toLowerCase().startsWith("fr") ? words.fr : words.en;
   const demo = import.meta.env.VITE_MOBILE_PREVIEW === "1";
@@ -94,7 +103,7 @@ export default function MobileCompanion({ apiBase, trustBase, eventsUrl, languag
   const conversationCommand = async (command: string, args: Record<string, unknown>) => {
     data.setError("");
     try {
-      const response = await fetch(commandUrl, {
+      const response = await transport.fetch(commandUrl, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ command, arguments: args }),
@@ -122,7 +131,7 @@ export default function MobileCompanion({ apiBase, trustBase, eventsUrl, languag
     setSending(true);
     data.setError("");
     try {
-      const response = await fetch(commandUrl, {
+      const response = await transport.fetch(commandUrl, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({

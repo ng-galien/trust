@@ -1,0 +1,6 @@
+{
+  "server": {"host": "127.0.0.1", "port": 4318, "webPort": 4173, "stateDirectory": ".trust/server"},
+  "storage": {"kind": "pglite"},
+  "authentication": {"profile": "local", "access": {"mode": "local"}},
+  "logging": {"level": "info"}
+}

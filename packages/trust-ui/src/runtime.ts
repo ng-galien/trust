@@ -25,6 +25,7 @@ import type {
 } from "@trust/extension-sdk";
 import type { CompiledOperation, OperationSimulationResult } from "@trust/operation";
 import type { CompiledProcedure } from "@trust/procedure";
+import { authenticatedFetch, authenticationFor } from "./lib/authentication.js";
 
 interface RpcResponse<T> {
   jsonrpc: "2.0";
@@ -80,6 +81,10 @@ export class RuntimeError extends Error {
 export class TrustRuntimeClient {
   constructor(readonly baseUrl: string) {}
 
+  get authentication() {
+    return authenticationFor(this.baseUrl);
+  }
+
   languageServerUrl = (): string => {
     const base = new URL(this.baseUrl || window.location.origin, window.location.origin);
     base.protocol = base.protocol === "https:" ? "wss:" : "ws:";
@@ -90,7 +95,7 @@ export class TrustRuntimeClient {
   };
 
   async call<T>(method: string, params: RuntimeJsonObject = {}): Promise<T> {
-    const response = await fetch(`${this.baseUrl}/rpc`, {
+    const response = await authenticatedFetch(`${this.baseUrl}/rpc`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ jsonrpc: "2.0", id: crypto.randomUUID(), method, params }),

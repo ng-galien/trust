@@ -112,7 +112,7 @@ export class TrialService {
     });
   }
 
-  start(input: TrialStartInput): TrialSummary {
+  start(input: TrialStartInput, transportAuthorization?: string): TrialSummary {
     const operation = this.#resolveOperation(input);
     const environment = this.#environments.resolve(input.environment);
     if (!environment)
@@ -153,7 +153,7 @@ export class TrialService {
       environment: input.environment,
     });
     // The compiled schema is closed: hand the runner only the values this operation declares.
-    this.#spawn(trial, operation, declared.environment);
+    this.#spawn(trial, operation, declared.environment, transportAuthorization);
     return summaryOf(this.#registry, trial.id);
   }
 
@@ -195,7 +195,12 @@ export class TrialService {
     return found;
   }
 
-  #spawn(trial: TrialRecord, operation: CompiledOperation, environment: RuntimeJsonObject): void {
+  #spawn(
+    trial: TrialRecord,
+    operation: CompiledOperation,
+    environment: RuntimeJsonObject,
+    transportAuthorization?: string,
+  ): void {
     const child = spawn(process.execPath, [this.#script], {
       stdio: ["pipe", "pipe", "pipe"],
       env: {
@@ -282,7 +287,10 @@ export class TrialService {
       operation,
       input: trial.input,
       environment,
-      diagnostics: { endpoint: this.#diagnosticsEndpoint },
+      diagnostics: {
+        endpoint: this.#diagnosticsEndpoint,
+        ...(transportAuthorization ? { authorization: transportAuthorization } : {}),
+      },
     };
     child.stdin.end(JSON.stringify(job));
   }

@@ -26,7 +26,8 @@
     "test:acceptance": "npm run build --workspace=@trust/runtime && npm run build --workspace=@trust/web && npm run build && node --test --test-concurrency=1 dist/acceptance/*.acceptance.test.js"
   },
   "dependencies": {
-    "esbuild": "^0.28.2"
+    "esbuild": "^0.28.2",
+    "@trust/extension-sdk": "file:../trust-extension-sdk"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",

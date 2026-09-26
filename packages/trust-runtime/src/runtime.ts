@@ -1,12 +1,16 @@
+import type { BrowserAuthenticationConfiguration, StorageConfiguration } from "@trust/extension-sdk";
+import { type AccessConfiguration, parseAccessConfiguration } from "@trust/extension-sdk";
 import type { CompiledOperation } from "@trust/operation";
 import { type AwilixContainer, asClass, asFunction, asValue, createContainer, InjectionMode } from "awilix";
 import type { Express, Router } from "express";
+import { type AccessFetch, type AccessSecretResolver } from "./access/configuration.js";
+import { AccessService } from "./access/service.js";
 import { AttemptStore } from "./attempt/store.js";
 import { CatalogMetadataStore } from "./catalog/metadata.js";
 import { CredentialService } from "./credential/service.js";
 import { CredentialStore } from "./credential/store.js";
 import type { Database } from "./database/database.js";
-import { createDatabase, type StorageConfiguration } from "./database/storage.js";
+import { createDatabase } from "./database/storage.js";
 import { EnvironmentService } from "./environment/service.js";
 import { EnvironmentStore } from "./environment/store.js";
 import { ExtensionHost } from "./extensions/host.js";
@@ -37,6 +41,12 @@ import { TrialRegistry } from "./trial/registry.js";
 import { DEFAULT_TRIAL_TIMEOUT_MS, defaultRunnerTrialScript, TrialService } from "./trial/service.js";
 
 export interface RuntimeComponents {
+  readonly accessConfiguration: AccessConfiguration;
+  readonly accessFetch: AccessFetch;
+  readonly accessSecretResolver: AccessSecretResolver;
+  readonly accessService: AccessService;
+  readonly browserAuthentication: BrowserAuthenticationConfiguration | undefined;
+  readonly accessResourceUrl: string | undefined;
   readonly extensionHost: ExtensionHost;
   readonly extensionsHttpHandler: Router;
   readonly extensionsFile: string | undefined;
@@ -83,6 +93,12 @@ export interface RuntimeComponents {
 }
 
 export interface RuntimeContainerOptions {
+  accessConfiguration?: AccessConfiguration;
+  accessFetch?: AccessFetch;
+  accessSecretResolver?: AccessSecretResolver;
+  clock?: Clock;
+  browserAuthentication?: BrowserAuthenticationConfiguration;
+  accessResourceUrl?: string;
   extensionsFile?: string;
   extensionTimeoutMs?: number;
   storage?: StorageConfiguration;
@@ -105,9 +121,22 @@ export const createRuntimeContainer = async (
     strict: true,
   });
   const storage = options.storage ?? { kind: "pglite", directory: ".trust/pglite" };
+  const accessConfiguration = parseAccessConfiguration(options.accessConfiguration ?? { mode: "local" });
   const database = options.database ?? (await createDatabase({ storage }));
 
   container.register({
+    accessConfiguration: asValue(accessConfiguration),
+    browserAuthentication: asValue(options.browserAuthentication),
+    accessResourceUrl: asValue(options.accessResourceUrl),
+    accessFetch: asValue(options.accessFetch ?? globalThis.fetch),
+    accessSecretResolver: options.accessSecretResolver
+      ? asValue(options.accessSecretResolver)
+      : asFunction(
+          ({ credentialService }: { credentialService: CredentialService }): AccessSecretResolver =>
+            (reference) =>
+              credentialService.resolve(reference.environment)[reference.name],
+        ).singleton(),
+    accessService: asClass(AccessService).singleton(),
     extensionsFile: asValue(options.extensionsFile),
     extensionTimeoutMs: asValue(options.extensionTimeoutMs ?? 10_000),
     extensionHost: asClass(ExtensionHost)
@@ -129,7 +158,7 @@ export const createRuntimeContainer = async (
             .singleton()
             .disposer((database) => database.destroy())
         : asValue(options.database),
-    clock: asClass(SystemClock).singleton(),
+    clock: options.clock ? asValue(options.clock) : asClass(SystemClock).singleton(),
     health: asClass(Health).singleton(),
     planStore: asClass(PlanStore).singleton(),
     procedureStore: asClass(ProcedureStore).singleton(),

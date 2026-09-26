@@ -6,9 +6,8 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { after } from "node:test";
 import { fileURLToPath } from "node:url";
-import type { EnvironmentValues } from "@trust/extension-sdk";
+import type { EnvironmentValues, StorageConfiguration } from "@trust/extension-sdk";
 import { Client } from "pg";
-import type { StorageConfiguration } from "../../src/database/storage.js";
 
 const buildRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 

@@ -30,13 +30,13 @@ interface Game {
   concession?: { plan: string; checkUri: string; escalationId: string; resumedAt: string } | null;
 }
 const words = (value: string) => value.replaceAll("-", " ");
-async function read<T>(url: string): Promise<T> {
-  const response = await fetch(url);
+async function read<T>(transport: ExtensionPageProps["transport"], url: string): Promise<T> {
+  const response = await transport.fetch(url);
   if (!response.ok) throw new Error("The table could not be refreshed.");
   return response.json();
 }
 
-export default function Page({ apiBase, trustBase, eventsUrl, navigation }: ExtensionPageProps) {
+export default function Page({ apiBase, trustBase, eventsUrl, navigation, transport }: ExtensionPageProps) {
   const [games, setGames] = useState<Game[]>([]);
   const [plans, setPlans] = useState<PlanSummaryView[]>([]);
   const [error, setError] = useState("");
@@ -52,8 +52,8 @@ export default function Page({ apiBase, trustBase, eventsUrl, navigation }: Exte
   const refresh = useCallback(async () => {
     try {
       const [table, projection] = await Promise.all([
-        read<{ games: Game[] }>(`${apiBase}/games`),
-        read<{ plans: PlanSummaryView[] }>(`${trustBase}/plans`),
+        read<{ games: Game[] }>(transport, `${apiBase}/games`),
+        read<{ plans: PlanSummaryView[] }>(transport, `${trustBase}/plans`),
       ]);
       setGames(table.games);
       setPlans(projection.plans);
@@ -63,14 +63,15 @@ export default function Page({ apiBase, trustBase, eventsUrl, navigation }: Exte
     } finally {
       setLoading(false);
     }
-  }, [apiBase, trustBase]);
+  }, [transport, apiBase, trustBase]);
   useEffect(() => {
     void refresh();
     const interval = window.setInterval(() => void refresh(), 5000);
     return () => clearInterval(interval);
   }, [refresh]);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: A changed public stream URL must reopen the subscription even if the transport object is reused.
   useEffect(() => {
-    const events = new EventSource(eventsUrl);
+    const events = transport.openEvents();
     events.onopen = () => {
       setConnected(true);
       void refresh();
@@ -81,7 +82,7 @@ export default function Page({ apiBase, trustBase, eventsUrl, navigation }: Exte
     });
     events.onerror = () => setConnected(false);
     return () => events.close();
-  }, [eventsUrl, refresh]);
+  }, [transport, eventsUrl, refresh]);
   useEffect(() => {
     if (inspecting) {
       if (!dialog.current?.open) dialog.current?.showModal();
@@ -90,7 +91,7 @@ export default function Page({ apiBase, trustBase, eventsUrl, navigation }: Exte
     setDetail(null);
     if (plan) {
       let live = true;
-      void read<PlanView>(`${trustBase}/plans/${encodeURIComponent(plan.plan)}`)
+      void read<PlanView>(transport, `${trustBase}/plans/${encodeURIComponent(plan.plan)}`)
         .then((value) => {
           if (live) setDetail(value);
         })
@@ -99,7 +100,7 @@ export default function Page({ apiBase, trustBase, eventsUrl, navigation }: Exte
         live = false;
       };
     }
-  }, [inspecting, plans, trustBase]);
+  }, [transport, inspecting, plans, trustBase]);
   const choose = (id: string) => {
     setLocalGame(id);
     if (navigation) {
@@ -369,7 +370,7 @@ export default function Page({ apiBase, trustBase, eventsUrl, navigation }: Exte
           </footer>
         </>
       )}
-      <Learning apiBase={apiBase} />
+      <Learning transport={transport} apiBase={apiBase} />
       <dialog
         ref={dialog}
         className="heist-inspector"

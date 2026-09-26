@@ -1,14 +1,30 @@
+export type { BrowserAuthenticationConfiguration } from "./browser-authentication.js";
+
 /** Public extension and client contracts. No runtime implementation dependency. */
+
+export type {
+  AccessAction,
+  AccessContext,
+  ExtensionUseAction,
+  ExternalPrincipal,
+  PlanAccessAction,
+  PlanAccessScope,
+  ResourceAccessAction,
+} from "./access.js";
+export { extensionUseScope, PLAN_ACCESS_ACTIONS, RESOURCE_ACCESS_ACTIONS } from "./access.js";
 
 export type { CatalogMetadata, CatalogMetadataUpdate } from "./catalog.js";
 
 export type {
   ExtensionContext,
   ExtensionDescriptor,
+  ExtensionEventStream,
   ExtensionFactory,
+  ExtensionInvocationContext,
   ExtensionLifecycle,
   ExtensionPageProps,
   ExtensionState,
+  ExtensionUiTransport,
 } from "./extension.js";
 export type {
   SourceTemplate,
@@ -143,6 +159,7 @@ export interface ProcedureReadView {
 }
 
 export interface PlanView {
+  readonly creator: import("./access.js").ExternalPrincipal | null;
   readonly descendantEscalations: readonly DescendantEscalation[];
   readonly invocations: readonly InvocationView[];
   readonly parent: PlanParentView | null;
@@ -226,6 +243,7 @@ export interface DelegationEpisodePlanView {
 }
 
 export interface PlanSummaryView {
+  readonly creator: import("./access.js").ExternalPrincipal | null;
   readonly descendantEscalations: readonly DescendantEscalation[];
   readonly parent: PlanParentView | null;
   readonly plan: string;
@@ -349,6 +367,7 @@ export interface SessionView {
 }
 
 export interface CheckAttemptView {
+  readonly actor: import("./access.js").ExternalPrincipal | null;
   readonly handle: string;
   readonly attemptKey: string;
   readonly executionId: string;
@@ -691,6 +710,25 @@ export interface PublishedProcedure {
   readonly publishedAt: string;
 }
 
+export type { AccessConfiguration, SharedAccessConfiguration } from "./access-configuration.js";
+export { authorityUrl, parseAccessConfiguration } from "./access-configuration.js";
+export type { AuthenticationConfiguration } from "./authentication-configuration.js";
+export { parseAuthenticationConfiguration } from "./authentication-configuration.js";
+export { assertNoSecretLikeValue, normalizeAuthority } from "./authority.js";
+export type {
+  ConfigurationEnvironment,
+  ConfigurationSource,
+  ResolvedTrustConfiguration,
+  StorageConfiguration,
+  TrustConfiguration,
+} from "./configuration.js";
+export {
+  configurationAuthority,
+  loadTrustConfiguration,
+  publicTrustConfiguration,
+  resolveTrustConfiguration,
+  TRUST_CONFIGURATION_SCHEMA,
+} from "./configuration.js";
 export {
   isTemplateParameterName,
   materializeTemplate,

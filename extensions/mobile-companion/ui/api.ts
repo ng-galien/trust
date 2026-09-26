@@ -1,3 +1,4 @@
+import type { ExtensionPageProps } from "@trust/extension-sdk";
 import type { Conversation, Field, Item, Layout, Project, PushStatus, Subject, Summary } from "./types";
 
 type RecordValue = Record<string, unknown>;
@@ -121,77 +122,81 @@ function item(value: unknown): Item {
   };
 }
 
-async function json(url: string, signal?: AbortSignal): Promise<unknown> {
-  const response = await fetch(url, signal ? { signal } : undefined);
-  if (!response.ok) throw new Error(`Request failed (${response.status})`);
-  return response.json();
-}
+export function createMobileApi(transport: ExtensionPageProps["transport"]) {
+  async function json(url: string, signal?: AbortSignal): Promise<unknown> {
+    const response = await transport.fetch(url, signal ? { signal } : undefined);
+    if (!response.ok) throw new Error(`Request failed (${response.status})`, { cause: response.status });
+    return response.json();
+  }
 
-export async function readProjects(apiBase: string, signal?: AbortSignal): Promise<Project[]> {
-  return array(record(await json(`${apiBase}/projects`, signal)).projects).map(project);
-}
+  async function readProjects(apiBase: string, signal?: AbortSignal): Promise<Project[]> {
+    return array(record(await json(`${apiBase}/projects`, signal)).projects).map(project);
+  }
 
-function subject(value: unknown): Subject {
-  const row = record(value);
-  return {
-    id: string(row.id),
-    project: string(row.project),
-    title: string(row.title),
-    description: string(row.description),
-    revision: Number(row.revision),
-    updatedAt: string(row.updatedAt),
-    links: array(row.links).map((value) => {
-      const link = record(value);
-      const kind = string(link.kind);
-      if (!["article", "document", "plan", "decision"].includes(kind)) throw new Error("Invalid subject link kind.");
-      return {
-        id: string(link.id),
-        kind: kind as Subject["links"][number]["kind"],
-        relation: string(link.relation),
-        description: string(link.description),
-        item: string(link.item),
-        targetIdentity: string(link.targetIdentity),
-        provenance: string(link.provenance),
-      };
-    }),
-  };
-}
-
-export async function readSubjects(apiBase: string, project: string, signal?: AbortSignal): Promise<Subject[]> {
-  return array(record(await json(`${apiBase}/subjects?project=${encodeURIComponent(project)}`, signal)).subjects).map(
-    subject,
-  );
-}
-
-export async function readSubject(apiBase: string, id: string, signal?: AbortSignal): Promise<Subject> {
-  return subject(await json(`${apiBase}/subjects/${encodeURIComponent(id)}`, signal));
-}
-
-export async function readConversations(apiBase: string, signal?: AbortSignal): Promise<Conversation[]> {
-  return array(record(await json(`${apiBase}/conversations`, signal)).conversations).map((value) => {
+  function subject(value: unknown): Subject {
     const row = record(value);
-    return { project: string(row.project), pinned: boolean(row.pinned), deletedAt: nullableString(row.deletedAt) };
-  });
-}
+    return {
+      id: string(row.id),
+      project: string(row.project),
+      title: string(row.title),
+      description: string(row.description),
+      revision: Number(row.revision),
+      updatedAt: string(row.updatedAt),
+      links: array(row.links).map((value) => {
+        const link = record(value);
+        const kind = string(link.kind);
+        if (!["article", "document", "plan", "decision"].includes(kind)) throw new Error("Invalid subject link kind.");
+        return {
+          id: string(link.id),
+          kind: kind as Subject["links"][number]["kind"],
+          relation: string(link.relation),
+          description: string(link.description),
+          item: string(link.item),
+          targetIdentity: string(link.targetIdentity),
+          provenance: string(link.provenance),
+        };
+      }),
+    };
+  }
 
-export async function readFeed(
-  apiBase: string,
-  query: { project?: string; before?: string; limit?: number },
-  signal?: AbortSignal,
-): Promise<{ items: Summary[]; nextCursor: string | null }> {
-  const params = new URLSearchParams({ limit: String(query.limit ?? 50) });
-  if (query.project) params.set("project", query.project);
-  if (query.before) params.set("before", query.before);
-  const body = record(await json(`${apiBase}/feed?${params}`, signal));
-  return { items: array(body.items).map(summary), nextCursor: nullableString(body.nextCursor) };
-}
+  async function readSubjects(apiBase: string, project: string, signal?: AbortSignal): Promise<Subject[]> {
+    return array(record(await json(`${apiBase}/subjects?project=${encodeURIComponent(project)}`, signal)).subjects).map(
+      subject,
+    );
+  }
 
-export async function readItem(apiBase: string, id: string, version?: number, signal?: AbortSignal): Promise<Item> {
-  const suffix = version === undefined ? "" : `?version=${version}`;
-  return item(await json(`${apiBase}/items/${encodeURIComponent(id)}${suffix}`, signal));
-}
+  async function readSubject(apiBase: string, id: string, signal?: AbortSignal): Promise<Subject> {
+    return subject(await json(`${apiBase}/subjects/${encodeURIComponent(id)}`, signal));
+  }
 
-export async function readPushStatus(apiBase: string): Promise<PushStatus> {
-  const body = record(await json(`${apiBase}/notifications/status`));
-  return { enabled: boolean(body.enabled), publicKey: nullableString(body.publicKey), pending: Number(body.pending) };
+  async function readConversations(apiBase: string, signal?: AbortSignal): Promise<Conversation[]> {
+    return array(record(await json(`${apiBase}/conversations`, signal)).conversations).map((value) => {
+      const row = record(value);
+      return { project: string(row.project), pinned: boolean(row.pinned), deletedAt: nullableString(row.deletedAt) };
+    });
+  }
+
+  async function readFeed(
+    apiBase: string,
+    query: { project?: string; before?: string; limit?: number },
+    signal?: AbortSignal,
+  ): Promise<{ items: Summary[]; nextCursor: string | null }> {
+    const params = new URLSearchParams({ limit: String(query.limit ?? 50) });
+    if (query.project) params.set("project", query.project);
+    if (query.before) params.set("before", query.before);
+    const body = record(await json(`${apiBase}/feed?${params}`, signal));
+    return { items: array(body.items).map(summary), nextCursor: nullableString(body.nextCursor) };
+  }
+
+  async function readItem(apiBase: string, id: string, version?: number, signal?: AbortSignal): Promise<Item> {
+    const suffix = version === undefined ? "" : `?version=${version}`;
+    return item(await json(`${apiBase}/items/${encodeURIComponent(id)}${suffix}`, signal));
+  }
+
+  async function readPushStatus(apiBase: string): Promise<PushStatus> {
+    const body = record(await json(`${apiBase}/notifications/status`));
+    return { enabled: boolean(body.enabled), publicKey: nullableString(body.publicKey), pending: Number(body.pending) };
+  }
+
+  return { readProjects, readSubjects, readSubject, readConversations, readFeed, readItem, readPushStatus };
 }

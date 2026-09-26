@@ -45,7 +45,8 @@
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.12",
-    "typescript": "^5.7.2"
+    "typescript": "^5.7.2",
+    "oidc-provider": "9.12.2"
   },
   "overrides": {
     "dompurify": "3.4.14"

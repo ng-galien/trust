@@ -12,12 +12,13 @@ import {
 } from "node:fs";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { backup, DatabaseSync } from "node:sqlite";
+import type { StorageConfiguration } from "@trust/extension-sdk";
 import { sql } from "kysely";
 import type { PlanCheck, PlanRevision } from "../model.js";
 import { childInputFingerprint } from "../plan/children.js";
 import { snapshotEquivalenceDigest } from "../snapshot/store.js";
 import { initializeSqliteSchema, SQLITE_SCHEMA_DIGEST } from "./sqlite-schema.js";
-import { createDatabase, type StorageConfiguration } from "./storage.js";
+import { createDatabase } from "./storage.js";
 
 // Dependency order also keeps escalation admission triggers inactive until history is restored.
 const TABLES = [

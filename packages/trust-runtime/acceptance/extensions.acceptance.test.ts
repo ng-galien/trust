@@ -80,6 +80,7 @@ export function createExtension({ publishChanged, configuration }) {
     assert.equal(body.error, undefined, JSON.stringify(body));
     return body.result;
   };
+  const deniedEventsAbort = new AbortController();
   try {
     const initial = (await (await get("")).json()) as any;
     assert.equal(initial.extensions[0].state, "STOPPED");
@@ -96,7 +97,24 @@ export function createExtension({ publishChanged, configuration }) {
     assert.equal((await get("example/assets/%2e%2e%2foutside.txt")).status, 404);
     assert.equal((await post("denied/start")).status, 200);
     assert.equal((await get("denied/trust/plans")).status, 403);
-    assert.equal((await get("denied/events")).status, 403);
+    const deniedEvents = await fetch(`${runtime.endpoint}/extensions/denied/events`, {
+      signal: deniedEventsAbort.signal,
+    });
+    assert.equal(deniedEvents.status, 200, "extension-owned events do not require Plan installation grants");
+    let deniedEventsText = "";
+    const deniedReader = deniedEvents.body!.getReader();
+    const readingDeniedEvents = (async () => {
+      try {
+        for (;;) {
+          const next = await deniedReader.read();
+          if (next.done) return;
+          deniedEventsText += new TextDecoder().decode(next.value);
+        }
+      } catch {
+        /* Aborted after the assertions below. */
+      }
+    })();
+    await get("denied/api/signal");
     const source = await readFile(path.join(root, "assets/procedures/00-git-status.feature"), "utf8");
     await rpc("procedure.publish", { source, sourceName: "00-git-status.feature" });
     for (const environment of ["local", "foreign"])
@@ -130,6 +148,13 @@ export function createExtension({ publishChanged, configuration }) {
       rootInputs: { repository: "trust" },
     });
     assert.match(await next(), /plan.changed.*local-next/);
+    for (let count = 0; count < 100 && !deniedEventsText.includes("extension.changed"); count++)
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    assert.match(deniedEventsText, /resync/);
+    assert.match(deniedEventsText, /extension.changed/);
+    assert.doesNotMatch(deniedEventsText, /plan.changed|local-plan|local-next|foreign-plan/);
+    deniedEventsAbort.abort();
+    await readingDeniedEvents;
     assert.equal((await post("example/stop")).status, 200);
     while (!(await reader.read()).done) {
       /* Drain already-buffered invalidations before EOF. */
@@ -146,6 +171,7 @@ export function createExtension({ publishChanged, configuration }) {
     const publicText = JSON.stringify(await (await get("")).json());
     assert.doesNotMatch(publicText, /private-data|configuration|credentialEnvironment|server.mjs/);
   } finally {
+    deniedEventsAbort.abort();
     await runtime.close();
     await rm(directory, { recursive: true, force: true });
   }

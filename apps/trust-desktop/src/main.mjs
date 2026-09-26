@@ -1,25 +1,34 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { deployRunner, readTrustServerStatus, resolveTrustInstallation, startTrustServer } from "@trust/shell";
+import {
+  deployRunner,
+  readServerConfiguration,
+  readTrustServerStatus,
+  resolveTrustInstallation,
+  startTrustServer,
+} from "@trust/shell";
 import { app, BrowserWindow, dialog, Menu } from "electron";
 
 const applicationRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const installation = resolveTrustInstallation(process.env.TRUST_INSTALL_ROOT ?? path.resolve(applicationRoot, "../.."));
-const host = process.env.TRUST_HOST ?? "127.0.0.1";
-const runtimePort = environmentPort("TRUST_PORT", 4318);
-const webPort = environmentPort("TRUST_WEB_PORT", 4173);
+const resolved = await readServerConfiguration(process.env, path.join(app.getPath("userData"), "server"));
+const { configuration } = resolved;
+const installation = resolveTrustInstallation(
+  configuration.shell.installRoot ?? path.resolve(applicationRoot, "../.."),
+);
+const { host, port: runtimePort, webPort } = configuration.server;
 let ownedServer;
 let mainWindow;
 
 await app.whenReady();
-const existing = await readTrustServerStatus(host, webPort);
+const existing = await readTrustServerStatus(host, webPort, configuration.shell.webAccessPassword);
 if (!existing.running) {
   ownedServer = await startTrustServer({
     installation,
+    configuration: resolved,
     host,
     runtimePort,
     webPort,
-    stateDirectory: path.join(app.getPath("userData"), "server"),
+    stateDirectory: configuration.server.stateDirectory,
   });
 }
 await createWindow();
@@ -110,12 +119,4 @@ async function chooseAndDeployRunner(browserWindow) {
       message: error instanceof Error ? error.message : String(error),
     });
   }
-}
-
-function environmentPort(name, fallback) {
-  const raw = process.env[name];
-  if (raw === undefined) return fallback;
-  const value = Number(raw);
-  if (!Number.isInteger(value) || value < 1 || value > 65_535) throw new TypeError(`Invalid ${name}: ${raw}`);
-  return value;
 }

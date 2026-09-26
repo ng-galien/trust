@@ -30,11 +30,6 @@ export interface ShellRunnerConfiguration {
 
 const DEFAULT_TIMEOUT_MS = 10 * 60_000;
 const FORCE_KILL_DELAY_MS = 2_000;
-/** Technical fallback for unconstrained Operations and Trials; the host may override it. */
-const TIMEOUT_MS =
-  Number.parseInt(process.env.TRUST_SHELL_TIMEOUT_MS ?? "", 10) > 0
-    ? Number.parseInt(process.env.TRUST_SHELL_TIMEOUT_MS ?? "", 10)
-    : DEFAULT_TIMEOUT_MS;
 const MAX_OUTPUT_BYTES = 1_048_576;
 
 export async function runShell(
@@ -45,7 +40,14 @@ export async function runShell(
   reporter: StepReporter = nullReporter,
   configuration: ShellRunnerConfiguration = {},
 ): Promise<ShellResult> {
-  const timeoutMs = configuration.timeoutMs ?? TIMEOUT_MS;
+  const configuredTimeout = (configuration.processEnvironment ?? process.env).TRUST_SHELL_TIMEOUT_MS;
+  const timeoutMs =
+    configuration.timeoutMs ??
+    (configuredTimeout === undefined
+      ? DEFAULT_TIMEOUT_MS
+      : /^\d+$/.test(configuredTimeout)
+        ? Number(configuredTimeout)
+        : Number.NaN);
   if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1) {
     throw new TypeError("Shell timeoutMs must be a positive integer.");
   }

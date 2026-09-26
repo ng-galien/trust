@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import type { PlanMode } from "@trust/extension-sdk";
+import type { ExternalPrincipal, PlanMode } from "@trust/extension-sdk";
 import type { Selectable } from "kysely";
 import type { ActiveCheckQualificationTable, CheckSnapshotTable, Database } from "../database/database.js";
 import type { ActiveCheckQualification, CheckSnapshot, PlanCheck } from "../model.js";
@@ -9,6 +9,7 @@ type SnapshotRow = Selectable<CheckSnapshotTable>;
 type ActiveQualificationRow = Selectable<ActiveCheckQualificationTable>;
 
 export interface HistoryListQuery {
+  readonly creator?: ExternalPrincipal;
   readonly filter?: {
     readonly plan?: string;
     readonly procedure?: string;
@@ -130,6 +131,11 @@ export class SnapshotStore {
       .orderBy("check_snapshots.calculated_at", "desc")
       .orderBy("check_snapshots.snapshot_id", "desc")
       .limit(query.limit);
+    if (query.creator) {
+      selection = selection
+        .where("plans.creator_issuer", "=", query.creator.issuer)
+        .where("plans.creator_subject", "=", query.creator.subject);
+    }
     if (query.filter?.plan !== undefined) {
       selection = selection.where("check_snapshots.plan_slug", "=", query.filter.plan);
     }

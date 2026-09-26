@@ -4,6 +4,7 @@ import type {
   ChecklistDelta,
   ChecklistVerdict,
   CheckState,
+  ExternalPrincipal,
   IntentChainState,
   MissionDeclarations,
   PlanImportedResult,
@@ -16,6 +17,7 @@ import type { CompiledOperation } from "@trust/operation";
 import type { CompiledProcedure, CompiledProcedureCheck, CompiledProcedureInvocation } from "@trust/procedure";
 
 export interface Plan {
+  readonly creator: ExternalPrincipal | null;
   slug: string;
   procedure: string;
   procedureVersion: string;
@@ -137,6 +139,7 @@ export interface Session {
 }
 
 export interface Attempt {
+  readonly actor: ExternalPrincipal | null;
   invocationDigest?: string;
   handle: string;
   attemptKey: string;

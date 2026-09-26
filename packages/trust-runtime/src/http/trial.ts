@@ -1,4 +1,4 @@
-import type { RuntimeJsonObject } from "@trust/extension-sdk";
+import type { AccessContext, RuntimeJsonObject } from "@trust/extension-sdk";
 import type { TrialService } from "../trial/service.js";
 
 export const TRIAL_START_METHOD = "operation.trial.start" as const;
@@ -28,6 +28,8 @@ export function isTrialRpcMethod(method: string): method is TrialRpcMethod {
 
 export interface TrialRpcDependencies {
   readonly trialService: TrialService;
+  readonly access?: AccessContext | undefined;
+  readonly transportAuthorization?: string | undefined;
 }
 
 export class InvalidTrialRpcParams extends Error {
@@ -56,17 +58,20 @@ export function executeTrialRpc(method: TrialRpcMethod, params: unknown, depende
       ) {
         throw new InvalidTrialRpcParams();
       }
-      const summary = dependencies.trialService.start({
-        ...(hasSource
-          ? { source: params.source as string }
-          : {
-              operation: params.operation as string,
-              ...(typeof params.version === "string" ? { version: params.version } : {}),
-            }),
-        environment: params.environment,
-        input: params.input as RuntimeJsonObject,
-        startedBy: "local-operator",
-      });
+      const summary = dependencies.trialService.start(
+        {
+          ...(hasSource
+            ? { source: params.source as string }
+            : {
+                operation: params.operation as string,
+                ...(typeof params.version === "string" ? { version: params.version } : {}),
+              }),
+          environment: params.environment,
+          input: params.input as RuntimeJsonObject,
+          startedBy: "local-operator",
+        },
+        dependencies.transportAuthorization,
+      );
       return { contract: "trust.trial-summary@1", trial: summary };
     }
     case TRIAL_CANCEL_METHOD: {

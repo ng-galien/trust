@@ -9,10 +9,9 @@ import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
-import type { HistoryView, PlanView } from "@trust/extension-sdk";
+import type { HistoryView, PlanView, StorageConfiguration } from "@trust/extension-sdk";
 import { Client } from "pg";
 import { initializeSqliteSchema } from "../src/database/sqlite-schema.js";
-import type { StorageConfiguration } from "../src/database/storage.js";
 import { startPublicRuntime } from "./support/runtime-process.js";
 
 const execute = promisify(execFile);

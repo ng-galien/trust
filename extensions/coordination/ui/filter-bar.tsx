@@ -1,3 +1,4 @@
+import type { ExtensionPageProps } from "@trust/extension-sdk";
 import { useEffect, useId, useRef, useState } from "react";
 import { command } from "./commands";
 import { SectionIcon } from "./section-icon";
@@ -16,6 +17,7 @@ interface Suggestions {
   hasMore: boolean;
 }
 interface Props {
+  transport: ExtensionPageProps["transport"];
   apiBase: string;
   filters: Filters;
   onChange(filters: Filters): void;
@@ -26,6 +28,7 @@ interface Props {
 }
 
 function FacetPicker({
+  transport,
   field,
   label,
   apiBase,
@@ -35,6 +38,7 @@ function FacetPicker({
   onSelect,
   disabled,
 }: {
+  transport: ExtensionPageProps["transport"];
   field: Facet;
   label: string;
   apiBase: string;
@@ -63,7 +67,7 @@ function FacetPicker({
     ...(field !== "tag" && filters.tag ? { tags: [filters.tag] } : {}),
   });
   const localValues = values ? JSON.stringify(values) : undefined;
-  const request = JSON.stringify([apiBase, source, field, query, localValues, disabled, retry]);
+  const request = JSON.stringify([transport, apiBase, source, field, query, localValues, disabled, retry]);
   const result = response?.request === request ? response.result : { values: [], hasMore: false };
   useEffect(() => {
     const controller = new AbortController();
@@ -85,6 +89,7 @@ function FacetPicker({
         return;
       }
       void command<Suggestions>(
+        transport,
         apiBase,
         "missions.suggest",
         { ...JSON.parse(source), field: field === "tag" ? "tags" : field, query: query.trim(), limit: 10 },
@@ -104,7 +109,7 @@ function FacetPicker({
       clearTimeout(timer);
       controller.abort();
     };
-  }, [apiBase, source, field, query, localValues, disabled, request]);
+  }, [transport, apiBase, source, field, query, localValues, disabled, request]);
   useEffect(() => {
     list.current?.querySelector(`[data-option-index="${active}"]`)?.scrollIntoView({ block: "nearest" });
   }, [active]);
@@ -221,7 +226,7 @@ function FacetPicker({
   );
 }
 
-export function FilterBar({ apiBase, filters, onChange, procedures, labels, plansAvailable, fr }: Props) {
+export function FilterBar({ transport, apiBase, filters, onChange, procedures, labels, plansAvailable, fr }: Props) {
   const [open, setOpen] = useState(false);
   const [facet, setFacet] = useState<Facet>("project");
   const root = useRef<HTMLElement>(null);
@@ -338,6 +343,7 @@ export function FilterBar({ apiBase, filters, onChange, procedures, labels, plan
             ))}
           </fieldset>
           <FacetPicker
+            transport={transport}
             key={facet}
             field={facet}
             label={names[facet]}

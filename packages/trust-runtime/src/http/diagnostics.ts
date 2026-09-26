@@ -1,6 +1,7 @@
 import express, { type Router } from "express";
-
+import type { AccessService } from "../access/service.js";
 import type { TrialRegistry } from "../trial/registry.js";
+import { expireAccessStream, guardAccessStream, requestAccess } from "./access.js";
 
 /* Diagnostic OTLP receiver — separate from the production /v1/traces ingest.
    Accepts OTLP/JSON logs and spans emitted by a trial runner, keyed by the `trust.trial.id`
@@ -10,10 +11,22 @@ export const DIAGNOSTICS_JSON_LIMIT_BYTES = 4 * 1_048_576;
 
 export interface DiagnosticsHttpDependencies {
   readonly trialRegistry: TrialRegistry;
+  readonly accessService: AccessService;
 }
 
-export function createDiagnosticsHttpHandler({ trialRegistry }: DiagnosticsHttpDependencies): Router {
+export function createDiagnosticsHttpHandler({ trialRegistry, accessService }: DiagnosticsHttpDependencies): Router {
   const router = express.Router();
+  router.use((request, response, next) => {
+    try {
+      accessService.authorize(
+        requestAccess(request),
+        request.method === "GET" ? "operation.trial.read" : "operation.trial.start",
+      );
+      next();
+    } catch {
+      response.status(403).json({ error: "access-denied" });
+    }
+  });
   router.use(express.json({ limit: DIAGNOSTICS_JSON_LIMIT_BYTES, type: () => true }));
 
   router.post("/v1/logs", (request, response) => {
@@ -51,22 +64,38 @@ export function createDiagnosticsHttpHandler({ trialRegistry }: DiagnosticsHttpD
     response.setHeader("connection", "keep-alive");
     response.setHeader("x-accel-buffering", "no");
     response.flushHeaders();
+    expireAccessStream(requestAccess(request), response);
+    guardAccessStream(accessService, request, response, ["operation.trial.read"]);
 
+    let pending = Promise.resolve();
     const send = (event: { sequence: number; type: string }) => {
-      response.write(`id: ${event.sequence}\nevent: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`);
+      pending = pending
+        .then(async () => {
+          const current = await accessService.authenticate(request.get("authorization"));
+          accessService.authorize(current, "operation.trial.read");
+          if (!response.writableEnded)
+            response.write(`id: ${event.sequence}\nevent: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`);
+        })
+        .catch(() => {
+          response.end();
+        });
+    };
+    const finish = () => {
+      void pending.then(() => {
+        if (!response.writableEnded) {
+          response.write("event: end\ndata: {}\n\n");
+          response.end();
+        }
+      });
     };
     for (const event of trial.events) if (event.sequence > after) send(event);
     if (trial.status !== "starting" && trial.status !== "running") {
-      response.write("event: end\ndata: {}\n\n");
-      response.end();
+      finish();
       return;
     }
     const unsubscribe = trialRegistry.subscribe(trial.id, (event) => {
       send(event);
-      if (event.type === "trial.completed") {
-        response.write("event: end\ndata: {}\n\n");
-        response.end();
-      }
+      if (event.type === "trial.completed") finish();
     });
     const heartbeat = setInterval(() => response.write(": keep-alive\n\n"), 15_000);
     request.on("close", () => {

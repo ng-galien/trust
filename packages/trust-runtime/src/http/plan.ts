@@ -1,4 +1,5 @@
 import type {
+  AccessContext,
   CheckAttemptAdmissionInput as CheckAttemptAdmissionParams,
   CheckEscalationInput,
   FactBatchInput,
@@ -9,6 +10,7 @@ import type {
   PlanResumptionInput,
   RuntimeJsonObject,
 } from "@trust/extension-sdk";
+import { AccessError } from "../access/error.js";
 import { checkContinuation } from "../plan/continuation.js";
 import { parseMissionDeclarations } from "../plan/mission-declarations.js";
 import type { PlanReader, ReadErrorCode } from "../plan/read.js";
@@ -75,6 +77,7 @@ export const PLAN_RUNTIME_RPC_METHODS = [
 export type PlanRuntimeRpcMethod = (typeof PLAN_RUNTIME_RPC_METHODS)[number];
 
 export interface PlanRuntimeRpcDependencies {
+  readonly access?: AccessContext | undefined;
   readonly planReader: PlanReader;
   readonly planRuntime: PlanRuntime;
 }
@@ -99,76 +102,73 @@ export async function executePlanRuntimeRpc(
     case PLAN_LIST_METHOD:
       return {
         contract: "trust.plan-catalog@1",
-        ...(await dependencies.planReader.listPlans(parsePlanList(params))),
+        ...(await dependencies.planReader.listPlans(parsePlanList(params), dependencies.access)),
       };
     case HISTORY_LIST_METHOD:
       return {
         contract: "trust.check-history@1",
-        ...(await dependencies.planReader.listHistory(parseHistoryList(params))),
+        ...(await dependencies.planReader.listHistory(parseHistoryList(params), dependencies.access)),
       };
     case PLAN_READ_METHOD: {
       const input = parsePlanRead(params);
       return {
         contract: "trust.plan-view@1",
-        ...(await dependencies.planReader.readPlanBySlug(input.plan, true)),
+        ...(await dependencies.planReader.readPlanBySlug(input.plan, true, dependencies.access)),
       };
     }
     case SESSION_READ_METHOD: {
       const input = parsePlanRead(params);
-      const plan = await dependencies.planReader.readPlanBySlug(input.plan);
       return {
         contract: "trust.session-view@1",
-        plan: plan.plan,
-        state: plan.sessionState,
-        activeRevision: plan.revision,
-        workState: plan.workState,
-        checklistComplete: plan.checklistComplete,
-        satisfiedChecks: plan.satisfiedChecks,
-        openChecks: plan.openChecks.length,
-        sessions: plan.sessions,
+        ...(await dependencies.planReader.readSessionBySlug(input.plan, dependencies.access)),
       };
     }
     case PLAN_ENGAGE_METHOD: {
       const input = parsePlanEngagement(params);
-      return dependencies.planRuntime.engage(input);
+      return dependencies.planRuntime.engage(input, dependencies.access);
     }
     case PLAN_REMOVE_METHOD: {
       const input = parsePlanRead(params);
-      return dependencies.planRuntime.remove(input.plan);
+      return dependencies.planRuntime.remove(input.plan, dependencies.access);
     }
     case PLAN_RESET_METHOD: {
       const input = parsePlanRead(params);
-      return dependencies.planRuntime.reset(input.plan);
+      return dependencies.planRuntime.reset(input.plan, dependencies.access);
     }
     case PLAN_CLOSE_METHOD: {
       const input = parsePlanRead(params);
-      return dependencies.planRuntime.close(input.plan);
+      return dependencies.planRuntime.close(input.plan, dependencies.access);
     }
     case PLAN_RESUME_METHOD: {
       const input = parsePlanResumption(params);
-      return dependencies.planRuntime.resumePlan(input);
+      return dependencies.planRuntime.resumePlan(input, dependencies.access);
     }
     case PLAN_DECLARATIONS_REPLACE_METHOD: {
       const input = parsePlanDeclarationReplacement(params);
-      return dependencies.planRuntime.replaceDeclarations(input);
+      return dependencies.planRuntime.replaceDeclarations(input, dependencies.access);
     }
     case CHECK_ATTEMPT_FACTS_METHOD: {
       const input = parseFactBatch(params);
-      return dependencies.planRuntime.ingestDryRunFacts(input);
+      return dependencies.planRuntime.ingestDryRunFacts(input, dependencies.access);
     }
     case CHECK_READ_METHOD: {
       const input = parseCheckRead(params);
-      const view = await dependencies.planReader.readCheck(input.checkUri);
+      const view = await dependencies.planReader.readCheck(input.checkUri, dependencies.access);
       return { contract: "trust.check-view@1", ...view };
     }
     case CHECK_ATTEMPT_ADMIT_METHOD: {
       const input = parseCheckAdmission(params);
-      return dependencies.planRuntime.admitCheck(input);
+      return dependencies.planRuntime.admitCheck(input, dependencies.access);
     }
     case CHECK_ATTEMPT_FINALIZE_METHOD: {
       const input = parseCheckFinalization(params);
-      const finalized = await dependencies.planRuntime.finalizeCheck(input.attemptHandle);
-      const view = await dependencies.planReader.readPlanBySlug(finalized.plan);
+      const finalized = await dependencies.planRuntime.finalizeCheck(input.attemptHandle, dependencies.access);
+      const view = await dependencies.planReader
+        .readPlanBySlug(finalized.plan, false, dependencies.access)
+        .catch((error: unknown) => {
+          if (error instanceof AccessError) return undefined;
+          throw error;
+        });
       return {
         contract: finalized.contract,
         attemptHandle: finalized.attemptHandle,
@@ -176,19 +176,22 @@ export async function executePlanRuntimeRpc(
         reasonCode: finalized.reasonCode,
         reason: finalized.reason,
         checklistDelta: finalized.checklistDelta,
-        next: checkContinuation(view, {
-          checkUri: finalized.checkUri,
-          verdict: finalized.verdict,
-        }),
+        next:
+          view === undefined
+            ? { action: "READ_PLAN" }
+            : checkContinuation(view, {
+                checkUri: finalized.checkUri,
+                verdict: finalized.verdict,
+              }),
       };
     }
     case CHECK_ATTEMPT_INTERRUPT_METHOD: {
       const input = parseCheckInterruption(params);
-      return dependencies.planRuntime.interruptCheck(input.attemptHandle);
+      return dependencies.planRuntime.interruptCheck(input.attemptHandle, dependencies.access);
     }
     case CHECK_ESCALATE_METHOD: {
       const input = parseCheckEscalation(params);
-      return dependencies.planRuntime.escalateCheck(input);
+      return dependencies.planRuntime.escalateCheck(input, dependencies.access);
     }
   }
 }

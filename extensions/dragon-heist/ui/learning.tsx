@@ -1,3 +1,4 @@
+import type { ExtensionPageProps } from "@trust/extension-sdk";
 import { useEffect, useState } from "react";
 
 interface Artifact {
@@ -23,13 +24,14 @@ interface Catalog {
   rules: Rule[];
 }
 const words = (value: string) => value.replaceAll("-", " ");
-export function Learning({ apiBase }: { apiBase: string }) {
+export function Learning({ apiBase, transport }: { apiBase: string; transport: ExtensionPageProps["transport"] }) {
   const [catalog, setCatalog] = useState<Catalog | null>(null);
   const [failed, setFailed] = useState(false);
   const [tab, setTab] = useState("Rules");
   useEffect(() => {
     let active = true;
-    void fetch(`${apiBase}/catalog`)
+    void transport
+      .fetch(`${apiBase}/catalog`)
       .then(async (response) => {
         if (!response.ok) throw new Error();
         const value = await response.json();
@@ -41,7 +43,7 @@ export function Learning({ apiBase }: { apiBase: string }) {
     return () => {
       active = false;
     };
-  }, [apiBase]);
+  }, [transport, apiBase]);
   return (
     <details className="heist-learning">
       <summary>

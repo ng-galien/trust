@@ -216,7 +216,7 @@ export async function synchronizeChildren(input: {
   authority: string;
   plan: string;
   at: string;
-  create(revision: PlanRevision): Promise<void>;
+  create(revision: PlanRevision, creator: import("@trust/extension-sdk").ExternalPrincipal | null): Promise<void>;
 }): Promise<Set<string>> {
   const { database } = input;
   const plans = new PlanStore({ database });
@@ -309,7 +309,7 @@ export async function synchronizeChildren(input: {
             rootInputs: invocation.rootInputs,
             revision: 1,
           });
-          await input.create(initial);
+          await input.create(initial, plan.creator);
           current = {
             parent_plan: slug,
             invocation_id: invocation.id,

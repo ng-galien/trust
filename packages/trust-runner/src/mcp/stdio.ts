@@ -1,9 +1,11 @@
 import { createInterface } from "node:readline";
 import type { Readable, Writable } from "node:stream";
+import { createRunnerAuthorization } from "../auth/credentials.js";
 
 import { CheckClient } from "../check/client.js";
 import { createCheckRunner } from "../check/run.js";
 import { readRunnerConfiguration } from "../cli/configuration.js";
+import { runnerStartupConfiguration } from "../cli/startup.js";
 import { createRunnerLogging } from "../diagnostics/pino.js";
 import { OtlpFactExporter } from "../telemetry/otlp.js";
 import { createMcpHandler, parseError } from "./protocol.js";
@@ -20,13 +22,21 @@ export async function runMcpStdio(options: McpStdioOptions = {}): Promise<void> 
   const configuration = readRunnerConfiguration(argv);
   if (argv.length !== 0)
     throw new TypeError("Runner MCP accepts only repeatable --path <absolute-directory> startup options");
-  const environment = options.environment ?? process.env;
+  const startup = await runnerStartupConfiguration(options.environment ?? process.env);
+  const environment = startup.environment;
+  const endpoint = startup.resolved.configuration.runner.rpcEndpoint;
+  const otlpEndpoint = startup.resolved.configuration.runner.otlpEndpoint;
+  const authorization = createRunnerAuthorization(environment, endpoint, otlpEndpoint);
   const logging = createRunnerLogging(environment);
   const runner = createCheckRunner({
-    checkClient: new CheckClient(environment.TRUST_RPC_ENDPOINT ?? "http://127.0.0.1:4318/rpc"),
-    facts: new OtlpFactExporter(environment.TRUST_OTLP_ENDPOINT ?? "http://127.0.0.1:4318/v1/traces"),
+    checkClient: new CheckClient(endpoint, 30_000, authorization),
+    facts: new OtlpFactExporter(otlpEndpoint, 30_000, authorization),
     diagnostics: logging.diagnostics,
-    shell: { additionalPath: configuration.additionalPath, processEnvironment: environment },
+    shell: {
+      additionalPath: [...startup.resolved.configuration.runner.additionalPath, ...configuration.additionalPath],
+      processEnvironment: environment,
+      timeoutMs: startup.resolved.configuration.runner.shellTimeoutMs,
+    },
     postgresql: { processEnvironment: environment },
   });
   const handle = createMcpHandler(runner);

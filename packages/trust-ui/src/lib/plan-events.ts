@@ -2,6 +2,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import type { PlanEvent, PlanEventType } from "@trust/extension-sdk";
 import { useEffect } from "react";
 import { create } from "zustand";
+import { AuthenticatedEventSource } from "./authenticated-events.js";
 
 import { useRuntime } from "./runtime-context.js";
 
@@ -23,8 +24,7 @@ export function usePlanEventsBridge(): void {
   const runtime = useRuntime();
   const queryClient = useQueryClient();
   useEffect(() => {
-    if (typeof EventSource === "undefined") return;
-    const source = new EventSource(runtime.planEventsUrl());
+    const source = new AuthenticatedEventSource(runtime.planEventsUrl());
     let opened = false;
     const invalidateRuntime = () => {
       void queryClient.invalidateQueries();

@@ -1,7 +1,15 @@
 import { type ChildProcess, fork } from "node:child_process";
 import { EventEmitter } from "node:events";
 import { fileURLToPath } from "node:url";
-import type { ExtensionDescriptor, ExtensionState, Installation } from "@trust/extension-sdk";
+import type {
+  AccessContext,
+  ExtensionDescriptor,
+  ExtensionInvocationContext,
+  ExtensionState,
+  Installation,
+} from "@trust/extension-sdk";
+import type { AccessService } from "../access/service.js";
+import { extensionInvocation } from "./access.js";
 import { extensionToolName, readInstallations } from "./manifest.js";
 
 export interface CommandResult {
@@ -29,6 +37,7 @@ export class ExtensionInstance {
   constructor(
     readonly installation: Installation,
     readonly timeout: number,
+    private readonly authority: AccessService,
   ) {}
   descriptor(): ExtensionDescriptor {
     const { id, title, version, ui } = this.installation;
@@ -50,11 +59,12 @@ export class ExtensionInstance {
   requireGrant(grant: string) {
     if (!this.installation.grants.includes(grant)) throw new ExtensionError(403, "extension-capability-denied");
   }
-  async read(input: unknown) {
+  async read(input: unknown, access?: AccessContext) {
     this.requireRunning();
-    return this.#call("read", input);
+    const context = extensionInvocation(this.authority, this.installation.id, access);
+    return this.#call("read", input, context);
   }
-  async command(input: unknown): Promise<CommandResult> {
+  async command(input: unknown, access?: AccessContext): Promise<CommandResult> {
     this.requireRunning();
     if (!input || typeof input !== "object" || Array.isArray(input))
       throw new ExtensionError(400, "invalid-extension-command");
@@ -71,7 +81,8 @@ export class ExtensionInstance {
       throw new ExtensionError(400, "invalid-extension-command");
     if (!this.installation.mcp?.commands.some((command) => command.name === envelope.command))
       throw new ExtensionError(400, "extension-command-not-declared");
-    const result = await this.#call("command", envelope);
+    const context = extensionInvocation(this.authority, this.installation.id, access);
+    const result = await this.#call("command", envelope, context);
     if (
       !result ||
       !Number.isInteger(result.status) ||
@@ -143,17 +154,18 @@ export class ExtensionInstance {
     });
     await this.#call("load", {
       server: this.installation.server,
+      extensionId: this.installation.id,
       configuration: this.installation.configuration,
       environment: this.installation.environment,
       commands: this.installation.mcp?.commands.map((command) => command.name) ?? [],
     });
   }
-  #call(method: string, input?: unknown): Promise<any> {
+  #call(method: string, input?: unknown, context?: ExtensionInvocationContext): Promise<any> {
     return new Promise((resolve, reject) => {
       const id = ++this.#sequence;
       const timer = setTimeout(() => this.#fail(), this.timeout);
       this.#pending.set(id, { resolve, reject, timer });
-      this.#child?.send({ id, method, input }, (error) => {
+      this.#child?.send({ id, method, input, context }, (error) => {
         if (error) this.#fail();
       });
     });
@@ -180,10 +192,20 @@ export class ExtensionInstance {
 export class ExtensionHost {
   readonly events = new EventEmitter();
   readonly #instances = new Map<string, ExtensionInstance>();
-  constructor(private readonly dependencies: { extensionsFile: string | undefined; extensionTimeoutMs: number }) {}
+  constructor(
+    private readonly dependencies: {
+      extensionsFile: string | undefined;
+      extensionTimeoutMs: number;
+      accessService: AccessService;
+    },
+  ) {}
   async initialize() {
     for (const installation of await readInstallations(this.dependencies.extensionsFile)) {
-      const instance = new ExtensionInstance(installation, this.dependencies.extensionTimeoutMs);
+      const instance = new ExtensionInstance(
+        installation,
+        this.dependencies.extensionTimeoutMs,
+        this.dependencies.accessService,
+      );
       let listed = false;
       instance.events.on("catalog", () => {
         const next = instance.state === "RUNNING" && installation.mcp !== undefined;

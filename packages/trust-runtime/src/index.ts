@@ -1,15 +1,22 @@
-import { normalizeAuthority } from "./check/uri.js";
+import { publicTrustConfiguration } from "@trust/extension-sdk";
+import { runtimeConfiguration } from "./configuration.js";
 import { createRuntimeLogging } from "./logging.js";
-import { DEFAULT_SESSION_DURATION_MS } from "./plan/runtime.js";
 import { startRuntime } from "./server.js";
-import { storageFromEnvironment } from "./storage-configuration.js";
-import { DEFAULT_TRIAL_TIMEOUT_MS } from "./trial/service.js";
 
+const resolved = await runtimeConfiguration(process.env).catch((error: unknown) => {
+  process.stderr.write(`${error instanceof Error ? error.message : "Invalid configuration"}\n`);
+  process.exit(1);
+});
+if (process.argv[2] === "--print-config") {
+  process.stdout.write(`${JSON.stringify(publicTrustConfiguration(resolved), null, 2)}\n`);
+  process.exit(0);
+}
+const configuration = resolved.configuration;
 const instance = process.env.TRUST_RUNTIME_INSTANCE;
 const logging = createRuntimeLogging({
   ...(instance ? { instance } : {}),
-  ...(process.env.TRUST_LOG_LEVEL ? { level: process.env.TRUST_LOG_LEVEL } : {}),
-  ...(process.env.TRUST_RUNTIME_LOG_PATH ? { path: process.env.TRUST_RUNTIME_LOG_PATH } : {}),
+  level: configuration.logging.level,
+  ...(configuration.logging.runtimePath ? { path: configuration.logging.runtimePath } : {}),
 });
 const logger = logging.logger;
 
@@ -23,17 +30,9 @@ process.on("warning", (warning) => {
 
 let runtime: Awaited<ReturnType<typeof startRuntime>> | undefined;
 try {
-  const host = process.env.TRUST_HOST ?? "127.0.0.1";
-  const rawPort = process.env.TRUST_PORT ?? "4318";
-  const port = Number(rawPort);
-  const storage = storageFromEnvironment(process.env);
-  const semanticAuthority = normalizeAuthority(process.env.TRUST_SEMANTIC_AUTHORITY ?? "localhost:4318");
-  const operationsDirectory = process.env.TRUST_OPERATIONS_DIRECTORY;
-  const sessionDurationMs = durationFromEnvironment("TRUST_SESSION_DURATION_MS", DEFAULT_SESSION_DURATION_MS);
-  const trialTimeoutMs = durationFromEnvironment("TRUST_TRIAL_TIMEOUT_MS", DEFAULT_TRIAL_TIMEOUT_MS);
-  if (!Number.isInteger(port) || port < 0 || port > 65_535) {
-    throw new Error(`Invalid TRUST_PORT '${rawPort}'.`);
-  }
+  const { host, port, semanticAuthority, operationsDirectory, sessionDurationMs, trialTimeoutMs } =
+    configuration.server;
+  const { storage, authentication } = configuration;
 
   logger.info(
     {
@@ -46,17 +45,23 @@ try {
     "TRUST runtime starting",
   );
   runtime = await startRuntime({
-    ...(process.env.TRUST_EXTENSIONS_FILE ? { extensionsFile: process.env.TRUST_EXTENSIONS_FILE } : {}),
+    ...(configuration.server.extensionsFile ? { extensionsFile: configuration.server.extensionsFile } : {}),
+    extensionTimeoutMs: configuration.server.extensionTimeoutMs,
     host,
     port,
+    accessConfiguration: authentication.access,
+    ...(authentication.browser ? { browserAuthentication: authentication.browser } : {}),
+    ...(authentication.resourceUrl ? { accessResourceUrl: authentication.resourceUrl } : {}),
     ...(instance ? { instance } : {}),
     storage,
     semanticAuthority,
     ...(operationsDirectory === undefined ? {} : { operationsDirectory }),
     sessionDurationMs,
     trialTimeoutMs,
-    ...(process.env.TRUST_DIAGNOSTICS_ENDPOINT ? { diagnosticsEndpoint: process.env.TRUST_DIAGNOSTICS_ENDPOINT } : {}),
-    ...(process.env.TRUST_RUNNER_TRIAL_SCRIPT ? { runnerTrialScript: process.env.TRUST_RUNNER_TRIAL_SCRIPT } : {}),
+    ...(configuration.server.diagnosticsEndpoint
+      ? { diagnosticsEndpoint: configuration.server.diagnosticsEndpoint }
+      : {}),
+    ...(configuration.server.runnerTrialScript ? { runnerTrialScript: configuration.server.runnerTrialScript } : {}),
     logger,
   });
   logger.info(
@@ -98,14 +103,4 @@ const shutdown = async (signal: NodeJS.Signals): Promise<void> => {
 if (runtime) {
   process.once("SIGINT", () => void shutdown("SIGINT"));
   process.once("SIGTERM", () => void shutdown("SIGTERM"));
-}
-
-function durationFromEnvironment(name: string, fallback: number): number {
-  const raw = process.env[name];
-  if (raw === undefined) return fallback;
-  const value = Number(raw);
-  if (!Number.isSafeInteger(value) || value <= 0) {
-    throw new Error(`Invalid ${name} '${raw}'.`);
-  }
-  return value;
 }

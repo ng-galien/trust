@@ -95,6 +95,9 @@ export default defineConfig({
     proxy: {
       ...mobileUpstreams,
       "/health": runtime,
+      "/auth/config": runtime,
+      "/.well-known/oauth-protected-resource": runtime,
+      "/v1/traces": runtime,
       "/extensions": {
         target: runtime,
         configure: streamingProxy,
@@ -112,6 +115,9 @@ export default defineConfig({
     proxy: {
       ...mobileUpstreams,
       "/health": runtime,
+      "/auth/config": runtime,
+      "/.well-known/oauth-protected-resource": runtime,
+      "/v1/traces": runtime,
       "/extensions": {
         target: runtime,
         configure: streamingProxy,

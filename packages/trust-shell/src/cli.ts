@@ -1,4 +1,5 @@
-import path from "node:path";
+import { publicTrustConfiguration } from "@trust/extension-sdk";
+import { readServerConfiguration } from "./configuration.js";
 
 import { resolveTrustInstallation } from "./installation.js";
 import { callTrustRpc } from "./rpc-client.js";
@@ -11,11 +12,16 @@ await runTrustCli(process.argv.slice(2)).catch((error: unknown) => {
 });
 
 export async function runTrustCli(arguments_: readonly string[]): Promise<void> {
+  if (arguments_[0] === "server" && arguments_[1] === "config" && arguments_.length === 2) {
+    process.stdout.write(`${JSON.stringify(publicTrustConfiguration(await readServerConfiguration()), null, 2)}\n`);
+    return;
+  }
   if (arguments_[0] === "server" && arguments_[1] === "start" && arguments_.length === 2) {
-    const installation = resolveTrustInstallation(process.env.TRUST_INSTALL_ROOT);
-    const host = process.env.TRUST_HOST ?? "127.0.0.1";
-    const webPort = environmentPort("TRUST_WEB_PORT", 4173);
-    const existing = await readTrustServerStatus(host, webPort);
+    const resolved = await readServerConfiguration();
+    const { configuration } = resolved;
+    const installation = resolveTrustInstallation(configuration.shell.installRoot);
+    const { host, webPort } = configuration.server;
+    const existing = await readTrustServerStatus(host, webPort, configuration.shell.webAccessPassword);
     if (existing.running) {
       process.stdout.write(`TRUST server: already running at ${existing.url}\n`);
       return;
@@ -23,9 +29,10 @@ export async function runTrustCli(arguments_: readonly string[]): Promise<void> 
     const server = await startTrustServer({
       installation,
       host,
-      runtimePort: environmentPort("TRUST_PORT", 4318),
+      runtimePort: configuration.server.port,
+      configuration: resolved,
       webPort,
-      stateDirectory: path.resolve(process.env.TRUST_SERVER_STATE_DIRECTORY ?? ".trust/server"),
+      stateDirectory: configuration.server.stateDirectory,
     });
     process.stdout.write(`TRUST server: running at ${server.url}\n`);
     process.stdout.write(`TRUST runtime: ${server.runtimeUrl}\n`);
@@ -33,9 +40,11 @@ export async function runTrustCli(arguments_: readonly string[]): Promise<void> 
     return;
   }
   if (arguments_[0] === "server" && arguments_[1] === "status" && arguments_.length === 2) {
+    const { configuration } = await readServerConfiguration();
     const status = await readTrustServerStatus(
-      process.env.TRUST_HOST ?? "127.0.0.1",
-      environmentPort("TRUST_WEB_PORT", 4173),
+      configuration.server.host,
+      configuration.server.webPort,
+      configuration.shell.webAccessPassword,
     );
     process.stdout.write(
       status.running ? `TRUST server: running at ${status.url}\n` : `TRUST server: stopped (${status.url})\n`,
@@ -44,7 +53,7 @@ export async function runTrustCli(arguments_: readonly string[]): Promise<void> 
     return;
   }
   if (arguments_[0] === "runner" && arguments_[1] === "deploy" && arguments_.length === 3) {
-    const installation = resolveTrustInstallation(process.env.TRUST_INSTALL_ROOT);
+    const installation = resolveTrustInstallation((await readServerConfiguration()).configuration.shell.installRoot);
     const deployed = await deployRunner(installation, arguments_[2]!);
     process.stdout.write(`TRUST Runner deployed at ${deployed}\n`);
     return;
@@ -54,12 +63,12 @@ export async function runTrustCli(arguments_: readonly string[]): Promise<void> 
     return;
   }
   throw new TypeError(
-    "usage: trust server start | trust server status | trust runner deploy <absolute-directory> | trust registry <list|add|remove|sync>",
+    "usage: trust server start | trust server status | trust server config | trust runner deploy <absolute-directory> | trust registry <list|add|remove|sync>",
   );
 }
 
 async function runRegistryCommand(arguments_: readonly string[]): Promise<void> {
-  const options = { url: trustServerUrl() };
+  const options = { url: (await readServerConfiguration()).configuration.shell.url };
   if (arguments_[0] === "list" && arguments_.length === 1) {
     const result = (await callTrustRpc(options, "registry.source.list", {})) as RegistryCatalog;
     if (result.sources.length === 0) {
@@ -110,13 +119,6 @@ async function runRegistryCommand(arguments_: readonly string[]): Promise<void> 
   throw registryUsage();
 }
 
-function trustServerUrl(): string {
-  return (
-    process.env.TRUST_URL ??
-    `http://${process.env.TRUST_HOST ?? "127.0.0.1"}:${environmentPort("TRUST_WEB_PORT", 4173)}`
-  );
-}
-
 function registryUsage(): TypeError {
   return new TypeError(
     "usage: trust registry list | trust registry add <name> <git|http> <url> [--ref <reference>] | trust registry remove <name> | trust registry sync <name>",
@@ -137,16 +139,6 @@ interface RegistryCatalog {
 interface RegistrySync {
   readonly source: RegistrySource;
   readonly summary: { readonly imported: number; readonly unchanged: number };
-}
-
-function environmentPort(name: string, fallback: number): number {
-  const raw = process.env[name];
-  if (raw === undefined) return fallback;
-  const value = Number(raw);
-  if (!Number.isInteger(value) || value < 1 || value > 65_535) {
-    throw new TypeError(`Invalid ${name}: ${raw}`);
-  }
-  return value;
 }
 
 async function waitForShutdown(close: () => Promise<void>): Promise<void> {

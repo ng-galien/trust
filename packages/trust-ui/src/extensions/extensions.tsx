@@ -3,11 +3,13 @@ import { ArrowUpRight, Play, Puzzle, RefreshCw, Square, Wrench } from "lucide-re
 import { Component, type ComponentType, type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useLocation, useNavigate, useParams } from "react-router";
+import { authenticatedFetch } from "../lib/authentication.js";
 import { useExtensions } from "../lib/extensions.js";
 import { useRuntime } from "../lib/runtime-context.js";
 import { Badge } from "../ui/badge.js";
 import { Breadcrumb, PageHeader } from "../ui/breadcrumb.js";
 import { Button } from "../ui/button.js";
+import { createExtensionTransport } from "./transport.js";
 import "./extensions.css";
 
 import type { ExtensionPageProps } from "@trust/extension-sdk";
@@ -15,7 +17,7 @@ import type { ExtensionPageProps } from "@trust/extension-sdk";
 const button = "rounded border border-border px-3 py-1.5 text-ui hover:bg-surface-2 disabled:opacity-40";
 
 async function request<T>(url: string, method = "GET"): Promise<T> {
-  const response = await fetch(
+  const response = await authenticatedFetch(
     url,
     method === "GET" ? undefined : { method, headers: { "content-type": "application/json" }, body: "{}" },
   );
@@ -24,7 +26,7 @@ async function request<T>(url: string, method = "GET"): Promise<T> {
 }
 export function ExtensionsHome() {
   const { t } = useTranslation();
-  const { baseUrl } = useRuntime();
+  const { baseUrl, authentication } = useRuntime();
   const catalog = useExtensions();
   const [busy, setBusy] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
@@ -163,12 +165,29 @@ export function ExtensionPage({ bare = false }: { bare?: boolean }) {
     [location.pathname, location.search, navigate],
   );
   const { t, i18n } = useTranslation();
-  const { baseUrl } = useRuntime();
+  const { baseUrl, authentication } = useRuntime();
   const catalog = useExtensions();
   const extension = catalog.data?.extensions.find((item) => item.id === id);
   const [Remote, setRemote] = useState<ComponentType<ExtensionPageProps> | null>(null);
   const [failed, setFailed] = useState(false);
   const [retry, setRetry] = useState(0);
+  const [transport, setTransport] = useState<ExtensionPageProps["transport"]>();
+  useEffect(() => {
+    setTransport(undefined);
+    if (!id) return;
+    const connection = createExtensionTransport(baseUrl, id, authentication);
+    setTransport(connection.transport);
+    const unsubscribe = authentication.subscribe((ready) => {
+      if (!ready) {
+        connection.dispose();
+        setTransport(undefined);
+      }
+    });
+    return () => {
+      unsubscribe();
+      connection.dispose();
+    };
+  }, [baseUrl, id, authentication]);
   const remote = extension?.ui;
   const remoteName = remote?.name;
   const remoteEntry = remote?.entry;
@@ -183,6 +202,7 @@ export function ExtensionPage({ bare = false }: { bare?: boolean }) {
     },
     [bare, id],
   );
+  // biome-ignore lint/correctness/useExhaustiveDependencies: Recreate the remote page when the authentication controller changes.
   useEffect(() => {
     let active = true;
     setRemote(null);
@@ -221,7 +241,7 @@ export function ExtensionPage({ bare = false }: { bare?: boolean }) {
     return () => {
       active = false;
     };
-  }, [remoteName, remoteEntry, remoteModule, baseUrl, retry, reportMobile]);
+  }, [remoteName, remoteEntry, remoteModule, baseUrl, retry, reportMobile, authentication]);
   const fallback = (
     <div role="alert" className="p-6">
       <p>{t("extensions.failed")}</p>
@@ -250,13 +270,14 @@ export function ExtensionPage({ bare = false }: { bare?: boolean }) {
         </p>
       ) : !extension?.ui ? (
         <p className="p-6">{t("extensions.unavailable")}</p>
-      ) : !Remote ? (
+      ) : !Remote || !transport ? (
         <p className="p-6" role="status">
           {t("extensions.loading")}
         </p>
       ) : (
         <RemoteBoundary key={`${id}:${retry}`} fallback={fallback}>
           <Remote
+            transport={transport}
             apiBase={`${baseUrl}${extension.apiBase}`}
             trustBase={`${baseUrl}/extensions/${encodeURIComponent(extension.id)}/trust`}
             eventsUrl={`${baseUrl}/extensions/${encodeURIComponent(extension.id)}/events`}

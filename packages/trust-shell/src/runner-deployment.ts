@@ -12,6 +12,7 @@ const REQUIRED_FILES = [
   "agents/openai.yaml",
   "references/results.md",
   "scripts/run.js",
+  "scripts/auth.js",
   "scripts/mcp-stdio.js",
   "scripts/trial.js",
 ] as const;
@@ -35,6 +36,7 @@ export async function packageRunnerSkill(
     await build({
       absWorkingDir: installation.root,
       entryPoints: {
+        auth: path.join(installation.runnerPackageRoot, "src/auth/main.ts"),
         run: path.join(installation.runnerPackageRoot, "scripts/run.ts"),
         "mcp-stdio": path.join(installation.runnerPackageRoot, "scripts/mcp-stdio.ts"),
         trial: path.join(installation.runnerPackageRoot, "scripts/trial.ts"),

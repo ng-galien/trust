@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { readConversations, readFeed, readItem, readProjects, readSubjects } from "./api";
 import { useMobileUi } from "./store";
+import { useMobileApi, useMobileTransport } from "./transport";
 import type { Conversation, Item, Project, Subject, Summary } from "./types";
 
 export function useMobileData(
@@ -10,6 +10,8 @@ export function useMobileData(
   itemId: string | null,
   version: number | undefined,
 ) {
+  const transport = useMobileTransport();
+  const { readConversations, readFeed, readItem, readProjects, readSubjects } = useMobileApi();
   const [projects, setProjects] = useState<Project[]>([]);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
@@ -83,12 +85,22 @@ export function useMobileData(
         setError("");
       } catch (cause) {
         if (controller.signal.aborted) return;
+        if (cause instanceof Error && (cause.cause === 401 || cause.cause === 403)) {
+          setProjects([]);
+          setConversations([]);
+          setSubjects([]);
+          setLatest({});
+          setFeed([]);
+          feedRef.current = [];
+          setItem(null);
+          setNextCursor(null);
+        }
         setError(cause instanceof Error ? cause.message : String(cause));
       } finally {
         if (request.current === controller) setLoading(false);
       }
     },
-    [apiBase, project, itemId, version],
+    [apiBase, project, itemId, version, readProjects, readConversations, readFeed, readItem, readSubjects],
   );
 
   useEffect(() => {
@@ -99,8 +111,9 @@ export function useMobileData(
     return () => request.current?.abort();
   }, [refresh]);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: A changed public stream URL must reopen the subscription even if the transport object is reused.
   useEffect(() => {
-    const events = new EventSource(eventsUrl);
+    const events = transport.openEvents();
     events.addEventListener("change", () => void refresh(true));
     const visible = () => {
       if (document.visibilityState === "visible") void refresh(true);
@@ -110,7 +123,7 @@ export function useMobileData(
       events.close();
       document.removeEventListener("visibilitychange", visible);
     };
-  }, [eventsUrl, refresh]);
+  }, [transport, eventsUrl, refresh]);
 
   const loadOlder = useCallback(async () => {
     if (!project || !nextCursor) return;
@@ -126,7 +139,7 @@ export function useMobileData(
     } catch (cause) {
       if (current === request.current) setError(cause instanceof Error ? cause.message : String(cause));
     }
-  }, [apiBase, project, nextCursor]);
+  }, [apiBase, project, nextCursor, readFeed]);
 
   return {
     projects,

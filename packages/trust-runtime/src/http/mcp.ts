@@ -1,4 +1,5 @@
 import type {
+  AccessContext,
   CheckEscalationInput,
   CheckEscalationResult,
   CheckView,
@@ -11,10 +12,13 @@ import type {
 } from "@trust/extension-sdk";
 import { matchCheckExecutionConstraint } from "@trust/procedure/match";
 import express, { type ErrorRequestHandler, type RequestHandler, type Router } from "express";
+import { AccessError } from "../access/error.js";
+import type { AccessService } from "../access/service.js";
 import { ExtensionError, type ExtensionHost } from "../extensions/host.js";
 import { parseMissionDeclarations } from "../plan/mission-declarations.js";
 import { type PlanReader, ReadError } from "../plan/read.js";
 import { type PlanRuntime, PlanRuntimeError } from "../plan/runtime.js";
+import { expireAccessStream, guardAccessStream, requestAccess } from "./access.js";
 import {
   AUTHORING_TOOL_NAMES,
   authoringTools,
@@ -51,6 +55,8 @@ type ToolName = (typeof TOOL_NAMES)[number];
 type JsonRpcId = string | number;
 
 interface McpHttpDependencies extends McpAuthoringDependencies {
+  readonly accessService: AccessService;
+  readonly access?: AccessContext | undefined;
   readonly extensionHost: ExtensionHost;
   readonly planReader: PlanReader;
   readonly planRuntime: PlanRuntime;
@@ -73,7 +79,10 @@ export function createMcpHttpHandler(dependencies: McpHttpDependencies): Router 
       response.status(406).end();
       return;
     }
-    void dispatch(request.body, request.get("mcp-protocol-version"), dependencies)
+    void dispatch(request.body, request.get("mcp-protocol-version"), {
+      ...dependencies,
+      access: requestAccess(request),
+    })
       .then((result) => {
         if (result === undefined) {
           response.status(202).end();
@@ -81,7 +90,17 @@ export function createMcpHttpHandler(dependencies: McpHttpDependencies): Router 
         }
         response.status(200).json(result);
       })
-      .catch(() => response.status(500).json(failure(null, INVALID_REQUEST, "Internal error")));
+      .catch((error) =>
+        response
+          .status(error instanceof AccessError ? error.status : 500)
+          .json(
+            failure(
+              null,
+              error instanceof AccessError ? -32001 : INVALID_REQUEST,
+              error instanceof AccessError ? "Access denied" : "Internal error",
+            ),
+          ),
+      );
   };
 
   router.get("/", (request, response) => {
@@ -97,11 +116,20 @@ export function createMcpHttpHandler(dependencies: McpHttpDependencies): Router 
       .status(200)
       .set({ "Content-Type": "text/event-stream", "Cache-Control": "no-cache", Connection: "keep-alive" });
     response.flushHeaders();
+    expireAccessStream(requestAccess(request), response);
+    guardAccessStream(dependencies.accessService, request, response, []);
     response.write(": connected\n\n");
-    const changed = () =>
-      response.write(
-        `event: message\ndata: ${JSON.stringify({ jsonrpc: "2.0", method: "notifications/tools/list_changed" })}\n\n`,
-      );
+    const changed = () => {
+      void dependencies.accessService
+        .authenticate(request.get("authorization"))
+        .then(() => {
+          if (!response.writableEnded)
+            response.write(
+              `event: message\ndata: ${JSON.stringify({ jsonrpc: "2.0", method: "notifications/tools/list_changed" })}\n\n`,
+            );
+        })
+        .catch(() => response.end());
+    };
     dependencies.extensionHost.events.on("tools-changed", changed);
     const heartbeat = setInterval(() => response.write(": keep-alive\n\n"), 15_000);
     heartbeat.unref();
@@ -171,6 +199,32 @@ async function dispatch(
 }
 
 async function callTool(id: JsonRpcId, value: unknown, dependencies: McpHttpDependencies): Promise<JsonRpcResponse> {
+  if (isRecord(value) && typeof value.name === "string") {
+    const extension = dependencies.extensionHost.tool(value.name);
+    if (extension) {
+      try {
+        const result = await extension.command(value.arguments, dependencies.access);
+        return result.status >= 300 ? toolError(id, result.text) : textResult(id, result.text);
+      } catch (error) {
+        if (error instanceof AccessError) return toolError(id, "Access denied");
+        if (error instanceof ExtensionError) return toolError(id, `Extension command refused (${error.code}).`);
+        throw error;
+      }
+    }
+  }
+  if (isRecord(value) && typeof value.name === "string") {
+    const aliases: Readonly<Record<string, string>> = {
+      trust_extensions_list: "extension.list",
+      trust_published_procedure_read: "procedure.read",
+      trust_operation_environment_list: "operation.environments",
+    };
+    const action = aliases[value.name] ?? value.name.replace(/^trust_/, "").replaceAll("_", ".");
+    try {
+      dependencies.accessService.authorize(dependencies.access, action);
+    } catch {
+      return toolError(id, "Access denied");
+    }
+  }
   if (isRecord(value) && isExtensionToolName(value.name)) {
     if (!isRecord(value.arguments)) return failure(id, INVALID_PARAMS, "Invalid extension arguments");
     const result = await callExtensionTool(value.name, value.arguments, dependencies.extensionHost);
@@ -186,18 +240,7 @@ async function callTool(id: JsonRpcId, value: unknown, dependencies: McpHttpDepe
       throw error;
     }
   }
-  if (isRecord(value) && typeof value.name === "string") {
-    const extension = dependencies.extensionHost.tool(value.name);
-    if (extension) {
-      try {
-        const result = await extension.command(value.arguments);
-        return result.status >= 300 ? toolError(id, result.text) : textResult(id, result.text);
-      } catch (error) {
-        if (error instanceof ExtensionError) return toolError(id, `Extension command refused (${error.code}).`);
-        throw error;
-      }
-    }
-  }
+
   if (!isRecord(value) || !isToolName(value.name) || !isRecord(value.arguments)) {
     return failure(id, INVALID_PARAMS, "Unknown tool or invalid arguments");
   }
@@ -218,7 +261,10 @@ async function callTool(id: JsonRpcId, value: unknown, dependencies: McpHttpDepe
     boundedString(value.arguments.plan)
   ) {
     try {
-      return textResult(id, renderPlan(await dependencies.planReader.readPlanBySlug(value.arguments.plan, true)));
+      return textResult(
+        id,
+        renderPlan(await dependencies.planReader.readPlanBySlug(value.arguments.plan, true, dependencies.access)),
+      );
     } catch (error) {
       if (error instanceof ReadError) return toolError(id, `TRUST read failed: ${error.message}`);
       throw error;
@@ -230,8 +276,20 @@ async function callTool(id: JsonRpcId, value: unknown, dependencies: McpHttpDepe
       return failure(id, INVALID_PARAMS, "Plan engagement arguments are invalid");
     }
     try {
-      const result = await dependencies.planRuntime.engage(input);
-      return textResult(id, renderEngagement(result, await dependencies.planReader.readPlanBySlug(result.plan)));
+      const result = await dependencies.planRuntime.engage(input, dependencies.access);
+      try {
+        return textResult(
+          id,
+          renderEngagement(
+            result,
+            await dependencies.planReader.readPlanBySlug(result.plan, false, dependencies.access),
+          ),
+        );
+      } catch (error) {
+        if (error instanceof AccessError)
+          return textResult(id, `Plan ${result.plan} engaged. Read the Plan with an authorized credential.`);
+        throw error;
+      }
     } catch (error) {
       if (error instanceof PlanRuntimeError) {
         return toolError(id, `TRUST Plan engagement refused: ${error.message}`);
@@ -245,11 +303,23 @@ async function callTool(id: JsonRpcId, value: unknown, dependencies: McpHttpDepe
       return failure(id, INVALID_PARAMS, "Plan declaration replacement arguments are invalid");
     }
     try {
-      const result = await dependencies.planRuntime.replaceDeclarations(input);
-      return textResult(
-        id,
-        renderDeclarationReplacement(result, await dependencies.planReader.readPlanBySlug(result.plan)),
-      );
+      const result = await dependencies.planRuntime.replaceDeclarations(input, dependencies.access);
+      try {
+        return textResult(
+          id,
+          renderDeclarationReplacement(
+            result,
+            await dependencies.planReader.readPlanBySlug(result.plan, false, dependencies.access),
+          ),
+        );
+      } catch (error) {
+        if (error instanceof AccessError)
+          return textResult(
+            id,
+            `Plan ${result.plan} declarations replaced. Read the Plan with an authorized credential.`,
+          );
+        throw error;
+      }
     } catch (error) {
       if (error instanceof PlanRuntimeError) {
         return toolError(id, `TRUST Plan declaration replacement refused: ${error.message}`);
@@ -263,7 +333,7 @@ async function callTool(id: JsonRpcId, value: unknown, dependencies: McpHttpDepe
       return failure(id, INVALID_PARAMS, "Check escalation arguments are invalid");
     }
     try {
-      const result = await dependencies.planRuntime.escalateCheck(input);
+      const result = await dependencies.planRuntime.escalateCheck(input, dependencies.access);
       return textResult(id, renderEscalation(result));
     } catch (error) {
       if (error instanceof PlanRuntimeError) {
@@ -287,22 +357,25 @@ async function callTool(id: JsonRpcId, value: unknown, dependencies: McpHttpDepe
         ) {
           return failure(id, INVALID_PARAMS, "Procedure page arguments are invalid");
         }
-        const page = await dependencies.planReader.readProcedure({
-          checkUri,
-          ...(typeof cursor === "string" ? { cursor } : {}),
-          ...(typeof limit === "number" ? { limit } : {}),
-        });
+        const page = await dependencies.planReader.readProcedure(
+          {
+            checkUri,
+            ...(typeof cursor === "string" ? { cursor } : {}),
+            ...(typeof limit === "number" ? { limit } : {}),
+          },
+          dependencies.access,
+        );
         return success(id, {
           content: [{ type: "text", text: renderProcedurePage(page) }],
           ...(page.nextCursor === undefined ? {} : { _meta: { nextCursor: page.nextCursor } }),
         });
       }
       case "trust_plan_read":
-        return textResult(id, renderPlan(await dependencies.planReader.readPlan(checkUri)));
+        return textResult(id, renderPlan(await dependencies.planReader.readPlan(checkUri, dependencies.access)));
       case "trust_session_read":
-        return textResult(id, renderSession(await dependencies.planReader.readSession(checkUri)));
+        return textResult(id, renderSession(await dependencies.planReader.readSession(checkUri, dependencies.access)));
       case "trust_check_read":
-        return textResult(id, renderCheck(await dependencies.planReader.readCheck(checkUri)));
+        return textResult(id, renderCheck(await dependencies.planReader.readCheck(checkUri, dependencies.access)));
     }
   } catch (error) {
     if (error instanceof ReadError) {

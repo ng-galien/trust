@@ -21,6 +21,8 @@ export class AttemptStore {
     const created = await this.dependencies.database
       .insertInto("attempts")
       .values({
+        actor_issuer: attempt.actor?.issuer ?? null,
+        actor_subject: attempt.actor?.subject ?? null,
         invocation_digest: attempt.invocationDigest ?? null,
         attempt_handle: attempt.handle,
         attempt_key: attempt.attemptKey,
@@ -151,6 +153,10 @@ export class AttemptStore {
 
 function toAttempt(row: AttemptRow): Attempt {
   return {
+    actor:
+      row.actor_issuer === null || row.actor_subject === null
+        ? null
+        : { issuer: row.actor_issuer, subject: row.actor_subject },
     ...(row.invocation_digest === null ? {} : { invocationDigest: row.invocation_digest }),
     handle: row.attempt_handle,
     attemptKey: row.attempt_key,

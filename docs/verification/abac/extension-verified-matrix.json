@@ -1,0 +1,489 @@
+{
+  "status": "All twelve worker and independent review Checks VALIDATED; both extension missions COMPLETE",
+  "records": [
+    {
+      "plan": "abac-access-extension-access-v2-20260926",
+      "layer": "unit",
+      "verify": {
+        "attempt": "bdaddbdd-ab5c-4df4-a77a-4e363bad0d41",
+        "runId": "a79fd74e-6da9-4371-b0ef-39fa69341a43",
+        "expectedDigest": "capture",
+        "sourceDigest": "51ad28a8ef662019ccfc07d2c6caf0ebefe19c6c9fb226b7f583e8e13a520fdb",
+        "afterDigest": "51ad28a8ef662019ccfc07d2c6caf0ebefe19c6c9fb226b7f583e8e13a520fdb",
+        "tested": 1,
+        "passed": 1,
+        "failed": 0,
+        "skipped": 0,
+        "crashed": 0,
+        "missing": 0,
+        "stale": 0,
+        "assertions": [
+          {
+            "requirement": "EXTENSION-ACCESS-UNIT",
+            "name": "EXTENSION-ACCESS closed actions and trusted context refuse forged authority",
+            "file": "packages/trust-runtime/acceptance/access-extension-access-unit.test.mjs",
+            "status": "passed"
+          }
+        ],
+        "nodeVersion": "v26.7.0",
+        "startedAt": "2026-09-26T09:09:46.623Z",
+        "endedAt": "2026-09-26T09:09:47.140Z"
+      },
+      "review": {
+        "attempt": "8af8e0fb-cbd0-4bd2-a2cb-3f4ce2660beb",
+        "runId": "525014df-decf-48de-a444-50fac040754b",
+        "expectedDigest": "51ad28a8ef662019ccfc07d2c6caf0ebefe19c6c9fb226b7f583e8e13a520fdb",
+        "sourceDigest": "51ad28a8ef662019ccfc07d2c6caf0ebefe19c6c9fb226b7f583e8e13a520fdb",
+        "afterDigest": "51ad28a8ef662019ccfc07d2c6caf0ebefe19c6c9fb226b7f583e8e13a520fdb",
+        "tested": 1,
+        "passed": 1,
+        "failed": 0,
+        "skipped": 0,
+        "crashed": 0,
+        "missing": 0,
+        "stale": 0,
+        "assertions": [
+          {
+            "requirement": "EXTENSION-ACCESS-UNIT",
+            "name": "EXTENSION-ACCESS closed actions and trusted context refuse forged authority",
+            "file": "packages/trust-runtime/acceptance/access-extension-access-unit.test.mjs",
+            "status": "passed"
+          }
+        ],
+        "nodeVersion": "v26.7.0",
+        "startedAt": "2026-09-26T09:11:24.930Z",
+        "endedAt": "2026-09-26T09:11:25.555Z"
+      }
+    },
+    {
+      "plan": "abac-access-extension-access-v2-20260926",
+      "layer": "integration",
+      "verify": {
+        "attempt": "fdb73c29-68d7-4e63-a59a-4b59aac7ba4c",
+        "runId": "35708ce3-9c8b-4552-91af-76b48b3589e3",
+        "expectedDigest": "capture",
+        "sourceDigest": "b931422221bff7b349da3d80d9c0cd07393a9b008685f026ac55728791df6c6d",
+        "afterDigest": "b931422221bff7b349da3d80d9c0cd07393a9b008685f026ac55728791df6c6d",
+        "tested": 1,
+        "passed": 1,
+        "failed": 0,
+        "skipped": 0,
+        "crashed": 0,
+        "missing": 0,
+        "stale": 0,
+        "assertions": [
+          {
+            "requirement": "EXTENSION-ACCESS-INTEGRATION",
+            "name": "EXTENSION-ACCESS real child HTTP and MCP isolate principals and resource permissions",
+            "file": "packages/trust-runtime/acceptance/access-extension-access-integration.test.mjs",
+            "status": "passed"
+          }
+        ],
+        "nodeVersion": "v26.7.0",
+        "startedAt": "2026-09-26T09:10:07.599Z",
+        "endedAt": "2026-09-26T09:10:29.756Z"
+      },
+      "review": {
+        "attempt": "892b24ba-f0d5-448f-a3ca-35b9b8d6ea56",
+        "runId": "bd547a67-b057-4483-b206-6b91ef7e6b1f",
+        "expectedDigest": "b931422221bff7b349da3d80d9c0cd07393a9b008685f026ac55728791df6c6d",
+        "sourceDigest": "b931422221bff7b349da3d80d9c0cd07393a9b008685f026ac55728791df6c6d",
+        "afterDigest": "b931422221bff7b349da3d80d9c0cd07393a9b008685f026ac55728791df6c6d",
+        "tested": 1,
+        "passed": 1,
+        "failed": 0,
+        "skipped": 0,
+        "crashed": 0,
+        "missing": 0,
+        "stale": 0,
+        "assertions": [
+          {
+            "requirement": "EXTENSION-ACCESS-INTEGRATION",
+            "name": "EXTENSION-ACCESS real child HTTP and MCP isolate principals and resource permissions",
+            "file": "packages/trust-runtime/acceptance/access-extension-access-integration.test.mjs",
+            "status": "passed"
+          }
+        ],
+        "nodeVersion": "v26.7.0",
+        "startedAt": "2026-09-26T09:11:47.825Z",
+        "endedAt": "2026-09-26T09:12:08.636Z"
+      }
+    },
+    {
+      "plan": "abac-access-extension-access-v2-20260926",
+      "layer": "database",
+      "verify": {
+        "attempt": "a79e619e-e1e2-4488-a1a5-674485f56691",
+        "runId": "b9ecf284-d5c9-4fb8-a43a-80dd765acc96",
+        "expectedDigest": "capture",
+        "sourceDigest": "8f923eb11a1212dbcd30c6000b3402b2ff6e4b3daef34ea7c0b1028a8f6205c9",
+        "afterDigest": "8f923eb11a1212dbcd30c6000b3402b2ff6e4b3daef34ea7c0b1028a8f6205c9",
+        "tested": 1,
+        "passed": 1,
+        "failed": 0,
+        "skipped": 0,
+        "crashed": 0,
+        "missing": 0,
+        "stale": 0,
+        "assertions": [
+          {
+            "requirement": "EXTENSION-ACCESS-DATABASE",
+            "name": "EXTENSION-ACCESS actual extension stores preserve allowed changes and deny foreign mutations",
+            "file": "packages/trust-runtime/acceptance/access-extension-access-database.test.mjs",
+            "status": "passed"
+          }
+        ],
+        "nodeVersion": "v26.7.0",
+        "startedAt": "2026-09-26T09:10:41.328Z",
+        "endedAt": "2026-09-26T09:10:48.660Z"
+      },
+      "review": {
+        "attempt": "91fd06a6-56a0-43e5-8b27-ca1473ac16f6",
+        "runId": "c052165c-169a-4a63-937b-9d37319ad747",
+        "expectedDigest": "8f923eb11a1212dbcd30c6000b3402b2ff6e4b3daef34ea7c0b1028a8f6205c9",
+        "sourceDigest": "8f923eb11a1212dbcd30c6000b3402b2ff6e4b3daef34ea7c0b1028a8f6205c9",
+        "afterDigest": "8f923eb11a1212dbcd30c6000b3402b2ff6e4b3daef34ea7c0b1028a8f6205c9",
+        "tested": 1,
+        "passed": 1,
+        "failed": 0,
+        "skipped": 0,
+        "crashed": 0,
+        "missing": 0,
+        "stale": 0,
+        "assertions": [
+          {
+            "requirement": "EXTENSION-ACCESS-DATABASE",
+            "name": "EXTENSION-ACCESS actual extension stores preserve allowed changes and deny foreign mutations",
+            "file": "packages/trust-runtime/acceptance/access-extension-access-database.test.mjs",
+            "status": "passed"
+          }
+        ],
+        "nodeVersion": "v26.7.0",
+        "startedAt": "2026-09-26T09:12:26.040Z",
+        "endedAt": "2026-09-26T09:12:31.906Z"
+      }
+    },
+    {
+      "plan": "abac-access-extension-ui-v2-20260926",
+      "layer": "unit",
+      "verify": {
+        "attempt": "8052c66b-e6bc-4da1-8735-b69253b6cc4f",
+        "runId": "b92c1e40-d161-4419-8805-1556dbfeac19",
+        "expectedDigest": "capture",
+        "sourceDigest": "24c28725f5b42b9483da1a924696fd5e1f66b37e2d828fb70fd70b0203c13e30",
+        "afterDigest": "24c28725f5b42b9483da1a924696fd5e1f66b37e2d828fb70fd70b0203c13e30",
+        "tested": 10,
+        "passed": 10,
+        "failed": 0,
+        "skipped": 0,
+        "crashed": 0,
+        "missing": 0,
+        "stale": 0,
+        "assertions": [
+          {
+            "requirement": "EXTENSION-UI-UNIT",
+            "name": "EXTENSION-UI confined assets and authenticated transport reject credential forwarding",
+            "file": "packages/trust-runtime/acceptance/access-extension-ui-unit.test.mjs",
+            "status": "passed"
+          },
+          {
+            "requirement": "AUTHORITY-UNIT",
+            "name": "AUTH-POLICY exact actions and own scope deny missing or foreign authority",
+            "file": "packages/trust-runtime/acceptance/access-authority-unit.test.mjs",
+            "status": "passed"
+          },
+          {
+            "requirement": "OWNERSHIP-UNIT",
+            "name": "PLAN-POLICY principal equality and token refresh preserve ownership",
+            "file": "packages/trust-runtime/acceptance/access-ownership-unit.test.mjs",
+            "status": "passed"
+          },
+          {
+            "requirement": "DEVELOPMENT-UNIT",
+            "name": "DEV-TOKEN signed development tokens and private credential handling",
+            "file": "packages/trust-runtime/acceptance/access-development-unit.test.mjs",
+            "status": "passed"
+          },
+          {
+            "requirement": "SURFACES-UNIT",
+            "name": "SURFACE-CONFIG invalid and secret-bearing configuration is refused",
+            "file": "packages/trust-runtime/acceptance/access-surfaces-unit.test.mjs",
+            "status": "passed"
+          }
+        ],
+        "nodeVersion": "v26.7.0",
+        "startedAt": "2026-09-26T09:09:59.269Z",
+        "endedAt": "2026-09-26T09:10:06.471Z"
+      },
+      "review": {
+        "attempt": "991a2f55-6068-4f92-977e-4dc3d59f7876",
+        "runId": "cf54ce6d-1cee-421c-9fc3-8b67caf36df7",
+        "expectedDigest": "24c28725f5b42b9483da1a924696fd5e1f66b37e2d828fb70fd70b0203c13e30",
+        "sourceDigest": "24c28725f5b42b9483da1a924696fd5e1f66b37e2d828fb70fd70b0203c13e30",
+        "afterDigest": "24c28725f5b42b9483da1a924696fd5e1f66b37e2d828fb70fd70b0203c13e30",
+        "tested": 10,
+        "passed": 10,
+        "failed": 0,
+        "skipped": 0,
+        "crashed": 0,
+        "missing": 0,
+        "stale": 0,
+        "assertions": [
+          {
+            "requirement": "EXTENSION-UI-UNIT",
+            "name": "EXTENSION-UI confined assets and authenticated transport reject credential forwarding",
+            "file": "packages/trust-runtime/acceptance/access-extension-ui-unit.test.mjs",
+            "status": "passed"
+          },
+          {
+            "requirement": "AUTHORITY-UNIT",
+            "name": "AUTH-POLICY exact actions and own scope deny missing or foreign authority",
+            "file": "packages/trust-runtime/acceptance/access-authority-unit.test.mjs",
+            "status": "passed"
+          },
+          {
+            "requirement": "OWNERSHIP-UNIT",
+            "name": "PLAN-POLICY principal equality and token refresh preserve ownership",
+            "file": "packages/trust-runtime/acceptance/access-ownership-unit.test.mjs",
+            "status": "passed"
+          },
+          {
+            "requirement": "DEVELOPMENT-UNIT",
+            "name": "DEV-TOKEN signed development tokens and private credential handling",
+            "file": "packages/trust-runtime/acceptance/access-development-unit.test.mjs",
+            "status": "passed"
+          },
+          {
+            "requirement": "SURFACES-UNIT",
+            "name": "SURFACE-CONFIG invalid and secret-bearing configuration is refused",
+            "file": "packages/trust-runtime/acceptance/access-surfaces-unit.test.mjs",
+            "status": "passed"
+          }
+        ],
+        "nodeVersion": "v26.7.0",
+        "startedAt": "2026-09-26T09:13:17.547Z",
+        "endedAt": "2026-09-26T09:13:19.216Z"
+      }
+    },
+    {
+      "plan": "abac-access-extension-ui-v2-20260926",
+      "layer": "integration",
+      "verify": {
+        "attempt": "6859cb9b-2d8f-4a34-8a0c-ec9243117d32",
+        "runId": "b3c8ecf5-eaa9-4b66-abc2-5690af17b8bb",
+        "expectedDigest": "capture",
+        "sourceDigest": "a8b82291333c3cd43633494a28deb01ea42017cd506878b084da62ea480d28b8",
+        "afterDigest": "a8b82291333c3cd43633494a28deb01ea42017cd506878b084da62ea480d28b8",
+        "tested": 6,
+        "passed": 6,
+        "failed": 0,
+        "skipped": 0,
+        "crashed": 0,
+        "missing": 0,
+        "stale": 0,
+        "assertions": [
+          {
+            "requirement": "EXTENSION-UI-INTEGRATION",
+            "name": "EXTENSION-UI real federated coordination and mobile journeys authenticate",
+            "file": "packages/trust-runtime/acceptance/access-extension-ui-integration.test.mjs",
+            "status": "passed"
+          },
+          {
+            "requirement": "AUTHORITY-INTEGRATION",
+            "name": "AUTH-TRANSPORT local JWT and strict introspection validate each protected request",
+            "file": "packages/trust-runtime/acceptance/access-authority-integration.test.mjs",
+            "status": "passed"
+          },
+          {
+            "requirement": "OWNERSHIP-INTEGRATION",
+            "name": "PLAN-TRANSPORT own and all access isolate real Plans and Attempts",
+            "file": "packages/trust-runtime/acceptance/access-ownership-integration.test.mjs",
+            "status": "passed"
+          },
+          {
+            "requirement": "DEVELOPMENT-INTEGRATION",
+            "name": "DEV-TRANSPORT lightweight provider and Runner authenticate both RPC and OTLP",
+            "file": "packages/trust-runtime/acceptance/access-development-integration.test.mjs",
+            "status": "passed"
+          },
+          {
+            "requirement": "SURFACES-INTEGRATION",
+            "name": "SURFACE-TRANSPORT streams and WebSocket enforce the shared access authority",
+            "file": "packages/trust-runtime/acceptance/access-surfaces-integration.test.mjs",
+            "status": "passed"
+          }
+        ],
+        "nodeVersion": "v26.7.0",
+        "startedAt": "2026-09-26T09:10:29.786Z",
+        "endedAt": "2026-09-26T09:11:31.702Z"
+      },
+      "review": {
+        "attempt": "e56df457-4fd6-4770-9adc-f7fede782b97",
+        "runId": "c9fce182-15c2-45ce-b823-fe9f8b92364c",
+        "expectedDigest": "a8b82291333c3cd43633494a28deb01ea42017cd506878b084da62ea480d28b8",
+        "sourceDigest": "a8b82291333c3cd43633494a28deb01ea42017cd506878b084da62ea480d28b8",
+        "afterDigest": "a8b82291333c3cd43633494a28deb01ea42017cd506878b084da62ea480d28b8",
+        "tested": 6,
+        "passed": 6,
+        "failed": 0,
+        "skipped": 0,
+        "crashed": 0,
+        "missing": 0,
+        "stale": 0,
+        "assertions": [
+          {
+            "requirement": "EXTENSION-UI-INTEGRATION",
+            "name": "EXTENSION-UI real federated coordination and mobile journeys authenticate",
+            "file": "packages/trust-runtime/acceptance/access-extension-ui-integration.test.mjs",
+            "status": "passed"
+          },
+          {
+            "requirement": "AUTHORITY-INTEGRATION",
+            "name": "AUTH-TRANSPORT local JWT and strict introspection validate each protected request",
+            "file": "packages/trust-runtime/acceptance/access-authority-integration.test.mjs",
+            "status": "passed"
+          },
+          {
+            "requirement": "OWNERSHIP-INTEGRATION",
+            "name": "PLAN-TRANSPORT own and all access isolate real Plans and Attempts",
+            "file": "packages/trust-runtime/acceptance/access-ownership-integration.test.mjs",
+            "status": "passed"
+          },
+          {
+            "requirement": "DEVELOPMENT-INTEGRATION",
+            "name": "DEV-TRANSPORT lightweight provider and Runner authenticate both RPC and OTLP",
+            "file": "packages/trust-runtime/acceptance/access-development-integration.test.mjs",
+            "status": "passed"
+          },
+          {
+            "requirement": "SURFACES-INTEGRATION",
+            "name": "SURFACE-TRANSPORT streams and WebSocket enforce the shared access authority",
+            "file": "packages/trust-runtime/acceptance/access-surfaces-integration.test.mjs",
+            "status": "passed"
+          }
+        ],
+        "nodeVersion": "v26.7.0",
+        "startedAt": "2026-09-26T09:14:51.731Z",
+        "endedAt": "2026-09-26T09:15:30.971Z"
+      }
+    },
+    {
+      "plan": "abac-access-extension-ui-v2-20260926",
+      "layer": "database",
+      "verify": {
+        "attempt": "b793b26b-146b-4d34-aff2-7bab294cf491",
+        "runId": "58a0209f-605e-4716-9fd1-928e075a0bc3",
+        "expectedDigest": "capture",
+        "sourceDigest": "07326fe0380fc0a2f271436614302b04993f7f0e146446ebba1c46eea13e107d",
+        "afterDigest": "07326fe0380fc0a2f271436614302b04993f7f0e146446ebba1c46eea13e107d",
+        "tested": 7,
+        "passed": 7,
+        "failed": 0,
+        "skipped": 0,
+        "crashed": 0,
+        "missing": 0,
+        "stale": 0,
+        "assertions": [
+          {
+            "requirement": "EXTENSION-UI-DATABASE",
+            "name": "EXTENSION-UI allowed commands persist and forbidden writes leave data unchanged",
+            "file": "packages/trust-runtime/acceptance/access-extension-ui-database.test.mjs",
+            "status": "passed"
+          },
+          {
+            "requirement": "AUTHORITY-DATABASE",
+            "name": "AUTH-DATABASE denied access leaves actual persisted state unchanged",
+            "file": "packages/trust-runtime/acceptance/access-authority-database.test.mjs",
+            "status": "passed"
+          },
+          {
+            "requirement": "OWNERSHIP-DATABASE",
+            "name": "PLAN-DATABASE child inheritance and actor isolation persist across adapters",
+            "file": "packages/trust-runtime/acceptance/access-ownership-database.test.mjs",
+            "status": "passed"
+          },
+          {
+            "requirement": "DEVELOPMENT-DATABASE",
+            "name": "DEV-DATABASE authenticated Runner preserves durable principal and rejects foreign submission",
+            "file": "packages/trust-runtime/acceptance/access-development-database.test.mjs",
+            "status": "passed"
+          },
+          {
+            "requirement": "SURFACES-DATABASE",
+            "name": "SURFACE-BROWSER real PKCE browser access persists only authorized business data",
+            "file": "packages/trust-runtime/acceptance/access-surfaces-database.test.mjs",
+            "status": "passed"
+          }
+        ],
+        "nodeVersion": "v26.7.0",
+        "startedAt": "2026-09-26T09:11:52.792Z",
+        "endedAt": "2026-09-26T09:12:25.656Z"
+      },
+      "review": {
+        "attempt": "d2a59239-8c1c-40a9-9532-ff9f708d439c",
+        "runId": "bb3b637c-46f6-4443-99e3-16b07a660922",
+        "expectedDigest": "07326fe0380fc0a2f271436614302b04993f7f0e146446ebba1c46eea13e107d",
+        "sourceDigest": "07326fe0380fc0a2f271436614302b04993f7f0e146446ebba1c46eea13e107d",
+        "afterDigest": "07326fe0380fc0a2f271436614302b04993f7f0e146446ebba1c46eea13e107d",
+        "tested": 7,
+        "passed": 7,
+        "failed": 0,
+        "skipped": 0,
+        "crashed": 0,
+        "missing": 0,
+        "stale": 0,
+        "assertions": [
+          {
+            "requirement": "EXTENSION-UI-DATABASE",
+            "name": "EXTENSION-UI allowed commands persist and forbidden writes leave data unchanged",
+            "file": "packages/trust-runtime/acceptance/access-extension-ui-database.test.mjs",
+            "status": "passed"
+          },
+          {
+            "requirement": "AUTHORITY-DATABASE",
+            "name": "AUTH-DATABASE denied access leaves actual persisted state unchanged",
+            "file": "packages/trust-runtime/acceptance/access-authority-database.test.mjs",
+            "status": "passed"
+          },
+          {
+            "requirement": "OWNERSHIP-DATABASE",
+            "name": "PLAN-DATABASE child inheritance and actor isolation persist across adapters",
+            "file": "packages/trust-runtime/acceptance/access-ownership-database.test.mjs",
+            "status": "passed"
+          },
+          {
+            "requirement": "DEVELOPMENT-DATABASE",
+            "name": "DEV-DATABASE authenticated Runner preserves durable principal and rejects foreign submission",
+            "file": "packages/trust-runtime/acceptance/access-development-database.test.mjs",
+            "status": "passed"
+          },
+          {
+            "requirement": "SURFACES-DATABASE",
+            "name": "SURFACE-BROWSER real PKCE browser access persists only authorized business data",
+            "file": "packages/trust-runtime/acceptance/access-surfaces-database.test.mjs",
+            "status": "passed"
+          }
+        ],
+        "nodeVersion": "v26.7.0",
+        "startedAt": "2026-09-26T09:15:32.023Z",
+        "endedAt": "2026-09-26T09:16:18.239Z"
+      }
+    }
+  ],
+  "completion": [
+    {
+      "plan": "abac-access-extension-access-v2-20260926",
+      "attempt": "187a04a5-5e0f-4c87-9054-4f16965d2542",
+      "status": "COMPLETED",
+      "qualification": "VALIDATED",
+      "next": "COMPLETE"
+    },
+    {
+      "plan": "abac-access-extension-ui-v2-20260926",
+      "attempt": "232f8c7d-d9eb-48eb-b4f2-d500f156e895",
+      "status": "COMPLETED",
+      "qualification": "VALIDATED",
+      "next": "COMPLETE"
+    }
+  ]
+}

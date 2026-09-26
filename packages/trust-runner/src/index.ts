@@ -1,3 +1,11 @@
+export type { RunnerAuthorization, RunnerCredential } from "./auth/credentials.js";
+export {
+  createRunnerAuthorization,
+  readRunnerCredential,
+  runnerOidcConfiguration,
+  writeRunnerCredential,
+} from "./auth/credentials.js";
+export { runAuthenticationCli } from "./auth/main.js";
 export { CheckClient, CheckClientError } from "./check/client.js";
 export type { CheckResult, CheckRunnerOptions } from "./check/run.js";
 export { createCheckRunner } from "./check/run.js";

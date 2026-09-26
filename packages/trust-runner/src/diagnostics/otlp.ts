@@ -105,6 +105,7 @@ export class OtlpDiagnosticsSink implements DiagnosticsSink {
       try {
         const response = await fetch(url, {
           method: "POST",
+          redirect: "error",
           headers: this.#headers,
           body: JSON.stringify(body),
           signal: AbortSignal.timeout(this.#timeoutMs),

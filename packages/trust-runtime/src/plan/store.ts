@@ -1,4 +1,4 @@
-import type { IntentChainState, PlanMode } from "@trust/extension-sdk";
+import type { ExternalPrincipal, IntentChainState, PlanMode } from "@trust/extension-sdk";
 import type { Selectable } from "kysely";
 import type { Database, PlanRevisionTable, PlanTable } from "../database/database.js";
 import type { Plan, PlanCheck, PlanRevision } from "../model.js";
@@ -11,6 +11,7 @@ export interface PlanStoreDependencies {
 }
 
 export interface PlanListQuery {
+  readonly creator?: ExternalPrincipal;
   readonly filter?: {
     readonly procedure?: string;
     readonly mode?: PlanMode;
@@ -26,7 +27,11 @@ export class PlanStore {
     return new PlanStore({ database });
   }
 
-  async saveRevision(compiled: PlanRevision, compiledAt: string): Promise<void> {
+  async saveRevision(
+    compiled: PlanRevision,
+    compiledAt: string,
+    creator: ExternalPrincipal | null = null,
+  ): Promise<void> {
     const database = this.dependencies.database;
     const existingRow = await database
       .selectFrom("plans")
@@ -58,6 +63,8 @@ export class PlanStore {
       await database
         .insertInto("plans")
         .values({
+          creator_issuer: creator?.issuer ?? null,
+          creator_subject: creator?.subject ?? null,
           plan_slug: compiled.planSlug,
           procedure_name: compiled.procedure,
           procedure_version: compiled.procedureVersion,
@@ -294,6 +301,11 @@ export class PlanStore {
       .orderBy("created_at", "desc")
       .orderBy("plan_slug", "asc")
       .limit(query.limit);
+    if (query.creator) {
+      selection = selection
+        .where("creator_issuer", "=", query.creator.issuer)
+        .where("creator_subject", "=", query.creator.subject);
+    }
     if (query.filter?.procedure !== undefined) {
       selection = selection.where("procedure_name", "=", query.filter.procedure);
     }
@@ -388,6 +400,10 @@ export class PlanStore {
 
 function toPlan(row: PlanRow): Plan {
   return {
+    creator:
+      row.creator_issuer === null || row.creator_subject === null
+        ? null
+        : { issuer: row.creator_issuer, subject: row.creator_subject },
     slug: row.plan_slug,
     procedure: row.procedure_name,
     procedureVersion: row.procedure_version,

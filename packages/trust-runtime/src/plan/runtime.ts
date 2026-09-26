@@ -1,11 +1,13 @@
 import { createHash, randomUUID } from "node:crypto";
 import type {
+  AccessContext,
   AttemptFinalizationResult,
   AttemptInterruptionResult,
   CheckAttemptAdmissionInput,
   CheckAttemptAdmissionResult,
   CheckEscalationInput,
   CheckEscalationResult,
+  ExternalPrincipal,
   Fact,
   FactBatchInput,
   FactBatchResult,
@@ -27,6 +29,8 @@ import {
   type CompiledProcedure,
   validateDeclaredInvocationResults,
 } from "@trust/procedure";
+import { AccessError } from "../access/error.js";
+import { type AccessService, samePrincipal } from "../access/service.js";
 import type { AttemptCreation, AttemptStore } from "../attempt/store.js";
 import { checkDependenciesSatisfied } from "../check/actionability.js";
 import { qualifyCheck, validateFacts } from "../check/qualification.js";
@@ -85,6 +89,7 @@ interface SessionChange {
 }
 
 export interface PlanRuntimeDependencies {
+  readonly accessService: AccessService;
   readonly clock: Clock;
   readonly database: Database;
   readonly semanticAuthority: string;
@@ -101,6 +106,7 @@ export interface PlanRuntimeDependencies {
 }
 
 export class PlanRuntime {
+  readonly #access: AccessService;
   readonly #clock: Clock;
   readonly #database: Database;
   readonly #authority: string;
@@ -119,6 +125,7 @@ export class PlanRuntime {
     if (!Number.isSafeInteger(dependencies.sessionDurationMs) || dependencies.sessionDurationMs <= 0) {
       throw new TypeError("sessionDurationMs must be a positive integer");
     }
+    this.#access = dependencies.accessService;
     this.#clock = dependencies.clock;
     this.#database = dependencies.database;
     this.#authority = dependencies.semanticAuthority;
@@ -132,6 +139,29 @@ export class PlanRuntime {
     this.#escalations = dependencies.escalationStore;
     this.#events = dependencies.planEvents;
     this.#sessionDurationMs = dependencies.sessionDurationMs;
+  }
+
+  async #authorizePlan(
+    access: AccessContext | undefined,
+    action: string,
+    slug: string,
+    database = this.#database,
+  ): Promise<void> {
+    this.#access.authorize(access, action);
+    const plan = await this.#plans.using(database).findPlan(slug);
+    if (plan) this.#access.authorize(access, action, plan.creator);
+  }
+
+  async #authorizeAttempt(
+    access: AccessContext | undefined,
+    action: string,
+    attempt: Attempt,
+    database = this.#database,
+  ): Promise<void> {
+    await this.#authorizePlan(access, action, attempt.planSlug, database);
+    if (this.#access.shared && !samePrincipal(this.#access.principal(access), attempt.actor)) {
+      throw new AccessError("forbidden", "The authenticated principal does not own this Attempt");
+    }
   }
 
   async #initialRevision(input: PlanEngagementInput, pinned?: CompiledProcedure): Promise<PlanRevision> {
@@ -170,8 +200,14 @@ export class PlanRuntime {
     }
   }
 
-  async #saveInitialRevision(database: Database, revision: PlanRevision, at: Date, sessionId: string): Promise<void> {
-    await this.#plans.using(database).saveRevision(revision, at.toISOString());
+  async #saveInitialRevision(
+    database: Database,
+    revision: PlanRevision,
+    at: Date,
+    sessionId: string,
+    creator: ExternalPrincipal | null,
+  ): Promise<void> {
+    await this.#plans.using(database).saveRevision(revision, at.toISOString(), creator);
     await this.#sessions.using(database).create({
       id: sessionId,
       planSlug: revision.planSlug,
@@ -192,7 +228,7 @@ export class PlanRuntime {
       authority: this.#authority,
       plan,
       at: this.#now().toISOString(),
-      create: (revision) => this.#saveInitialRevision(database, revision, this.#now(), randomUUID()),
+      create: (revision, creator) => this.#saveInitialRevision(database, revision, this.#now(), randomUUID(), creator),
     });
   }
 
@@ -211,7 +247,8 @@ export class PlanRuntime {
     }
   }
 
-  async engage(input: PlanEngagementInput): Promise<PlanEngagementResult> {
+  async engage(input: PlanEngagementInput, access?: AccessContext): Promise<PlanEngagementResult> {
+    await this.#authorizePlan(access, "plan.engage", input.plan);
     const existing = await this.#plans.findPlan(input.plan);
     const pinned = existing ? await this.#plans.readRevision(existing.slug, existing.currentRevision) : undefined;
     const revision = await this.#initialRevision(
@@ -236,10 +273,13 @@ export class PlanRuntime {
           `Plan ${input.plan} is already engaged with another Procedure or context`,
         );
       }
-      await this.#ensureSession(input.plan);
-      await planTransaction(this.#database, input.plan, (transaction) =>
-        this.#synchronizeChildren(transaction, input.plan),
-      );
+      const changes = await planTransaction(this.#database, input.plan, async (transaction) => {
+        await this.#authorizePlan(access, "plan.engage", input.plan, transaction);
+        const changes = await this.#ensureSessionIn(transaction, input.plan, this.#now());
+        await this.#synchronizeChildren(transaction, input.plan);
+        return changes;
+      });
+      this.#publishSessionChanges(changes);
       return engagement(existing.currentRevision, current);
     }
     const now = this.#now();
@@ -248,6 +288,7 @@ export class PlanRuntime {
       const plans = this.#plans.using(transaction);
       const concurrent = await plans.findPlan(input.plan);
       if (concurrent) {
+        this.#access.authorize(access, "plan.engage", concurrent.creator);
         const current = await plans.readRevision(input.plan, concurrent.currentRevision);
         if (
           !current ||
@@ -265,7 +306,7 @@ export class PlanRuntime {
         await this.#synchronizeChildren(transaction, input.plan);
         return { existing: engagement(concurrent.currentRevision, current) };
       }
-      await this.#saveInitialRevision(transaction, revision, now, sessionId);
+      await this.#saveInitialRevision(transaction, revision, now, sessionId, this.#access.principal(access));
       await this.#synchronizeChildren(transaction, input.plan);
       return { existing: undefined };
     });
@@ -275,7 +316,8 @@ export class PlanRuntime {
   }
 
   /** Start one dry-run again from revision 1 without any externally visible deleted state. */
-  async reset(planSlug: string): Promise<PlanEngagementResult> {
+  async reset(planSlug: string, access?: AccessContext): Promise<PlanEngagementResult> {
+    await this.#authorizePlan(access, "plan.reset", planSlug);
     const plan = await this.#plans.findPlan(planSlug);
     if (!plan) throw new PlanRuntimeError("plan-conflict", `Plan ${planSlug} is unknown`);
     if (plan.mode !== "dry-run")
@@ -298,9 +340,10 @@ export class PlanRuntime {
     const now = this.#now();
     const sessionId = randomUUID();
     await planTransaction(this.#database, planSlug, async (transaction) => {
+      await this.#authorizePlan(access, "plan.reset", planSlug, transaction);
       await this.#requireIndependentHistory(transaction, planSlug);
       await this.#plans.using(transaction).remove(planSlug);
-      await this.#saveInitialRevision(transaction, revision, now, sessionId);
+      await this.#saveInitialRevision(transaction, revision, now, sessionId, plan.creator);
     });
     this.#events.publish({ type: "plan.removed", at: now.toISOString(), plan: planSlug });
     this.#publishEngagement(planSlug, now, sessionId);
@@ -308,12 +351,14 @@ export class PlanRuntime {
   }
 
   /** Erase a dry-run Plan entirely (a blocked rehearsal starts over). Live Plans are audit history: refused. */
-  async remove(planSlug: string): Promise<{ readonly plan: string; readonly removed: true }> {
+  async remove(planSlug: string, access?: AccessContext): Promise<{ readonly plan: string; readonly removed: true }> {
+    await this.#authorizePlan(access, "plan.remove", planSlug);
     const plan = await this.#plans.findPlan(planSlug);
     if (!plan) throw new PlanRuntimeError("plan-conflict", `Plan ${planSlug} is unknown`);
     if (plan.mode !== "dry-run")
       throw new PlanRuntimeError("plan-conflict", `Plan ${planSlug} is a live Plan and cannot be removed`);
     await planTransaction(this.#database, planSlug, async (transaction) => {
+      await this.#authorizePlan(access, "plan.remove", planSlug, transaction);
       await this.#requireIndependentHistory(transaction, planSlug);
       await this.#plans.using(transaction).remove(planSlug);
     });
@@ -334,9 +379,11 @@ export class PlanRuntime {
       );
   }
 
-  async close(planSlug: string): Promise<{ readonly plan: string; readonly closed: boolean }> {
+  async close(planSlug: string, access?: AccessContext): Promise<{ readonly plan: string; readonly closed: boolean }> {
+    await this.#authorizePlan(access, "plan.close", planSlug);
     const closedAt = this.#now().toISOString();
     const session = await planTransaction(this.#database, planSlug, async (transaction) => {
+      await this.#authorizePlan(access, "plan.close", planSlug, transaction);
       const plan = await this.#plans.using(transaction).findPlan(planSlug);
       if (!plan) throw new PlanRuntimeError("plan-conflict", `Plan ${planSlug} is unknown`);
       const sessions = this.#sessions.using(transaction);
@@ -348,7 +395,10 @@ export class PlanRuntime {
     return { plan: planSlug, closed: session !== undefined };
   }
 
-  async escalateCheck(input: CheckEscalationInput): Promise<CheckEscalationResult> {
+  async escalateCheck(input: CheckEscalationInput, access?: AccessContext): Promise<CheckEscalationResult> {
+    this.#access.authorize(access, "check.escalate");
+    const accessAttempt = await this.#attempts.find(input.attemptHandle);
+    if (accessAttempt) await this.#authorizeAttempt(access, "check.escalate", accessAttempt);
     if (
       input.contract !== "trust.check-escalation-request@1" ||
       input.attemptHandle.length === 0 ||
@@ -370,6 +420,7 @@ export class PlanRuntime {
     let escalation: PlanEscalation | undefined;
     let escalationCreated = false;
     await planTransaction(this.#database, requestedPlan, async (transaction) => {
+      await this.#authorizeAttempt(access, "check.escalate", requested, transaction);
       const plans = this.#plans.using(transaction);
       const escalations = this.#escalations.using(transaction);
       const snapshots = this.#snapshots.using(transaction);
@@ -488,7 +539,8 @@ export class PlanRuntime {
     };
   }
 
-  async resumePlan(input: PlanResumptionInput): Promise<PlanResumptionResult> {
+  async resumePlan(input: PlanResumptionInput, access?: AccessContext): Promise<PlanResumptionResult> {
+    await this.#authorizePlan(access, "plan.resume", input.plan);
     if (!isEscalationDeclaration(input.resumeReason)) {
       throw new PlanRuntimeError(
         "plan-conflict",
@@ -502,6 +554,7 @@ export class PlanRuntime {
     let resumed = false;
     let sessionEvents: readonly SessionChange[] = [];
     await planTransaction(this.#database, planSlug, async (transaction) => {
+      await this.#authorizePlan(access, "plan.resume", planSlug, transaction);
       const plans = this.#plans.using(transaction);
       const plan = await plans.findPlan(planSlug);
       if (!plan) throw new PlanRuntimeError("plan-conflict", `Plan ${planSlug} is unknown`);
@@ -563,7 +616,11 @@ export class PlanRuntime {
     };
   }
 
-  async replaceDeclarations(input: PlanDeclarationReplacementInput): Promise<PlanDeclarationReplacementResult> {
+  async replaceDeclarations(
+    input: PlanDeclarationReplacementInput,
+    access?: AccessContext,
+  ): Promise<PlanDeclarationReplacementResult> {
+    await this.#authorizePlan(access, "plan.declarations.replace", input.plan);
     const plan = await this.#plans.findPlan(input.plan);
     const current = plan ? await this.#plans.readRevision(plan.slug, plan.currentRevision) : undefined;
     if (!plan || !current || plan.currentRevision !== input.expectedRevision) {
@@ -646,6 +703,7 @@ export class PlanRuntime {
       canonicalJson(missionDeclarations) === canonicalJson(current.missionDeclarations)
     ) {
       await planTransaction(this.#database, plan.slug, async (transaction) => {
+        await this.#authorizePlan(access, "plan.declarations.replace", plan.slug, transaction);
         const plans = this.#plans.using(transaction);
         const transactionalPlan = await plans.findPlan(plan.slug);
         if (
@@ -728,6 +786,7 @@ export class PlanRuntime {
     const now = this.#now();
     try {
       await planTransaction(this.#database, plan.slug, async (transaction) => {
+        await this.#authorizePlan(access, "plan.declarations.replace", plan.slug, transaction);
         const plans = this.#plans.using(transaction);
         const chainedPlan = await plans.findPlan(plan.slug);
         if (
@@ -808,7 +867,12 @@ export class PlanRuntime {
     return result;
   }
 
-  async admitCheck(input: CheckAttemptAdmissionInput): Promise<CheckAttemptAdmissionResult> {
+  async admitCheck(input: CheckAttemptAdmissionInput, access?: AccessContext): Promise<CheckAttemptAdmissionResult> {
+    this.#access.authorize(access, "check.attempt.admit");
+    const accessCheck = await this.#plans.findCurrentCheck(input.checkUri);
+    if (accessCheck) await this.#authorizePlan(access, "check.attempt.admit", accessCheck.planSlug);
+    const accessAttempt = await this.#attempts.findByKey(input.attemptKey);
+    if (accessAttempt) await this.#authorizeAttempt(access, "check.attempt.admit", accessAttempt);
     if (input.contract !== "trust.check-admission-request@1") {
       return refuse(
         "trust.check-admission@1",
@@ -843,7 +907,7 @@ export class PlanRuntime {
     if ("refusal" in resolved) return { contract: "trust.check-admission@1", ...resolved.refusal };
     let creation: AttemptCreation;
     try {
-      creation = await this.#createAttempt(resolved);
+      creation = await this.#createAttempt(resolved, access);
     } catch (error) {
       if (error instanceof PlanEscalatedDuringAdmissionError || isEscalatedPersistenceError(error)) {
         return refuse(
@@ -912,10 +976,11 @@ export class PlanRuntime {
     };
   }
 
-  async #ingestFacts(input: FactBatchInput): Promise<FactBatchResult> {
+  async #ingestFacts(input: FactBatchInput, access?: AccessContext): Promise<FactBatchResult> {
     const requested = await this.#attempts.find(input.attemptHandle);
     if (!requested) throw new PlanRuntimeError("attempt-not-found", "The requested Attempt is unknown");
     return planTransaction(this.#database, requested.planSlug, async (transaction) => {
+      await this.#authorizeAttempt(access, "check.attempt.facts", requested, transaction);
       const attempts = this.#attempts.using(transaction);
       const attempt = await attempts.lockPending(input.attemptHandle);
       if (!attempt) {
@@ -934,14 +999,20 @@ export class PlanRuntime {
     });
   }
 
-  async ingestDryRunFacts(input: FactBatchInput): Promise<FactBatchResult> {
+  async ingestDryRunFacts(input: FactBatchInput, access?: AccessContext): Promise<FactBatchResult> {
+    this.#access.authorize(access, "check.attempt.facts");
+    const accessAttempt = await this.#attempts.find(input.attemptHandle);
+    if (accessAttempt) await this.#authorizeAttempt(access, "check.attempt.facts", accessAttempt);
     await this.#requireAttemptMode(input.attemptHandle, "dry-run", "Operator");
-    return this.#ingestFacts(input);
+    return this.#ingestFacts(input, access);
   }
 
-  async ingestLiveFacts(input: FactBatchInput): Promise<FactBatchResult> {
+  async ingestLiveFacts(input: FactBatchInput, access?: AccessContext): Promise<FactBatchResult> {
+    this.#access.authorize(access, "check.attempt.facts");
+    const accessAttempt = await this.#attempts.find(input.attemptHandle);
+    if (accessAttempt) await this.#authorizeAttempt(access, "check.attempt.facts", accessAttempt);
     await this.#requireAttemptMode(input.attemptHandle, "live", "Runner");
-    return this.#ingestFacts(input);
+    return this.#ingestFacts(input, access);
   }
 
   async #ingest(attempt: Attempt, input: FactBatchInput, database: Database): Promise<FactBatchResult> {
@@ -995,15 +1066,21 @@ export class PlanRuntime {
     }
   }
 
-  async finalizeCheck(attemptHandle: string): Promise<AttemptFinalizationResult> {
+  async finalizeCheck(attemptHandle: string, access?: AccessContext): Promise<AttemptFinalizationResult> {
+    this.#access.authorize(access, "check.attempt.finalize");
+    const accessAttempt = await this.#attempts.find(attemptHandle);
+    if (accessAttempt) await this.#authorizeAttempt(access, "check.attempt.finalize", accessAttempt);
     const attempt = await this.#attempts.find(attemptHandle);
     if (!attempt) {
       throw new PlanRuntimeError("attempt-not-found", `Runner Attempt ${attemptHandle} is unknown`);
     }
-    return this.#finalize(attempt);
+    return this.#finalize(attempt, access);
   }
 
-  async interruptCheck(attemptHandle: string): Promise<AttemptInterruptionResult> {
+  async interruptCheck(attemptHandle: string, access?: AccessContext): Promise<AttemptInterruptionResult> {
+    this.#access.authorize(access, "check.attempt.interrupt");
+    const accessAttempt = await this.#attempts.find(attemptHandle);
+    if (accessAttempt) await this.#authorizeAttempt(access, "check.attempt.interrupt", accessAttempt);
     const result = (): AttemptInterruptionResult => ({
       contract: "trust.attempt-interruption@1",
       status: "INTERRUPTED",
@@ -1013,6 +1090,7 @@ export class PlanRuntime {
     if (!requested) throw new PlanRuntimeError("attempt-not-found", "The requested Attempt is unknown");
     let releasedPlan: string | undefined;
     const interruption = await planTransaction(this.#database, requested.planSlug, async (transaction) => {
+      await this.#authorizeAttempt(access, "check.attempt.interrupt", requested, transaction);
       const attempts = this.#attempts.using(transaction);
       const facts = this.#facts.using(transaction);
       const plans = this.#plans.using(transaction);
@@ -1043,9 +1121,10 @@ export class PlanRuntime {
     return interruption;
   }
 
-  async #finalize(attempt: Attempt): Promise<AttemptFinalizationResult> {
+  async #finalize(attempt: Attempt, access?: AccessContext): Promise<AttemptFinalizationResult> {
     let revisionEvent: { revision: number; at: string; result: AttemptFinalizationResult } | undefined;
     const finalized = await planTransaction(this.#database, attempt.planSlug, async (transaction) => {
+      await this.#authorizeAttempt(access, "check.attempt.finalize", attempt, transaction);
       const attempts = this.#attempts.using(transaction);
       const factsStore = this.#facts.using(transaction);
       const plans = this.#plans.using(transaction);
@@ -1501,9 +1580,10 @@ export class PlanRuntime {
     return undefined;
   }
 
-  async #createAttempt(resolved: AdmissionResolution): Promise<AttemptCreation> {
+  async #createAttempt(resolved: AdmissionResolution, access?: AccessContext): Promise<AttemptCreation> {
     const now = this.#now();
     const attempt: Attempt = {
+      actor: this.#access.principal(access),
       handle: randomUUID(),
       attemptKey: resolved.attemptKey,
       executionId: randomUUID(),
@@ -1527,6 +1607,7 @@ export class PlanRuntime {
       const attempts = this.#attempts.using(transaction);
       const plans = this.#plans.using(transaction);
       const transactionalPlan = await plans.findPlan(resolved.plan.slug);
+      if (transactionalPlan) this.#access.authorize(access, "check.attempt.admit", transactionalPlan.creator);
       if (
         !transactionalPlan ||
         transactionalPlan.currentRevision !== resolved.plan.currentRevision ||
@@ -1563,7 +1644,10 @@ export class PlanRuntime {
         return { attempt: locked, created: false };
       }
       const concurrent = await attempts.findByKey(attempt.attemptKey);
-      if (concurrent) return { attempt: concurrent, created: false };
+      if (concurrent) {
+        await this.#authorizeAttempt(access, "check.attempt.admit", concurrent, transaction);
+        return { attempt: concurrent, created: false };
+      }
       if (resolved.plan.intentChaining && resolved.intent !== undefined) {
         const reserved =
           resolved.restartIntent === undefined

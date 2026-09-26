@@ -1,6 +1,8 @@
 import type { FactBatchInput } from "@trust/extension-sdk";
 import express, { type ErrorRequestHandler, type RequestHandler, type Router } from "express";
+import { AccessError } from "../access/error.js";
 import { type PlanRuntime, PlanRuntimeError } from "../plan/runtime.js";
+import { requestAccess } from "./access.js";
 
 export const OTLP_JSON_LIMIT_BYTES = 1_048_576;
 
@@ -19,9 +21,13 @@ export function createOtlpHttpHandler(dependencies: OtlpHttpDependencies): Route
   const router = express.Router();
   const handle: RequestHandler = async (request, response) => {
     try {
-      await dependencies.planRuntime.ingestLiveFacts(parseCheckFactTrace(request.body));
+      await dependencies.planRuntime.ingestLiveFacts(parseCheckFactTrace(request.body), requestAccess(request));
       response.status(200).json({});
     } catch (error) {
+      if (error instanceof AccessError) {
+        response.status(error.status).json({ error: error.code });
+        return;
+      }
       if (error instanceof PlanRuntimeError && error.code === "fact-batch-rejected") {
         response.status(200).json({
           partialSuccess: {

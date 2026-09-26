@@ -13,14 +13,28 @@ import { connect as connectSocket, createServer as createNetServer } from "node:
 import path from "node:path";
 import type { Duplex } from "node:stream";
 import { setTimeout as delay } from "node:timers/promises";
-
+import type { ResolvedTrustConfiguration } from "@trust/extension-sdk";
+import { configurationAuthority } from "@trust/extension-sdk";
+import { matchStorageConfiguration } from "@trust/extension-sdk/match";
+import { readServerConfiguration } from "./configuration.js";
 import type { TrustInstallation } from "./installation.js";
 
-const PROXY_PATHS = ["/health", "/rpc", "/mcp", "/otlp", "/events", "/extensions"];
+const PROXY_PATHS = [
+  "/health",
+  "/auth/config",
+  "/.well-known/oauth-protected-resource",
+  "/rpc",
+  "/mcp",
+  "/v1/traces",
+  "/otlp",
+  "/events",
+  "/extensions",
+];
 const mobileGatewaySockets = new WeakMap<Server, Set<Duplex>>();
 
 export interface TrustServerOptions {
   readonly installation: TrustInstallation;
+  readonly configuration?: ResolvedTrustConfiguration;
   readonly host?: string;
   readonly runtimePort?: number;
   readonly webPort?: number;
@@ -94,34 +108,56 @@ export interface RunningTrustServer {
 }
 
 export async function startTrustServer(options: TrustServerOptions): Promise<RunningTrustServer> {
-  const host = options.host ?? "127.0.0.1";
-  const runtimePort = validatePort(options.runtimePort ?? 4318, "runtime");
-  const webPort = validatePort(options.webPort ?? 4173, "web");
-  const webAccessPassword = options.webAccessPassword ?? process.env.TRUST_WEB_ACCESS_PASSWORD;
-  if (webAccessPassword && webAccessPassword.length < 20)
-    throw new TypeError("TRUST_WEB_ACCESS_PASSWORD must contain at least 20 characters");
+  const environment = { ...process.env, ...options.runtimeEnvironment };
+  const resolved = options.configuration ?? (await readServerConfiguration(environment, options.stateDirectory));
+  const configuration = resolved.configuration;
+  const host = options.host ?? configuration.server.host;
+  const runtimePort = validatePort(options.runtimePort ?? configuration.server.port, "runtime");
+  const webPort = validatePort(options.webPort ?? configuration.server.webPort, "web");
+  const webAccessPassword = options.webAccessPassword ?? configuration.shell.webAccessPassword;
+  if (webAccessPassword && (webAccessPassword.length < 20 || configuration.authentication.profile !== "local"))
+    throw new TypeError("Basic web gate requires at least 20 characters and local authentication");
   if (runtimePort === webPort) throw new TypeError("Runtime and web ports must be different");
-  const stateDirectory = absoluteDirectory(options.stateDirectory, "Server state directory");
-  const runtimeEnvironment = { ...process.env, ...options.runtimeEnvironment };
+  const stateDirectory = absoluteDirectory(configuration.server.stateDirectory, "Server state directory");
+  const runtimeEnvironment = { ...environment };
   delete runtimeEnvironment.TRUST_WEB_ACCESS_PASSWORD;
   if (runtimeEnvironment.TRUST_DATABASE_PATH !== undefined) {
     throw new TypeError("TRUST_DATABASE_PATH is retired; import SQLite explicitly before starting TRUST");
   }
   if (
-    runtimeEnvironment.TRUST_STORAGE !== "postgresql" &&
-    !runtimeEnvironment.TRUST_PGLITE_DIRECTORY &&
+    matchStorageConfiguration(configuration.storage, { pglite: () => true, postgresql: () => false }) &&
+    resolved.sources["storage.directory"] === "default" &&
     existsSync(path.join(stateDirectory, "runtime.sqlite"))
   ) {
     throw new Error(
       "Retained SQLite database detected; import it explicitly and select the target storage before starting TRUST",
     );
   }
-  runtimeEnvironment.TRUST_STORAGE ??= "pglite";
-  if (runtimeEnvironment.TRUST_STORAGE === "pglite") {
-    runtimeEnvironment.TRUST_PGLITE_DIRECTORY ??= path.join(stateDirectory, "pglite");
-  }
+  runtimeEnvironment.TRUST_STORAGE = configuration.storage.kind;
+  matchStorageConfiguration(configuration.storage, {
+    pglite: (storage) => {
+      runtimeEnvironment.TRUST_PGLITE_DIRECTORY = storage.directory;
+    },
+    postgresql: (storage) => {
+      runtimeEnvironment.TRUST_DATABASE_URL = storage.connectionString;
+    },
+  });
+  runtimeEnvironment.TRUST_AUTHENTICATION = JSON.stringify(configuration.authentication);
+  runtimeEnvironment.TRUST_SESSION_DURATION_MS = String(configuration.server.sessionDurationMs);
+  runtimeEnvironment.TRUST_TRIAL_TIMEOUT_MS = String(configuration.server.trialTimeoutMs);
+  runtimeEnvironment.TRUST_EXTENSION_TIMEOUT_MS = String(configuration.server.extensionTimeoutMs);
+  runtimeEnvironment.TRUST_LOG_LEVEL = configuration.logging.level;
+  if (configuration.server.extensionsFile)
+    runtimeEnvironment.TRUST_EXTENSIONS_FILE = configuration.server.extensionsFile;
+  if (configuration.server.runnerTrialScript)
+    runtimeEnvironment.TRUST_RUNNER_TRIAL_SCRIPT = configuration.server.runnerTrialScript;
+  if (configuration.server.diagnosticsEndpoint)
+    runtimeEnvironment.TRUST_DIAGNOSTICS_ENDPOINT =
+      resolved.sources["server.diagnosticsEndpoint"] === "default"
+        ? `http://${configurationAuthority(host, runtimePort)}/otlp/diagnostics`
+        : configuration.server.diagnosticsEndpoint;
   await mkdir(stateDirectory, { recursive: true });
-  const operationsDirectory = path.join(stateDirectory, "operations");
+  const operationsDirectory = configuration.server.operationsDirectory ?? path.join(stateDirectory, "operations");
   await prepareOperationsDirectory(options.installation.operationsDirectory, operationsDirectory);
   await Promise.all([assertPortAvailable(host, runtimePort), assertPortAvailable(host, webPort)]);
 
@@ -134,16 +170,19 @@ export async function startTrustServer(options: TrustServerOptions): Promise<Run
       TRUST_PORT: String(runtimePort),
       TRUST_OPERATIONS_DIRECTORY: operationsDirectory,
       TRUST_RUNTIME_INSTANCE: instance,
-      TRUST_RUNTIME_LOG_PATH: path.join(stateDirectory, "runtime.log"),
-      TRUST_SEMANTIC_AUTHORITY: `${host}:${runtimePort}`,
+      ...(configuration.logging.runtimePath ? { TRUST_RUNTIME_LOG_PATH: configuration.logging.runtimePath } : {}),
+      TRUST_SEMANTIC_AUTHORITY:
+        resolved.sources["server.semanticAuthority"] === "default"
+          ? configurationAuthority(host, runtimePort)
+          : configuration.server.semanticAuthority,
     },
     stdio: ["ignore", "ignore", "inherit"],
   });
   try {
-    await waitForRuntime(runtime, `http://${host}:${runtimePort}/health`, instance);
+    await waitForRuntime(runtime, `http://${configurationAuthority(host, runtimePort)}/health`, instance);
     const mobileUpstreams =
       options.mobileUpstreams === undefined
-        ? parseMobileUpstreams(process.env.TRUST_MOBILE_UPSTREAMS)
+        ? parseMobileUpstreams(JSON.stringify(configuration.shell.mobileUpstreams))
         : parseMobileUpstreams(JSON.stringify(options.mobileUpstreams));
     const web = createWebServer(
       options.installation.webDirectory,
@@ -154,8 +193,8 @@ export async function startTrustServer(options: TrustServerOptions): Promise<Run
     );
     await listen(web, host, webPort);
     return {
-      url: `http://${host}:${webPort}`,
-      runtimeUrl: `http://${host}:${runtimePort}`,
+      url: `http://${configurationAuthority(host, webPort)}`,
+      runtimeUrl: `http://${configurationAuthority(host, runtimePort)}`,
       close: async () => {
         await closeServer(web);
         await stopChild(runtime);
@@ -181,12 +220,16 @@ async function prepareOperationsDirectory(source: string, destination: string): 
   );
 }
 
-export async function readTrustServerStatus(host = "127.0.0.1", webPort = 4173): Promise<TrustServerStatus> {
+export async function readTrustServerStatus(
+  host = "127.0.0.1",
+  webPort = 4173,
+  password = process.env.TRUST_WEB_ACCESS_PASSWORD,
+): Promise<TrustServerStatus> {
   validatePort(webPort, "web");
-  const url = `http://${host}:${webPort}`;
+  const url = `http://${configurationAuthority(host, webPort)}`;
   try {
-    const headers = process.env.TRUST_WEB_ACCESS_PASSWORD
-      ? { authorization: `Basic ${Buffer.from(`mobile:${process.env.TRUST_WEB_ACCESS_PASSWORD}`).toString("base64")}` }
+    const headers = password
+      ? { authorization: `Basic ${Buffer.from(`mobile:${password}`).toString("base64")}` }
       : undefined;
     const [page, health] = await Promise.all([
       fetch(url, { ...(headers ? { headers } : {}), signal: AbortSignal.timeout(1_500) }),

@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
-import { readPushStatus } from "./api";
+import { useMobileApi, useMobileTransport } from "./transport";
 import type { PushStatus } from "./types";
 
 type NotificationState = "off" | "on" | "blocked" | "unsupported";
 
 export function useNotifications(apiBase: string, reportError: (message: string) => void) {
+  const transport = useMobileTransport();
+  const { readPushStatus } = useMobileApi();
   const [pushStatus, setPushStatus] = useState<PushStatus | null>(null);
   const [notificationState, setNotificationState] = useState<NotificationState>("off");
   const [changing, setChanging] = useState(false);
@@ -12,14 +14,14 @@ export function useNotifications(apiBase: string, reportError: (message: string)
 
   const command = useCallback(
     async (name: string, args: object) => {
-      const response = await fetch(commandUrl, {
+      const response = await transport.fetch(commandUrl, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ command: name, arguments: args }),
       });
       if (!response.ok) throw new Error(`Request failed (${response.status})`);
     },
-    [commandUrl],
+    [transport, commandUrl],
   );
 
   useEffect(() => {
@@ -55,7 +57,7 @@ export function useNotifications(apiBase: string, reportError: (message: string)
       active = false;
       link.remove();
     };
-  }, [apiBase, command, reportError]);
+  }, [apiBase, command, reportError, readPushStatus]);
 
   const toggle = useCallback(async () => {
     if (!pushStatus?.publicKey || changing) return;

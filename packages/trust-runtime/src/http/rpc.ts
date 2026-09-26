@@ -1,4 +1,4 @@
-import type { CatalogMetadata, CatalogMetadataUpdate } from "@trust/extension-sdk";
+import type { AccessContext, CatalogMetadata, CatalogMetadataUpdate } from "@trust/extension-sdk";
 import {
   compileOperation,
   OperationCompilationError,
@@ -7,6 +7,8 @@ import {
 } from "@trust/operation";
 import { CatalogProcedureCompilationError, type ProcedureCompilationErrorCode } from "@trust/procedure";
 import express, { type ErrorRequestHandler, type RequestHandler, type Router } from "express";
+import { AccessError } from "../access/error.js";
+import type { AccessService } from "../access/service.js";
 import { CatalogMetadataError, type CatalogMetadataStore, matchesCatalogQuery } from "../catalog/metadata.js";
 import type { CredentialService } from "../credential/service.js";
 import type { EnvironmentService } from "../environment/service.js";
@@ -19,6 +21,7 @@ import { ProcedureConflictError } from "../procedure/store.js";
 import { RegistryError, type RegistryErrorCode, type RegistryService } from "../registry/service.js";
 import { TemplateError, type TemplateService } from "../template/service.js";
 import { TrialError, type TrialService } from "../trial/service.js";
+import { requestAccess } from "./access.js";
 import { executeConfigurationRpc, InvalidConfigurationRpcParams, isConfigurationRpcMethod } from "./configuration.js";
 import {
   executePlanRuntimeRpc,
@@ -136,6 +139,9 @@ const TRIAL_ERROR = -32_040;
 const REGISTRY_ERROR = -32_050;
 
 interface RpcHttpDependencies {
+  readonly accessService: AccessService;
+  readonly access?: AccessContext | undefined;
+  readonly transportAuthorization?: string | undefined;
   readonly trialService: TrialService;
   readonly environmentService: EnvironmentService;
   readonly credentialService: CredentialService;
@@ -307,6 +313,12 @@ const processMessage = async (message: unknown, dependencies: RpcHttpDependencie
   const respond = <Response extends RpcResult>(response: Response): Response | undefined =>
     hasId ? response : undefined;
 
+  try {
+    dependencies.accessService.authorize(dependencies.access, message.method);
+  } catch {
+    return respond(failure(id, -32001, "Access denied"));
+  }
+
   if (
     message.method !== PROCEDURE_COMPILE_METHOD &&
     message.method !== PROCEDURE_PUBLISH_METHOD &&
@@ -335,6 +347,7 @@ const processMessage = async (message: unknown, dependencies: RpcHttpDependencie
       const result = await executeTemplateRpc(message.method, message.params, dependencies.templateService);
       return respond({ jsonrpc: "2.0", id, result });
     } catch (error) {
+      if (error instanceof AccessError) return respond(failure(id, -32001, "Access denied"));
       if (error instanceof TemplateError) return respond(failure(id, INVALID_PARAMS, error.message));
       return respond(failure(id, INTERNAL_ERROR, "Internal error"));
     }
@@ -367,6 +380,7 @@ const processMessage = async (message: unknown, dependencies: RpcHttpDependencie
       const metadata = await dependencies.catalogMetadata.update(params);
       return respond({ jsonrpc: "2.0", id, result: metadata });
     } catch (error) {
+      if (error instanceof AccessError) return respond(failure(id, -32001, "Access denied"));
       if (error instanceof CatalogMetadataError) return respond(failure(id, INVALID_PARAMS, error.message));
       return respond(failure(id, INTERNAL_ERROR, "Internal error"));
     }
@@ -377,6 +391,7 @@ const processMessage = async (message: unknown, dependencies: RpcHttpDependencie
       const result = await executeConfigurationRpc(message.method, message.params, dependencies);
       return respond({ jsonrpc: "2.0", id, result });
     } catch (error) {
+      if (error instanceof AccessError) return respond(failure(id, -32001, "Access denied"));
       if (error instanceof InvalidConfigurationRpcParams) {
         return respond(failure(id, INVALID_PARAMS, "Invalid params"));
       }
@@ -400,6 +415,7 @@ const processMessage = async (message: unknown, dependencies: RpcHttpDependencie
       const result = await executeRegistryRpc(message.method, message.params, dependencies);
       return respond({ jsonrpc: "2.0", id, result });
     } catch (error) {
+      if (error instanceof AccessError) return respond(failure(id, -32001, "Access denied"));
       if (error instanceof InvalidRegistryRpcParams) {
         return respond(failure(id, INVALID_PARAMS, "Invalid params"));
       }
@@ -426,6 +442,7 @@ const processMessage = async (message: unknown, dependencies: RpcHttpDependencie
       const result = await executeTrialRpc(message.method, message.params, dependencies);
       return respond({ jsonrpc: "2.0", id, result });
     } catch (error) {
+      if (error instanceof AccessError) return respond(failure(id, -32001, "Access denied"));
       if (error instanceof InvalidTrialRpcParams) return respond(failure(id, INVALID_PARAMS, "Invalid params"));
       if (error instanceof TrialError) {
         const data: TrialFailureData = {
@@ -494,6 +511,7 @@ const processMessage = async (message: unknown, dependencies: RpcHttpDependencie
         },
       });
     } catch (error) {
+      if (error instanceof AccessError) return respond(failure(id, -32001, "Access denied"));
       if (error instanceof OperationCompilationError || error instanceof OperationCatalogError) {
         return respond(
           failure(id, PROCEDURE_COMPILATION_ERROR, "Operation save rejected", {
@@ -525,6 +543,7 @@ const processMessage = async (message: unknown, dependencies: RpcHttpDependencie
         },
       });
     } catch (error) {
+      if (error instanceof AccessError) return respond(failure(id, -32001, "Access denied"));
       if (error instanceof OperationCatalogError) {
         return respond(
           failure(id, PROCEDURE_COMPILATION_ERROR, "Operation removal rejected", {
@@ -546,6 +565,7 @@ const processMessage = async (message: unknown, dependencies: RpcHttpDependencie
     try {
       return respond({ jsonrpc: "2.0", id, result: compileOperation(params) });
     } catch (error) {
+      if (error instanceof AccessError) return respond(failure(id, -32001, "Access denied"));
       if (error instanceof OperationCompilationError) {
         return respond(
           failure(id, PROCEDURE_COMPILATION_ERROR, "Operation rejected", {
@@ -567,6 +587,7 @@ const processMessage = async (message: unknown, dependencies: RpcHttpDependencie
     try {
       return respond({ jsonrpc: "2.0", id, result: await simulateOperation(params) });
     } catch (error) {
+      if (error instanceof AccessError) return respond(failure(id, -32001, "Access denied"));
       if (error instanceof OperationCompilationError) {
         return respond(
           failure(id, PROCEDURE_COMPILATION_ERROR, "Operation rejected", {
@@ -634,6 +655,7 @@ const processMessage = async (message: unknown, dependencies: RpcHttpDependencie
       const result = await dependencies.procedures.compile(params);
       return respond({ jsonrpc: "2.0", id, result });
     } catch (error) {
+      if (error instanceof AccessError) return respond(failure(id, -32001, "Access denied"));
       if (error instanceof CatalogProcedureCompilationError) {
         const data: ProcedureCompilationFailureData = {
           contract: PROCEDURE_COMPILATION_ERROR_CONTRACT,
@@ -665,6 +687,7 @@ const processMessage = async (message: unknown, dependencies: RpcHttpDependencie
         },
       });
     } catch (error) {
+      if (error instanceof AccessError) return respond(failure(id, -32001, "Access denied"));
       if (error instanceof CatalogProcedureCompilationError) {
         const data: ProcedureCompilationFailureData = {
           contract: PROCEDURE_COMPILATION_ERROR_CONTRACT,
@@ -716,6 +739,7 @@ const processMessage = async (message: unknown, dependencies: RpcHttpDependencie
     const result = await executePlanRuntimeRpc(message.method, message.params, dependencies);
     return respond({ jsonrpc: "2.0", id, result });
   } catch (error) {
+    if (error instanceof AccessError) return respond(failure(id, -32001, "Access denied"));
     if (error instanceof InvalidPlanRuntimeRpcParams) {
       return respond(failure(id, INVALID_PARAMS, "Invalid params"));
     }
@@ -810,7 +834,11 @@ const bodyParserFailure: ErrorRequestHandler = (error, _request, response, next)
 export const createRpcHttpHandler = (dependencies: RpcHttpDependencies): Router => {
   const router = express.Router();
   const handle: RequestHandler = (request, response) => {
-    void dispatch(request.body, dependencies)
+    void dispatch(request.body, {
+      ...dependencies,
+      access: requestAccess(request),
+      transportAuthorization: request.get("authorization"),
+    })
       .then((result) => {
         if (result === undefined) {
           response.status(204).end();

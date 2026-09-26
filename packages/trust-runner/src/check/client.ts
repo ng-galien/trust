@@ -3,7 +3,7 @@ import type {
   CheckAttemptAdmissionResult,
   CheckFinalizationResult,
 } from "@trust/extension-sdk";
-
+import type { RunnerAuthorization } from "../auth/credentials.js";
 import { parseHttpJson, requestHttp } from "../http/request.js";
 import { isJsonObject, type JsonObject } from "../lib/json.js";
 
@@ -21,11 +21,13 @@ export class CheckClientError extends Error {
 export class CheckClient {
   readonly #endpoint: string;
   readonly #timeoutMs: number;
+  readonly #authorization: RunnerAuthorization | undefined;
   #sequence = 0;
 
-  constructor(endpoint: string, timeoutMs = 30_000) {
+  constructor(endpoint: string, timeoutMs = 30_000, authorization?: RunnerAuthorization) {
     this.#endpoint = endpoint;
     this.#timeoutMs = timeoutMs;
+    this.#authorization = authorization;
   }
 
   async admit(
@@ -62,7 +64,11 @@ export class CheckClient {
     const response = await requestHttp({
       method: "POST",
       url: this.#endpoint,
-      headers: { "content-type": "application/json", accept: "application/json" },
+      headers: {
+        "content-type": "application/json",
+        accept: "application/json",
+        ...(await this.#authorization?.headers(this.#endpoint)),
+      },
       body: JSON.stringify({ jsonrpc: "2.0", id, method, params }),
       timeoutMs: this.#timeoutMs,
     });

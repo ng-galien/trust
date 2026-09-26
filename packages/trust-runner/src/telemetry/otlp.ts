@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import type { JsonValue } from "@trust/operation";
+import type { RunnerAuthorization } from "../auth/credentials.js";
 import { httpUrl, parseHttpJson, requestHttp } from "../http/request.js";
 import { isJsonObject, type JsonObject } from "../lib/json.js";
 
@@ -25,21 +26,27 @@ export interface FactExporter {
 export class OtlpFactExporter implements FactExporter {
   readonly #endpoint: string;
   readonly #timeoutMs: number;
+  readonly #authorization: RunnerAuthorization | undefined;
 
-  constructor(endpoint: string, timeoutMs = 30_000) {
+  constructor(endpoint: string, timeoutMs = 30_000, authorization?: RunnerAuthorization) {
     const parsed = httpUrl(endpoint);
     if (parsed.pathname !== "/v1/traces" || parsed.search !== "" || parsed.hash !== "") {
       throw new TypeError("OTLP endpoint must be an exact /v1/traces URL.");
     }
     this.#endpoint = parsed.href;
     this.#timeoutMs = timeoutMs;
+    this.#authorization = authorization;
   }
 
   async export(trace: FactTrace): Promise<void> {
     const response = await requestHttp({
       method: "POST",
       url: this.#endpoint,
-      headers: { "content-type": "application/json", accept: "application/json" },
+      headers: {
+        "content-type": "application/json",
+        accept: "application/json",
+        ...(await this.#authorization?.headers(this.#endpoint)),
+      },
       body: JSON.stringify(otlp(trace)),
       timeoutMs: this.#timeoutMs,
     });

@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { lazy, Suspense, useMemo } from "react";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router";
 import { ExtensionPage, ExtensionsHome } from "./extensions/extensions.js";
+import { AuthenticationBoundary } from "./lib/authentication-boundary.js";
 import { RuntimeContext } from "./lib/runtime-context.js";
 import { EnvironmentOverlay, EnvironmentsHome } from "./resources/environments/environments-home.js";
 import { HistoryHome } from "./resources/history/history-home.js";
@@ -25,59 +26,63 @@ const DocsArea = lazy(() => import("./docs/docs-area.js").then((module) => ({ de
 
 const queryClient = new QueryClient({ defaultOptions: { queries: { retry: 1, staleTime: 2_000 } } });
 
+const clearSessionQueries = () => queryClient.clear();
+
 export function TrustApplication({ runtimeUrl }: { runtimeUrl: string }) {
   const client = useMemo(() => new TrustRuntimeClient(runtimeUrl.replace(/\/$/, "")), [runtimeUrl]);
   return (
-    <QueryClientProvider client={queryClient}>
-      <RuntimeContext.Provider value={client}>
-        <BrowserRouter>
-          <Routes>
-            <Route path="/mobile/:extension" element={<ExtensionPage bare />} />
-            <Route element={<AppShell />}>
-              <Route path="/overview" element={<OverviewHome />} />
-              <Route path="/operations" element={<OperationsHome />}>
-                <Route path="new" element={<OperationOverlay mode="new" />} />
-                <Route path=":operation" element={<OperationOverlay />} />
+    <AuthenticationBoundary authentication={client.authentication} onSignedOut={clearSessionQueries}>
+      <QueryClientProvider client={queryClient}>
+        <RuntimeContext.Provider value={client}>
+          <BrowserRouter>
+            <Routes>
+              <Route path="/mobile/:extension" element={<ExtensionPage bare />} />
+              <Route element={<AppShell />}>
+                <Route path="/overview" element={<OverviewHome />} />
+                <Route path="/operations" element={<OperationsHome />}>
+                  <Route path="new" element={<OperationOverlay mode="new" />} />
+                  <Route path=":operation" element={<OperationOverlay />} />
+                </Route>
+                <Route path="/procedures" element={<ProceduresHome />}>
+                  <Route path="new" element={<ProcedureOverlay mode="new" />} />
+                  <Route path=":procedure" element={<ProcedureOverlay />} />
+                </Route>
+                <Route path="/environments" element={<EnvironmentsHome />}>
+                  <Route path="new" element={<EnvironmentOverlay mode="new" />} />
+                  <Route path=":environment" element={<EnvironmentOverlay />} />
+                </Route>
+                <Route path="/plans" element={<PlansHome mode="live" />}>
+                  <Route path="new" element={<PlanOverlay planMode="live" mode="new" />} />
+                  <Route path=":plan" element={<PlanOverlay planMode="live" />} />
+                </Route>
+                <Route path="/dry-runs" element={<PlansHome mode="dry-run" />}>
+                  <Route path="new" element={<PlanOverlay planMode="dry-run" mode="new" />} />
+                  <Route path=":plan" element={<PlanOverlay planMode="dry-run" />} />
+                </Route>
+                <Route path="/checklists" element={<Navigate to="/plans" replace />} />
+                <Route path="/delegation" element={<DelegationHome />} />
+                <Route path="/history" element={<HistoryHome />} />
+                <Route path="/templates" element={<TemplatesHome />}>
+                  <Route path="new" element={<TemplateOverlay mode="new" />} />
+                  <Route path=":template" element={<TemplateOverlay />} />
+                </Route>
+                <Route path="/settings" element={<SettingsHome />} />
+                <Route path="/extensions" element={<ExtensionsHome />} />
+                <Route path="/extensions/:extension" element={<ExtensionPage />} />
+                <Route
+                  path="/docs/*"
+                  element={
+                    <Suspense fallback={<LoadingState />}>
+                      <DocsArea />
+                    </Suspense>
+                  }
+                />
+                <Route path="*" element={<Navigate to="/overview" replace />} />
               </Route>
-              <Route path="/procedures" element={<ProceduresHome />}>
-                <Route path="new" element={<ProcedureOverlay mode="new" />} />
-                <Route path=":procedure" element={<ProcedureOverlay />} />
-              </Route>
-              <Route path="/environments" element={<EnvironmentsHome />}>
-                <Route path="new" element={<EnvironmentOverlay mode="new" />} />
-                <Route path=":environment" element={<EnvironmentOverlay />} />
-              </Route>
-              <Route path="/plans" element={<PlansHome mode="live" />}>
-                <Route path="new" element={<PlanOverlay planMode="live" mode="new" />} />
-                <Route path=":plan" element={<PlanOverlay planMode="live" />} />
-              </Route>
-              <Route path="/dry-runs" element={<PlansHome mode="dry-run" />}>
-                <Route path="new" element={<PlanOverlay planMode="dry-run" mode="new" />} />
-                <Route path=":plan" element={<PlanOverlay planMode="dry-run" />} />
-              </Route>
-              <Route path="/checklists" element={<Navigate to="/plans" replace />} />
-              <Route path="/delegation" element={<DelegationHome />} />
-              <Route path="/history" element={<HistoryHome />} />
-              <Route path="/templates" element={<TemplatesHome />}>
-                <Route path="new" element={<TemplateOverlay mode="new" />} />
-                <Route path=":template" element={<TemplateOverlay />} />
-              </Route>
-              <Route path="/settings" element={<SettingsHome />} />
-              <Route path="/extensions" element={<ExtensionsHome />} />
-              <Route path="/extensions/:extension" element={<ExtensionPage />} />
-              <Route
-                path="/docs/*"
-                element={
-                  <Suspense fallback={<LoadingState />}>
-                    <DocsArea />
-                  </Suspense>
-                }
-              />
-              <Route path="*" element={<Navigate to="/overview" replace />} />
-            </Route>
-          </Routes>
-        </BrowserRouter>
-      </RuntimeContext.Provider>
-    </QueryClientProvider>
+            </Routes>
+          </BrowserRouter>
+        </RuntimeContext.Provider>
+      </QueryClientProvider>
+    </AuthenticationBoundary>
   );
 }
