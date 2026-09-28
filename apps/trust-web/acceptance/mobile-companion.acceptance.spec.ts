@@ -587,20 +587,26 @@ test("touch swipe reveals pin and hold delete with undo without deleting project
     .toBeNull();
 });
 
-test("the mobile manifest and push service worker register in a phone browser", async ({ page, request }) => {
+test("the host manifest stays shared while the mobile push worker retains its scope", async ({ page, request }) => {
   const base = "/extensions/mobile-companion";
   expect([200, 409]).toContain((await request.post(`${base}/prepare`, { data: {} })).status());
   expect((await request.post(`${base}/start`, { data: {} })).ok()).toBeTruthy();
-  await page.goto("/mobile/mobile-companion/");
-  await expect(page.getByRole("heading", { name: "Sujets" })).toBeVisible();
-  const manifest = await (await request.get("/mobile/mobile-companion/manifest.webmanifest")).json();
-  expect(manifest.start_url).toBe("/mobile/mobile-companion/");
-  expect(manifest.scope).toBe("/mobile/mobile-companion/");
-  expect(manifest.theme_color).toBe("#153b73");
+  await page.goto("/extensions/mobile-companion");
+  await expect(page.locator(".mobile-companion")).toBeVisible();
+  const manifest = await (await request.get("/manifest.webmanifest")).json();
+  expect(manifest.id).toBe("/");
+  expect(manifest.start_url).toBe("/overview");
+  expect(manifest.scope).toBe("/");
+  expect(manifest.display).toBe("standalone");
+  expect(manifest.name).toBe("TRUST");
+  expect(manifest.theme_color).toBe("#f4f3ef");
   expect(manifest.icons.map((icon: { sizes: string }) => icon.sizes)).toEqual(["192x192", "512x512"]);
-  expect(await page.locator('link[rel="manifest"]').getAttribute("href")).toBe(
-    "/mobile/mobile-companion/manifest.webmanifest",
-  );
+  expect(await page.locator('link[rel="manifest"]').getAttribute("href")).toBe("/manifest.webmanifest");
+  await expect(page.locator('link[rel="manifest"]')).toHaveCount(1);
+  const cdp = await page.context().newCDPSession(page);
+  const parsed = await cdp.send("Page.getAppManifest");
+  expect(parsed.errors).toEqual([]);
+  expect(parsed.url).toBe(new URL("/manifest.webmanifest", page.url()).href);
   await page.evaluate(async () =>
     navigator.serviceWorker.register("/mobile/mobile-companion/sw.js", { scope: "/mobile/mobile-companion/" }),
   );
@@ -612,8 +618,17 @@ test("the mobile manifest and push service worker register in a phone browser", 
     )
     .toBe(true);
   for (const size of [192, 512]) {
+    const icon = await request.get(`/icons/trust-${size}.png`);
+    expect(icon.ok()).toBeTruthy();
+    expect(icon.headers()["content-type"]).toContain("image/png");
+    const bytes = await icon.body();
+    expect(bytes.readUInt32BE(16)).toBe(size);
+    expect(bytes.readUInt32BE(20)).toBe(size);
     expect((await request.get(`/mobile/mobile-companion/icon-${size}.png`)).ok()).toBeTruthy();
   }
+  await page.goto("/overview");
+  await expect(page.locator('link[rel="manifest"]')).toHaveCount(1);
+  await expect(page.locator('link[rel="manifest"]')).toHaveAttribute("href", "/manifest.webmanifest");
 });
 
 test("a long article keeps its rendered section outline usable at phone and wide widths", async ({ page, request }) => {

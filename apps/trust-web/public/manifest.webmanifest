@@ -1,0 +1,14 @@
+{
+  "id": "/",
+  "name": "TRUST",
+  "short_name": "TRUST",
+  "start_url": "/overview",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f4f3ef",
+  "theme_color": "#f4f3ef",
+  "icons": [
+    { "src": "/icons/trust-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "/icons/trust-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

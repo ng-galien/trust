@@ -25,10 +25,13 @@ export function useNotifications(apiBase: string, reportError: (message: string)
   );
 
   useEffect(() => {
-    const link = document.createElement("link");
-    link.rel = "manifest";
-    link.href = "/mobile/mobile-companion/manifest.webmanifest";
-    document.head.append(link);
+    // The host owns installation identity. Keep the legacy manifest only for a standalone hostless entry.
+    const link = document.querySelector('link[rel="manifest"]') ? null : document.createElement("link");
+    if (link) {
+      link.rel = "manifest";
+      link.href = "/mobile/mobile-companion/manifest.webmanifest";
+      document.head.append(link);
+    }
     let active = true;
     void readPushStatus(apiBase)
       .then(async (status) => {
@@ -55,7 +58,7 @@ export function useNotifications(apiBase: string, reportError: (message: string)
       });
     return () => {
       active = false;
-      link.remove();
+      link?.remove();
     };
   }, [apiBase, command, reportError, readPushStatus]);
 
