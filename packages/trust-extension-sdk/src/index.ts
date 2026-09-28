@@ -712,7 +712,10 @@ export interface PublishedProcedure {
 
 export type { AccessConfiguration, SharedAccessConfiguration } from "./access-configuration.js";
 export { authorityUrl, parseAccessConfiguration } from "./access-configuration.js";
-export type { AuthenticationConfiguration } from "./authentication-configuration.js";
+export type {
+  AuthenticationConfiguration,
+  DevelopmentAuthenticationConfiguration,
+} from "./authentication-configuration.js";
 export { parseAuthenticationConfiguration } from "./authentication-configuration.js";
 export { assertNoSecretLikeValue, normalizeAuthority } from "./authority.js";
 export type {

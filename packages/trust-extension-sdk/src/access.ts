@@ -13,9 +13,9 @@ export type AccessContext =
       readonly clientId?: string;
       readonly scopes: readonly string[];
       /** Unix seconds, not milliseconds. */
-      readonly expiresAt: number;
+      readonly expiresAt: number | null;
       readonly verifiedAt: number;
-      readonly verification: "local-jwt" | "introspection";
+      readonly verification: "local-jwt" | "introspection" | "fixed";
     };
 
 export const PLAN_ACCESS_ACTIONS = [

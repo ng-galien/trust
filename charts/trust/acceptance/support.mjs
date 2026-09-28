@@ -7,7 +7,7 @@ import { mkdtemp, readFile, writeFile, rm, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import Provider from "oidc-provider";
-import { parseAllDocuments, stringify } from "yaml";
+import { parse, parseAllDocuments, stringify } from "yaml";
 
 export const root = path.resolve(import.meta.dirname, "../../..");
 export const chart = path.join(root, "charts/trust");
@@ -33,6 +33,10 @@ export async function helmEnvironment(directory) {
   };
 }
 export async function render(directory, values = {}) {
+  if (values.config?.authentication === undefined) {
+    const example = parse(await readFile(path.join(chart, "examples/oidc-values.yaml"), "utf8"));
+    values = { ...values, config: { ...values.config, authentication: example.config.authentication } };
+  }
   const file = path.join(directory, `values-${randomUUID()}.yaml`);
   await writeFile(file, stringify(values));
   const text = execFileSync("helm", ["template", "acceptance", chart, "-f", file], {
@@ -177,16 +181,16 @@ export async function identityProvider(directory) {
 
 export async function prepareRuntime(
   directory,
-  { storage = { kind: "pglite", directory: "/var/lib/trust/pglite" }, secretEnvironment = [], databaseUrl } = {},
+  { storage = { kind: "pglite", directory: "/var/lib/trust/pglite" }, secretEnvironment = [], databaseUrl, authentication } = {},
 ) {
-  const identity = await identityProvider(directory);
+  const identity = authentication === undefined ? await identityProvider(directory) : undefined;
   const runtimePort = await freePort(),
     webPort = await freePort();
   const documents = await render(directory, {
     config: {
       server: { port: runtimePort, webPort },
       storage,
-      authentication: { ...identity.authentication, browser: null },
+      authentication: authentication ?? identity.authentication,
     },
     secretEnvironment,
   });
@@ -202,7 +206,7 @@ export async function prepareRuntime(
     TRUST_CONFIG_FILE: configFile,
     TRUST_SERVER_STATE_DIRECTORY: path.join(directory, "state"),
     TRUST_INSTALL_ROOT: root,
-    NODE_EXTRA_CA_CERTS: identity.caFile,
+    ...(identity ? { NODE_EXTRA_CA_CERTS: identity.caFile } : {}),
   });
   if (storage.kind === "pglite") environment.TRUST_PGLITE_DIRECTORY = path.join(directory, "state/pglite");
   if (databaseUrl) environment.TRUST_DATABASE_URL = databaseUrl;
@@ -259,14 +263,14 @@ export async function prepareRuntime(
     },
     close: async () => {
       await stop();
-      await identity.close();
+      await identity?.close();
     },
   };
 }
 export async function rpc(runtime, method, params = {}) {
   const response = await fetch(runtime.endpoint + "/rpc", {
     method: "POST",
-    headers: { "content-type": "application/json", authorization: `Bearer ${runtime.identity.token}` },
+    headers: { "content-type": "application/json", ...(runtime.identity ? { authorization: `Bearer ${runtime.identity.token}` } : {}) },
     body: JSON.stringify({ jsonrpc: "2.0", id: randomUUID(), method, params }),
   });
   const envelope = await response.json();

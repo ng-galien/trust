@@ -25,7 +25,15 @@ helm.sh/chart: {{ printf "%s-%s" .Chart.Name .Chart.Version | quote }}
 {{- if ne .Values.config.server.stateDirectory "/var/lib/trust" }}{{ fail "config.server.stateDirectory must use the persistent /var/lib/trust mount" }}{{ end -}}
 {{- if hasKey .Values.config.storage "connectionString" }}{{ fail "Use secretEnvironment for TRUST_DATABASE_URL; never put credentials in config" }}{{ end -}}
 {{- if hasKey (.Values.config.shell | default dict) "webAccessPassword" }}{{ fail "Shared authentication cannot use a Basic web access password" }}{{ end -}}
-{{- if ne .Values.config.authentication.profile "shared" }}{{ fail "The chart requires shared authentication with an external provider" }}{{ end -}}
+{{- if not (has .Values.config.authentication.profile (list "shared" "fixed")) }}{{ fail "The chart requires shared or explicitly configured fixed authentication" }}{{ end -}}
+{{- if eq .Values.config.authentication.profile "fixed" -}}
+{{- if ne .Values.config.authentication.access.mode "fixed" }}{{ fail "Fixed authentication requires fixed access" }}{{ end -}}
+{{- range $key, $_ := .Values.config.authentication -}}
+{{- if not (has $key (list "profile" "access")) }}{{ fail "Fixed authentication accepts only profile and access; supply only the selected fixed identity settings" }}{{ end -}}
+{{- end -}}
+{{- else -}}
+{{- if not (has (get (.Values.config.authentication.access | default dict) "mode") (list "local-jwt" "introspection")) }}{{ fail "Shared authentication requires explicit OIDC/OAuth access configuration; select examples/oidc-values.yaml or examples/fixed-values.yaml" }}{{ end -}}
+{{- end -}}
 {{- if eq .Values.config.authentication.access.mode "local" }}{{ fail "The chart refuses unauthenticated local mode" }}{{ end -}}
 {{- $seen := dict -}}
 {{- $mounts := dict -}}

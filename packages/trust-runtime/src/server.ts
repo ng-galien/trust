@@ -3,6 +3,7 @@ import type {
   AccessConfiguration,
   AccessContext,
   BrowserAuthenticationConfiguration,
+  DevelopmentAuthenticationConfiguration,
   StorageConfiguration,
 } from "@trust/extension-sdk";
 import { configurationAuthority } from "@trust/extension-sdk";
@@ -11,6 +12,7 @@ import { startTrustWebSocketLanguageServer, type TrustLanguageServerSocket } fro
 import type { CompiledOperation } from "@trust/operation";
 import type { Logger } from "pino";
 import { type RawData, type WebSocket, WebSocketServer } from "ws";
+import { allowedBrowserOrigin } from "./access/browser-origin.js";
 import type { AccessSecretResolver } from "./access/configuration.js";
 import type { AccessService } from "./access/service.js";
 import { createRuntimeContainer } from "./runtime.js";
@@ -19,6 +21,7 @@ export interface RuntimeServerOptions {
   readonly accessConfiguration?: AccessConfiguration;
   readonly accessSecretResolver?: AccessSecretResolver;
   readonly browserAuthentication?: BrowserAuthenticationConfiguration;
+  readonly developmentAuthentication?: DevelopmentAuthenticationConfiguration;
   readonly accessResourceUrl?: string;
   readonly extensionsFile?: string;
   readonly extensionTimeoutMs?: number;
@@ -85,6 +88,7 @@ export const startRuntime = async ({
   accessConfiguration,
   accessSecretResolver,
   browserAuthentication,
+  developmentAuthentication,
   accessResourceUrl,
   extensionsFile,
   extensionTimeoutMs,
@@ -101,6 +105,8 @@ export const startRuntime = async ({
   trialTimeoutMs,
   logger,
 }: RuntimeServerOptions): Promise<RunningRuntime> => {
+  if (developmentAuthentication && !["127.0.0.1", "::1", "localhost"].includes(host))
+    throw new TypeError("Development authentication requires a loopback runtime listener");
   const server = createServer();
   // Storage initialization is asynchronous. Requests arriving on the bound port
   // before the application is ready must receive a response, not hang forever.
@@ -132,6 +138,7 @@ export const startRuntime = async ({
       ...(accessConfiguration ? { accessConfiguration } : {}),
       ...(accessSecretResolver ? { accessSecretResolver } : {}),
       ...(browserAuthentication ? { browserAuthentication } : {}),
+      ...(developmentAuthentication ? { developmentAuthentication } : {}),
       ...(accessResourceUrl ? { accessResourceUrl } : {}),
       ...(extensionsFile === undefined ? {} : { extensionsFile }),
       ...(extensionTimeoutMs === undefined ? {} : { extensionTimeoutMs }),
@@ -209,8 +216,7 @@ export const startRuntime = async ({
       const origin = info.req.headers.origin;
       if (
         accessService.shared &&
-        origin !== undefined &&
-        (!browserAuthentication || origin !== new URL(browserAuthentication.redirectUri).origin)
+        !allowedBrowserOrigin(origin, browserAuthentication, developmentAuthentication, accessConfiguration)
       ) {
         done(false, 403, "Access denied");
         return;
@@ -238,7 +244,7 @@ export const startRuntime = async ({
       authenticated: (context) => context.expiresAt,
     });
     const timer =
-      expiry === undefined
+      expiry === undefined || expiry === null
         ? undefined
         : setTimeout(() => webSocket.close(1008, "Authentication expired"), Math.max(0, expiry * 1000 - Date.now()));
     timer?.unref();

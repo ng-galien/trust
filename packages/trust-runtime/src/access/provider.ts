@@ -5,7 +5,7 @@ import type { Clock } from "../time.js";
 import { type AccessFetch, type AccessSecretResolver } from "./configuration.js";
 import { AccessError } from "./error.js";
 
-type SharedConfiguration = Exclude<AccessConfiguration, { mode: "local" }>;
+type SharedConfiguration = Exclude<AccessConfiguration, { mode: "local" | "fixed" }>;
 type Metadata = {
   issuer: string;
   jwks_uri?: string;
@@ -129,6 +129,9 @@ export class AccessProvider {
 
   async verifyJwt(token: string): Promise<JWTPayload> {
     const configuration = matchAccessConfiguration(this.configuration, {
+      fixed: () => {
+        throw new AccessError("unauthenticated", "Fixed access does not use a provider");
+      },
       local: () => {
         throw new AccessError("unauthenticated", "JWT validation is not selected");
       },
@@ -180,6 +183,9 @@ export class AccessProvider {
 
   async introspect(token: string): Promise<Record<string, unknown>> {
     const configuration = matchAccessConfiguration(this.configuration, {
+      fixed: () => {
+        throw new AccessError("unauthenticated", "Fixed access does not use a provider");
+      },
       local: () => {
         throw new AccessError("unauthenticated", "Introspection is not selected");
       },

@@ -15,7 +15,7 @@ test("HELM-CONTRACT chart validates and renders supported configuration", async 
       TRUST_CONFIGURATION_SCHEMA,
       "Chart embeds the actual canonical SDK file-input schema",
     );
-    execFileSync("helm", ["lint", chart, "--strict"], { env: await helmEnvironment(directory), stdio: "pipe" });
+    execFileSync("helm", ["lint", chart, "--strict", "-f", path.join(chart, "examples/oidc-values.yaml")], { env: await helmEnvironment(directory), stdio: "pipe" });
     const defaults = await render(directory);
     const deployment = defaults.find((value) => value.kind === "Deployment");
     assert.equal(deployment.spec.replicas, 1);
@@ -66,10 +66,12 @@ test("HELM-CONTRACT chart validates and renders supported configuration", async 
     const introspection = await render(directory, {
       config: {
         authentication: {
+          profile: "shared",
+          resourceUrl: "https://trust.example.com/mcp",
           access: {
             mode: "introspection",
-            tokenProfile: null,
-            algorithms: null,
+            issuer: "https://issuer.example.com",
+            audience: "urn:trust:runtime",
             introspection: {
               clientId: "trust-introspection",
               clientSecretReference: { environment: "production", name: "issuer-introspection" },

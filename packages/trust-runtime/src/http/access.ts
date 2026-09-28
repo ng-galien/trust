@@ -39,7 +39,7 @@ export function expireAccessStream(context: AccessContext | undefined, response:
     local: () => undefined,
     authenticated: (value) => value.expiresAt,
   });
-  if (expiresAt === undefined) return;
+  if (expiresAt === undefined || expiresAt === null) return;
   const timer = setTimeout(() => response.end(), Math.max(0, expiresAt * 1000 - Date.now()));
   timer.unref();
   response.once("close", () => clearTimeout(timer));

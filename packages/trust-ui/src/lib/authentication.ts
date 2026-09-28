@@ -7,11 +7,20 @@ export class BrowserAuthentication {
   #initialization: Promise<boolean> | undefined;
   #renewal: Promise<string> | undefined;
   #required = false;
+  #development = false;
+  #developmentToken: string | undefined;
+  #developmentExpiresAt = 0;
   #generation = 0;
   #listeners = new Set<(ready: boolean) => void>();
   constructor(readonly baseUrl: string) {}
   get required(): boolean {
     return this.#required;
+  }
+  get localDevelopment(): boolean {
+    return this.#development && ["127.0.0.1", "localhost", "[::1]"].includes(window.location.hostname);
+  }
+  get development(): boolean {
+    return this.#development;
   }
   subscribe(listener: (ready: boolean) => void): () => void {
     this.#listeners.add(listener);
@@ -25,6 +34,8 @@ export class BrowserAuthentication {
   }
   async requireLogin(): Promise<void> {
     this.#generation += 1;
+    this.#developmentToken = undefined;
+    this.#developmentExpiresAt = 0;
     await this.#manager?.removeUser();
     this.#changed(false);
   }
@@ -39,9 +50,14 @@ export class BrowserAuthentication {
     const configuration = (await response.json()) as {
       required: boolean;
       browser: BrowserAuthenticationConfiguration | null;
+      development?: { mode: "embedded" };
     };
     this.#required = configuration.required;
     if (!configuration.required) return true;
+    if (configuration.development?.mode === "embedded") {
+      this.#development = true;
+      return this.#developmentSignIn();
+    }
     if (!configuration.browser) throw new Error("Browser sign-in is not configured for this server");
     const browser = configuration.browser;
     if (
@@ -69,17 +85,60 @@ export class BrowserAuthentication {
       url.pathname === new URL(browser.redirectUri).pathname &&
       (url.searchParams.has("code") || url.searchParams.has("error"))
     ) {
-      await this.#manager.signinRedirectCallback();
-      window.history.replaceState(null, "", "/overview");
+      const signedIn = await this.#manager.signinRedirectCallback();
+      const state = signedIn?.state;
+      const returnTo = state && typeof state === "object" && "returnTo" in state ? state.returnTo : undefined;
+      const requested =
+        typeof returnTo === "string" && returnTo.startsWith("/") && URL.canParse(returnTo, window.location.origin)
+          ? new URL(returnTo, window.location.origin)
+          : undefined;
+      const destination =
+        requested?.origin === window.location.origin
+          ? requested.pathname + requested.search + requested.hash
+          : "/overview";
+      window.history.replaceState(null, "", destination);
     }
     return (await this.#manager.getUser()) !== null;
   }
-  async login(): Promise<void> {
+  async #developmentSignIn(code?: string): Promise<boolean> {
+    const response = await fetch(`${this.baseUrl}/auth/dev/token`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(code === undefined ? {} : { code }),
+      credentials: "same-origin",
+      cache: "no-store",
+    });
+    if (response.status === 401 || response.status === 403) return false;
+    if (!response.ok) throw new Error("Development sign-in is unavailable");
+    const result = (await response.json()) as { accessToken?: unknown; expiresIn?: unknown };
+    if (typeof result.accessToken !== "string" || typeof result.expiresIn !== "number")
+      throw new Error("Invalid development sign-in response");
+    this.#developmentToken = result.accessToken;
+    this.#developmentExpiresAt = Date.now() + result.expiresIn * 1000;
+    return true;
+  }
+  async login(code?: string): Promise<void> {
     await this.initialize();
+    if (this.#development) {
+      if (!(await this.#developmentSignIn(code))) throw new Error("Development sign-in was refused");
+      this.#changed(true);
+      return;
+    }
     if (!this.#manager) throw new Error("Browser sign-in is unavailable");
-    await this.#manager.signinRedirect({ nonce: crypto.randomUUID(), prompt: "consent" });
+    await this.#manager.signinRedirect({
+      nonce: crypto.randomUUID(),
+      prompt: "consent",
+      state: { returnTo: window.location.pathname + window.location.search + window.location.hash },
+    });
   }
   async logout(): Promise<void> {
+    if (this.#development) {
+      await fetch(`${this.baseUrl}/auth/dev/logout`, { method: "POST", credentials: "same-origin" }).catch(
+        () => undefined,
+      );
+      await this.requireLogin();
+      return;
+    }
     if (!this.#manager) return;
     // Local sign-out discards tokens; it does not revoke the provider's grant/session.
     await this.requireLogin();
@@ -87,6 +146,14 @@ export class BrowserAuthentication {
   async token(): Promise<string | undefined> {
     if (!(await this.initialize())) throw new Error("Sign in required");
     if (!this.#required) return undefined;
+    if (this.#development) {
+      if (this.#developmentToken && this.#developmentExpiresAt > Date.now() + 30_000) return this.#developmentToken;
+      if (!(await this.#developmentSignIn())) {
+        await this.requireLogin();
+        throw new Error("Sign in required");
+      }
+      return this.#developmentToken;
+    }
     const manager = this.#manager;
     if (!manager) throw new Error("Sign in required");
     const user = await manager.getUser();

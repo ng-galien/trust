@@ -20,7 +20,8 @@ export function extensionInvocation(
         mode: "authenticated" as const,
         principal: context.principal,
         extensionId,
-        expiresAt: context.expiresAt,
+        // Fixed users have no credential expiry; the private IPC delegation remains short-lived.
+        expiresAt: context.expiresAt ?? Date.now() / 1000 + 60,
       }),
   });
 }

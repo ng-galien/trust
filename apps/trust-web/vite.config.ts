@@ -7,6 +7,12 @@ import { trustDocsMdx } from "./mdx.mjs";
 
 const runtime = process.env.TRUST_RUNTIME_URL ?? "http://127.0.0.1:4318";
 const port = Number(process.env.TRUST_WEB_PORT ?? "4173");
+const allowedPreviewHosts = (process.env.TRUST_WEB_ALLOWED_HOSTS ?? "")
+  .split(",")
+  .map((host) => host.trim())
+  .filter(Boolean);
+if (allowedPreviewHosts.some((host) => !/^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$/i.test(host)))
+  throw new Error("TRUST_WEB_ALLOWED_HOSTS must contain exact hostnames separated by commas");
 const mobileUpstreams = (() => {
   const raw = process.env.TRUST_MOBILE_UPSTREAMS;
   if (!raw) return {} as Record<string, ProxyOptions>;
@@ -67,6 +73,16 @@ const streamingProxy: ProxyOptions["configure"] = (proxy) => {
   });
 };
 
+const developmentAuthenticationProxy: ProxyOptions = {
+  target: runtime,
+  changeOrigin: false,
+  configure: (proxy) => {
+    proxy.on("proxyReq", (upstream, request) => {
+      if (request.headers.host) upstream.setHeader("Host", request.headers.host);
+    });
+  },
+};
+
 export default defineConfig({
   // Acceptance servers and the user's live preview run concurrently. They must
   // not replace each other's optimized dependency chunks (notably Monaco).
@@ -96,6 +112,7 @@ export default defineConfig({
       ...mobileUpstreams,
       "/health": runtime,
       "/auth/config": runtime,
+      "/auth/dev": developmentAuthenticationProxy,
       "/.well-known/oauth-protected-resource": runtime,
       "/v1/traces": runtime,
       "/extensions": {
@@ -112,10 +129,12 @@ export default defineConfig({
   preview: {
     port,
     strictPort: true,
+    allowedHosts: allowedPreviewHosts,
     proxy: {
       ...mobileUpstreams,
       "/health": runtime,
       "/auth/config": runtime,
+      "/auth/dev": developmentAuthenticationProxy,
       "/.well-known/oauth-protected-resource": runtime,
       "/v1/traces": runtime,
       "/extensions": {

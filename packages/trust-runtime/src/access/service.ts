@@ -8,7 +8,8 @@ import {
 } from "@trust/extension-sdk";
 import { matchAccessConfiguration, matchAccessContext } from "@trust/extension-sdk/match";
 import type { Clock } from "../time.js";
-import { type AccessFetch, type AccessSecretResolver } from "./configuration.js";
+import type { AccessFetch, AccessSecretResolver } from "./configuration.js";
+import type { DevelopmentAuthority } from "./development-authority.js";
 import { AccessError } from "./error.js";
 import { accessPlanScope, authorizeAccess } from "./policy.js";
 import { AccessProvider } from "./provider.js";
@@ -20,6 +21,7 @@ export interface AccessServiceDependencies {
   readonly clock: Clock;
   readonly accessFetch: AccessFetch;
   readonly accessSecretResolver: AccessSecretResolver;
+  readonly developmentAuthority?: DevelopmentAuthority;
 }
 
 const localContext: AccessContext = Object.freeze({ mode: "local" });
@@ -33,31 +35,61 @@ export class AccessService {
 
   constructor(private readonly dependencies: AccessServiceDependencies) {
     this.#configuration = parseAccessConfiguration(dependencies.accessConfiguration);
-    this.#provider = matchAccessConfiguration(this.#configuration, {
-      local: () => undefined,
-      "local-jwt": (configuration) =>
-        new AccessProvider(
-          configuration,
-          dependencies.clock,
-          dependencies.accessFetch,
-          dependencies.accessSecretResolver,
-        ),
-      introspection: (configuration) =>
-        new AccessProvider(
-          configuration,
-          dependencies.clock,
-          dependencies.accessFetch,
-          dependencies.accessSecretResolver,
-        ),
+    this.#provider = dependencies.developmentAuthority
+      ? undefined
+      : matchAccessConfiguration(this.#configuration, {
+          local: () => undefined,
+          fixed: () => undefined,
+          "local-jwt": (configuration) =>
+            new AccessProvider(
+              configuration,
+              dependencies.clock,
+              dependencies.accessFetch,
+              dependencies.accessSecretResolver,
+            ),
+          introspection: (configuration) =>
+            new AccessProvider(
+              configuration,
+              dependencies.clock,
+              dependencies.accessFetch,
+              dependencies.accessSecretResolver,
+            ),
+        });
+    this.shared = matchAccessConfiguration(this.#configuration, {
+      local: () => false,
+      fixed: () => true,
+      "local-jwt": () => true,
+      introspection: () => true,
     });
-    this.shared = this.#provider !== undefined;
   }
 
   async authenticate(authorizationHeader: string | undefined): Promise<AccessContext> {
-    const configuration = matchAccessConfiguration<Exclude<AccessConfiguration, { mode: "local" }> | undefined>(
-      this.#configuration,
-      { local: () => undefined, "local-jwt": (value) => value, introspection: (value) => value },
-    );
+    const fixed = matchAccessConfiguration(this.#configuration, {
+      local: () => undefined,
+      fixed: (value) => value,
+      "local-jwt": () => undefined,
+      introspection: () => undefined,
+    });
+    if (fixed) {
+      const context: AccessContext = Object.freeze({
+        mode: "authenticated",
+        principal: Object.freeze({ issuer: fixed.issuer, subject: fixed.subject }),
+        scopes: fixed.scopes,
+        expiresAt: null,
+        verifiedAt: this.dependencies.clock.now().getTime() / 1000,
+        verification: "fixed",
+      });
+      this.#contexts.add(context);
+      return context;
+    }
+    const configuration = matchAccessConfiguration<
+      Exclude<AccessConfiguration, { mode: "local" | "fixed" }> | undefined
+    >(this.#configuration, {
+      local: () => undefined,
+      fixed: () => undefined,
+      "local-jwt": (value) => value,
+      introspection: (value) => value,
+    });
     if (!configuration) return localContext;
     if (
       typeof authorizationHeader !== "string" ||
@@ -67,15 +99,21 @@ export class AccessService {
       throw new AccessError("unauthenticated", "A bearer access token is required");
     }
     const token = authorizationHeader.slice(7);
-    if (!this.#provider) throw new AccessError("authority-unavailable", "Access authority unavailable");
+    if (!this.#provider && !this.dependencies.developmentAuthority)
+      throw new AccessError("authority-unavailable", "Access authority unavailable");
     const provider = this.#provider;
-    const claims = await matchAccessConfiguration(configuration, {
-      local: () => {
-        throw new AccessError("unauthenticated", "Local authentication cannot validate a token");
-      },
-      "local-jwt": () => provider.verifyJwt(token),
-      introspection: () => provider.introspect(token),
-    });
+    const claims = this.dependencies.developmentAuthority
+      ? await this.dependencies.developmentAuthority.verify(token)
+      : await matchAccessConfiguration(configuration, {
+          local: () => {
+            throw new AccessError("unauthenticated", "Local authentication cannot validate a token");
+          },
+          fixed: () => {
+            throw new AccessError("unauthenticated", "Fixed authentication does not validate tokens");
+          },
+          "local-jwt": () => provider!.verifyJwt(token),
+          introspection: () => provider!.introspect(token),
+        });
     const now = this.dependencies.clock.now().getTime() / 1000;
     const validText = (value: unknown): value is string =>
       // biome-ignore lint/suspicious/noControlCharactersInRegex: Reject control characters in authenticated identity claims.
@@ -141,7 +179,10 @@ export class AccessService {
         throw new AccessError("unauthenticated", "Local context is not valid in shared mode");
       },
       authenticated: (authenticated) => {
-        if (authenticated.expiresAt <= this.dependencies.clock.now().getTime() / 1000)
+        if (
+          authenticated.expiresAt !== null &&
+          authenticated.expiresAt <= this.dependencies.clock.now().getTime() / 1000
+        )
           throw new AccessError("unauthenticated", "Access token has expired");
         return authenticated;
       },

@@ -51,6 +51,7 @@ try {
     port,
     accessConfiguration: authentication.access,
     ...(authentication.browser ? { browserAuthentication: authentication.browser } : {}),
+    ...(authentication.development ? { developmentAuthentication: authentication.development } : {}),
     ...(authentication.resourceUrl ? { accessResourceUrl: authentication.resourceUrl } : {}),
     ...(instance ? { instance } : {}),
     storage,

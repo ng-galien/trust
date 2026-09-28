@@ -68,6 +68,22 @@ const accessSchema = {
     { ...fields({ mode: { const: "local" } }), required: ["mode"] },
     {
       ...fields({
+        mode: { const: "fixed" },
+        issuer: text,
+        subject: text,
+        scopes: { type: "array", items: { type: "string", pattern: "^trust\\.[a-z0-9.-]+$" } },
+        allowedOrigins: {
+          type: "array",
+          items: {
+            type: "string",
+            pattern: "^(https://[^/?#@]+|http://(localhost|127\\.0\\.0\\.1|\\[::1\\])(:[0-9]+)?)$",
+          },
+        },
+      }),
+      required: ["mode", "issuer", "subject", "scopes"],
+    },
+    {
+      ...fields({
         ...commonAccessProperties,
         mode: { const: "local-jwt" },
         algorithms: {
@@ -110,6 +126,34 @@ const browserSchema = {
   }),
   required: ["issuer", "clientId", "redirectUri", "postLogoutRedirectUri", "scope"],
 };
+const developmentPrincipalSchema = fields({
+  subject: text,
+  scopes: { type: "array", items: text },
+});
+const developmentSchema = fields({
+  tailnetOrigin: text,
+  users: {
+    type: "array",
+    items: {
+      ...developmentPrincipalSchema,
+      properties: { ...developmentPrincipalSchema.properties, login: text },
+      required: ["login", "subject", "scopes"],
+    },
+  },
+  local: {
+    ...developmentPrincipalSchema,
+    properties: { ...developmentPrincipalSchema.properties, codeFile: text },
+    required: ["subject", "scopes", "codeFile"],
+  },
+  services: {
+    type: "array",
+    items: {
+      ...developmentPrincipalSchema,
+      properties: { ...developmentPrincipalSchema.properties, clientId: text, secretFile: text },
+      required: ["subject", "scopes", "clientId", "secretFile"],
+    },
+  },
+});
 /** File-input schema: required target values are checked after environment overrides. */
 export const TRUST_CONFIGURATION_SCHEMA = fields({
   server: fields({
@@ -127,12 +171,27 @@ export const TRUST_CONFIGURATION_SCHEMA = fields({
     diagnosticsEndpoint: text,
   }),
   storage: fields({ kind: { enum: ["pglite", "postgresql"] }, directory: text, connectionString: text }),
-  authentication: fields({
-    profile: { enum: ["local", "development", "shared"] },
-    access: accessSchema,
-    browser: browserSchema,
-    resourceUrl: text,
-  }),
+  authentication: {
+    ...fields({
+      profile: { enum: ["local", "fixed", "development", "shared"] },
+      access: accessSchema,
+      browser: browserSchema,
+      resourceUrl: text,
+      development: developmentSchema,
+    }),
+    allOf: [
+      {
+        if: { properties: { profile: { const: "fixed" } }, required: ["profile"] },
+        // biome-ignore lint/suspicious/noThenProperty: JSON Schema conditional keyword, not a Promise-like API.
+        then: {
+          required: ["access"],
+          properties: { access: { properties: { mode: { const: "fixed" } } } },
+          not: { anyOf: [{ required: ["browser"] }, { required: ["resourceUrl"] }, { required: ["development"] }] },
+        },
+        else: { properties: { access: { not: { properties: { mode: { const: "fixed" } }, required: ["mode"] } } } },
+      },
+    ],
+  },
   logging: fields({
     level: { enum: ["fatal", "error", "warn", "info", "debug", "trace", "silent"] },
     runtimePath: text,

@@ -1,0 +1,3 @@
+[submodule "trust-extension"]
+	path = trust-extension
+	url = https://github.com/ng-galien/trust-extension.git

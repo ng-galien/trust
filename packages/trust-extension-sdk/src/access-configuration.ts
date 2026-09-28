@@ -13,6 +13,13 @@ export interface SharedAccessConfiguration {
 
 export type AccessConfiguration =
   | { readonly mode: "local" }
+  | {
+      readonly mode: "fixed";
+      readonly issuer: string;
+      readonly subject: string;
+      readonly scopes: readonly string[];
+      readonly allowedOrigins?: readonly string[];
+    }
   | (SharedAccessConfiguration & {
       readonly mode: "local-jwt";
       readonly algorithms?: readonly string[];
@@ -80,6 +87,36 @@ export function parseAccessConfiguration(value: unknown): AccessConfiguration {
   if (input.mode === "local") {
     keys(input, ["mode"]);
     return Object.freeze({ mode: "local" });
+  }
+  if (input.mode === "fixed") {
+    keys(input, ["mode", "issuer", "subject", "scopes", "allowedOrigins"]);
+    const identity = (value: unknown): value is string =>
+      // biome-ignore lint/suspicious/noControlCharactersInRegex: Identity must not contain control characters.
+      string(value) && !/[\u0000-\u001f\u007f]/.test(value);
+    if (
+      !identity(input.issuer) ||
+      !identity(input.subject) ||
+      !Array.isArray(input.scopes) ||
+      input.scopes.some((scope) => !string(scope) || !/^trust\.[a-z0-9.-]+$/.test(scope))
+    )
+      throw new Error("Fixed access requires explicit issuer, subject and scopes");
+    const origins = input.allowedOrigins ?? [];
+    if (
+      !Array.isArray(origins) ||
+      origins.some((origin) => {
+        if (!string(origin)) return true;
+        const url = authorityUrl(origin, true);
+        return url.origin !== origin;
+      })
+    )
+      throw new Error("Fixed access allowedOrigins must contain exact HTTPS or loopback HTTP origins");
+    return Object.freeze({
+      mode: "fixed",
+      issuer: input.issuer,
+      subject: input.subject,
+      scopes: Object.freeze([...new Set(input.scopes as string[])]),
+      allowedOrigins: Object.freeze([...new Set(origins as string[])]),
+    });
   }
   if (input.mode !== "local-jwt" && input.mode !== "introspection") throw new Error("Unknown access mode");
   keys(input, [

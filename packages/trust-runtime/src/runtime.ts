@@ -1,9 +1,14 @@
-import type { BrowserAuthenticationConfiguration, StorageConfiguration } from "@trust/extension-sdk";
+import type {
+  BrowserAuthenticationConfiguration,
+  DevelopmentAuthenticationConfiguration,
+  StorageConfiguration,
+} from "@trust/extension-sdk";
 import { type AccessConfiguration, parseAccessConfiguration } from "@trust/extension-sdk";
 import type { CompiledOperation } from "@trust/operation";
 import { type AwilixContainer, asClass, asFunction, asValue, createContainer, InjectionMode } from "awilix";
 import type { Express, Router } from "express";
-import { type AccessFetch, type AccessSecretResolver } from "./access/configuration.js";
+import type { AccessFetch, AccessSecretResolver } from "./access/configuration.js";
+import { DevelopmentAuthority } from "./access/development-authority.js";
 import { AccessService } from "./access/service.js";
 import { AttemptStore } from "./attempt/store.js";
 import { CatalogMetadataStore } from "./catalog/metadata.js";
@@ -46,6 +51,8 @@ export interface RuntimeComponents {
   readonly accessSecretResolver: AccessSecretResolver;
   readonly accessService: AccessService;
   readonly browserAuthentication: BrowserAuthenticationConfiguration | undefined;
+  readonly developmentAuthentication: DevelopmentAuthenticationConfiguration | undefined;
+  readonly developmentAuthority: DevelopmentAuthority | undefined;
   readonly accessResourceUrl: string | undefined;
   readonly extensionHost: ExtensionHost;
   readonly extensionsHttpHandler: Router;
@@ -98,6 +105,7 @@ export interface RuntimeContainerOptions {
   accessSecretResolver?: AccessSecretResolver;
   clock?: Clock;
   browserAuthentication?: BrowserAuthenticationConfiguration;
+  developmentAuthentication?: DevelopmentAuthenticationConfiguration;
   accessResourceUrl?: string;
   extensionsFile?: string;
   extensionTimeoutMs?: number;
@@ -127,6 +135,19 @@ export const createRuntimeContainer = async (
   container.register({
     accessConfiguration: asValue(accessConfiguration),
     browserAuthentication: asValue(options.browserAuthentication),
+    developmentAuthentication: asValue(options.developmentAuthentication),
+    developmentAuthority: options.developmentAuthentication
+      ? asFunction(({ clock }: { clock: Clock }) => {
+          if (accessConfiguration.mode !== "local-jwt")
+            throw new TypeError("Development authentication requires JWT access");
+          return new DevelopmentAuthority(
+            options.developmentAuthentication!,
+            accessConfiguration.issuer,
+            accessConfiguration.audience,
+            clock,
+          );
+        }).singleton()
+      : asValue(undefined),
     accessResourceUrl: asValue(options.accessResourceUrl),
     accessFetch: asValue(options.accessFetch ?? globalThis.fetch),
     accessSecretResolver: options.accessSecretResolver

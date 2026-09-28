@@ -53,13 +53,87 @@ The shell CLI has no `--host` or `--port` options. The Runner's existing repeata
 
 `TRUST_RUNTIME_INSTANCE` is a shell-generated child correlation marker. `TRUST_RUNNER_PROCESS_GROUP` is an internal Trial process-group marker. Neither is a user identity or configurable permission. PostgreSQL pool size eight, dedicated ownership connection, 5000ms connection timeout, HTTP body limits and provider-cache durations remain implementation constants, not operator knobs.
 
+The separate Vite web preview accepts additional exact hostnames through `TRUST_WEB_ALLOWED_HOSTS`, a comma-separated environment value applied to `preview.allowedHosts`. Set only the Mac's Tailscale DNS name when relaying that preview through Tailscale Serve. This setting does not change the runtime bind address or authentication policy.
+
 ## Authentication configuration
 
-The section is `{profile,access,browser?,resourceUrl?}`. Explicit local profile has only local access and cannot carry shared settings. Development/shared profiles require nonlocal access and a protected resource URL. Shared requires HTTPS authority/browser URLs and refuses development loopback allowances. Development permits explicitly configured loopback HTTP; it does not make arbitrary plaintext remote authorities valid.
+The section is `{profile,access,browser?,resourceUrl?,development?}`. Explicit local profile has only local access and cannot carry shared settings. The fixed profile selects the explicit identity described below. Development/shared profiles require token-validated access and a protected resource URL. Shared requires HTTPS authority/browser URLs and refuses development loopback allowances. Development permits explicitly configured loopback HTTP; it does not make arbitrary plaintext remote authorities valid.
+
+### Fixed identity without an authentication provider
+
+Select `profile: "fixed"` and `access.mode: "fixed"` to use one configured identity on UI, RPC, MCP, Runner and extension calls without signing in, obtaining tokens or running an OIDC provider:
+
+```json
+{
+  "authentication": {
+    "profile": "fixed",
+    "access": {
+      "mode": "fixed",
+      "issuer": "https://identity.example",
+      "subject": "configured-user",
+      "scopes": ["trust.plan.list.own", "trust.plan.read.own"],
+      "allowedOrigins": ["http://127.0.0.1:4176"]
+    }
+  }
+}
+```
+
+`issuer`, `subject` and the complete `scopes` array are required. Preserve the existing issuer and subject exactly when switching an installation to fixed access: their pair owns Plans. The issuer is an identity namespace and is never contacted. An empty scopes array grants nothing. There is no default administrator or inferred permission; the same Plan ownership, action and extension-use checks apply. Every caller that reaches this installation acts as this configured identity, including callers that send an Authorization header. Fixed mode provides installation-level identity, not individual caller authentication; restrict listener and network access to the intended users.
+
+Only `profile` and `access` are accepted for fixed authentication. Browser/OIDC, protected-resource and embedded-development settings must be removed. `allowedOrigins` optionally lists exact HTTPS or loopback HTTP browser origins, without paths or trailing slashes. Include the UI origin and any private reverse-proxy origin. Requests carrying any other Origin are refused on protected HTTP and WebSocket surfaces. Clients without an Origin, such as MCP and Runner, do not need that list. The browser uses `/auth/config` to open directly without a sign-in screen. Run the packaged Runner with `TRUST_AUTH_FILE` unset; no credential file is required. Extensions still receive a private host-issued identity context, scoped to their identity and bounded to a short invocation lifetime; extension process grants remain separate.
+
+### OIDC and OAuth access
 
 Access settings are `mode`, `issuer`, `audience`, optional `discovery` (oidc default/oauth), `clockToleranceSeconds` (0, range 0–60), `maxTokenAgeSeconds` (300, range 1–86400), `timeoutMs` (5000, range 100–30000), and `allowInsecureLoopback` (false). JWT mode additionally accepts asymmetric `algorithms` (RS256 default) and `tokenProfile` (at+jwt default; alternate type requires explicit required claim discriminators). Introspection additionally requires clientId and `{environment,name}` clientSecretReference; authenticationMethod defaults to client_secret_basic and may be client_secret_post. The secret is resolved through the existing CredentialService. Bootstrap that existing reference through authorized provisioning before enabling introspection; this change adds no secret-bootstrap or permission bypass.
 
 Browser configuration contains issuer, public clientId, redirectUri, postLogoutRedirectUri, scope and optional resource. Issuer must match access; redirects share an origin. It never accepts a client secret. The closed canonical schema rejects unknown nested fields; runtime validation additionally checks related URLs and profile-specific policy. Helm embeds that same generated schema, then the runtime validates the environment-completed effective configuration.
+
+### Embedded development access
+
+An explicitly selected development profile can use `development` in place of `browser`. This mode is for a loopback-bound runtime shared through one HTTPS Tailscale Serve URL. It has no Keycloak, separate test OIDC process, default account, dummy password or anonymous fallback. It does not advertise an OAuth authorization server to MCP clients; local service clients obtain a Bearer token through the development service endpoint. The shared profile never accepts this section.
+
+```json
+{
+  "authentication": {
+    "profile": "development",
+    "access": {
+      "mode": "local-jwt",
+      "issuer": "https://trust-host.example.ts.net:18447/auth/dev",
+      "audience": "urn:trust:runtime",
+      "algorithms": ["RS256"],
+      "maxTokenAgeSeconds": 120
+    },
+    "resourceUrl": "http://127.0.0.1:4318/mcp",
+    "development": {
+      "tailnetOrigin": "https://trust-host.example.ts.net:18447",
+      "users": [{
+        "login": "developer@example.com",
+        "subject": "developer-stable-id",
+        "scopes": ["trust.plan.list.own", "trust.extension.mobile-companion.use"]
+      }],
+      "local": {
+        "subject": "developer-stable-id",
+        "scopes": ["trust.plan.list.own", "trust.extension.mobile-companion.use"],
+        "codeFile": "/private/trust/dev-login-code.json"
+      },
+      "services": [{
+        "clientId": "developer-agent",
+        "subject": "developer-agent-stable-id",
+        "scopes": ["trust.plan.list.own"],
+        "secretFile": "/private/trust/developer-agent.secret"
+      }]
+    }
+  }
+}
+```
+
+The Tailnet login must match an explicit `users` entry. TRUST maps it to a stable `subject` and the listed scopes; it does not create a user account or infer administrator rights. Tailscale Serve injects the identity header and removes a client-supplied identity header before proxying. The web proxy preserves the original Host for this exchange. The runtime and web preview must listen only on loopback, Serve must remain private to the tailnet, and Funnel must stay off. Tagged devices do not receive a user identity header and are refused. Local software on the development host remains inside this trusted proxy boundary, so this mode is not a production authentication substitute.
+
+The browser obtains a signed 120-second access token from `/auth/dev/token`, keeps it in memory, and sends it on each protected request. It requests a fresh token from the same endpoint when needed. On loopback, generate a one-time code with `node scripts/create-development-code.mjs <TRUST_CONFIG_FILE>` and enter it in the login view. The code expires after two minutes and is consumed once. A same-origin, HttpOnly, SameSite=Strict session cookie then permits short access-token renewal for eight hours; signing out revokes that session. Restarting the runtime invalidates its ephemeral signing keys and local sessions, while the configured issuer and subject remain stable for Plan ownership.
+
+For each service client, create a random private credential with `node scripts/create-development-service-secret.mjs <TRUST_CONFIG_FILE> <client-id>`. Only a loopback request without a browser Origin can exchange that client ID and secret at `POST /auth/dev/service-token`; the resulting token carries that service's distinct subject and configured scopes. Rotate the secret by rerunning the command. Keep the configuration and credential files outside Git with owner-only permissions. A future switch to a company OIDC issuer changes the `iss`/`sub` pair and needs an explicit ownership-mapping decision for retained Plans.
+
+The Runner can use a private `TRUST_AUTH_FILE` with `{ "version": 2, "mode": "development-service", "origin": "http://127.0.0.1:4318", "clientId": "developer-agent", "clientSecret": "<content of the private service secret file>" }`. It exchanges the credential over loopback for a short token and renews it in memory; it still sends Bearer tokens only to the configured RPC and OTLP endpoints. Protect this JSON file and its parent directory with owner-only permissions. The existing version 1 OAuth credential continues to work with a configured external OIDC provider.
 
 `TRUST_AUTH_CONFIG_FILE` is retired and fails with migration guidance. Move its JSON object under `authentication` in the common `TRUST_CONFIG_FILE`. The development issuer script now writes `runtime-configuration.json` in that shape. No retained process is reconfigured automatically. `TRUST_DATABASE_PATH` likewise remains rejected: explicitly import retained SQLite using the established data-preserving workflow before selecting a new store.
 

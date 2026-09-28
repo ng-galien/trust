@@ -1,0 +1,18 @@
+# Example only: retain the existing principal and approved scopes when switching.
+# All clients reaching this installation act as this identity. Restrict its network.
+config:
+  authentication:
+    profile: fixed
+    access:
+      mode: fixed
+      issuer: https://identity.example.com
+      subject: configured-user
+      scopes:
+        - trust.plan.list.own
+        - trust.plan.read.own
+        - trust.check.read.own
+        - trust.check.attempt.admit.own
+        - trust.check.attempt.facts.own
+        - trust.check.attempt.finalize.own
+        - trust.check.attempt.interrupt.own
+      allowedOrigins: [https://trust.example.com]

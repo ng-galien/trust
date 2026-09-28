@@ -19,6 +19,15 @@ export interface RunnerCredential {
   readonly resource?: string;
 }
 
+/** Loopback-only service credential for the embedded development authority. */
+export interface DevelopmentRunnerCredential {
+  readonly version: 2;
+  readonly mode: "development-service";
+  readonly origin: string;
+  readonly clientId: string;
+  readonly clientSecret: string;
+}
+
 export interface RunnerAuthorization {
   headers(endpoint: string): Promise<Readonly<Record<string, string>>>;
 }
@@ -31,9 +40,30 @@ function token(value: unknown): value is string {
   return typeof value === "string" && value.length > 0 && value.length <= 16384 && /^[\x21-\x7e]+$/u.test(value);
 }
 
-export function parseRunnerCredential(value: unknown): RunnerCredential {
+export function parseRunnerCredential(value: unknown): RunnerCredential | DevelopmentRunnerCredential {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw credentialError();
   const row = value as Record<string, unknown>;
+  if (row.version === 2) {
+    if (
+      Object.keys(row).some((key) => !["version", "mode", "origin", "clientId", "clientSecret"].includes(key)) ||
+      row.mode !== "development-service" ||
+      typeof row.origin !== "string" ||
+      typeof row.clientId !== "string" ||
+      !/^[a-z][a-z0-9-]*$/u.test(row.clientId) ||
+      !token(row.clientSecret) ||
+      row.clientSecret.length < 32 ||
+      row.clientSecret.length > 256
+    )
+      throw credentialError();
+    const origin = httpUrl(row.origin);
+    if (
+      origin.origin !== row.origin ||
+      origin.protocol !== "http:" ||
+      !["127.0.0.1", "localhost", "[::1]"].includes(origin.hostname)
+    )
+      throw credentialError();
+    return row as unknown as DevelopmentRunnerCredential;
+  }
   const allowed = [
     "version",
     "origin",
@@ -102,7 +132,7 @@ export async function readPrivateJson(file: string): Promise<unknown> {
   }
 }
 
-export async function readRunnerCredential(file: string): Promise<RunnerCredential> {
+export async function readRunnerCredential(file: string): Promise<RunnerCredential | DevelopmentRunnerCredential> {
   return parseRunnerCredential(await readPrivateJson(file));
 }
 
@@ -170,11 +200,35 @@ export function createRunnerAuthorization(
     otlp.hash
   )
     throw new Error("Authenticated Runner RPC and OTLP must use the same configured origin and exact protocol paths.");
-  let pending: Promise<RunnerCredential> | undefined;
-  const load = async (): Promise<RunnerCredential> => {
+  let pending: Promise<string> | undefined;
+  let developmentToken: { value: string; expiresAt: number } | undefined;
+  const load = async (): Promise<string> => {
     const credential = await readRunnerCredential(file);
     if (credential.origin !== rpc.origin) throw credentialError();
-    if (credential.expiresAt > Date.now() + 30000) return credential;
+    if (credential.version === 2) {
+      if (developmentToken && developmentToken.expiresAt > Date.now() + 30_000) return developmentToken.value;
+      const response = await fetch(`${credential.origin}/auth/dev/service-token`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ clientId: credential.clientId, secret: credential.clientSecret }),
+        redirect: "error",
+      });
+      if (!response.ok) throw new Error("Development Runner service authentication failed.");
+      const result: unknown = await response.json();
+      if (!result || typeof result !== "object" || Array.isArray(result)) throw credentialError();
+      const tokenResponse = result as Record<string, unknown>;
+      if (
+        !token(tokenResponse.accessToken) ||
+        typeof tokenResponse.expiresIn !== "number" ||
+        !Number.isSafeInteger(tokenResponse.expiresIn) ||
+        tokenResponse.expiresIn < 31 ||
+        tokenResponse.expiresIn > 120
+      )
+        throw credentialError();
+      developmentToken = { value: tokenResponse.accessToken, expiresAt: Date.now() + tokenResponse.expiresIn * 1000 };
+      return developmentToken.value;
+    }
+    if (credential.expiresAt > Date.now() + 30000) return credential.accessToken;
     if (!credential.refreshToken) throw new Error("Runner access token expired; renew the private credential file.");
     const lock = `${file}.lock`;
     const deadline = Date.now() + 10000;
@@ -190,8 +244,8 @@ export function createRunnerAuthorization(
     }
     try {
       const latest = await readRunnerCredential(file);
-      if (latest.origin !== rpc.origin) throw credentialError();
-      if (latest.expiresAt > Date.now() + 30000) return latest;
+      if (latest.origin !== rpc.origin || latest.version !== 1) throw credentialError();
+      if (latest.expiresAt > Date.now() + 30000) return latest.accessToken;
       if (!latest.refreshToken) throw new Error("Runner credential cannot refresh.");
       const config = await runnerOidcConfiguration(latest);
       const result = await oidc.refreshTokenGrant(
@@ -208,7 +262,7 @@ export function createRunnerAuthorization(
         refreshToken: result.refresh_token ?? latest.refreshToken,
       };
       await writeRunnerCredential(file, refreshed);
-      return refreshed;
+      return refreshed.accessToken;
     } catch {
       throw new Error("Runner credential refresh failed; authenticate again using the private credential helper.");
     } finally {
@@ -224,8 +278,8 @@ export function createRunnerAuthorization(
       pending ??= load().finally(() => {
         pending = undefined;
       });
-      const credential = await pending;
-      return { authorization: `Bearer ${credential.accessToken}` };
+      const accessToken = await pending;
+      return { authorization: `Bearer ${accessToken}` };
     },
   };
 }

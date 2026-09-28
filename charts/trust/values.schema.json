@@ -151,6 +151,7 @@
             "profile": {
               "enum": [
                 "local",
+                "fixed",
                 "development",
                 "shared"
               ]
@@ -167,6 +168,43 @@
                   },
                   "required": [
                     "mode"
+                  ]
+                },
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "mode": {
+                      "const": "fixed"
+                    },
+                    "issuer": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "subject": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "scopes": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "pattern": "^trust\\.[a-z0-9.-]+$"
+                      }
+                    },
+                    "allowedOrigins": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "pattern": "^(https://[^/?#@]+|http://(localhost|127\\.0\\.0\\.1|\\[::1\\])(:[0-9]+)?)$"
+                      }
+                    }
+                  },
+                  "required": [
+                    "mode",
+                    "issuer",
+                    "subject",
+                    "scopes"
                   ]
                 },
                 {
@@ -379,8 +417,170 @@
             "resourceUrl": {
               "type": "string",
               "minLength": 1
+            },
+            "development": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "tailnetOrigin": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "users": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "subject": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "scopes": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      },
+                      "login": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    },
+                    "required": [
+                      "login",
+                      "subject",
+                      "scopes"
+                    ]
+                  }
+                },
+                "local": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "subject": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "scopes": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    },
+                    "codeFile": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "subject",
+                    "scopes",
+                    "codeFile"
+                  ]
+                },
+                "services": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "subject": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "scopes": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      },
+                      "clientId": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "secretFile": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    },
+                    "required": [
+                      "subject",
+                      "scopes",
+                      "clientId",
+                      "secretFile"
+                    ]
+                  }
+                }
+              }
             }
-          }
+          },
+          "allOf": [
+            {
+              "if": {
+                "properties": {
+                  "profile": {
+                    "const": "fixed"
+                  }
+                },
+                "required": [
+                  "profile"
+                ]
+              },
+              "then": {
+                "required": [
+                  "access"
+                ],
+                "properties": {
+                  "access": {
+                    "properties": {
+                      "mode": {
+                        "const": "fixed"
+                      }
+                    }
+                  }
+                },
+                "not": {
+                  "anyOf": [
+                    {
+                      "required": [
+                        "browser"
+                      ]
+                    },
+                    {
+                      "required": [
+                        "resourceUrl"
+                      ]
+                    },
+                    {
+                      "required": [
+                        "development"
+                      ]
+                    }
+                  ]
+                }
+              },
+              "else": {
+                "properties": {
+                  "access": {
+                    "not": {
+                      "properties": {
+                        "mode": {
+                          "const": "fixed"
+                        }
+                      },
+                      "required": [
+                        "mode"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          ]
         },
         "logging": {
           "type": "object",

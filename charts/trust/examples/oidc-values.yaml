@@ -1,0 +1,22 @@
+# Complete example: replace provider, audience, client and browser origins.
+config:
+  authentication:
+    profile: shared
+    access:
+      mode: local-jwt
+      issuer: https://issuer.example.com
+      audience: urn:trust:runtime
+      discovery: oidc
+      algorithms: [RS256]
+      tokenProfile:
+        headerType: at+jwt
+      maxTokenAgeSeconds: 300
+      clockToleranceSeconds: 0
+    resourceUrl: https://trust.example.com/mcp
+    browser:
+      issuer: https://issuer.example.com
+      clientId: trust-browser
+      redirectUri: https://trust.example.com/auth/callback
+      postLogoutRedirectUri: https://trust.example.com/
+      scope: openid offline_access trust.plan.read.own trust.plan.list.own trust.extension.list
+      resource: urn:trust:runtime
