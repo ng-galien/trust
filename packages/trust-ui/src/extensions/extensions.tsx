@@ -155,7 +155,12 @@ export function ExtensionPage({ bare = false }: { bare?: boolean }) {
       // The current core Procedure view selects the catalog by id, not historical version.
       procedureHref: (procedure: string, _version?: string) => `/procedures/${encodeURIComponent(procedure)}`,
       navigate: (href: string) => {
-        void navigate(href);
+        void navigate(
+          href,
+          href.startsWith("/plans/")
+            ? { state: { from: `${location.pathname}${location.search}${window.location.hash}` } }
+            : undefined,
+        );
       },
       search: location.search,
       replaceSearch: (search: string) => {

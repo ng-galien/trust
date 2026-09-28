@@ -6,12 +6,14 @@ import { useResolvedTheme } from "../lib/preferences.js";
 import { Header } from "./header.js";
 import { PageBoundary } from "./page-boundary.js";
 import { Sidebar } from "./sidebar.js";
+import "./plan-mobile.css";
 
 export function AppShell() {
   const theme = useResolvedTheme();
   const location = useLocation();
   const isDocumentation = location.pathname === "/docs" || location.pathname.startsWith("/docs/");
   const isExtension = location.pathname === "/extensions" || location.pathname.startsWith("/extensions/");
+  const isPlan = location.pathname.startsWith("/plans/");
   usePlanEventsBridge();
   useEffect(() => {
     document.documentElement.classList.toggle("dark", theme === "dark");
@@ -20,7 +22,7 @@ export function AppShell() {
 
   return (
     <div
-      className={`flex h-full flex-col overflow-hidden bg-bg text-text ${isDocumentation || isExtension ? "min-w-0" : "min-w-[720px]"} ${isExtension ? "extension-shell" : ""}`}
+      className={`flex h-full flex-col overflow-hidden bg-bg text-text ${isDocumentation || isExtension || isPlan ? "min-w-0" : "min-w-[720px]"} ${isExtension ? "extension-shell" : ""} ${isPlan ? "plan-shell" : ""}`}
     >
       <Header />
       <div className="flex min-h-0 flex-1">

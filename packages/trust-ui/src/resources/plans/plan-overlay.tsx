@@ -405,10 +405,10 @@ function PlanItem({
         </div>
       ) : null}
       {ordered ? (
-        <div className="flex h-full min-h-0">
+        <div className="flex h-full min-h-0" data-plan-tab={tab}>
           <div className="min-h-0 min-w-0 flex-1">
             {tab === "checklist" ? (
-              <div className="flex h-full min-h-0 flex-col">
+              <div className="plan-checklist-view flex h-full min-h-0 flex-col">
                 <PlanSummaryStrip plan={ordered} compiled={compiled} onSelectCheck={(uri) => setSel(`check:${uri}`)} />
                 <div className="min-h-0 flex-1">
                   <PlanChecklist plan={ordered} compiled={compiled} selected={sel} onSelect={setSel} />

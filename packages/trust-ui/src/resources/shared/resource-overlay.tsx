@@ -129,7 +129,10 @@ export function ResourceOverlay<T extends string>({
                   : "flex min-h-0 min-w-0 flex-1 flex-col"
               }
             >
-              <div className="flex shrink-0 items-center justify-between gap-4 border-b border-border px-3 py-1.5">
+              <div
+                className="flex shrink-0 items-center justify-between gap-4 border-b border-border px-3 py-1.5"
+                data-doc="overlay.navigation"
+              >
                 <span data-doc="overlay.tabs">
                   <SegmentedControl
                     ariaLabel={t("shared.resourceOverlay.views")}
