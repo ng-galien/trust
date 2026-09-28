@@ -74,7 +74,7 @@ export async function readInstallations(file: string | undefined): Promise<Insta
     const requested = strings(manifest.requestedCapabilities);
     const grants = strings(item.grants);
     if (
-      [...requested, ...grants].some((value) => !["plans.read", "plans.subscribe"].includes(value)) ||
+      [...requested, ...grants].some((value) => !["plans.read", "plans.subscribe", "plans.declare"].includes(value)) ||
       grants.some((value) => !requested.includes(value))
     )
       throw new Error("Invalid extension grants");

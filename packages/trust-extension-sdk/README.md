@@ -107,3 +107,21 @@ is an example choice, not an SDK requirement. See the
 [authoring task guide](../../docs/agents/author-extension.md) for verification and
 the independent [package acceptance](acceptance/package.acceptance.test.mjs) for
 the executable contract check.
+
+## Plan inputs from extension forms
+
+An installation may explicitly request and grant `plans.declare`. Its page can
+POST to `${trustBase}/plans/{plan}/declarations` using the canonical
+`PlanDeclarationReplacementInput` contract. The host validates the JSON boundary,
+requires extension-use access and the grant, confines the Plan to the installation
+Environment, and calls the same `PlanRuntime.replaceDeclarations` service as
+RPC/MCP with the requesting principal. Core ownership and action permissions still
+apply. This is not a proxy to RPC, an arbitrary context patch or a live Fact input.
+
+Send the complete current scalar declarations with `expectedRevision`; preserve
+unrelated roles. Omit `missionDeclarations` to leave accepted collections intact.
+A stale revision returns 409; reread instead of silently rebasing a user's draft.
+Only Procedure-declared roles may change. Roots, fixed roles and observed outputs
+remain outside this surface. A successful submission records Plan inputs, not
+qualification. Use `plans.read` to reread declarations and qualified results and
+`plans.subscribe` for change notifications. The extension need not store answers.

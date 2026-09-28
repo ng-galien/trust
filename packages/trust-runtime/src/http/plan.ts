@@ -321,7 +321,7 @@ function parsePlanEngagement(value: unknown): PlanEngagementParams {
   };
 }
 
-function parsePlanDeclarationReplacement(value: unknown): PlanDeclarationReplacementInput {
+export function parsePlanDeclarationReplacement(value: unknown): PlanDeclarationReplacementInput {
   const record = exactRecord(value, ["contract", "plan", "expectedRevision", "declarations"], ["missionDeclarations"]);
   const missionDeclarations =
     record.missionDeclarations === undefined ? undefined : parseMissionDeclarations(record.missionDeclarations);

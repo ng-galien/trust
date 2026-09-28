@@ -3,19 +3,23 @@ import { AccessError } from "../access/error.js";
 import type { AccessService } from "../access/service.js";
 import { ExtensionError, type ExtensionHost } from "../extensions/host.js";
 import type { PlanEvents } from "../plan/events.js";
-import type { PlanReader } from "../plan/read.js";
+import { type PlanReader, ReadError } from "../plan/read.js";
+import { type PlanRuntime, PlanRuntimeError } from "../plan/runtime.js";
 import { expireAccessStream, guardAccessStream, requestAccess } from "./access.js";
+import { InvalidPlanRuntimeRpcParams, parsePlanDeclarationReplacement } from "./plan.js";
 
 export function createExtensionsHttpHandler({
   extensionHost,
   accessService,
   planReader,
   planEvents,
+  planRuntime,
 }: {
   extensionHost: ExtensionHost;
   accessService: AccessService;
   planReader: PlanReader;
   planEvents: PlanEvents;
+  planRuntime: PlanRuntime;
 }): Router {
   const router = Router();
   router.use(express.json({ limit: "64kb" }));
@@ -39,6 +43,23 @@ export function createExtensionsHttpHandler({
       if (surface === "commands" && rest.length === 0 && request.method === "POST") {
         const result = await extension.command(request.body, access);
         response.status(result.status).json(result.body);
+        return;
+      }
+      if (
+        surface === "trust" &&
+        rest[0] === "plans" &&
+        rest.length === 3 &&
+        rest[2] === "declarations" &&
+        request.method === "POST"
+      ) {
+        accessService.authorizeExtension(access, id);
+        extension.requireRunning();
+        extension.requireGrant("plans.declare");
+        const input = parsePlanDeclarationReplacement(request.body);
+        if (input.plan !== decodeURIComponent(rest[1]!)) throw new ExtensionError(400, "invalid-extension-request");
+        const plan = await planReader.readPlanBySlug(input.plan, false, access);
+        if (plan.environment !== extension.installation.environment) throw new ExtensionError(404, "plan-not-found");
+        response.json(await planRuntime.replaceDeclarations(input, access));
         return;
       }
       if (request.method !== "GET") throw new ExtensionError(405, "extension-read-only");
@@ -178,6 +199,20 @@ function sendError(response: Response, error: unknown) {
   }
   if (error instanceof AccessError) {
     response.status(error.status).json({ error: { code: error.code, message: "Access denied" } });
+    return;
+  }
+  if (error instanceof InvalidPlanRuntimeRpcParams) {
+    response.status(400).json({ error: { code: "invalid-extension-request", message: error.message } });
+    return;
+  }
+  if (error instanceof PlanRuntimeError) {
+    response
+      .status(error.code === "plan-conflict" ? 409 : 400)
+      .json({ error: { code: error.code, message: error.message } });
+    return;
+  }
+  if (error instanceof ReadError) {
+    response.status(404).json({ error: { code: error.code, message: "Plan unavailable" } });
     return;
   }
   const known = error instanceof ExtensionError;

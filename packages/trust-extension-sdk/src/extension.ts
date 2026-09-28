@@ -58,7 +58,7 @@ export interface ExtensionEventStream extends EventTarget {
   close(): void;
 }
 
-/** Paths may target only this installed extension's API, commands and TRUST projections. */
+/** Paths target this installation's API, commands and granted TRUST surfaces, including Plan declarations. */
 export interface ExtensionUiTransport {
   fetch(path: string, init?: RequestInit): Promise<Response>;
   openEvents(): ExtensionEventStream;
