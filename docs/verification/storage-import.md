@@ -113,38 +113,9 @@ addition to these isolated import-boundary acceptances.
 
 For an explicitly selected retained copy, enable the additional public continuation
 journey with `TRUST_IMPORT_RETAINED_SOURCE`, `TRUST_IMPORT_RETAINED_OPERATIONS` and
-optionally `TRUST_IMPORT_RETAINED_PLAN` (default:
-`hall-npm-server-preparation-2026-09-25`). It imports into another fresh target,
+`TRUST_IMPORT_RETAINED_PLAN` naming the explicitly selected retained Plan. It imports into another fresh target,
 reads every retained Plan and published Procedure, compares every Snapshot ID via
 paginated public history, appends one new mission on the copied Plan, and verifies
 that all existing child IDs/generations survive the next revision and restart.
 It invokes no Runner or external action. Its source archive is deliberately kept
 for independent review; only its task-owned PostgreSQL target is dropped.
-
-## Evidence from the 2026-09-25 implementation rehearsal
-
-The complete retained project snapshot imported into both PGlite and PostgreSQL:
-65 Plans, 291 revisions, 37 child generations, 26 publications, 128 Attempts,
-121 Facts, 121 receipts, 121 Snapshots, 432 active qualifications and three
-escalations. Every application column passed comparison; the Attempt watermark
-remained 128 and the revision identity watermark 291. The public continuation
-journey on `hall-npm-server-preparation-2026-09-25` added a mission and a new child
-while preserving all four existing child identities and generations on both
-engines, including after restart. Nine import acceptances passed on each engine, including committed-WAL capture
-without source main/WAL changes and rejection of malformed UTF-8.
-
-An independent mobile core snapshot imported into PGlite with 18 Plans, 55
-revisions, 13 child generations, two publications and 18 Facts/Snapshots. This
-copied only the mobile installation's **core** database; its extension database
-was not changed.
-
-The original project SQLite snapshot already contains an older pinned definition
-for `agent-delegation-20260909` whose declared invocation `execute-work` omits
-`materializes`. Reading that Plan succeeds, but appending another mission returns
-`invalid-plan-declarations` (`invocation.materializes is not iterable`) on both
-target engines. This is a pre-existing definition limitation, not an import data
-change. No historical definition was silently rewritten. It does not invalidate
-row preservation or supported reads; supporting a new append to that older
-composition requires separate explicit treatment of its historical contract.
-
-No retained installation was activated or reconfigured by these rehearsals.

@@ -1,27 +1,13 @@
-# React hook transition audit
+# React hook transition guidance
 
-React installed during this audit: 19.2.8. Baseline: 33 dependency diagnostics,
-21 hook sites across 14 files. Do not apply dependency autofixes or suppress the
-rule: several apparently extra dependencies encode real lifecycle transitions.
+Do not apply dependency autofixes or suppress the rule without inspecting the
+lifecycle transition. Apparently extra dependencies may encode resource identity,
+retry, selection or live refresh. Verify behavior through public browser journeys.
 
-Approved batch 1: scalar identity captures for the coordination dialog and remote
-module loader; inline sidebar timer cleanup. Preserve existing behavior.
+The table records transition requirements and design options. It is not an
+execution report or a claim that an implementation remains unfinished.
 
-Batch 1 is implemented and passed three public browser acceptances (dialog
-focus/pinning, catalog refresh without remount, remote retry, sidebar timer).
-
-The subsequent authorized state batch implements request identities for retry
-and live Plan refresh, resource-owned drafts without a cache, guarded resets for
-procedure inputs and next intentions, derived pristine declarations, explicit
-environment-context selection, and DOM-observed console following. Its owned
-files have no Biome diagnostics; final public transition verification is recorded
-by the supervising task. Do not interpret this as completion of the remaining
-editor, graph or schema work.
-
-Docs scrolling/mobile navigation were handled by the documentation agent and
-passed public hash/history, keyboard-link and mobile-menu acceptance.
-
-## Remaining supervised decisions
+## Transition requirements
 
 | Site | Intended transition and risk | Proposed direction / public acceptance |
 | --- | --- | --- |

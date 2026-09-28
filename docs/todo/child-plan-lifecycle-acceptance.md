@@ -141,34 +141,3 @@ rejections. Compiling nested definitions does not execute nested Plans, establis
 these lifecycle transitions, or prove race/restart behavior. Implementation is
 changing concurrently: these are coverage obligations, not a verdict on a later
 completed runtime revision.
-
-## Executed cascade acceptance evidence
-
-On 2026-09-05, `child-plan-cascade.acceptance.test.ts` ran against isolated real
-runtime processes and test-owned SQLite databases: **4 tests passed, 0 failed,
-0 skipped**. The command was:
-
-```sh
-npm run build --workspace=@trust/runtime
-node --test --test-concurrency=1 packages/trust-runtime/dist/acceptance/child-plan-cascade.acceptance.test.js
-```
-
-- Case 4: both positive-to-positive and positive-to-negative leaf requalification
-  through four levels. Direct root admission checks the actual dependency refusal
-  before any ancestor read; root and intermediate qualifications reopen, the same
-  child identities remain, and an unrelated sibling's entire view stays unchanged.
-- Cases 5 and 6: replace the root's child Input while a great-grandchild attempt
-  is admitted and its operator Facts are withheld. Late accepted Facts and
-  historical finalization remain on the old leaf; all replacement views and
-  intentions stay unchanged. Direct old leaf admission reports supersession, and
-  duplicate historical finalization cannot advance the replacement root.
-- Case 11, accepted-Facts-before-finalization boundary: restart the real process
-  with the same test-owned database, then finalize the same attempt without another
-  admission or observation. Identical Fact IDs, one attempt, independent intentions
-  and current child relations survive; the immediate parent still needs its own
-  final Check.
-
-These executions use the authorized dry-run operator RPC path. They do not prove
-live Runner/OTLP delivery or abrupt process termination: the tested restart is
-orderly after the Facts RPC response. The remaining checklist cases require their
-own execution evidence; this record does not mark the entire matrix covered.

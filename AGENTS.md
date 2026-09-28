@@ -36,21 +36,19 @@ assets/operations/        Operation catalog and design direction
 environments/trust-test/  retained Kind environment: projects, cluster, manifests, connectors and scripts
 ```
 
-## Retained shared development database
+## Retained development data
 
-`.trust/project/runtime.sqlite` is the retained SQLite database behind the local project MCP
-runtime at `127.0.0.1:4498` and its UI. Although this is a development database, it contains
-Plans, published Procedures and history used to author and run procedures across the owner's
-local development projects. It is **not** a disposable test fixture. Do not reset, reseed,
-replace or delete it (or its WAL/SHM companions) as a routine response to a schema mismatch.
+The owner's development runtimes hold Plans, published Procedures and execution
+history. They are **not** disposable test fixtures. Do not reset, reseed, replace
+or delete retained stores or their database companion files in response to a
+schema mismatch. Preserve existing private backups; replacing or removing one
+requires the owner's explicit direction.
 
-`.trust/project/backups/runtime-before-results-20260918.sqlite` is a consistent SQLite backup
-made before the 2026-09-18 runtime restart. At creation it passed `PRAGMA integrity_check` and
-contained 17 Plans and 105 Plan revisions. Keep this local backup; it is not tracked in Git.
-It may be replaced by a newer verified snapshot only on the owner's explicit direction, never
-by routine cleanup. Before changing the retained runtime or database, identify the exact active
-database, make and verify a consistent backup, use a data-preserving approach, and verify the
-MCP and retained data afterward. See [local runtime inventory](docs/verification/local-runtime/README.md).
+Before changing a retained runtime, identify its actual active configuration,
+database and owning process, make and verify a consistent backup, use a
+data-preserving approach, and verify public MCP/RPC and retained data afterward.
+Keep installation addresses, inventories and backup records outside Git. See
+[retained runtime maintenance](docs/verification/local-runtime/README.md).
 
 ## Non-negotiable design rules
 

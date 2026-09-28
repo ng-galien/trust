@@ -1,16 +1,12 @@
-# Rendering lint review
+# Rendering safety boundaries
 
-Reviewed on 2026-09-06. The three local `noDangerouslySetInnerHtml` exceptions
-in the documentation diagram and coordination Markdown renderers are approved.
-Both configure Mermaid with `securityLevel: "strict"`. The installed Mermaid
-renderer calls DOMPurify before returning SVG; only that returned SVG reaches
-these JSX insertion sites. The public federated browser acceptance checks a
-malicious HTML event handler, a JavaScript link and an attempted loose-security
-directive while retaining a rendered diagram. This is bounded evidence, not a
-general security guarantee.
+Keep Mermaid configured with `securityLevel: "strict"`. A bounded
+`noDangerouslySetInnerHtml` exception may insert the SVG returned by the sanitized
+Mermaid renderer; it does not authorize arbitrary HTML insertion. Public browser
+acceptances must exercise malicious event handlers, JavaScript links and attempted
+loose-security directives while retaining a rendered diagram. Passing those
+cases is bounded evidence, not a general security guarantee.
 
-The proposed SearchInput autofocus exception was rejected. Its justification
-incorrectly attributed the Environment editor's TextInput caller to SearchInput.
-SearchInput has one caller, anchor-explorer, which does not request autofocus.
-The unused prop and exception were removed; the actual TextInput behavior was
-not changed. UI typechecking and the targeted Biome check pass.
+Justify autofocus exceptions against the actual component and its callers.
+Do not retain an unused autofocus prop or attribute another component's behavior
+to it. Typechecking and lint checks supplement public interaction acceptance.

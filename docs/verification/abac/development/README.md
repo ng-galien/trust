@@ -12,7 +12,7 @@ Use the installed maintained Node LTS release, an empty owner-only directory (`0
 node scripts/auth-development-server.mjs --enable-development --directory /absolute/private/directory
 ```
 
-The issuer listens on `http://127.0.0.1:4521`. The generated `runtime-access.json` is the shell configuration wrapper for a separately launched runtime at port 4530; the public browser client returns to `http://127.0.0.1:4181/auth/callback`. The Runner public client returns to `http://127.0.0.1:4522/callback`. `startDevelopmentProvider` accepts explicit loopback browser/callback overrides for isolated tests. No existing runtime or enterprise configuration changes automatically.
+The issuer listens on `http://127.0.0.1:4521`. The generated `runtime-configuration.json` is the shell configuration wrapper for a separately launched runtime at port 4530; the public browser client returns to `http://127.0.0.1:4181/auth/callback`. The Runner public client returns to `http://127.0.0.1:4522/callback`. `startDevelopmentProvider` accepts explicit loopback browser/callback overrides for isolated tests. No existing runtime or enterprise configuration changes automatically.
 
 The private directory contains runtime configuration, browser public configuration, Runner login configuration, and random private service/introspection client secrets. Keep it out of source control. The local JWT runtime configuration contains no client secret. A configured introspection authority resolves its client secret from its own protected server credential reference; the fixture does not install that reference into any retained Environment.
 
@@ -39,23 +39,7 @@ Only the exact configured RPC and OTLP URLs receive the bearer header. HTTP redi
 
 The maintained provider deliberately refuses JWT access-token introspection. The fixture does not invent a wrapper to emulate it. Fixed resource profiles share an audience but select different token formats. Production issuer and runtime profiles require independently configured accounts, clients, HTTPS endpoints, permissions and protected credentials.
 
-## Evidence and limits
-
-The three named development acceptances are in `packages/trust-runtime/acceptance/access-development-*.test.mjs`. They cover the real packaged `auth.js` acquiring a private credential through its loopback callback (including invalid-state refusal and listener shutdown), packaged Runner refresh of that credential, actual PKCE issuance, JWKS signature verification and tamper rejection, account scope ceilings, opaque revocation, private credential reads and refresh, the packaged Runner through authenticated RPC and OTLP, external Shell/HTTP isolation, redirect refusal, and persisted creator/actor plus rejected foreign OTLP on disposable PGlite and PostgreSQL databases.
-
-The unit-labelled test includes real provider protocol operations; its layer label describes its mission group, not proof of isolation from services. The integration and database tests use real runtime containers with HTTP listeners and real storage, while the external Check reads Git metadata without changing the checkout. The database test explicitly creates and drops uniquely named disposable databases, never the connection's existing coordination database.
-
-The test support bundles Runner source into a fresh temporary module for credential and transport assertions; the public execution also calls `dist/skill/trust/scripts/run.js`. Governed verification hashes both source and packaged artifacts after the coordinator's build freeze. Provider HTML interactions are driven through HTTP in the packaged CLI test; a real desktop browser is outside that test. Production accounts and a deployed enterprise provider are also outside these tests. Reviewer identity remains procedural until the separate authenticated coordination design is implemented.
-
-Upstream references: [oidc-provider](https://github.com/panva/node-oidc-provider), [openid-client](https://github.com/panva/openid-client).
-
-
-## Provider lifecycle limits
-
-This fixture does not expose account administration, live account disablement, or live permission editing. Fixed account and client ceilings are installed at process start; changing source/configuration and restarting creates a new development issuer state. Controlled authority fixtures elsewhere can test TRUST rejection of changed claims or inactive introspection results, but those observations are not evidence that this development provider implements an account-management product.
-
-The genuine provider behavior established here is code/PKCE issuance, grant-scoped permissions, refresh, opaque introspection and grant revocation. Revoking the opaque grant prevents further refresh and reports its access token inactive. JWT access tokens intentionally remain bounded by their signed expiry under local verification. The browser has registered logout callbacks, but this suite does not exercise an end-session journey; logout must not be described as global access-token or offline-grant revocation. No current test claims recovery of provider state across process restart: state is intentionally ephemeral.
-
-## Subsequent configuration milestone
-
-This report records the earlier ABAC verification state. The later server-configuration work retires `TRUST_AUTH_CONFIG_FILE` in favor of the `authentication` section selected by `TRUST_CONFIG_FILE`; the development launcher now writes `runtime-configuration.json`. See the [current operator reference](../../../reference/server-configuration.md). These later changes have their own verification and do not rewrite this report's historical evidence.
+For the current configuration format and embedded development mode, see the
+[server configuration reference](../../../reference/server-configuration.md).
+The separate development provider is an ephemeral fixture, not an account
+administration or production identity service.

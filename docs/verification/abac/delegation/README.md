@@ -144,50 +144,27 @@ them independently.
   result, and use a new mission if it does not. No release/deployment or guarantee
   of ABAC behavior follows from this mechanism's own acceptance suite.
 
-## Verification performed and reproducible commands
+## Reproducing the public acceptance
 
-The helper acceptance exercises green and fresh rerun, failed assertion, zero
-actual tests, required skip, child crash, printed fake report, stale source and
-compiled artifact, mutation during execution, escaping/symlink paths, missing
-name and unmapped requirement. Eleven named tests passed.
-
-The public acceptance starts a disposable runtime and creates one unique
-PostgreSQL database. It compiles the new sources, executes real packaged Runner
-Checks with RPC admission and OTLP Facts, verifies six success/failure variants,
-and observes persisted mission/event history. Its integration test includes actual
-HTTP Plan reads; its database execution checks transaction, insert/select and
-rollback. Negative completed declarations cannot bypass the verification or
-review dependencies. The positive fixture deliberately exercises both worker and
-reviewer paths as a **test harness**, not independent review of this assignment.
-One integration test plus its named database subtest passed. All 13 tests passed
-with zero failures, cancellations or skips; test databases were dropped afterward.
-
-From this checkout, using the already authorized credential file without printing
-it:
+Build the checkout first, then run the real runtime acceptance against a disposable
+PostgreSQL administration connection configured through
+`TRUST_COORDINATION_DATABASE_URL` or `COORDINATION_VERIFICATION_DATABASE_URL`.
+Keep `PGPASSWORD` private. The test creates and drops only uniquely named test
+databases and uses the packaged Runner for mission transitions.
 
 ```sh
-source .trust/storage-study-20260925/environment
-node --test extensions/coordination/acceptance/verification-helper.test.mjs extensions/coordination/acceptance/verification-runtime.acceptance.test.mjs
+node --test extensions/coordination/acceptance/verification-runtime.acceptance.test.mjs
 code-moniker check . --report
 ```
 
-The runtime test requires `TRUST_COORDINATION_DATABASE_URL` (or
-`COORDINATION_VERIFICATION_DATABASE_URL`) and the existing `PGPASSWORD`. It fails
-if the administrator connection is unavailable; it never converts missing DB
-coverage into a skip. The configured user must be allowed to create/drop only
-those unique test databases. Their schemas are initialized from the existing
-mission schema; mission transitions themselves use the Runner, never direct SQL.
+A missing database connection fails instead of skipping coverage. When invoked
+through a Runner, use the non-secret `COORDINATION_VERIFICATION_DATABASE_URL`
+alias because Shell sanitization removes `TRUST_*`. This configures only the
+invoking process, not a retained Environment or service.
 
-When those same tests are invoked by the packaged Runner, its normal Shell
-sanitization removes `TRUST_*`. The invoking host may pass the non-secret URL
-alias using its already configured value, without printing it:
-
-```sh
-export COORDINATION_VERIFICATION_DATABASE_URL="$TRUST_COORDINATION_DATABASE_URL"
-```
-
-This only configures the invoking process; it does not edit the persistent
-Environment or a running service. `PGPASSWORD` stays in the process environment.
-Neither the helper nor these acceptances modifies retained coordination schemas,
-Plans or service configuration. Public publication/coordination calls on 4510
-are tracked separately from the disposable tests and independent review.
+Mission responses are persisted text in coordination PostgreSQL. Verification
+reports are generated from actual test observations and persisted as accepted
+TRUST Facts. Agent-authored Markdown files are not verification input. Keep
+installation snapshots, execution transcripts and ad hoc reports in private
+storage rather than public documentation; a path in a response does not capture
+the referenced file's contents or qualify its claims.

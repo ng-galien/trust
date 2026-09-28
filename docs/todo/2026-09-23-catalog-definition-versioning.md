@@ -112,24 +112,6 @@ The model separates the **immutable executable revision** (`kind/name@version`, 
 - Registry sync continues to verify full published artifact bytes. Local editorial revisions are not exported by the current registry index; cross-runtime metadata exchange needs a separate design.
 - Actor and reason fields, version-level versus identity-level inheritance, a summary format, controlled tag vocabulary, duplicate detection and semantic ranking remain open. They must not be inferred from the first increment.
 
-## Verification and activation
-
-- Runtime public acceptance: 8/8 pass. Both resource kinds can be edited and found by text and tags after a restart on a disposable database; history and revision conflict work; published sources and a previously engaged Plan remain byte-identical.
-- MCP public acceptance: 3/3 pass. Both catalog queries and metadata updates work, stale revisions are rejected, and original source is preserved.
-- UI public acceptance: 1/1 pass on isolated browser-test ports. Both resource kinds can be edited from their detail views and found through updated text and tags.
-- Integrated documentation acceptance: 9/9 pass; four affected screenshot groups were regenerated in both languages and themes (16/16 capture checks). Runtime and UI typechecks/builds pass. `code-moniker check . --report` found 0 violations across 607 scanned files; `git diff --check` passes.
-- Schema activation: a new empty database has the catalog revision table. An existing database requires the explicit additive upgrade command in `packages/trust-runtime/scripts/upgrade-catalog-metadata.mjs`, which verifies the exact prior digest, creates and verifies a consistent backup, adds only the revision table, checks integrity and retains every existing row. The retained shared development database must be handled under its local-runtime protocol, not reset.
-
-## Companion mission draft
-
-`2026-09-23-catalog-definition-versioning-mission.feature` is an unpublished inline Procedure for a bounded delegated task in this change. It uses the existing coordination mission Operations to persist a request, claim, response and observed outcome. The coordinator supplies the exact implementation or review instructions and expected deliverable through its root Inputs. A `completed` response proves that the assigned agent submitted a response, not that the product owner accepted its contents.
-
-Using it as an inline mission requires an already engaged parent Plan with a declared mission collection, the four `coordination.mission-* @1.0.0` Operations in the target catalog, a compatible Environment and separately authorized host dispatch. The parent would submit its full source as `definition.kind: "inline"`; the draft file is not a catalog publication or a Plan engagement. The connected runtime used for this review lacks those coordination Operations, so its public compile endpoint refuses at `create mission` with `unknown-operation`. A local compile against all repository Operation sources succeeded with four Checks and the four exact coordination Operation versions. That proves source compatibility with this checkout, not live mission admission or execution.
-
-## Design trace
-
-The Maket Structured Workspace **TRUST — Catalog metadata and versioning** holds dated, revisioned work records for the request, field inventory, code impacts, owner decisions, implementation, execution and follow-up observations after execution. It is a design trace, not a replacement for this repository request or a TRUST Plan. Add execution or follow-up records only when those events have actually occurred. Cite actual public acceptance and runtime evidence; do not infer a TRUST Check verdict from a Maket record status.
-
 ## Code and reference anchors
 
 `packages/trust-operation/src/operation.ts`, `src/compile.ts`; `packages/trust-procedure/src/procedure.ts`, `src/compile.ts`; `packages/trust-runtime/src/operation/catalog.ts`, `src/procedure/store.ts`, `src/procedure/procedures.ts`, `src/registry/service.ts`, `src/plan/build.ts`, `src/plan/store.ts`; `packages/trust-runtime/src/http/rpc.ts`, `src/http/mcp-authoring.ts`; `packages/trust-ui/src/resources/operations/classification.ts`, `src/resources/procedures/model.ts`; `docs/todo/resource-versioning.md`.

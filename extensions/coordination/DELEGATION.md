@@ -22,7 +22,8 @@ Alongside the original mission roots, engage a distinct `reviewer` and three
 immutable JSON-string contracts: `unit verification`, `integration verification`,
 `database verification`. Each binds requirement IDs to exact test names/files and
 the source plus executed artifact closure. These tests need explicit task
-authorization; the ABAC delegation implementation authorized all three layers.
+authorization. The historical `unit` contract key does not authorize unit tests;
+repository policy allows only acceptance tests at public boundaries.
 
 The worker claims, implements and executes all three `verify` Checks using the
 supplied Runner URIs. `coordination.verification-run@1.0.0` launches actual Node
@@ -53,11 +54,10 @@ verification and review gates.
 
 ## MCP access and the host boundary
 
-Use native TRUST MCP tools when they are loaded in the agent session. In the current
-dogfooding session, native discovery was unavailable, so the coordinator used the
-repository's public MCP HTTP helper. This is the same server MCP boundary, not a
-replacement coordination protocol. The public RPC helper was also used for precise
-Plan reads; both surfaces call the shared runtime services.
+Use native TRUST MCP tools when available. Otherwise, use the repository's
+public MCP HTTP helper against the intended runtime. This is the same server MCP
+boundary, not a replacement coordination protocol. The public RPC helper can
+also read precise Plan state; both surfaces call shared runtime services.
 
 Starting a host worker is a separate host action after the mission is persisted.
 Neither the MCP helper nor the extension starts a worker automatically. Always tell
@@ -118,6 +118,21 @@ belong to the configured Environment/Runner setup, not to the request or report.
 Never execute an Operation's SQL directly to claim or complete a mission. Never
 fabricate Facts, infer qualification from a successful shell exit, or silently
 expand a persisted mission's scope.
+
+## Durable response and execution records
+
+Submit the complete report text through the `response` declaration and Runner
+submission. Coordination stores that response in its database; the UI renders
+the stored text. A link to a local report file does not capture that file's
+contents. Include conclusions, actual observations and material limitations in
+the response itself. Verification Operations execute tests and submit typed
+observations through the Runner; an authored Markdown report is not test evidence.
+
+Keep ad hoc run logs, screenshots, source inventories, installation snapshots and
+backup metadata in private records outside Git. Public documentation holds
+reusable guides, contracts and templates, not per-mission execution reports.
+Preserve unique historical report content before removing a repository copy;
+do not fabricate Facts or claim database persistence merely because a file exists.
 
 ## Coordinator: review and integrate
 

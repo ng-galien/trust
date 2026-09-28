@@ -6,15 +6,13 @@ The page keeps already loaded timeline history during SSE and visibility refresh
 
 The extension owns its projects, items, form definitions and submitted answers. TRUST Plans, Checks, Facts and qualification remain in the core runtime. A submitted mobile answer is an external observation, never a Check verdict. Agents read answers through the running extension's `trust_extension_mobile_companion` MCP tool; Operations can GET `/extensions/mobile-companion/api/responses/<item-id>`. The example [decision-read Operation](operations/mobile.response-decision-read.feature) projects a known string field into a Produced Fact. A Procedure must still qualify that Fact through its Check. The extension never infers Plan progress from an answer.
 
-## Main checkout and local service
+## Main checkout and retained service
 
-Development and the retained preview use the main branch of the existing TRUST checkout.
-Git worktrees are forbidden. The current Mac installation points its manifest and launch
-service at `/Users/alexandreboyer/dev/projects/trust`; all retained storage remains outside
-build output. See [the runtime inventory](../../docs/verification/local-runtime/README.md)
-and [consolidation audit](../../docs/verification/local-runtime/2026-09-25-main-consolidation.md)
-for launch configuration, data preservation and recovery locations. Rebuilding code never
-implies permission to reset either the core SQLite history or the extension PostgreSQL data.
+Develop on the main branch of the existing checkout; Git worktrees are forbidden.
+Keep retained storage outside build output. Follow [retained runtime maintenance](../../docs/verification/local-runtime/README.md)
+for configuration inspection, verified backups and recovery. Rebuilding code
+never authorizes resetting the core or extension databases. Keep installation
+paths and live service inventories in private records outside Git.
 
 ## Storage and lifecycle
 

@@ -1,20 +1,5 @@
 # Canonical contracts and exhaustive consumption
 
-Status: canonical contract cleanup implemented; targeted public acceptances passed.
-
-## Confirmed incident
-
-The Operation overview for `coordination.mission-create` threw while reading
-`file.relativePath` from a PostgreSQL step. The runtime's compiled Operation was
-valid. The UI had a handwritten `OperationStep` union omitting PostgreSQL, an
-open property index, and assertions which treated the last branch as a file.
-React had no error boundary around the resource outlet, so the render error
-unmounted the application instead of leaving navigation available.
-
-This is not a failure of the TRUST DSL compiler. TypeScript checked the UI
-against its incorrect local declaration. JSON-RPC response assertions did not
-compare that declaration with the actual server contract.
-
 ## Authority map
 
 | Contract | Canonical owner | Consumer rule |
@@ -49,28 +34,6 @@ static consistency, not that browser journeys or execution work. Verify all
 four Operation variants, PostgreSQL overview and simulation, source navigation,
 version selection, runtime/runner execution, and browser error containment.
 
-No database reset, commit, or publication is part of this cleanup.
-
-## Verified scope and evidence
-
-- UI contract file now consists of canonical exports and derived aliases, not
-  independent Operation, Procedure, Plan, Check, Fact, Trial or Environment shapes.
-- Runner admission/finalization/continuation types share the SDK definitions.
-- Both extensions use SDK Plan summary/detail, lifecycle and page contracts.
-- LSP already consumed canonical language models; no duplicate compiled model
-  definitions were found in its adapter. Protocol-specific LSP structures remain.
-- Operation visitors cover steps, Shell arguments, HTTP value sources, path
-  segments, bodies and formats. Procedure role sources have their own visitor.
-- All-workspace TypeScript verification passed.
-- Browser acceptance passed four scenarios together: all four step variants,
-  PostgreSQL overview/expanded SQL/simulation, version authoring, render isolation.
-- Real-runtime and packaged-runner tests passed five HTTP/Shell/game scenarios
-  plus a PostgreSQL persistence and repeat-claim scenario.
-- Runtime public tests passed extension lifecycle/grants/events and nested Plans
-  at three and four levels, including independent intentions and restart.
-- Packaged SDK declarations compile an isolated extension with no runtime
-  installed. This proves standalone type consumption, not registry publication.
-
 ## Explicit limits
 
 JSON response assertions remain a separate runtime-validation concern; sharing
@@ -84,7 +47,7 @@ dependencies, not every possible renamed structural duplicate.
 
 ## Structural enforcement follow-up
 
-Code Moniker 0.11.0 is installed. Its documented AST domain recognizes source
+Code Moniker's documented AST domain recognizes source
 constructions, not inferred TypeScript unions or control-flow exhaustiveness.
 The enforcement therefore has two complementary responsibilities:
 
@@ -102,10 +65,10 @@ the controlled scopes does.
 The implemented matchers also cover file formats, Operation value types and
 Procedure expression references. Diagnostic event handling is a separate family
 and must not be counted as covered by an Operation-step rule. Structural rules
-and their public CLI acceptance are implemented and verified. See
+must have public CLI acceptance. See
 `docs/architecture/rule-curation.md` for the policy, explicit coverage limits,
-and nonempty rule reports. Runtime implementation re-exports and the UI contract
-barrel have been removed; consumers import the owning public package directly.
+and nonempty rule reports. Consumers import the owning public package directly rather than introducing
+runtime implementation re-exports or UI contract barrels.
 
 ## Next: pure re-export shim review
 

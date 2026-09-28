@@ -143,4 +143,20 @@ A Runner-only file may contain `runner` and `logging` sections. Shared Runner cr
 
 Changing the file while a process runs has no effect. Restart applies the new startup values and preserves the selected database. Business Environment values, named credentials, registry sources and extension lifecycle retain their existing authorized public update operations; they are not overwritten from startup JSON. Plan roots, ownership and declaration semantics remain unchanged. A general extension-use grant does not imply any Plan or lifecycle permission.
 
-Only one runtime may own a database. Chart installation therefore uses one replica and a nonoverlapping rollout; PostgreSQL is external, not managed or seeded by configuration. The shell still needs writable state for catalog files and logs. `/health` is available after initialization (503 while starting); it is not a continuous database query or external-provider readiness assertion. See [inventory](../architecture/server-configuration-inventory-2026-09-26.md) for development-only variables and extension-specific manifests.
+Only one runtime may own a database. Chart installation therefore uses one replica and a nonoverlapping rollout; PostgreSQL is external, not managed or seeded by configuration. The shell still needs writable state for catalog files and logs. `/health` is available after initialization (503 while starting); it is not a continuous database query or external-provider readiness assertion. Extension-specific settings belong to the installed extension's manifest.
+
+## Development web server
+
+Run `npm run dev:web` for source updates through Vite HMR. `npm run start:web`
+serves a built preview and does not provide source HMR. Set `TRUST_RUNTIME_URL`
+to the selected backend origin and `TRUST_WEB_PORT` to the web listener port.
+For a private reverse proxy, `TRUST_WEB_ALLOWED_HOSTS` accepts a comma-separated
+list of exact hostnames in both development and preview mode. Keep the listener
+on loopback and scope the proxy to the intended private service.
+
+Vite's HMR client uses the browser's origin, including its scheme and port:
+an HTTPS reverse proxy must forward WebSocket upgrades on that same origin.
+Reload an existing preview page once after switching to development mode.
+The UI workspace uses polling to observe changes through its workspace symlink.
+Independently built extension bundles retain their own build/reload lifecycle;
+source HMR in the host does not establish source HMR for those bundles.

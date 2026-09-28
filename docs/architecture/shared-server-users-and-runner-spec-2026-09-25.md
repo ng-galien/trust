@@ -1,8 +1,12 @@
 # Minimal ABAC and identity integration for shared TRUST
 
-Status: ABAC and proof workflow authorized, external OIDC identity and browser flow approved, 2026-09-26. No native TRUST user/password/session/token issuer. The server selects local JWT validation or OAuth introspection on each request. Literal OAuth scopes carry permissions. Implementation is authorized; no universal five-minute policy is imposed. No deployment or runtime activation is authorized by this document. One runtime owns each database; multiple users, workstations, agents and Runners connect to it.
+This specification describes shared external-OIDC authentication and its authorization
+boundaries. The [server configuration reference](../reference/server-configuration.md)
+also defines explicit fixed and embedded development modes. One runtime owns each
+database; multiple users, workstations, agents and Runners connect to it.
 
-This specification supersedes all `standard`/`extended` and Observer/Operator/Coordinator/Author/Admin proposals in the earlier shared-server studies. Those names are not product roles. It also supersedes token-owned Plans: the owner's explicit 2026-09-26 decision is ownership by stable external principal, identified by issuer and subject. Professional multi-user use is the context, not a delivery deadline. Existing studies describe historical evidence, not current requirements.
+Plan ownership uses a stable verified principal, identified by issuer and subject.
+Tokens do not own Plans. There is no configurable product role catalog.
 
 ## Fixed authorization rule
 
@@ -85,7 +89,7 @@ Every row needs named positive and negative assertions. Test reports identify Gi
 
 | ID | Observable requirement | Required evidence |
 | --- | --- | --- |
-| AUTH-01 | No permission or unknown permission/action is denied | Actual RPC/MCP refusals, immutable DB snapshots before/after denied mutations; pure decision tests |
+| AUTH-01 | No permission or unknown permission/action is denied | Actual RPC/MCP refusals, immutable DB snapshots before/after denied mutations |
 | AUTH-02 | Login authenticates; web and Plan Sessions stay distinct | SPA Code+PKCE S256 login/logout/expiry; memory-only tokens, no public client secret, invalid state/nonce/code replay refusal, SSO reload under browser restrictions |
 | AUTH-03 | Verified authority bounds issued permissions and continued use | Provider-backed issuance, over-ceiling denial, disabled principal and reduced permission refusal according to the selected lifecycle contract |
 | PLAN-01 | Creator is server-derived external principal; own/all remain separate | Two subjects and two tokens for one subject; same subject with permission succeeds, missing permission refuses even own Plan, foreign subject own scope refuses; forged creator rejected |
@@ -105,13 +109,3 @@ Every row needs named positive and negative assertions. Test reports identify Gi
 | OIDC-03 | Permission authority and lifecycle cannot fail open | Claims/decision path chosen explicitly; untrusted claims, unavailable issuer/decision service, revocation/logout and stale authority tested |
 
 The refined delegation Procedure preserves version 1.0.0. New versions retain mission creation-before-dispatch and Runner-only transitions, then add requirement-specific verification gates. A completed response, a typecheck, a command exit code, zero executed tests, skips or a crash never establish behavioral success. No fabricated Facts, direct SQL workflow transitions, manual qualification, or new Proof/Evidence resources.
-
-## Delivery state
-
-The access implementation and shared extension integration are complete at the frozen ABAC milestone. Six governed implementation missions completed worker verification, independent replays and final observations: thirty-six verification/review Checks in total. The final integrated groups cover eighteen named assertions and twenty-six observations including subtests, repeated independently on identical digests. See [implementation status](../verification/abac/implementation-status.md). Delegation verification Operation 1.0.0 and Procedure 1.1.0 published on dedicated runtime 4510; thirteen independent tests passed, and the retained governed v2 validation mission completed after three worker and three independent review qualifications on identical digests. The standards research was also independently reviewed and observed complete. Local execution, TRUST qualification, independent validation, deployment preparation, and live activation are distinct states. The professional deployment claim must name proven paths and remaining gaps; green suites alone do not establish general deployment readiness. No commit or push requested.
-
-## Subsequent configuration and packaging milestone — 2026-09-26
-
-Startup configuration now has one canonical SDK contract and schema. `TRUST_CONFIG_FILE` selects a partial JSON document; explicit environment values override the file, then defaults apply. The shell, runtime, Desktop and Runner use that contract. Reports redact secrets and expose value provenance locally. Configuration changes require restart; existing authorized Environment, credential and registry operations keep their separate runtime semantics. See the [operator reference](../reference/server-configuration.md).
-
-The Helm chart packages one runtime/browser-shell workload per database, with a persistent volume, external PostgreSQL and provider-neutral shared authentication. Its twelve worker/reviewer Checks qualified six named public-boundary acceptances with matching source/artifact digests. The actual local ARM64 image built successfully and the chart was packaged. Two real disposable Kind installations failed because the Docker virtual disk was full; both clusters were removed. After separately authorized capacity recovery, a third run passed on the same image and unchanged source/artifact hashes: installation, served UI/health, anonymous refusal, Recreate Pod replacement, PVC marker persistence, retention after uninstall and cluster removal. This PGlite smoke does not establish authenticated Kubernetes requests, PostgreSQL/ingress integration or Plan persistence through an actual Kubernetes upgrade. One negative database replay was retained and succeeded on unchanged sources after capacity recovered. See the [delivery and evidence report](../verification/server-industrialization/README.md). No retained activation, external publication, commit or push occurred.

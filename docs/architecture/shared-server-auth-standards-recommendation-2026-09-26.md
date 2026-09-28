@@ -1,7 +1,6 @@
 # External authentication and authorization for shared TRUST
 
-Date: 2026-09-26. Status: research updated with approved implementation decisions; implementation in progress, no deployment.
-Mission: `abac-auth-standards-research-20260926`.
+This guidance concerns the shared external-OIDC profile. Explicit fixed and embedded development profiles are defined separately in the [server configuration reference](../reference/server-configuration.md).
 
 ## Recommendation and fixed decisions
 
@@ -21,7 +20,7 @@ The owner's latest decisions, reflected in the [current integration specificatio
 - `own` compares verified principal with creator; `all` removes only that equality condition. Unknown historical creators are not inferred; the current specification limits them to `all`.
 - One runtime owns each database. This recommendation adds neither multi-runtime coordination nor a new tenancy/role/policy language.
 
-**Evidence labels:** “Standard” refers to the cited specification; “documented Keycloak behavior” is a vendor statement, not a test of an installed realm; “source observation” is inspected repository code; “recommendation” is proposed design; “unproven” identifies provider/client behavior requiring acceptance evidence.
+**Evidence labels:** “Standard” refers to the cited specification; “documented Keycloak behavior” is a vendor statement, not a test of an installed realm; “recommendation” is proposed design; “unproven” identifies provider/client behavior requiring acceptance evidence.
 
 ## Identity and trust boundaries
 
@@ -131,28 +130,7 @@ The current official MCP authorization page resolved to **2026-07-28**. Protecte
 
 **Recommendation:** verify the actual MCP client's protocol version, OAuth discovery, registration, refresh and service-flow capabilities with the selected Keycloak version. OIDC discovery alone does not provide MCP protected-resource metadata. A confidential service flow is not automatically supported by every interactive MCP host. Preserve one shared authorization decision for RPC and MCP aliases. Validate Origin on MCP HTTP connections under its transport rules; that control supplements authentication. [MCP Streamable HTTP](https://modelcontextprotocol.io/specification/2026-07-28/basic/transports/streamable-http#security--endpoint).
 
-## Repository integration realities, re-read on 2026-09-26
-
-These are source observations, not live deployment tests:
-
-| Boundary | Observed current code | Consequence for implementation/proof |
-| --- | --- | --- |
-| Runtime HTTP | [app.ts:23–33](../../packages/trust-runtime/src/http/app.ts#L23) mounts RPC, MCP, OTLP, diagnostics, events and extensions directly; [RPC:811–831](../../packages/trust-runtime/src/http/rpc.ts#L811) and [MCP:69–76](../../packages/trust-runtime/src/http/mcp.ts#L69) dispatch without actor context | Add a verified request context and enforce canonical actions centrally, including each batch item and alternate transport |
-| Attribution | [Plan model:18–33](../../packages/trust-runtime/src/model.ts#L18) has no creator principal | Persist external creator and Attempt actor; preserve nullable historical unknowns; do not infer identity from old names |
-| Runner | [RPC client:60–68](../../packages/trust-runner/src/check/client.ts#L60), [OTLP exporter:38–45](../../packages/trust-runner/src/telemetry/otlp.ts#L38) send no access-token header | Authenticate both paths and refresh independently of Check identity; prove token secrecy |
-| Attempt domain | [runtime:937–976](../../packages/trust-runtime/src/plan/runtime.ts#L937) separates live/dry-run ingestion and checks correlation, expiry, Session and intent | Add principal/action checks without bypassing or replacing existing checks; new same-principal token must not break continuation |
-| Delegated values | [runtime:893–912](../../packages/trust-runtime/src/plan/runtime.ts#L893) returns declared Environment values for live admission | Authorize before disclosure; access withdrawal cannot retrieve already disclosed values or undo external action |
-| Web proxy | [shell:19](../../packages/trust-shell/src/server.ts#L19) excludes `/v1/traces`; [219–225](../../packages/trust-shell/src/server.ts#L219) uses optional shared Basic; [301–315](../../packages/trust-shell/src/server.ts#L301) strips Basic and rewrites some upstream headers | Explicit API routing, Bearer forwarding only to trusted targets, allowed origins and no direct-runtime bypass; Basic is not the external identity model |
-| Streams | [UI:22–27](../../packages/trust-ui/src/lib/plan-events.ts#L22) uses native EventSource; [server:9–29](../../packages/trust-runtime/src/http/events.ts#L9) replays/subscribes without viewer filtering | Fetch-based authenticated stream for the selected SPA; expiry/freshness recheck, visibility-filtered replay and reconnect |
-| Extensions | [routes:24–45](../../packages/trust-runtime/src/http/extensions.ts#L24) run lifecycle/commands; [69–86](../../packages/trust-runtime/src/http/extensions.ts#L69) filters by installation Environment; [SDK context:1–14](../../packages/trust-extension-sdk/src/extension.ts#L1) has no trusted actor | Installation grants do not authenticate callers; action mapping and actor propagation required, otherwise deny in shared mode |
-| LSP / diagnostics | [server:155–168](../../packages/trust-runtime/src/server.ts#L155) accepts LSP separately; [diagnostics:15–23, 41–48](../../packages/trust-runtime/src/http/diagnostics.ts#L15) ingests/streams by trial ID | Protect upgrades and diagnostic access; do not expose these paths as implicit exceptions |
-| Trials / process authority | [trial service:179–205](../../packages/trust-runtime/src/trial/service.ts#L179) can compile supplied source and spawn the Runner on the central host | `operation.trial.start` is distinct from compile; do not let login imply central-host execution |
-
-The standard EventSource constructor exposes URL and credentials mode, not arbitrary Authorization headers. Do not work around this by putting bearer tokens in URLs. [HTML EventSource interface](https://html.spec.whatwg.org/multipage/server-sent-events.html#the-eventsource-interface). **Recommendation:** use authenticated fetch streaming with the SPA's current access token. Expire/reconnect streams no later than token expiry and the approved permission-freshness boundary, obtaining a refreshed token before reconnect when needed. A connection cannot preserve lost read rights indefinitely. Decide reevaluation intervals and outage closure; list/cursor/total/history filtering must use the same `own`/`all` rule.
-
-### Authentication in the existing Awilix container
-
-**Source observation:** [runtime.ts:39](../../packages/trust-runtime/src/runtime.ts#L39) defines typed runtime components; [100–106](../../packages/trust-runtime/src/runtime.ts#L100) creates one strict Awilix container with proxy injection. Its [registration block:110–160](../../packages/trust-runtime/src/runtime.ts#L110) uses `asValue` for configuration, `asClass(...).singleton()` for services including the clock, and singleton `asFunction` router factories. [PlanRuntime:87–118](../../packages/trust-runtime/src/plan/runtime.ts#L87) declares an explicit dependency object; [HTTP app:4–22](../../packages/trust-runtime/src/http/app.ts#L4) receives its handlers through a typed dependency object. These are existing construction patterns, not an implemented authentication service.
+## Authentication in the existing Awilix container
 
 **Recommended realization of the approved integration:** register a dedicated authentication-and-rights authority alongside those services, using typed dependencies for trusted issuer/audience/profile configuration, clock, JWKS acquisition/verification, and the selected permission mapping or online decision client. Keep transport-token extraction in adapters; pass the validated token to this shared verifier and enforce canonical action rules through the common runtime path. Keep route handlers thin: they obtain context and invoke the authority rather than reimplementing permission decisions. Token verification and rights evaluation can remain separate internal components behind this authority, with one shared decision contract. No separate process, microservice, hidden global verifier or container lookup inside business services is needed. Configuration, cryptographic dependencies and network/clock boundaries must be injectable rather than hardwired into route handlers; the composition root owns their lifecycle.
 
@@ -180,13 +158,13 @@ A local external-principal reference is not a duplicate account directory. No na
 | Human Runner | Native external-browser code + PKCE | Callback unsuitable and provider/client supports device authorization |
 | Independent service | Client credentials | Distinct instance delegation/attribution requires externally managed per-instance identity |
 
-**Ready-to-implement assessment:** implementation is authorized. Server-configurable validation resolves the former freshness choice. Build the dedicated access authority, thin transport adapters, stable attribution, scoped access and lightweight dev tooling with separate positive/negative evidence. All provider endpoints and client settings belong to validated configuration/discovery from explicitly trusted issuers. Confidential introspection/service secrets remain server-side through secret references; public clients have no client secret. Profile/client interoperability, subject stability and provider lifecycle behavior are test requirements, not new product questionnaires.
+The dedicated access authority, thin transport adapters, stable attribution, scoped access and development tooling require separate positive/negative acceptance evidence. All provider endpoints and client settings belong to validated configuration/discovery from explicitly trusted issuers. Confidential introspection/service secrets remain server-side through secret references; public clients have no client secret. Profile/client interoperability, subject stability and provider lifecycle behavior are test requirements, not new product questionnaires.
 
 The online mode validates token active state and metadata; do not equate this with recalculated account permissions. Test permission changes, revocation, logout and disabled accounts separately. A provider outage denies online requests; local verification remains validation on every request. Expiry/freshness also bounds stream access. Deny unauthorized Facts/finalization after rights withdrawal while preserving a recoverable Attempt; do not blindly replay an external action.
 
 ## Specific evidence required before claiming support
 
-No provider/browser/Runner tests were run in this research. The following are **future public acceptance scenarios**, not implemented tests or observed successes. Run them against a disposable approved provider/realm and both database adapters as applicable; keep the retained runtime and enterprise accounts untouched.
+The following are public acceptance requirements, not an execution report. Run them against a disposable approved provider/realm and both database adapters as applicable; keep the retained runtime and enterprise accounts untouched.
 
 | Proof group | Required positive and negative observations |
 | --- | --- |
@@ -206,8 +184,6 @@ No provider/browser/Runner tests were run in this research. The following are **
 
 A successful HTTP response, token refresh, or `active: true` is not sufficient evidence for these combined requirements. Each assertion must report the identity, request action, selected freshness policy and observed outcome without exposing credentials.
 
-## Sources, versions and limits
+## Reference provenance and limits
 
 Read on 2026-09-26: RFCs 9700, 9068, 8725, 7662, 7009; OIDC Core/Discovery incorporating errata set 2; supporting RFCs 6749, 8252 and 8628; current Keycloak OIDC/JS/admin/authorization, realm import and container guides; MCP 2026-07-28; HTML EventSource; browser-apps draft 27. The Keycloak Authorization Services page identifies version **26.7.4**; current online documentation does not establish the version/configuration of any installed provider. Links sit next to the claims they support. Vendor documentation and proposed acceptance scenarios are not results of provider tests.
-
-Repository observations were re-read from `main`; unrelated WIP was preserved. Only this report and necessary mission transitions were written. No auth implementation, account/token provisioning, provider/credential/runtime configuration, live experiment, restart, deployment, SQL coordination shortcut, commit or push occurred. Exact behavior of Keycloak permission refresh/introspection, Google disablement propagation and actual MCP clients remains unproven until the selected integration is tested.
