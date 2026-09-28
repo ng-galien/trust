@@ -100,6 +100,7 @@ export default defineConfig({
   server: {
     port,
     strictPort: true,
+    allowedHosts: allowedPreviewHosts,
     // The UI package is a symlinked workspace outside this root; native events proved unreliable for it.
     watch: {
       usePolling: true,

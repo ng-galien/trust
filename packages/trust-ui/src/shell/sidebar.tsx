@@ -1,4 +1,4 @@
-import { Blocks, BookOpen, ChevronRight, Files, Plus, Settings } from "lucide-react";
+import { Blocks, BookOpen, ChevronRight, Plus, Settings } from "lucide-react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { NavLink, useLocation, useNavigate } from "react-router";
@@ -6,7 +6,6 @@ import { useExtensions } from "../lib/extensions.js";
 import { cx } from "../lib/format.js";
 import { toggleAnchor, usePreference } from "../lib/preferences.js";
 import { Count } from "../ui/badge.js";
-import { Tooltip } from "../ui/controls.js";
 import { Popover } from "../ui/menu.js";
 import { AnchorExplorer, AnchorHeaderActions } from "./anchor-explorer.js";
 import { overviewAnchor, type ResourceAnchor, resourceAnchors, sections, useAnchorItems } from "./resources.js";
@@ -74,7 +73,7 @@ function NavRow({ to, icon, label }: { to: string; icon: ReactNode; label: strin
   );
 }
 
-function ExtensionsNavigation({ compact = false }: { compact?: boolean }) {
+function ExtensionsNavigation({ compact = false, onActivate }: { compact?: boolean; onActivate?: () => void }) {
   const { t } = useTranslation();
   const catalog = useExtensions();
   const expanded = usePreference("expandedAnchors").includes("extensions");
@@ -119,6 +118,8 @@ function ExtensionsNavigation({ compact = false }: { compact?: boolean }) {
             type="button"
             aria-label={label}
             aria-expanded={open}
+            onPointerEnter={onActivate}
+            onFocus={onActivate}
             onClick={toggle}
             className="inline-flex h-8 w-8 items-center justify-center rounded-(--radius-2) text-muted hover:bg-surface-2"
           >
@@ -275,13 +276,14 @@ function CompactSidebar() {
       onPointerLeave={scheduleClose}
       onPointerEnter={cancelClose}
     >
-      <nav className="flex min-h-0 flex-1 flex-col items-center gap-1 overflow-y-auto pt-3 pb-2">
+      <nav className="flex min-h-0 flex-1 flex-col items-center gap-1 overflow-x-hidden overflow-y-auto pt-3 pb-2">
         <RailLink
           to={overviewAnchor.to}
           label={t(overviewAnchor.label)}
           icon={<overviewAnchor.icon size={17} strokeWidth={1.8} />}
           onPointerEnter={() => setFlyout(null)}
         />
+        <ExtensionsNavigation compact onActivate={() => setFlyout(null)} />
         {sections.map((section) => (
           <div key={section.id} className="flex flex-col items-center gap-1">
             <span className="my-1.5 h-px w-5 bg-border" aria-hidden />
@@ -367,22 +369,21 @@ function RailLink({
   onFocus?: (event: React.FocusEvent<HTMLAnchorElement>) => void;
 }) {
   return (
-    <Tooltip label={label}>
-      <NavLink
-        to={to}
-        aria-label={label}
-        onPointerEnter={onPointerEnter}
-        onFocus={onFocus}
-        className={({ isActive }) =>
-          cx(
-            "inline-flex h-8 w-8 items-center justify-center rounded-(--radius-2) hover:bg-surface-2",
-            isActive ? "bg-surface-3 text-text" : "text-muted",
-            highlighted && "bg-surface-2 text-text",
-          )
-        }
-      >
-        {icon}
-      </NavLink>
-    </Tooltip>
+    <NavLink
+      to={to}
+      aria-label={label}
+      title={label}
+      onPointerEnter={onPointerEnter}
+      onFocus={onFocus}
+      className={({ isActive }) =>
+        cx(
+          "inline-flex h-8 w-8 items-center justify-center rounded-(--radius-2) hover:bg-surface-2",
+          isActive ? "bg-surface-3 text-text" : "text-muted",
+          highlighted && "bg-surface-2 text-text",
+        )
+      }
+    >
+      {icon}
+    </NavLink>
   );
 }
