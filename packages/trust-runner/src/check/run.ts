@@ -140,6 +140,7 @@ export function createCheckRunner(options: CheckRunnerOptions) {
             ...(options.shell === undefined ? {} : { shell: options.shell }),
             ...(options.postgresql === undefined ? {} : { postgresql: options.postgresql }),
           },
+          admission.credentials,
         );
         actionOutcome = result.steps;
         phase = "fact export";

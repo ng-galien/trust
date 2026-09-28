@@ -54,7 +54,6 @@ export async function runCli(options: RunnerCliOptions = {}): Promise<number> {
         processEnvironment: environment,
         timeoutMs: startup.resolved.configuration.runner.shellTimeoutMs,
       },
-      postgresql: { processEnvironment: environment },
     });
     const result = await runner.run(argv[0]);
     stdout(json ? `${JSON.stringify(result, null, 2)}\n` : report(result));

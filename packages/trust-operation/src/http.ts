@@ -1,5 +1,6 @@
+import type { CredentialSource } from "./credential.js";
 import type { JsonValue } from "./json.js";
-import { matchHttpPathSegment, matchHttpValueSource } from "./match.js";
+import { matchHttpHeaderSource, matchHttpPathSegment, matchHttpValueSource } from "./match.js";
 
 /** Registered HTTP methods that represent application requests. `PRI` and the reserved `*` token
     are protocol control values, not methods an Operation can send. */
@@ -62,9 +63,12 @@ export interface HttpQueryParameter {
   readonly source: HttpValueSource;
 }
 
+/** A header value may also come from one declared Credential (`from Credential "<name>"`). */
+export type HttpHeaderSource = HttpValueSource | CredentialSource;
+
 export interface HttpHeader {
   readonly name: string;
-  readonly source: HttpValueSource;
+  readonly source: HttpHeaderSource;
 }
 
 export type HttpBody =
@@ -122,6 +126,21 @@ export function renderHttpValue(
     literal: (value) => value.value,
     input: (value) => resolveInput(value.input),
     environment: (value) => resolveEnvironment(value.environment),
+  });
+}
+
+/** Render one request header value; a Credential header resolves only through `resolveCredential`. */
+export function renderHttpHeaderValue(
+  source: HttpHeaderSource,
+  resolveInput: (input: string) => string,
+  resolveEnvironment: (environment: string) => string,
+  resolveCredential: (credential: string) => string,
+): string {
+  return matchHttpHeaderSource(source, {
+    literal: (value) => value.value,
+    input: (value) => resolveInput(value.input),
+    environment: (value) => resolveEnvironment(value.environment),
+    credential: (value) => resolveCredential(value.credential),
   });
 }
 

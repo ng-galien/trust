@@ -185,6 +185,15 @@ Foundation limits:
   does not resolve an unpublished child from the same incoming batch: publish dependencies first.
   The batch is rejected during validation, before importing its artifacts.
 
+## Operation Credentials
+
+A Check never supplies a secret. An embedded Operation may declare `Given Credentials` and
+reference them with `from Credential "<name>"` (HTTP header, Shell step variable) or
+`authenticated by Credential "<name>"` (PostgreSQL); see the [Operation grammar](../operations/README.md#credentials). Credentials
+are not Plan roles, Inputs or agent declarations: at attempt admission TRUST resolves the declared
+names from the Plan's Environment and refuses the attempt when one is missing. Qualification
+expressions and Operation projections cannot read them.
+
 ## Compiled revision
 
 The compiler emits the current Procedure structure with scope, roles, Scenarios, Checks, Invocations,

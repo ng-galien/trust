@@ -22,6 +22,7 @@ import { type PostgresqlRunnerConfiguration, runPostgresql } from "../postgresql
 import type { ShellRunnerConfiguration } from "../shell/run.js";
 import { runShell } from "../shell/run.js";
 import { type Clock, instantMilliseconds, SystemClock } from "../time.js";
+import { DelegatedCredentials } from "./credentials.js";
 
 export interface OperationResult {
   readonly steps: JsonObject;
@@ -36,13 +37,42 @@ export interface OperationRunnerConfiguration {
   readonly postgresql?: PostgresqlRunnerConfiguration;
 }
 
+/** `credentials` holds the Credentials TRUST delegated for the admitted attempt; a trial or a
+    dry-run delegates none. Step results, diagnostics and errors are masked before they leave a step,
+    so later steps, Produce, Facts and actionOutcome never see a Credential value. */
 export async function runOperation(
   operation: CompiledOperation,
   inputValue: unknown,
   environmentValue: unknown,
-  diagnostics: DiagnosticsSink = nullSink,
+  sink: DiagnosticsSink = nullSink,
   executionValue: unknown = {},
   configuration: OperationRunnerConfiguration = {},
+  delegatedCredentials: Readonly<Record<string, string>> = {},
+): Promise<OperationResult> {
+  const credentials = DelegatedCredentials.forOperation(operation, delegatedCredentials);
+  try {
+    return await executeOperation(
+      operation,
+      inputValue,
+      environmentValue,
+      credentials.sink(sink),
+      executionValue,
+      configuration,
+      credentials,
+    );
+  } catch (error) {
+    throw credentials.maskError(error);
+  }
+}
+
+async function executeOperation(
+  operation: CompiledOperation,
+  inputValue: unknown,
+  environmentValue: unknown,
+  diagnostics: DiagnosticsSink,
+  executionValue: unknown,
+  configuration: OperationRunnerConfiguration,
+  credentials: DelegatedCredentials,
 ): Promise<OperationResult> {
   const clock = configuration.clock ?? new SystemClock();
   const startedAt = instantMilliseconds(clock);
@@ -83,19 +113,37 @@ export async function runOperation(
         const timeoutMs = remainingExecutionTime(executionTimeoutMs, startedAt, operation.operation, clock);
         const result = await matchOperationStep<Promise<unknown>>(step, {
           shell: ({ shell }) =>
-            runShell(shell, input, environment, execution, reporter, {
-              ...configuration.shell,
-              ...(timeoutMs === undefined ? {} : { timeoutMs }),
-            }),
+            runShell(
+              shell,
+              input,
+              environment,
+              execution,
+              reporter,
+              {
+                ...configuration.shell,
+                ...(timeoutMs === undefined ? {} : { timeoutMs }),
+              },
+              (name) => credentials.resolve(name, `Shell step "${step.name}"`),
+            ),
           "file-read": ({ file }) => runFileRead(file, input, environment, reporter),
-          http: ({ http }) => runHttp(http, input, environment, steps, execution, reporter, timeoutMs, clock),
+          http: ({ http }) =>
+            runHttp(http, input, environment, steps, execution, reporter, timeoutMs, clock, (name) =>
+              credentials.resolve(name, `HTTP step "${step.name}"`),
+            ),
           postgresql: ({ postgresql }) =>
-            runPostgresql(postgresql, input, environment, reporter, {
-              ...configuration.postgresql,
-              ...(timeoutMs === undefined ? {} : { timeoutMs }),
-            }),
+            runPostgresql(
+              postgresql,
+              input,
+              environment,
+              reporter,
+              {
+                ...configuration.postgresql,
+                ...(timeoutMs === undefined ? {} : { timeoutMs }),
+              },
+              (name) => credentials.resolve(name, `PostgreSQL step "${step.name}"`),
+            ),
         });
-        const converted = json(result, `Operation step "${step.name}" result`);
+        const converted = credentials.maskValue(json(result, `Operation step "${step.name}" result`));
         steps[step.name] = converted;
         diagnostics.emit({
           type: "step.end",

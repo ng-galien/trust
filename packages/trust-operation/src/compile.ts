@@ -18,9 +18,18 @@ import {
   tokenizeSentence,
 } from "@trust/gherkin";
 import jsonata from "jsonata";
-import type { HttpBody, HttpHeader, HttpMethod, HttpPathSegment, HttpQueryParameter, HttpValueSource } from "./http.js";
+import type { CredentialSource } from "./credential.js";
+import type {
+  HttpBody,
+  HttpHeader,
+  HttpHeaderSource,
+  HttpMethod,
+  HttpPathSegment,
+  HttpQueryParameter,
+  HttpValueSource,
+} from "./http.js";
 import { operationLanguage, operationStepGrammar } from "./language.js";
-import { matchHttpValueSource } from "./match.js";
+import { matchHttpHeaderSource, matchHttpValueSource } from "./match.js";
 import type {
   CompiledOperation,
   EnvironmentField,
@@ -36,6 +45,7 @@ import type {
 import type {
   OperationAnalysis,
   OperationCompilationErrorCode,
+  OperationCredentialSource,
   OperationDocument,
   OperationEnvironmentSource,
   OperationInputSource,
@@ -53,6 +63,9 @@ const CLASSIFICATION = /^@x-([a-z][a-z0-9]*(?:-[a-z0-9]+)*):([^\s:]+)$/;
 const OPERATION_NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*\.[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const FIELD_NAME = /^[a-z][A-Za-z0-9]*$/;
 const HTTP_HEADER_NAME = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/;
+/** The Environment Credential name form accepted by the runtime credential store. */
+const CREDENTIAL_NAME = /^[A-Za-z][A-Za-z0-9_]{0,127}$/;
+const SHELL_VARIABLE_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const SECRET_LIKE = /(?:^|[^a-z0-9])(?:sk-[a-z0-9_-]{8,}|gh[pousr]_[a-z0-9]{8,}|bearer\s+[a-z0-9._-]{8,})/i;
 const ENUM_DOMAIN = /^enum "[^"]+"(?:, "[^"]+")*$/;
 const ENUM_VALUE = /"([^"]+)"/g;
@@ -63,6 +76,7 @@ const JSONATA_NODE_TYPES = new Set<string>(operationLanguage.jsonata.nodeTypes);
 const JSONATA_FUNCTIONS = new Set<string>(operationLanguage.jsonata.functions);
 const JSONATA_BINARY_OPERATORS = new Set<string>(operationLanguage.jsonata.binaryOperators);
 const [STEPS_ROOT, INPUT_ROOT, ENVIRONMENT_ROOT, EXECUTION_ROOT] = operationLanguage.jsonata.roots;
+const FORBIDDEN_ROOTS = new Set<string>(operationLanguage.jsonata.forbiddenRoots);
 
 export class OperationCompilationError extends Error {
   constructor(
@@ -232,7 +246,14 @@ function compileParsedOperation(parsed: ParsedOperationSource): {
   if (scenarios[0].tags.length !== 0) {
     fail(context, "invalid-operation", "Operation Scenario tags are outside the closed grammar", scenarios[0]);
   }
-  const run = parseRun(scenarios[0].steps, operationInterface.input, operationInterface.environment, context);
+  const run = parseRun(
+    scenarios[0].steps,
+    operationInterface.input,
+    operationInterface.environment,
+    operationInterface.credentials,
+    context,
+  );
+  assertCredentialsReferenced(operationInterface.credentials, run.referencedCredentials, context);
   validateProduce(
     run.expression,
     run.steps,
@@ -251,6 +272,7 @@ function compileParsedOperation(parsed: ParsedOperationSource): {
     source,
     input: compileInputSchema(operationInterface.input),
     environment: compileEnvironmentSchema(operationInterface.environment),
+    ...(operationInterface.credentials.length > 0 ? { credentials: operationInterface.credentials } : {}),
     steps: run.steps,
     produce: { language: "jsonata", expression: run.expression },
     produced: compileProducedSchema(operationInterface.producedFields),
@@ -273,6 +295,7 @@ function readOperationDocument(gherkin: GherkinDocument, context: CompileContext
   const operationTag = feature.tags.find((tag) => tag.name.startsWith(OPERATION_TAG));
   const versionTag = feature.tags.find((tag) => tag.name.startsWith(VERSION_TAG));
   const environment: OperationEnvironmentSource[] = [];
+  const credentials: OperationCredentialSource[] = [];
   const input: OperationInputSource[] = [];
   const produced: OperationProducedSource[] = [];
   const steps: OperationStepSource[] = [];
@@ -290,6 +313,19 @@ function readOperationDocument(gherkin: GherkinDocument, context: CompileContext
           environment.push({
             name,
             type,
+            range: sourceLineRange(context.source, row.location),
+            selectionRange: sourceValueRange(context.source, nameCell, name),
+          });
+        }
+        continue;
+      }
+      if (production === "credentials") {
+        for (const row of rows) {
+          const nameCell = row.cells[0];
+          const name = nameCell?.value.trim() ?? "";
+          if (!nameCell || name === "") continue;
+          credentials.push({
+            name,
             range: sourceLineRange(context.source, row.location),
             selectionRange: sourceValueRange(context.source, nameCell, name),
           });
@@ -364,6 +400,7 @@ function readOperationDocument(gherkin: GherkinDocument, context: CompileContext
       ? tagValueRange(context.source, operationTag, OPERATION_TAG)
       : sourceValueRange(context.source, feature, feature.name),
     environment,
+    credentials,
     input,
     steps,
     produced,
@@ -401,9 +438,12 @@ function parseInterface(
 ): {
   readonly input: Readonly<Record<string, InputField>>;
   readonly environment: Readonly<Record<string, EnvironmentField>>;
+  readonly credentials: readonly string[];
   readonly producedFields: Readonly<Record<string, ProducedField>>;
 } {
   const input = new Map<string, InputField>();
+  const credentials: string[] = [];
+  let hasCredentials = false;
   const environment = new Map<string, EnvironmentField>();
   const producedFields = new Map<string, ProducedField>();
   let hasEnvironment = false;
@@ -432,6 +472,26 @@ function parseInterface(
           fail(context, "invalid-operation", `Environment "${name}" has invalid type "${type}"`, row);
         }
         environment.set(name, { type });
+      }
+      continue;
+    }
+    if (production === "credentials") {
+      if (hasCredentials) fail(context, "invalid-operation", "Operation repeats Credentials", step);
+      hasCredentials = true;
+      for (const row of requireTable(step, ["name"], context)) {
+        const name = row.cells[0]?.value.trim() ?? "";
+        if (!CREDENTIAL_NAME.test(name)) {
+          fail(
+            context,
+            "invalid-identifier",
+            `Credential "${name}" must start with a letter and use only letters, digits or underscores`,
+            row,
+          );
+        }
+        if (credentials.includes(name)) {
+          fail(context, "duplicate-credential", `Credential "${name}" is repeated`, row);
+        }
+        credentials.push(name);
       }
       continue;
     }
@@ -485,6 +545,7 @@ function parseInterface(
   return {
     input: Object.fromEntries(input),
     environment: Object.fromEntries(environment),
+    credentials,
     producedFields: Object.fromEntries(producedFields),
   };
 }
@@ -493,12 +554,22 @@ function parseRun(
   steps: readonly Step[],
   input: Readonly<Record<string, InputField>>,
   environment: Readonly<Record<string, EnvironmentField>>,
+  credentials: readonly string[],
   context: CompileContext,
 ): {
   readonly steps: readonly OperationStep[];
   readonly expression: string;
+  readonly referencedCredentials: ReadonlySet<string>;
 } {
   const compiled: OperationStep[] = [];
+  const referencedCredentials = new Set<string>();
+  const credential = (label: string, name: string, located: Located): CredentialSource => {
+    if (!credentials.includes(name)) {
+      fail(context, "unknown-credential", `${label} references undeclared Credential "${name}"`, located);
+    }
+    referencedCredentials.add(name);
+    return { kind: "credential", credential: name };
+  };
   const names = new Set<string>();
   let expression: string | undefined;
 
@@ -513,7 +584,7 @@ function parseRun(
       if (expression !== undefined) {
         fail(context, "unknown-step", "Shell cannot run after Produce", step);
       }
-      const { name, executable, environment: environmentName, appendInput } = parsed;
+      const { name, executable, environment: environmentName, appendInput, variables } = parsed;
       if (names.has(name)) fail(context, "duplicate-step", `Step "${name}" is repeated`, step);
       if (!Object.hasOwn(environment, environmentName)) {
         fail(context, "unknown-environment", `Shell "${name}" uses undeclared Environment "${environmentName}"`, step);
@@ -589,6 +660,13 @@ function parseRun(
           ...(parsedSource.prefixed ? { prefix: value } : {}),
         };
       });
+      if (new Set(variables.map((variable) => variable.name)).size !== variables.length) {
+        fail(context, "invalid-operation", `Shell "${name}" repeats a variable name`, step);
+      }
+      const shellVariables = variables.map((variable) => ({
+        name: variable.name,
+        source: credential(`Shell "${name}" variable "${variable.name}"`, variable.credential, step),
+      }));
       names.add(name);
       compiled.push({
         name,
@@ -598,6 +676,7 @@ function parseRun(
           arguments: arguments_,
           cwd: { environment: environmentName, ...(appendInput === undefined ? {} : { appendInput }) },
           acceptedExits: [{ code: 0 }],
+          ...(shellVariables.length > 0 ? { variables: shellVariables } : {}),
         },
       });
       continue;
@@ -689,8 +768,12 @@ function parseRun(
       if (step.dataTable || !step.docString) {
         fail(context, "unknown-step", "PostgreSQL requires one SQL DocString and no table", step);
       }
-      const { name, environment: environmentName } = parsed;
+      const { name, environment: environmentName, credential: authenticationCredential } = parsed;
       if (names.has(name)) fail(context, "duplicate-step", `Step "${name}" is repeated`, step);
+      const authentication =
+        authenticationCredential === undefined
+          ? undefined
+          : credential(`PostgreSQL "${name}" authentication`, authenticationCredential, step);
       if (!Object.hasOwn(environment, environmentName)) {
         fail(
           context,
@@ -718,6 +801,7 @@ function parseRun(
         postgresql: {
           connection: { environment: environmentName },
           statement,
+          ...(authentication === undefined ? {} : { authentication }),
         },
       });
       continue;
@@ -760,7 +844,16 @@ function parseRun(
         if (!HTTP_HEADER_NAME.test(header.name)) {
           fail(context, "invalid-operation", `HTTP "${name}" header name "${header.name}" is invalid`, step);
         }
-        assertHttpValueSource(`HTTP "${name}"`, "header", header.source, input, environment, context, step);
+        matchHttpHeaderSource<void>(header.source, {
+          literal: () => undefined,
+          input: (source) =>
+            assertHttpValueSource(`HTTP "${name}"`, "header", source, input, environment, context, step),
+          environment: (source) =>
+            assertHttpValueSource(`HTTP "${name}"`, "header", source, input, environment, context, step),
+          credential: (source) => {
+            credential(`HTTP "${name}" header "${header.name}"`, source.credential, step);
+          },
+        });
       }
       if (new Set(headers.map((header) => header.name)).size !== headers.length) {
         fail(context, "invalid-operation", `HTTP "${name}" repeats a header name`, step);
@@ -868,7 +961,7 @@ function parseRun(
 
   if (compiled.length === 0) fail(context, "invalid-operation", "Operation must declare at least one step");
   if (expression === undefined) fail(context, "invalid-operation", "Operation must Produce with JSONata");
-  return { steps: compiled, expression };
+  return { steps: compiled, expression, referencedCredentials };
 }
 
 type ParsedRunStepSentence =
@@ -878,6 +971,7 @@ type ParsedRunStepSentence =
       readonly executable: string;
       readonly environment: string;
       readonly appendInput?: string;
+      readonly variables: readonly { readonly name: string; readonly credential: string }[];
     }
   | {
       readonly type: "shell-exits";
@@ -895,6 +989,7 @@ type ParsedRunStepSentence =
       readonly type: "postgresql";
       readonly name: string;
       readonly environment: string;
+      readonly credential?: string;
     }
   | ParsedHttpSentence
   | {
@@ -925,6 +1020,9 @@ type ParsedHttpSentence = {
   readonly headers: readonly HttpHeader[];
   readonly body?: ParsedHttpBody;
 };
+
+const takeCredentialName = (value: string | undefined): string | undefined =>
+  value !== undefined && CREDENTIAL_NAME.test(value) ? value : undefined;
 
 type ParsedArgumentSource =
   | { readonly kind: "input"; readonly input: string; readonly prefixed: boolean }
@@ -976,7 +1074,34 @@ function parseRunStepSentence(source: string): ParsedRunStepSentence | undefined
     if (parsed.captures.some(({ slot }) => slot === "append-input") && !appendInput) {
       return invalidParsedStep(`Shell "${name}" appended Input must be a field name`, "shell", name);
     }
-    return { type: "shell", name, executable, environment, ...(appendInput === undefined ? {} : { appendInput }) };
+    const variables: { name: string; credential: string }[] = [];
+    for (const [index, capture] of parsed.captures.entries()) {
+      if (capture.slot !== "variable-name") continue;
+      const credential = takeCredentialName(parsed.captures[index + 1]?.value);
+      if (!SHELL_VARIABLE_NAME.test(capture.value)) {
+        return invalidParsedStep(
+          `Shell "${name}" variable "${capture.value}" must be a process variable name`,
+          "shell",
+          name,
+        );
+      }
+      if (!credential) {
+        return invalidParsedStep(
+          `Shell "${name}" variable "${capture.value}" has an invalid Credential name`,
+          "shell",
+          name,
+        );
+      }
+      variables.push({ name: capture.value, credential });
+    }
+    return {
+      type: "shell",
+      name,
+      executable,
+      environment,
+      ...(appendInput === undefined ? {} : { appendInput }),
+      variables,
+    };
   }
   if (parsed.production === "file-read") {
     const path = captureValue(parsed, "path");
@@ -1002,7 +1127,15 @@ function parseRunStepSentence(source: string): ParsedRunStepSentence | undefined
     const environment = captureField(parsed, "environment");
     if (!environment)
       return invalidParsedStep(`PostgreSQL "${name}" Environment must be a field name`, "postgresql", name);
-    return { type: "postgresql", name, environment };
+    const authenticated = parsed.captures.some(({ slot }) => slot === "postgresql-credential");
+    const credential = takeCredentialName(captureValue(parsed, "postgresql-credential"));
+    if (authenticated && !credential)
+      return invalidParsedStep(
+        `PostgreSQL "${name}" authentication has an invalid Credential name`,
+        "postgresql",
+        name,
+      );
+    return { type: "postgresql", name, environment, ...(credential === undefined ? {} : { credential }) };
   }
   return parsed.production === "http-request" ? lowerHttpStep(parsed, name) : undefined;
 }
@@ -1102,16 +1235,17 @@ function lowerHttpStep(
     if (capture.slot === "query-name" || capture.slot === "header-name") {
       if (capture.value === "")
         return invalidParsedStep(`HTTP "${name}" ${capture.slot} cannot be empty`, "http", name);
-      const prefix = capture.slot === "query-name" ? "query" : "header";
-      const source = httpValueSource(parsed.captures[index + 1], prefix);
-      if (!source)
-        return invalidParsedStep(
-          `HTTP "${name}" ${prefix} "${capture.value}" has an invalid value source`,
-          "http",
-          name,
-        );
-      if (prefix === "query") query.push({ name: capture.value, source });
-      else headers.push({ name: capture.value.toLowerCase(), source });
+      const invalidSource = (prefix: string) =>
+        invalidParsedStep(`HTTP "${name}" ${prefix} "${capture.value}" has an invalid value source`, "http", name);
+      if (capture.slot === "query-name") {
+        const source = httpValueSource(parsed.captures[index + 1], "query");
+        if (!source) return invalidSource("query");
+        query.push({ name: capture.value, source });
+      } else {
+        const source = httpHeaderSource(parsed.captures[index + 1]);
+        if (!source) return invalidSource("header");
+        headers.push({ name: capture.value.toLowerCase(), source });
+      }
     }
   }
   if (parsed.captures.some(({ slot }) => slot === "body-whole-input")) body = { source: "input" };
@@ -1145,6 +1279,12 @@ function httpValueSource(capture: StepGrammarCapture | undefined, prefix: string
   if (capture.slot === `${prefix}-input`) return { kind: "input", input: capture.value };
   if (capture.slot === `${prefix}-environment`) return { kind: "environment", environment: capture.value };
   return undefined;
+}
+
+function httpHeaderSource(capture: StepGrammarCapture | undefined): HttpHeaderSource | undefined {
+  if (capture?.slot !== "header-credential") return httpValueSource(capture, "header");
+  const credential = takeCredentialName(capture.value);
+  return credential === undefined ? undefined : { kind: "credential", credential };
 }
 
 function captureValue(parsed: StepGrammarMatch, slot: string): string | undefined {
@@ -1327,6 +1467,13 @@ function validateJsonataPaths(
     const names = path.map((part) => record(part)?.value).filter((value): value is string => typeof value === "string");
     const [root, field, result] = names;
 
+    if (root !== undefined && FORBIDDEN_ROOTS.has(root)) {
+      fail(
+        context,
+        "credential-projection",
+        `${label} cannot read Credentials; a Credential reaches only the steps that reference it`,
+      );
+    }
     if (root === STEPS_ROOT) {
       const step = steps.find((candidate) => candidate.name === field);
       if (!field || !step) {
@@ -1423,6 +1570,17 @@ function assertClosedJsonata(value: unknown, context: CompileContext, label: str
     return;
   }
   for (const child of Object.values(node)) assertClosedJsonata(child, context, label);
+}
+
+function assertCredentialsReferenced(
+  credentials: readonly string[],
+  referenced: ReadonlySet<string>,
+  context: CompileContext,
+): void {
+  const unused = credentials.find((name) => !referenced.has(name));
+  if (unused !== undefined) {
+    fail(context, "invalid-operation", `Credential "${unused}" is declared but no step references it`);
+  }
 }
 
 function assertRelativeFilePath(path: string, context: CompileContext, located: Located): void {

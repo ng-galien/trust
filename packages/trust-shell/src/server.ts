@@ -149,6 +149,8 @@ export async function startTrustServer(options: TrustServerOptions): Promise<Run
   runtimeEnvironment.TRUST_LOG_LEVEL = configuration.logging.level;
   if (configuration.server.extensionsFile)
     runtimeEnvironment.TRUST_EXTENSIONS_FILE = configuration.server.extensionsFile;
+  runtimeEnvironment.TRUST_PACKAGES_DIRECTORY = configuration.server.packagesDirectory;
+  runtimeEnvironment.TRUST_CREDENTIAL_KEY_FILE = configuration.server.credentialKeyFile;
   if (configuration.server.runnerTrialScript)
     runtimeEnvironment.TRUST_RUNNER_TRIAL_SCRIPT = configuration.server.runnerTrialScript;
   if (configuration.server.diagnosticsEndpoint)

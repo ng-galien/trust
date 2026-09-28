@@ -54,8 +54,7 @@ export function createCommands(getPool, publishChanged) {
     if (filterTags.length) predicates.push(`coalesce(t.tags, '{}'::text[]) @> ${bind(filterTags)}::text[]`);
     return { values, predicates, bind };
   }
-  const missionFrom =
-    "FROM trust_coordination.missions m LEFT JOIN trust_coordination_classification.tags t ON t.mission = m.mission";
+  const missionFrom = "FROM trust_coordination.missions m LEFT JOIN trust_coordination.tags t ON t.mission = m.mission";
   return async ({ command, arguments: args }) => {
     const pool = getPool();
     if (!pool)
@@ -173,10 +172,7 @@ export function createCommands(getPool, publishChanged) {
           return result(404, { error: "Mission not found." }, "The requested mission does not exist.");
         }
         const previous = (
-          await client.query(
-            "SELECT revision FROM trust_coordination_classification.tags WHERE mission=$1 FOR UPDATE",
-            [args.mission],
-          )
+          await client.query("SELECT revision FROM trust_coordination.tags WHERE mission=$1 FOR UPDATE", [args.mission])
         ).rows[0];
         if ((previous?.revision ?? 0) !== args.expectedRevision) {
           await client.query("ROLLBACK");
@@ -187,9 +183,9 @@ export function createCommands(getPool, publishChanged) {
           );
         }
         const { rows } = await client.query(
-          `INSERT INTO trust_coordination_classification.tags(mission,tags,revision) VALUES($1,$2,1)
-          ON CONFLICT(mission) DO UPDATE SET tags=excluded.tags, revision=trust_coordination_classification.tags.revision+1,
-          change_id=nextval('trust_coordination_classification.changes'), updated_at=clock_timestamp()
+          `INSERT INTO trust_coordination.tags(mission,tags,revision) VALUES($1,$2,1)
+          ON CONFLICT(mission) DO UPDATE SET tags=excluded.tags, revision=trust_coordination.tags.revision+1,
+          change_id=nextval('trust_coordination.changes'), updated_at=clock_timestamp()
           RETURNING mission,tags,revision AS "tagRevision"`,
           [args.mission, normalized],
         );

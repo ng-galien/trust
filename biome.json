@@ -17,6 +17,7 @@
       "packages/**/tsconfig*.json",
       "apps/**/tsconfig*.json",
       "extensions/**/tsconfig*.json",
+      "!!trust-extension",
       "!!**/node_modules",
       "!!**/dist",
       "!!**/dist-tests",

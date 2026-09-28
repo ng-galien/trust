@@ -37,21 +37,31 @@ An <Term id="environment">Environment</Term> is a named set of **values** an Ope
 
 ### Credentials
 
-- A credential is a **named secret** stored by the runtime for one Environment. The interface can add one (name + value) or remove one; it can never read a value back — the list shows names and *Value held by the runtime*.
-- Operations never carry credentials; the compiler refuses secret-like text in a source.
-- Today credentials are stored and listed by name only: no execution receives them — an execution receives Environment **values**. How and when a credential reaches an Operation is a product decision still open; until then a value an Operation needs at execution time is an Environment value.
-- Removing an Environment removes its credentials.
+- A credential is a **named secret** stored by the runtime for one Environment: a token, a database password. Its name is the one an Operation declares in its `Credentials` table.
+- **Define.** On the Environment page, **Add** takes a name and a value. The Environment must exist first.
+- **Replace.** Adding a value under an existing name replaces it. The next admission delegates the new value.
+- **Never read back.** The value is sent once and never returned: the list shows names and *Value held by the runtime*. No screen, RPC or MCP call returns a credential value.
+- **Remove.** Removing a credential deletes its value. An Operation that declares it is then refused at admission on this Environment. Removing an Environment removes its credentials.
+- Operations never carry a value: they declare names and reference them from their steps. The compiler refuses secret-like text in a source. See [Credentials in an Operation](/docs/operations/interface#credentials).
+
+### What an execution receives
+
+- At each admission of a live Plan, TRUST delegates the Environment **values** and, of its credentials, **only the ones the Operation declares**. The other credentials of the Environment stay in the runtime.
+- If a declared credential is missing from the Environment, the attempt is refused with reason `credential-missing` before any external action. The Check stays open; define the credential and run the Check again.
+- A dry-run receives no credential. An Operation trial from the **Run** tab receives none either: an Operation that declares credentials stops there before its first step.
+- The runnable marks compare Environment values only. A missing credential is detected at admission.
+- The Runner gives each value only to the step that references it, and masks it as `[credential <name>]` in step results, the action outcome, errors, diagnostics and traces.
 
 ### Current Environment
 
 The header of the interface holds the **current Environment**. It is the default of every Operation run and Plan engagement, and the reference of the runnable marks (✓ / ✗ in the Operations catalog, "not on the current environment" on the Run tab). **Use as current** on an Environment page changes it; the choice is a browser preference, never in the URL. When no Environment is configured, the first one saved becomes current.
 
 <Callout kind="rule">
-  A dry-run delegates no Environment value: rehearsing never touches an external system. A live Plan receives the values of its Environment at each admission.
+  A dry-run delegates no Environment value and no credential: rehearsing never touches an external system. A live Plan receives the values of its Environment, and the credentials its Operation declares, at each admission.
 </Callout>
 
 <Details title="Behind the screen" expert>
-Environments and credentials are runtime objects: `environment.list` / `environment.save` / `environment.remove` and `credential.list` / `credential.save` / `credential.remove` (references only on read). `operation.environments` returns, per Operation version, the compatible Environments and the missing names — the source of every runnable mark. Values are validated at admission against the Operation's Environment schema (absolute directory, `http(s)` URL).
+Environments and credentials are runtime objects: `environment.list` / `environment.save` / `environment.remove` and `credential.list` / `credential.save` / `credential.remove`. `credential.save { environment, name, value }` creates or replaces one credential and returns `trust.credential@1` `{ credential: { environment, name } }`; the value must be a non-empty string without NUL and the Environment must exist. `credential.list { environment? }` returns `trust.credential-catalog@1` `{ credentials: [{ environment, name }] }`, references only. `credential.remove { environment, name }` returns `trust.credential-removal@1` `{ environment, name, removed }`. No method returns a value. `operation.environments` returns, per Operation version, the compatible Environments and the missing names — the source of every runnable mark. Values are validated at admission against the Operation's Environment schema (absolute directory, `http(s)` URL).
 
 MCP exposes `trust_environment_list`, `trust_environment_save` and
 `trust_environment_remove` for ordinary values only. Save takes `environment` and
@@ -60,4 +70,6 @@ unchanged. List returns ordinary values without credential names or values. MCP
 removal refuses an Environment with attached credentials; an operator must handle
 those through the credential interface first. There are no credential-management
 MCP tools. Use `trust_operation_environment_list` for Operation compatibility.
+
+At admission, a live grant carries a `credentials` map with exactly the names the compiled Operation lists in `credentials`, beside the `environment` map. A dry-run grant carries `credentials: {}`. A missing declared name refuses admission with `reasonCode: "credential-missing"`; the reason names the Environment, the missing credentials and the Operation, never a value.
 </Details>

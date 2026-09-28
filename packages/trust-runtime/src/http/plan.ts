@@ -7,6 +7,7 @@ import type {
   PlanDeclarationReplacementInput,
   PlanEngagementInput as PlanEngagementParams,
   PlanListInput,
+  PlanRelaunchInput,
   PlanResumptionInput,
   RuntimeJsonObject,
 } from "@trust/extension-sdk";
@@ -27,6 +28,7 @@ export const PLAN_REMOVE_METHOD = "plan.remove" as const;
 export const PLAN_RESET_METHOD = "plan.reset" as const;
 export const PLAN_CLOSE_METHOD = "plan.close" as const;
 export const PLAN_RESUME_METHOD = "plan.resume" as const;
+export const PLAN_RELAUNCH_METHOD = "plan.relaunch" as const;
 export const CHECK_ATTEMPT_ADMIT_METHOD = "check.attempt.admit" as const;
 export const CHECK_ATTEMPT_FACTS_METHOD = "check.attempt.facts" as const;
 export const CHECK_ATTEMPT_FINALIZE_METHOD = "check.attempt.finalize" as const;
@@ -65,6 +67,7 @@ export const PLAN_RUNTIME_RPC_METHODS = [
   PLAN_RESET_METHOD,
   PLAN_CLOSE_METHOD,
   PLAN_RESUME_METHOD,
+  PLAN_RELAUNCH_METHOD,
   SESSION_READ_METHOD,
   CHECK_READ_METHOD,
   CHECK_ATTEMPT_ADMIT_METHOD,
@@ -143,6 +146,10 @@ export async function executePlanRuntimeRpc(
       const input = parsePlanResumption(params);
       return dependencies.planRuntime.resumePlan(input, dependencies.access);
     }
+    case PLAN_RELAUNCH_METHOD: {
+      const input = parsePlanRelaunch(params);
+      return dependencies.planRuntime.relaunchPlan(input, dependencies.access);
+    }
     case PLAN_DECLARATIONS_REPLACE_METHOD: {
       const input = parsePlanDeclarationReplacement(params);
       return dependencies.planRuntime.replaceDeclarations(input, dependencies.access);
@@ -194,6 +201,18 @@ export async function executePlanRuntimeRpc(
       return dependencies.planRuntime.escalateCheck(input, dependencies.access);
     }
   }
+}
+
+function parsePlanRelaunch(value: unknown): PlanRelaunchInput {
+  const record = exactRecord(value, ["plan", "escalationId", "relaunchReason"]);
+  if (
+    !boundedString(record.plan) ||
+    !boundedString(record.escalationId) ||
+    !boundedTrimmedString(record.relaunchReason, 4_096)
+  ) {
+    throw new InvalidPlanRuntimeRpcParams();
+  }
+  return { plan: record.plan, escalationId: record.escalationId, relaunchReason: record.relaunchReason };
 }
 
 function parsePlanResumption(value: unknown): PlanResumptionInput {

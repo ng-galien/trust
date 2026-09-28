@@ -1,4 +1,4 @@
-import type { AccessContext, CatalogMetadata, CatalogMetadataUpdate } from "@trust/extension-sdk";
+import type { AccessContext, CatalogMetadata, CatalogMetadataUpdate, RegistryFailure } from "@trust/extension-sdk";
 import {
   compileOperation,
   OperationCompilationError,
@@ -18,7 +18,9 @@ import { type PlanReader, ReadError } from "../plan/read.js";
 import { type PlanRuntime, PlanRuntimeError } from "../plan/runtime.js";
 import type { Procedures } from "../procedure/procedures.js";
 import { ProcedureConflictError } from "../procedure/store.js";
-import { RegistryError, type RegistryErrorCode, type RegistryService } from "../registry/service.js";
+import { RegistryError, registryFailure } from "../registry/error.js";
+import type { RegistryPackages } from "../registry/packages.js";
+import type { RegistryService } from "../registry/service.js";
 import { TemplateError, type TemplateService } from "../template/service.js";
 import { TrialError, type TrialService } from "../trial/service.js";
 import { requestAccess } from "./access.js";
@@ -118,14 +120,6 @@ interface EnvironmentConfigurationFailureData {
   readonly message: string;
 }
 
-interface RegistryFailureData {
-  readonly contract: "trust.registry-error@1";
-  readonly reason: RegistryErrorCode;
-  readonly message: string;
-  readonly artifact?: string;
-  readonly summary: { readonly imported: number; readonly unchanged: number; readonly failed: number };
-}
-
 export const RPC_JSON_LIMIT_BYTES = 1_048_576;
 
 const PARSE_ERROR = -32_700;
@@ -152,6 +146,7 @@ interface RpcHttpDependencies {
   readonly catalogMetadata: CatalogMetadataStore;
   readonly planRuntime: PlanRuntime;
   readonly registryService: RegistryService;
+  readonly registryPackages: RegistryPackages;
 }
 
 type RpcErrorData =
@@ -160,7 +155,7 @@ type RpcErrorData =
   | ProcedureCompilationFailureData
   | PlanRuntimeFailureData
   | TrialFailureData
-  | RegistryFailureData;
+  | RegistryFailure;
 type RpcResult = JsonRpcResponse<unknown, RpcErrorData>;
 
 const hasOwn = (value: object, key: PropertyKey): boolean => Object.hasOwn(value, key);
@@ -420,15 +415,7 @@ const processMessage = async (message: unknown, dependencies: RpcHttpDependencie
         return respond(failure(id, INVALID_PARAMS, "Invalid params"));
       }
       if (error instanceof RegistryError) {
-        return respond(
-          failure(id, REGISTRY_ERROR, "Registry request rejected", {
-            contract: "trust.registry-error@1",
-            reason: error.reason,
-            message: error.message,
-            ...(error.artifact === undefined ? {} : { artifact: error.artifact }),
-            summary: error.summary ?? { imported: 0, unchanged: 0, failed: 1 },
-          } satisfies RegistryFailureData),
-        );
+        return respond(failure(id, REGISTRY_ERROR, "Registry request rejected", registryFailure(error)));
       }
       process.stderr.write(
         `registry rpc ${message.method} failed: ${error instanceof Error ? (error.stack ?? error.message) : String(error)}\n`,

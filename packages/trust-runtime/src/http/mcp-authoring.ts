@@ -11,6 +11,7 @@ import {
   compileOperation,
   OperationCompilationError,
   OperationValidationError,
+  operationCredentialNames,
   simulateOperation,
 } from "@trust/operation";
 import { CatalogProcedureCompilationError, type CompiledProcedure } from "@trust/procedure";
@@ -347,6 +348,7 @@ function renderOperation(
     ...(sourceName ? [`Source name: ${sourceName}`] : []),
     `Input fields: ${Object.keys(operation.input.properties).join(", ") || "none"}`,
     `Environment fields: ${Object.keys(operation.environment.properties).join(", ") || "none"}`,
+    `Credentials: ${operationCredentialNames(operation).join(", ") || "none"}`,
     `Steps: ${operation.steps.map((step) => `${step.name} (${step.type})`).join(", ") || "none"}`,
     `Produced fields: ${Object.keys(operation.produced.properties).join(", ") || "none"}`,
     "",

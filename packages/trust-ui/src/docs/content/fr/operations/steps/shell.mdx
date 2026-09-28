@@ -77,6 +77,23 @@ Une sortie acceptée est un résultat d'étape normal : la projection lit `steps
       """
 ```
 
+## Variables de credential
+
+Une commande qui a besoin d'un secret le reçoit comme une variable de processus, depuis un credential déclaré dans la table `Credentials` :
+
+```gherkin fragment
+    And Shell "deploy" runs "./deploy.sh" with cwd from Environment "workspaceRoot" and Input "project"
+        with variable "DEPLOY_TOKEN" from Credential "deployToken"
+        with variable "REGISTRY_TOKEN" from Credential "registryToken"
+      | argument |
+      | publish  |
+```
+
+- Le nom de variable est un nom de variable de processus (`[A-Za-z_][A-Za-z0-9_]*`), unique dans l'étape.
+- La variable n'existe que pour cette étape. Les autres étapes, et la table d'arguments, ne la voient jamais.
+- Le Runner masque la valeur dans `stdout`, `stderr` et toute erreur avant que la projection ne les lise.
+- Voir [Credentials](/docs/operations/interface#credentials) pour la déclaration, l'admission et le masquage.
+
 ## Résultat
 
 | Champ | Type |
@@ -148,6 +165,8 @@ Feature: Verify one Maven project revision
 | `Shell "x" argument references unknown Input "i"` / `… must be one string` | la source `Input "…"` ou `literal + Input "…"` n'est pas déclarée, ou est un `number` / `many` |
 | `Shell "x" argument literal + Input "i" requires a non-empty argument cell` | la forme préfixée avec une cellule `argument` vide |
 | `Shell "x" narrows its directory with unknown Input "i"` / `… directory Input "i" must be one string` | mêmes règles pour `and Input` |
+| `Shell "x" variable "V" must be a process variable name` · `Shell "x" repeats a variable name` | clause `with variable` mal formée ou répétée |
+| `Shell "x" variable "V" references undeclared Credential "c"` | le credential n'est pas dans la table `Credentials` |
 | `Shell "x" is unknown` | `accepts exits` nomme une étape qui n'existe pas |
 | `Shell exit code "n" must be an integer from 0 to 255` · `Shell "x" accepted exits must be non-empty and unique` | table de sorties malformée |
 | `Shell accepted exits must follow a Shell step` · `Shell cannot run after Produce` | ordre |

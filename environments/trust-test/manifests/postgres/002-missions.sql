@@ -14,7 +14,7 @@ CREATE TABLE IF NOT EXISTS trust_coordination.missions (
 CREATE TABLE IF NOT EXISTS trust_coordination.mission_events (
   sequence bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   mission text NOT NULL REFERENCES trust_coordination.missions(mission),
-  event text NOT NULL CHECK (event IN ('created', 'claimed', 'completed', 'blocked')),
+  event text NOT NULL CHECK (event IN ('created', 'relaunched', 'claimed', 'completed', 'blocked')),
   actor text NOT NULL,
   occurred_at timestamptz NOT NULL DEFAULT clock_timestamp()
 );
@@ -52,7 +52,17 @@ BEGIN
     INSERT INTO trust_coordination.mission_events(mission,event,actor) VALUES(m.mission,'created','coordinator');
   ELSE
     SELECT * INTO STRICT m FROM trust_coordination.missions WHERE mission = input->>'mission' FOR UPDATE;
-    IF m.request <> input THEN RAISE EXCEPTION 'Mission identifier already has a different request'; END IF;
+    IF m.request <> input THEN
+      -- A relaunched TRUST invocation generation replays the identical request from its new child Plan.
+      -- TRUST refuses every admission in the abandoned generation, so the mission follows the new Plan
+      -- and keeps its state, owner and history.
+      IF (m.request - 'plan') <> (input - 'plan') THEN
+        RAISE EXCEPTION 'Mission identifier already has a different request';
+      END IF;
+      UPDATE trust_coordination.missions SET request = input, updated_at = clock_timestamp()
+        WHERE mission = m.mission RETURNING * INTO m;
+      INSERT INTO trust_coordination.mission_events(mission,event,actor) VALUES(m.mission,'relaunched','coordinator');
+    END IF;
   END IF;
   RETURN trust_coordination.mission_view(m);
 END $$;

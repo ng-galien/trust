@@ -56,8 +56,11 @@ export const createExtension: ExtensionFactory = () => ({
 
 Compile or bundle this module as ESM. `prepare` performs explicitly requested
 initialization; `start` acquires resources and `stop` releases them. Do not silently
-reset storage during start. The context supplies string configuration, the selected
-Environment name and `publishChanged()`; it does not expose runtime services.
+reset storage during start. The context supplies the effective settings values as
+`configuration`, the selected Environment name and `publishChanged()`; it does not
+expose runtime services. When the selected store has no schema, `start` throws an
+error whose `failure` is `"storage-unprepared"`; when its schema is incompatible,
+`prepare` and `start` throw with `"storage-incompatible"` and leave it unchanged.
 
 Place the resulting module beside a manifest:
 
@@ -68,14 +71,38 @@ Place the resulting module beside a manifest:
   "title": "Example",
   "version": "1.0.0",
   "server": "./server.mjs",
-  "configuration": {},
+  "settings": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "databasePath": { "type": "string", "format": "absolute-path" },
+      "databaseUrl": { "type": "string", "format": "uri" },
+      "apiToken": { "type": "string", "format": "environment-credential", "enum": ["EXAMPLE_API_TOKEN"] },
+      "pollSeconds": { "type": "integer", "minimum": 1, "default": 30 }
+    },
+    "oneOf": [{ "required": ["databasePath"] }, { "required": ["databaseUrl"] }]
+  },
   "requestedCapabilities": []
 }
 ```
 
+`settings` is a closed JSON Schema subset (`ExtensionSettingsSchema`): typed
+`string`/`integer`/`number`/`boolean` properties, `required`, `default`, and the
+cross-field constraints `oneOf`, `anyOf` (branches of `required`) and
+`dependentRequired`. A credential is never a value: an `environment-credential`
+setting names one of the environment variables listed in its `enum`, and the host
+resolves it when it starts a new instance. URI settings refuse embedded passwords.
+`validateExtensionSettings` reports every issue with a JSON Pointer and a message.
+
 An operator adds its absolute manifest path to the installation file configured
-by `TRUST_EXTENSIONS_FILE`. Each installation declares `configuration`,
-`environment` and `grants`; `credentialEnvironment` and `autoStart` are optional.
+by `TRUST_EXTENSIONS_FILE`. Each installation declares its initial settings values
+under `configuration`, `environment` and `grants`; `credentialEnvironment` and
+`autoStart` are optional. Once updated through `PUT /extensions/{id}/settings` or
+the `trust_extension_settings_update` MCP tool (revision-checked), the runtime
+database holds the values. An update stops the instance, renews it with the new
+values and restarts it if it was running; a newly selected store without schema
+reports `preparationRequired` and waits for an explicit `prepare`. Reads return
+credential references by name only.
 Relative server/UI asset paths must remain inside the extension directory.
 Only install trusted code: the child process and federated browser page are not a
 security sandbox.

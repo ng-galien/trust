@@ -60,31 +60,20 @@ describe("Operation runner", () => {
         const operation = fixtureOperation("postgresql.atomic-claim.feature");
         const databaseUrl = new URL(postgresqlAcceptanceUrl!);
         databaseUrl.searchParams.set("options", `-csearch_path=${schema}`);
-        const configuration = {
-          postgresql: {
-            processEnvironment: {
-              PGUSER: process.env.PGUSER,
-              PGPASSWORD: process.env.PGPASSWORD,
-              PGAPPNAME: "trust-runner-acceptance",
-            },
-          },
-        };
+        databaseUrl.searchParams.set("application_name", "trust-runner-acceptance");
+        if (process.env.PGUSER !== undefined) databaseUrl.username = process.env.PGUSER;
 
         const claimed = await runOperation(
           operation,
           { resource: "plan-1", owner: "agent-1" },
           { databaseUrl: databaseUrl.toString() },
           undefined,
-          undefined,
-          configuration,
         );
         const busy = await runOperation(
           operation,
           { resource: "plan-1", owner: "agent-2" },
           { databaseUrl: databaseUrl.toString() },
           undefined,
-          undefined,
-          configuration,
         );
 
         expect(claimed).toMatchObject({

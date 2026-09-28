@@ -1,4 +1,5 @@
-import type { HttpBody, HttpFormat, HttpPathSegment, HttpValueSource } from "./http.js";
+import type { OperationCredentialReference } from "./credential.js";
+import type { HttpBody, HttpFormat, HttpHeaderSource, HttpPathSegment, HttpValueSource } from "./http.js";
 import type { OperationStep, OperationValueType } from "./operation.js";
 import type { ShellArgument } from "./shell.js";
 
@@ -33,6 +34,26 @@ export type HttpValueSourceHandlers<R> = {
 
 export function matchHttpValueSource<R>(source: HttpValueSource, handlers: HttpValueSourceHandlers<R>): R {
   return handlers[source.kind](source as never);
+}
+
+export type HttpHeaderSourceHandlers<R> = {
+  [K in HttpHeaderSource["kind"]]: (source: Extract<HttpHeaderSource, { kind: K }>) => R;
+};
+
+export function matchHttpHeaderSource<R>(source: HttpHeaderSource, handlers: HttpHeaderSourceHandlers<R>): R {
+  return handlers[source.kind](source as never);
+}
+
+/** Total visitor over the three places a compiled step consumes a declared Credential. */
+export type OperationCredentialReferenceHandlers<R> = {
+  [K in OperationCredentialReference["kind"]]: (reference: Extract<OperationCredentialReference, { kind: K }>) => R;
+};
+
+export function matchOperationCredentialReference<R>(
+  reference: OperationCredentialReference,
+  handlers: OperationCredentialReferenceHandlers<R>,
+): R {
+  return handlers[reference.kind](reference as never);
 }
 
 export type HttpPathSegmentHandlers<R> = {

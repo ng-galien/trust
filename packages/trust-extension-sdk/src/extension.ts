@@ -17,9 +17,12 @@ export interface ExtensionLifecycle {
   stop(): Promise<void>;
   read(input: unknown, context: ExtensionInvocationContext): Promise<unknown>;
   command?(input: unknown, context: ExtensionInvocationContext): Promise<unknown>;
+  /** Delete this installation's own stored data; called while stopped, only on an explicit uninstall request. */
+  deleteData?(): Promise<void>;
 }
 export interface ExtensionContext {
-  configuration: Record<string, string>;
+  /** Effective installation settings: defaults applied, credential references resolved to their values. */
+  configuration: Readonly<Record<string, import("./settings.js").ExtensionSettingValue>>;
   environment: string;
   publishChanged(): void;
 }

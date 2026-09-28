@@ -39,6 +39,7 @@ export async function runShell(
   execution: OperationExecutionContext,
   reporter: StepReporter = nullReporter,
   configuration: ShellRunnerConfiguration = {},
+  resolveCredential: (credential: string) => string = undelegated,
 ): Promise<ShellResult> {
   const configuredTimeout = (configuration.processEnvironment ?? process.env).TRUST_SHELL_TIMEOUT_MS;
   const timeoutMs =
@@ -58,6 +59,7 @@ export async function runShell(
     if (error instanceof DirectoryError) throw new ShellError(error.message, { cause: error });
     throw error;
   }
+  const variables = shellEnvironment(shell, configuration, resolveCredential);
   let processHandle: ReturnType<typeof spawn>;
   const ownsProcessGroup = process.platform !== "win32" && process.env.TRUST_RUNNER_PROCESS_GROUP !== "1";
   try {
@@ -77,7 +79,7 @@ export async function runShell(
       {
         shell: false,
         cwd: directory,
-        env: shellEnvironment(configuration),
+        env: variables,
         stdio: ["ignore", "pipe", "pipe"],
         detached: ownsProcessGroup,
       },
@@ -156,18 +158,35 @@ function terminateProcessTree(
   child.kill(signal);
 }
 
-function shellEnvironment(configuration: ShellRunnerConfiguration): Record<string, string> {
+/** Process variables every command may need to locate executables, user configuration, locale and
+    temporary files. Nothing else from the Runner process reaches a command. */
+const INHERITED_VARIABLES = new Set(["PATH", "HOME", "LANG", "TMPDIR"]);
+const INHERITED_PREFIXES = ["LC_"];
+
+function shellEnvironment(
+  shell: Shell,
+  configuration: ShellRunnerConfiguration,
+  resolveCredential: (credential: string) => string,
+): Record<string, string> {
   const environment: Record<string, string> = {};
   for (const [name, value] of Object.entries(configuration.processEnvironment ?? process.env)) {
-    if (value === undefined || name.startsWith("TRUST_") || name === "JIRA_AUTHORIZATION") continue;
-    environment[name] = value;
+    if (value === undefined) continue;
+    if (INHERITED_VARIABLES.has(name) || INHERITED_PREFIXES.some((prefix) => name.startsWith(prefix)))
+      environment[name] = value;
   }
   if (configuration.additionalPath?.length) {
     environment.PATH = [environment.PATH, ...configuration.additionalPath]
       .filter((value): value is string => Boolean(value))
       .join(delimiter);
   }
+  for (const variable of shell.variables ?? []) {
+    environment[variable.name] = resolveCredential(variable.source.credential);
+  }
   return environment;
+}
+
+function undelegated(credential: string): string {
+  throw new ShellError(`Credential "${credential}" was not delegated to this Shell step.`);
 }
 
 async function readBounded(stream: Readable, abort: () => void, onChunk?: (text: string) => void): Promise<string> {

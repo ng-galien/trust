@@ -10,6 +10,12 @@ export interface OperationEnvironmentSource {
   readonly selectionRange: SourceRange;
 }
 
+export interface OperationCredentialSource {
+  readonly name: string;
+  readonly range: SourceRange;
+  readonly selectionRange: SourceRange;
+}
+
 export interface OperationInputSource {
   readonly name: string;
   readonly type: "string" | "number" | "instant" | "reference";
@@ -43,12 +49,15 @@ export interface OperationDocument {
   readonly range: SourceRange;
   readonly selectionRange: SourceRange;
   readonly environment: readonly OperationEnvironmentSource[];
+  readonly credentials: readonly OperationCredentialSource[];
   readonly input: readonly OperationInputSource[];
   readonly steps: readonly OperationStepSource[];
   readonly produced: readonly OperationProducedSource[];
 }
 
 export type OperationCompilationErrorCode =
+  | "credential-projection"
+  | "duplicate-credential"
   | "duplicate-environment"
   | "duplicate-input"
   | "duplicate-produced-field"
@@ -56,6 +65,7 @@ export type OperationCompilationErrorCode =
   | "invalid-identifier"
   | "invalid-operation"
   | "secret-like-value"
+  | "unknown-credential"
   | "unknown-environment"
   | "unknown-step";
 

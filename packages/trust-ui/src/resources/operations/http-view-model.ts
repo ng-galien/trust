@@ -1,5 +1,10 @@
-import type { Http, HttpValueSource } from "@trust/operation";
-import { matchHttpBody, matchHttpPathSegment, matchHttpValueSource } from "@trust/operation/match";
+import type { Http, HttpHeaderSource, HttpValueSource } from "@trust/operation";
+import {
+  matchHttpBody,
+  matchHttpHeaderSource,
+  matchHttpPathSegment,
+  matchHttpValueSource,
+} from "@trust/operation/match";
 
 export function describeHttpLocation(http: Http): string {
   const path = http.path
@@ -19,6 +24,16 @@ export function describeHttpValue(source: HttpValueSource): string {
     input: (value) => `{input.${value.input}}`,
     environment: (value) => `{environment.${value.environment}}`,
     literal: (value) => `{literal ${JSON.stringify(value.value)}}`,
+  });
+}
+
+/** A header may also take its value from a declared Credential, shown by name only. */
+export function describeHttpHeaderValue(source: HttpHeaderSource): string {
+  return matchHttpHeaderSource(source, {
+    input: (value) => describeHttpValue(value),
+    environment: (value) => describeHttpValue(value),
+    literal: (value) => describeHttpValue(value),
+    credential: (value) => `{credential.${value.credential}}`,
   });
 }
 

@@ -6,10 +6,11 @@ import {
   type HttpTextResult,
   type OperationExecutionContext,
   operationProjectionContext,
+  renderHttpHeaderValue,
   renderHttpUrl,
   renderHttpValue,
 } from "@trust/operation";
-import { matchHttpBody, matchHttpFormat } from "@trust/operation/match";
+import { matchHttpBody, matchHttpFormat, matchHttpHeaderSource } from "@trust/operation/match";
 
 import { clip, nullReporter, type StepReporter } from "../diagnostics/events.js";
 import type { JsonObject } from "../lib/json.js";
@@ -36,6 +37,7 @@ export async function runHttp(
   reporter: StepReporter = nullReporter,
   timeoutMs?: number,
   clock: Clock = new SystemClock(),
+  resolveCredential: (credential: string) => string = undelegated,
 ): Promise<HttpTextResult | HttpJsonResult | HttpEmptyResult> {
   const baseUrl = environment[http.url.environment];
   if (typeof baseUrl !== "string") {
@@ -47,8 +49,21 @@ export async function runHttp(
   const headers = Object.fromEntries(
     http.headers.map((header) => [
       header.name,
-      headerValue(renderHttpValue(header.source, resolveInput, resolveEnvironment), `HTTP header "${header.name}"`),
+      headerValue(
+        renderHttpHeaderValue(header.source, resolveInput, resolveEnvironment, resolveCredential),
+        `HTTP header "${header.name}"`,
+      ),
     ]),
+  );
+  const credentialHeaders = new Map(
+    http.headers.flatMap((header) =>
+      matchHttpHeaderSource<[string, string][]>(header.source, {
+        literal: () => [],
+        input: () => [],
+        environment: () => [],
+        credential: (source) => [[header.name, `[credential ${source.credential}]`]],
+      }),
+    ),
   );
   const body = await requestBody(http, input, environment, steps, execution, resolveInput, resolveEnvironment);
   if (http.body !== undefined && !Object.keys(headers).some((name) => name.toLowerCase() === "content-type")) {
@@ -64,7 +79,7 @@ export async function runHttp(
       Object.keys(headers).length === 0
         ? ""
         : `\n${Object.entries(headers)
-            .map(([name, value]) => `${name}: ${value}`)
+            .map(([name, value]) => `${name}: ${credentialHeaders.get(name) ?? value}`)
             .join("\n")}`
     }${body === undefined ? "" : `\n\n${clip(body, 8_192)}`}`,
   );
@@ -118,6 +133,10 @@ async function requestBody(
         ),
       ),
   });
+}
+
+function undelegated(credential: string): string {
+  throw new TypeError(`Credential "${credential}" was not delegated to this HTTP step.`);
 }
 
 function stringValue(value: unknown, label: string): string {

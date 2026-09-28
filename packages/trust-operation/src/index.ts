@@ -5,6 +5,12 @@ export {
   isOperationSource,
   OperationCompilationError,
 } from "./compile.js";
+export type { CredentialSource, OperationCredentialReference } from "./credential.js";
+export {
+  operationCredentialNames,
+  operationCredentialReferences,
+  projectOperationCredentials,
+} from "./credential.js";
 export { evaluateOperationProjection, operationProjectionContext } from "./evaluate.js";
 export type {
   FileFormat,
@@ -18,6 +24,7 @@ export type {
   HttpEmptyResult,
   HttpFormat,
   HttpHeader,
+  HttpHeaderSource,
   HttpJsonResult,
   HttpMethod,
   HttpPathSegment,
@@ -25,14 +32,16 @@ export type {
   HttpTextResult,
   HttpValueSource,
 } from "./http.js";
-export { HTTP_METHODS, renderHttpUrl, renderHttpValue } from "./http.js";
+export { HTTP_METHODS, renderHttpHeaderValue, renderHttpUrl, renderHttpValue } from "./http.js";
 export type { JsonValue } from "./json.js";
 export { operationAuthoringSnippets, operationHighlightVocabulary, operationLanguage } from "./language.js";
 export type {
   HttpBodyHandlers,
   HttpFormatHandlers,
+  HttpHeaderSourceHandlers,
   HttpPathSegmentHandlers,
   HttpValueSourceHandlers,
+  OperationCredentialReferenceHandlers,
   OperationStepHandlers,
   ShellArgumentHandlers,
 } from "./match.js";
@@ -58,7 +67,7 @@ export type {
   ValueSchema,
 } from "./operation.js";
 export type { Postgresql, PostgresqlResult } from "./postgresql.js";
-export type { AcceptedShellExit, EnvironmentPath, Shell, ShellArgument } from "./shell.js";
+export type { AcceptedShellExit, EnvironmentPath, Shell, ShellArgument, ShellVariable } from "./shell.js";
 export { renderShellArgument } from "./shell.js";
 export type {
   OperationSimulationInput,
@@ -68,6 +77,7 @@ export { simulateOperation } from "./simulate.js";
 export type {
   OperationAnalysis,
   OperationCompilationErrorCode,
+  OperationCredentialSource,
   OperationDiagnostic,
   OperationDocument,
   OperationEnvironmentSource,

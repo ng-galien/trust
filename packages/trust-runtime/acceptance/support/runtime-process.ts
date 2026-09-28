@@ -45,6 +45,11 @@ export async function startPublicRuntime(
       TRUST_HOST: "127.0.0.1",
       TRUST_PORT: String(options.port ?? 0),
       ...(options.extensionsFile === undefined ? {} : { TRUST_EXTENSIONS_FILE: options.extensionsFile }),
+      // Isolated per process unless a test deliberately shares or replaces the sealing key.
+      TRUST_CREDENTIAL_KEY_FILE: path.join(dataDirectory, "credential.key"),
+      ...(options.processEnvironment?.TRUST_CREDENTIAL_KEY_FILE === undefined
+        ? {}
+        : { TRUST_CREDENTIAL_KEY_FILE: options.processEnvironment.TRUST_CREDENTIAL_KEY_FILE }),
       TRUST_STORAGE: storage.kind,
       ...(storage.kind === "pglite"
         ? { TRUST_PGLITE_DIRECTORY: storage.directory }

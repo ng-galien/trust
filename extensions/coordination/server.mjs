@@ -43,7 +43,7 @@ export function createExtension({ configuration, publishChanged }) {
 
   async function verifyClassification(client) {
     const { rows } = await client.query(
-      "SELECT column_name, udt_name FROM information_schema.columns WHERE table_schema='trust_coordination_classification' AND table_name='tags'",
+      "SELECT column_name, udt_name FROM information_schema.columns WHERE table_schema='trust_coordination' AND table_name='tags'",
     );
     for (const [column, type] of Object.entries({
       mission: "text",
@@ -53,11 +53,9 @@ export function createExtension({ configuration, publishChanged }) {
       updated_at: "timestamptz",
     })) {
       if (!rows.some((row) => row.column_name === column && row.udt_name === type))
-        throw new Error("Classification schema requires explicit preparation.");
+        throw new Error("Coordination tags require explicit preparation.");
     }
-    await client.query(
-      "SELECT mission,tags,revision,change_id,updated_at FROM trust_coordination_classification.tags LIMIT 0",
-    );
+    await client.query("SELECT mission,tags,revision,change_id,updated_at FROM trust_coordination.tags LIMIT 0");
   }
 
   async function verifyReadSchema(client) {
@@ -87,7 +85,7 @@ export function createExtension({ configuration, publishChanged }) {
     // an earlier allocated identifier whose transaction commits after a later identifier.
     return (
       await connection.query(
-        "SELECT concat((SELECT count(*) FROM trust_coordination.mission_events), ':', (SELECT coalesce(sum(revision),0) FROM trust_coordination_classification.tags)) AS sequence",
+        "SELECT concat((SELECT count(*) FROM trust_coordination.mission_events), ':', (SELECT coalesce(sum(revision),0) FROM trust_coordination.tags)) AS sequence",
       )
     ).rows[0].sequence;
   }
@@ -129,11 +127,24 @@ export function createExtension({ configuration, publishChanged }) {
           await client.query(schema);
         }
         await verifyReadSchema(client);
-        const classification = await client.query("SELECT 1 FROM pg_namespace WHERE nspname=$1", [
-          "trust_coordination_classification",
-        ]);
-        if (!classification.rowCount)
+        const {
+          rows: [tags],
+        } = await client.query(`
+          SELECT to_regclass('trust_coordination.tags') AS current_tags,
+                 to_regnamespace('trust_coordination_classification') AS legacy_schema,
+                 to_regclass('trust_coordination_classification.tags') AS legacy_tags
+        `);
+        if (tags.legacy_schema && (!tags.legacy_tags || tags.current_tags)) {
+          throw new Error("Coordination has conflicting tag schemas; inspect them before preparation.");
+        }
+        if (tags.legacy_tags) {
+          // Explicit stopped preparation moves the existing rows and sequence atomically.
+          await client.query("ALTER SEQUENCE trust_coordination_classification.changes SET SCHEMA trust_coordination");
+          await client.query("ALTER TABLE trust_coordination_classification.tags SET SCHEMA trust_coordination");
+          await client.query("DROP SCHEMA trust_coordination_classification");
+        } else if (!tags.current_tags) {
           await client.query(await readFile(new URL("./classification.sql", import.meta.url), "utf8"));
+        }
         await verifyClassification(client);
         await client.query("COMMIT");
       } catch (error) {

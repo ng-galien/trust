@@ -1,5 +1,5 @@
 import { pathToFileURL } from "node:url";
-import type { ExtensionLifecycle } from "@trust/extension-sdk";
+import { type ExtensionLifecycle, isExtensionStorageFailure } from "@trust/extension-sdk";
 import { parseExtensionInvocation } from "./access.js";
 
 let extension: ExtensionLifecycle | undefined;
@@ -27,6 +27,11 @@ process.on("message", async (raw: unknown) => {
       if (commands.length && typeof extension.command !== "function") throw new Error("Missing extension command hook");
     } else if (extension?.command && message.method === "command" && commands.includes(message.input?.command)) {
       result = await extension.command(message.input, parseExtensionInvocation(message.context, extensionId));
+    } else if (extension && message.method === "deleteData") {
+      if (typeof extension.deleteData === "function") {
+        await extension.deleteData();
+        result = { deleted: true };
+      } else result = { deleted: false };
     } else if (extension && ["prepare", "start", "stop", "read"].includes(message.method)) {
       result =
         message.method === "read"
@@ -34,7 +39,9 @@ process.on("message", async (raw: unknown) => {
           : await extension[message.method as "prepare" | "start" | "stop"]();
     } else throw new Error("Invalid extension invocation");
     process.send?.({ id: message.id, result });
-  } catch {
-    process.send?.({ id: message.id, failed: true });
+  } catch (error) {
+    // Only a closed storage failure code crosses the boundary; messages and stacks stay private.
+    const failure = (error as { failure?: unknown } | null)?.failure;
+    process.send?.({ id: message.id, failed: true, ...(isExtensionStorageFailure(failure) ? { failure } : {}) });
   }
 });

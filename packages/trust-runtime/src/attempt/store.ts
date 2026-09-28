@@ -107,6 +107,20 @@ export class AttemptStore {
     return row ? toAttempt(row) : undefined;
   }
 
+  /** The latest Attempt of each given Check in one query, keyed by Check URI. */
+  async findLatestByChecks(checkUris: readonly string[]): Promise<Map<string, Attempt>> {
+    if (checkUris.length === 0) return new Map();
+    const rows = await this.dependencies.database
+      .selectFrom("attempts")
+      .selectAll()
+      .distinctOn("check_uri")
+      .where("check_uri", "in", checkUris)
+      .orderBy("check_uri")
+      .orderBy("attempt_order", "desc")
+      .execute();
+    return new Map(rows.map((row) => [row.check_uri, toAttempt(row)]));
+  }
+
   async findLivePendingByPlan(planSlug: string, at: string): Promise<Attempt | undefined> {
     const row = await this.dependencies.database
       .selectFrom("attempts")

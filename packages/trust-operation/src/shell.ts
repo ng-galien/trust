@@ -1,3 +1,4 @@
+import type { CredentialSource } from "./credential.js";
 import { matchShellArgument } from "./match.js";
 
 /** A directory Environment, optionally narrowed to one sub-directory named by a string Input
@@ -34,9 +35,18 @@ export interface AcceptedShellExit {
   readonly stderrContains?: string;
 }
 
+/** `with variable "<NAME>" from Credential "<name>"`: one process variable given to this Shell
+    step only. */
+export interface ShellVariable {
+  readonly name: string;
+  readonly source: CredentialSource;
+}
+
 export interface Shell {
   readonly executable: string;
   readonly arguments: readonly ShellArgument[];
   readonly cwd: EnvironmentPath;
   readonly acceptedExits: readonly AcceptedShellExit[];
+  /** Step-scoped process variables. Absent when the step declares none. */
+  readonly variables?: readonly ShellVariable[];
 }

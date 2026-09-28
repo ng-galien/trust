@@ -13,7 +13,6 @@ import { startPublicRuntime } from "../../../packages/trust-runtime/dist/accepta
 
 const root = fileURLToPath(new URL("../../../", import.meta.url));
 const execute = promisify(execFile);
-let verificationEnvironment = {};
 const administratorUrl =
   process.env.COORDINATION_VERIFICATION_DATABASE_URL ?? process.env.TRUST_COORDINATION_DATABASE_URL;
 async function rpc(endpoint, method, params) {
@@ -38,7 +37,6 @@ async function check(endpoint, plan, name) {
   if (name !== "observe completion") uri.searchParams.set("nextIntent", `Continue ${plan} after ${name}`);
   const env = {
     ...process.env,
-    ...verificationEnvironment,
     TRUST_RPC_ENDPOINT: `${endpoint}/rpc`,
     TRUST_OTLP_ENDPOINT: `${endpoint}/v1/traces`,
   };
@@ -118,8 +116,8 @@ test("VERIFY-INTEGRATION Runner qualifications reject failed zero skipped crashe
       };
       for (const layer of ["unit", "integration", "database"]) {
         const integration =
-          "import test from 'node:test';test('VERIFY named assertion',async t=>{t.plan(2);const response=await fetch(process.env.COORDINATION_VERIFICATION_ENDPOINT+'/rpc',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:1,method:'plan.read',params:{plan:process.env.COORDINATION_VERIFICATION_PLAN}})});const payload=await response.json();t.assert.equal(response.status,200);t.assert.equal(payload.result.plan,process.env.COORDINATION_VERIFICATION_PLAN);});";
-        const databaseTest = `import test from 'node:test';import pg from ${JSON.stringify(new URL("node_modules/pg/lib/index.js", new URL("../../../", import.meta.url)).href)};test('VERIFY named assertion',async t=>{t.plan(2);const db=new pg.Client({connectionString:process.env.COORDINATION_VERIFICATION_DATABASE_URL});await db.connect();try{await db.query('BEGIN');await db.query('CREATE TEMP TABLE verification_rows(value integer) ON COMMIT DROP');await db.query('INSERT INTO verification_rows VALUES (42)');t.assert.equal((await db.query('SELECT value FROM verification_rows')).rows[0].value,42);await db.query('ROLLBACK');t.assert.equal((await db.query("SELECT to_regclass('verification_rows') AS relation")).rows[0].relation,null);}finally{await db.end();}});`;
+          "import test from 'node:test';import {readFileSync} from 'node:fs';const context=JSON.parse(readFileSync(new URL('./verification-context.json',import.meta.url),'utf8'));test('VERIFY named assertion',async t=>{t.plan(2);const response=await fetch(context.endpoint+'/rpc',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:1,method:'plan.read',params:{plan:context.plan}})});const payload=await response.json();t.assert.equal(response.status,200);t.assert.equal(payload.result.plan,context.plan);});";
+        const databaseTest = `import test from 'node:test';import {readFileSync} from 'node:fs';import pg from ${JSON.stringify(new URL("node_modules/pg/lib/index.js", new URL("../../../", import.meta.url)).href)};const context=JSON.parse(readFileSync(new URL('./verification-context.json',import.meta.url),'utf8'));test('VERIFY named assertion',async t=>{t.plan(2);const db=new pg.Client({connectionString:context.databaseUrl});db.password=context.databasePassword;await db.connect();try{await db.query('BEGIN');await db.query('CREATE TEMP TABLE verification_rows(value integer) ON COMMIT DROP');await db.query('INSERT INTO verification_rows VALUES (42)');t.assert.equal((await db.query('SELECT value FROM verification_rows')).rows[0].value,42);await db.query('ROLLBACK');t.assert.equal((await db.query("SELECT to_regclass('verification_rows') AS relation")).rows[0].relation,null);}finally{await db.end();}});`;
         await writeFile(
           path.join(fixture, `${layer}.mjs`),
           layer === "unit" ? body : layer === "integration" ? integration : databaseTest,
@@ -135,15 +133,32 @@ test("VERIFY-INTEGRATION Runner qualifications reject failed zero skipped crashe
         });
       }
       // Environment writes are confined to this disposable runtime, never the retained coordination service.
+      // The Runner never reads a database password from its process or the URL: the Environment holds a
+      // password-free URL and the mission Operations authenticate with the declared Credential.
+      const databaseUrl = new URL(url.href);
+      const databasePassword = decodeURIComponent(databaseUrl.password) || process.env.PGPASSWORD;
+      assert.ok(databasePassword, "The disposable database requires password authentication");
+      databaseUrl.password = "";
       await rpc(runtime.endpoint, "environment.save", {
         environment: variant,
-        values: { workspaceRoot: fixture, databaseUrl: url.href },
+        values: { workspaceRoot: fixture, databaseUrl: databaseUrl.href },
       });
-      verificationEnvironment = {
-        COORDINATION_VERIFICATION_DATABASE_URL: url.href,
-        COORDINATION_VERIFICATION_ENDPOINT: runtime.endpoint,
-        COORDINATION_VERIFICATION_PLAN: roots.mission,
-      };
+      await rpc(runtime.endpoint, "credential.save", {
+        environment: variant,
+        name: "databasePassword",
+        value: databasePassword,
+      });
+      // The Runner gives Shell commands no caller variables, so the fixture tests read their context from a file
+      // of the disposable fixture, outside the verified closure.
+      await writeFile(
+        path.join(fixture, "verification-context.json"),
+        JSON.stringify({
+          endpoint: runtime.endpoint,
+          plan: roots.mission,
+          databaseUrl: databaseUrl.href,
+          databasePassword,
+        }),
+      );
       await rpc(runtime.endpoint, "plan.engage", {
         contract: "trust.plan-engagement-request@1",
         procedure: "agent-delegation",
@@ -181,8 +196,10 @@ test("VERIFY-INTEGRATION Runner qualifications reject failed zero skipped crashe
         );
         continue;
       }
-      for (const name of ["verify integration", "verify database"])
-        assert.equal((await check(runtime.endpoint, roots.mission, name)).result.qualification.verdict, "VALIDATED");
+      for (const name of ["verify integration", "verify database"]) {
+        const verified = (await check(runtime.endpoint, roots.mission, name)).result;
+        assert.equal(verified.qualification.verdict, "VALIDATED", `${name}: ${JSON.stringify(verified.qualification)}`);
+      }
       if (variant === "stale") await writeFile(path.join(fixture, "artifact.js"), "changed artifact");
       const review = await check(runtime.endpoint, roots.mission, "review unit");
       assert.equal(review.result.qualification.verdict, variant === "stale" ? "NOT_VALIDATED" : "VALIDATED");

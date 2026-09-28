@@ -55,3 +55,39 @@ export function matchAccessConfiguration<R>(
 ): R {
   return handlers[value.mode](value as never);
 }
+export type ExtensionSettingPropertyHandlers<R> = {
+  [K in import("./settings.js").ExtensionSettingProperty["type"]]: (
+    property: Extract<import("./settings.js").ExtensionSettingProperty, { type: K }>,
+  ) => R;
+};
+/** Total dispatch over the canonical extension setting property types. */
+export function matchExtensionSettingProperty<R>(
+  property: import("./settings.js").ExtensionSettingProperty,
+  handlers: ExtensionSettingPropertyHandlers<R>,
+): R {
+  return handlers[property.type](property as never);
+}
+export type RegistrySourceHandlers<R> = {
+  [K in import("./registry.js").RegistrySource["kind"]]: (
+    source: Extract<import("./registry.js").RegistrySource, { kind: K }>,
+  ) => R;
+};
+/** Total dispatch over the canonical Git, HTTP and local file registry sources. */
+export function matchRegistrySource<R>(
+  source: import("./registry.js").RegistrySource,
+  handlers: RegistrySourceHandlers<R>,
+): R {
+  return handlers[source.kind](source as never);
+}
+export type RegistrySourceInputHandlers<R> = {
+  [K in import("./registry.js").RegistrySourceInput["kind"]]: (
+    input: Extract<import("./registry.js").RegistrySourceInput, { kind: K }>,
+  ) => R;
+};
+/** Total dispatch over the canonical registry source inputs. */
+export function matchRegistrySourceInput<R>(
+  input: import("./registry.js").RegistrySourceInput,
+  handlers: RegistrySourceInputHandlers<R>,
+): R {
+  return handlers[input.kind](input as never);
+}

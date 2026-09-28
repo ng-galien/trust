@@ -2,6 +2,7 @@ import type { ExternalPrincipal, IntentChainState, PlanMode } from "@trust/exten
 import type { Selectable } from "kysely";
 import type { Database, PlanRevisionTable, PlanTable } from "../database/database.js";
 import type { Plan, PlanCheck, PlanRevision } from "../model.js";
+import { readOnce } from "./transaction.js";
 
 type PlanRow = Selectable<PlanTable>;
 type RevisionRow = Selectable<PlanRevisionTable>;
@@ -19,6 +20,19 @@ export interface PlanListQuery {
   readonly after?: { readonly createdAt: string; readonly plan: string };
   readonly limit: number;
 }
+
+export type PlanRevisionHistoryEntry = Pick<
+  PlanRevision,
+  | "revision"
+  | "definitionDigest"
+  | "source"
+  | "agentDeclarations"
+  | "missionDeclarations"
+  | "resolvedMissions"
+  | "roleValues"
+  | "importedValues"
+  | "checkValues"
+> & { readonly checkUris: readonly string[] };
 
 export class PlanStore {
   constructor(private readonly dependencies: PlanStoreDependencies) {}
@@ -142,7 +156,11 @@ export class PlanStore {
     await database.deleteFrom("plans").where("plan_slug", "=", planSlug).execute();
   }
 
-  async findPlan(planSlug: string): Promise<Plan | undefined> {
+  findPlan(planSlug: string): Promise<Plan | undefined> {
+    return readOnce(this.dependencies.database, `plan:${planSlug}`, () => this.#findPlan(planSlug));
+  }
+
+  async #findPlan(planSlug: string): Promise<Plan | undefined> {
     const row = await this.dependencies.database
       .selectFrom("plans")
       .selectAll()
@@ -327,15 +345,52 @@ export class PlanStore {
     return rows.map(toPlan);
   }
 
-  async listRevisions(planSlug: string): Promise<PlanRevision[]> {
-    const rows = await this.dependencies.database
-      .selectFrom("plan_revisions")
-      .select("revision")
-      .where("plan_slug", "=", planSlug)
-      .orderBy("revision", "desc")
-      .execute();
-    const revisions = await Promise.all(rows.map(({ revision }) => this.readRevision(planSlug, revision)));
-    return revisions.filter((revision): revision is PlanRevision => revision !== undefined);
+  /** Revision history in two queries: only the recorded fields and the compiled Check URIs, newest first. */
+  async listRevisions(planSlug: string): Promise<PlanRevisionHistoryEntry[]> {
+    const [rows, checks] = await Promise.all([
+      this.dependencies.database
+        .selectFrom("plan_revisions")
+        .select([
+          "revision",
+          "definition_digest",
+          "source",
+          "declarations_json",
+          "mission_declarations_json",
+          "resolved_missions_json",
+          "role_values_json",
+          "check_values_json",
+        ])
+        .where("plan_slug", "=", planSlug)
+        .orderBy("revision", "desc")
+        .execute(),
+      this.dependencies.database
+        .selectFrom("compiled_checks")
+        .select(["plan_revision", "check_uri"])
+        .where("plan_slug", "=", planSlug)
+        .orderBy("check_uri")
+        .execute(),
+    ]);
+    const checkUris = new Map<number, string[]>();
+    for (const { plan_revision, check_uri } of checks) {
+      const uris = checkUris.get(plan_revision) ?? [];
+      uris.push(check_uri);
+      checkUris.set(plan_revision, uris);
+    }
+    return rows.map((row) => {
+      const values = parseRoleValues(row.role_values_json);
+      return {
+        revision: row.revision,
+        definitionDigest: row.definition_digest,
+        source: row.source,
+        agentDeclarations: row.declarations_json as PlanRevision["agentDeclarations"],
+        missionDeclarations: row.mission_declarations_json as PlanRevision["missionDeclarations"],
+        resolvedMissions: row.resolved_missions_json as PlanRevision["resolvedMissions"],
+        roleValues: values.produced,
+        importedValues: values.imported,
+        checkValues: row.check_values_json as PlanRevision["checkValues"],
+        checkUris: checkUris.get(row.revision) ?? [],
+      };
+    });
   }
 
   async findCurrentCheck(checkUri: string): Promise<PlanCheck | undefined> {
@@ -349,7 +404,11 @@ export class PlanStore {
     return row ? (row.check_json as PlanCheck) : undefined;
   }
 
-  async listCurrentChecks(planSlug: string): Promise<PlanCheck[]> {
+  listCurrentChecks(planSlug: string): Promise<PlanCheck[]> {
+    return readOnce(this.dependencies.database, `checks:${planSlug}`, () => this.#listCurrentChecks(planSlug));
+  }
+
+  async #listCurrentChecks(planSlug: string): Promise<PlanCheck[]> {
     const rows = await this.dependencies.database
       .selectFrom("compiled_checks")
       .innerJoin("plans", "plans.plan_slug", "compiled_checks.plan_slug")
@@ -372,7 +431,13 @@ export class PlanStore {
     return row ? (row.check_json as PlanCheck) : undefined;
   }
 
-  async readRevision(planSlug: string, revision: number): Promise<PlanRevision | undefined> {
+  readRevision(planSlug: string, revision: number): Promise<PlanRevision | undefined> {
+    return readOnce(this.dependencies.database, `revision:${planSlug}:${revision}`, () =>
+      this.#readRevision(planSlug, revision),
+    );
+  }
+
+  async #readRevision(planSlug: string, revision: number): Promise<PlanRevision | undefined> {
     const [planRow, row, checkRows] = await Promise.all([
       this.dependencies.database.selectFrom("plans").selectAll().where("plan_slug", "=", planSlug).executeTakeFirst(),
       this.dependencies.database

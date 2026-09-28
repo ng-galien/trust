@@ -37,7 +37,6 @@ export async function runMcpStdio(options: McpStdioOptions = {}): Promise<void> 
       processEnvironment: environment,
       timeoutMs: startup.resolved.configuration.runner.shellTimeoutMs,
     },
-    postgresql: { processEnvironment: environment },
   });
   const handle = createMcpHandler(runner);
   const lines = createInterface({

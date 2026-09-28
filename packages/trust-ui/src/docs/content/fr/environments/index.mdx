@@ -37,21 +37,31 @@ Un <Term id="environment">Environnement</Term> est un ensemble nommé de **valeu
 
 ### Credentials
 
-- Un credential est un **secret nommé** stocké par le runtime pour un Environnement. L'interface peut en ajouter un (nom + valeur) ou en retirer un ; elle ne peut jamais relire une valeur — la liste affiche les noms et *Valeur détenue par le runtime*.
-- Les Opérations ne portent jamais de credentials ; le compilateur refuse tout texte ressemblant à un secret dans une source.
-- Aujourd'hui les credentials sont stockés et listés par nom seulement : aucune exécution ne les reçoit — une exécution reçoit des **valeurs** d'Environnement. Comment et quand un credential atteint une Opération est une décision produit encore ouverte ; d'ici là, une valeur dont une Opération a besoin à l'exécution est une valeur d'Environnement.
-- Retirer un Environnement retire ses credentials.
+- Un credential est un **secret nommé** stocké par le runtime pour un Environnement : un token, un mot de passe de base de données. Son nom est celui qu'une Opération déclare dans sa table `Credentials`.
+- **Définir.** Sur la page de l'Environnement, **Ajouter** prend un nom et une valeur. L'Environnement doit exister d'abord.
+- **Remplacer.** Ajouter une valeur sous un nom existant la remplace. L'admission suivante délègue la nouvelle valeur.
+- **Jamais relu.** La valeur est envoyée une fois et jamais renvoyée : la liste affiche les noms et *Valeur détenue par le runtime*. Aucun écran, aucun appel RPC ou MCP ne renvoie la valeur d'un credential.
+- **Retirer.** Retirer un credential supprime sa valeur. Une Opération qui le déclare est alors refusée à l'admission sur cet Environnement. Retirer un Environnement retire ses credentials.
+- Les Opérations ne portent jamais de valeur : elles déclarent des noms et les référencent depuis leurs étapes. Le compilateur refuse tout texte ressemblant à un secret dans une source. Voir [Credentials dans une Opération](/docs/operations/interface#credentials).
+
+### Ce que reçoit une exécution
+
+- À chaque admission d'un Plan en direct, TRUST délègue les **valeurs** de l'Environnement et, parmi ses credentials, **seulement ceux que l'Opération déclare**. Les autres credentials de l'Environnement restent dans le runtime.
+- Si un credential déclaré manque dans l'Environnement, la tentative est refusée avec la raison `credential-missing` avant toute action externe. Le Check reste ouvert ; définir le credential puis exécuter le Check à nouveau.
+- Un dry-run ne reçoit aucun credential. Un essai d'Opération depuis l'onglet **Exécuter** n'en reçoit pas non plus : une Opération qui déclare des credentials s'y arrête avant sa première étape.
+- Les marques « exécutable » ne comparent que les valeurs d'Environnement. Un credential manquant est détecté à l'admission.
+- Le Runner ne donne chaque valeur qu'à l'étape qui la référence, et la masque en `[credential <name>]` dans les résultats d'étape, le résultat de l'action, les erreurs, les diagnostics et les traces.
 
 ### Environnement courant
 
 L'en-tête de l'interface porte l'**environnement courant**. C'est le défaut de chaque exécution d'Opération et de chaque engagement de Plan, et la référence des marques « exécutable » (✓ / ✗ dans le catalogue des Opérations, « pas sur l'environnement courant » sur l'onglet Exécuter). **Utiliser comme environnement courant** sur la page d'un Environnement le change ; le choix est une préférence du navigateur, jamais dans l'URL. Quand aucun Environnement n'est configuré, le premier enregistré devient courant.
 
 <Callout kind="rule">
-  Un dry-run ne délègue aucune valeur d'Environnement : répéter ne touche jamais un système externe. Un Plan en direct reçoit les valeurs de son Environnement à chaque admission.
+  Un dry-run ne délègue aucune valeur d'Environnement ni aucun credential : répéter ne touche jamais un système externe. Un Plan en direct reçoit, à chaque admission, les valeurs de son Environnement et les credentials que son Opération déclare.
 </Callout>
 
 <Details title="Derrière l'écran" expert>
-Les Environnements et les credentials sont des objets du runtime : `environment.list` / `environment.save` / `environment.remove` et `credential.list` / `credential.save` / `credential.remove` (références seulement en lecture). `operation.environments` renvoie, par version d'Opération, les Environnements compatibles et les noms manquants — la source de chaque marque « exécutable ». Les valeurs sont validées à l'admission contre le schéma d'Environnement de l'Opération (répertoire absolu, URL `http(s)`).
+Les Environnements et les credentials sont des objets du runtime : `environment.list` / `environment.save` / `environment.remove` et `credential.list` / `credential.save` / `credential.remove`. `credential.save { environment, name, value }` crée ou remplace un credential et renvoie `trust.credential@1` `{ credential: { environment, name } }` ; la valeur doit être une chaîne non vide sans NUL et l'Environnement doit exister. `credential.list { environment? }` renvoie `trust.credential-catalog@1` `{ credentials: [{ environment, name }] }`, des références seulement. `credential.remove { environment, name }` renvoie `trust.credential-removal@1` `{ environment, name, removed }`. Aucune méthode ne renvoie de valeur. `operation.environments` renvoie, par version d'Opération, les Environnements compatibles et les noms manquants — la source de chaque marque « exécutable ». Les valeurs sont validées à l'admission contre le schéma d'Environnement de l'Opération (répertoire absolu, URL `http(s)`).
 
 Le MCP expose `trust_environment_list`, `trust_environment_save` et
 `trust_environment_remove` pour les valeurs ordinaires uniquement. La sauvegarde
@@ -61,4 +71,6 @@ ordinaires sans les noms ni les valeurs des secrets. La suppression par MCP refu
 un Environnement contenant des secrets ; un opérateur doit d'abord les gérer par
 l'interface des secrets. Aucun outil MCP ne gère les secrets. Utiliser
 `trust_operation_environment_list` pour vérifier la compatibilité d'une Operation.
+
+À l'admission, un accord en direct porte une carte `credentials` avec exactement les noms que l'Opération compilée liste dans `credentials`, à côté de la carte `environment`. Un accord de dry-run porte `credentials: {}`. Un nom déclaré manquant refuse l'admission avec `reasonCode: "credential-missing"` ; la raison nomme l'Environnement, les credentials manquants et l'Opération, jamais une valeur.
 </Details>

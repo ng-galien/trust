@@ -34,6 +34,8 @@ import {
   isDocumentationToolName,
 } from "./mcp-documentation.js";
 import { callExtensionTool, extensionTools, isExtensionToolName } from "./mcp-extensions.js";
+import { callRegistryTool, isRegistryToolName, registryTools } from "./mcp-registry.js";
+import type { RegistryRpcDependencies } from "./registry.js";
 
 export const MCP_JSON_LIMIT_BYTES = 1_048_576;
 
@@ -54,7 +56,7 @@ const TOOL_NAMES = [
 type ToolName = (typeof TOOL_NAMES)[number];
 type JsonRpcId = string | number;
 
-interface McpHttpDependencies extends McpAuthoringDependencies {
+interface McpHttpDependencies extends McpAuthoringDependencies, RegistryRpcDependencies {
   readonly accessService: AccessService;
   readonly access?: AccessContext | undefined;
   readonly extensionHost: ExtensionHost;
@@ -189,7 +191,13 @@ async function dispatch(
         return failure(id, INVALID_PARAMS, "Invalid tools/list parameters");
       }
       return success(id, {
-        tools: [...tools(), ...extensionTools(), ...documentationTools(), ...dependencies.extensionHost.tools()],
+        tools: [
+          ...tools(),
+          ...extensionTools(),
+          ...registryTools(),
+          ...documentationTools(),
+          ...dependencies.extensionHost.tools(),
+        ],
       });
     case "tools/call":
       return callTool(id, message.params, dependencies);
@@ -224,6 +232,11 @@ async function callTool(id: JsonRpcId, value: unknown, dependencies: McpHttpDepe
     } catch {
       return toolError(id, "Access denied");
     }
+  }
+  if (isRecord(value) && isRegistryToolName(value.name)) {
+    if (!isRecord(value.arguments)) return failure(id, INVALID_PARAMS, "Invalid registry arguments");
+    const result = await callRegistryTool(value.name, value.arguments, dependencies);
+    return result.isError ? toolError(id, result.text) : textResult(id, result.text);
   }
   if (isRecord(value) && isExtensionToolName(value.name)) {
     if (!isRecord(value.arguments)) return failure(id, INVALID_PARAMS, "Invalid extension arguments");

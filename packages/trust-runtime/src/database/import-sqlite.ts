@@ -365,6 +365,18 @@ function convertRow(table: string, index: number, row: Row, columns: Column[]): 
       result[column] = value.toString();
     } else result[column] = value;
   }
+  const legacyIdentityColumns =
+    table === "plans"
+      ? ["creator_issuer", "creator_subject"]
+      : table === "attempts"
+        ? ["actor_issuer", "actor_subject"]
+        : [];
+  for (const column of columns) {
+    if (Object.hasOwn(result, column.column_name)) continue;
+    if (!legacyIdentityColumns.includes(column.column_name))
+      throw new Error(`Unexpected target column absent from SQLite source: ${table}.${column.column_name}`);
+    result[column.column_name] = null;
+  }
   return result;
 }
 

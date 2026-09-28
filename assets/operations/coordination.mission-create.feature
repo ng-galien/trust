@@ -1,5 +1,5 @@
 # language: en
-@trust-dsl:1 @operation:coordination.mission-create @version:1.0.0
+@trust-dsl:1 @operation:coordination.mission-create @version:1.1.0
 Feature: Create one delegated mission
   Persisted agent statements are observations of the coordination database, not proof of task correctness.
 
@@ -7,6 +7,9 @@ Feature: Create one delegated mission
     Given Environment
       | name | type |
       | databaseUrl | string |
+    And Credentials
+      | name |
+      | databasePassword |
     And Input
       | input | type | cardinality |
       | mission | string | one |
@@ -32,7 +35,8 @@ Feature: Create one delegated mission
       | response | string | one | any |
 
   Scenario: Run
-    When PostgreSQL "mission" executes SQL on Environment "databaseUrl" with Input as JSONB parameter $1
+    When PostgreSQL "mission" executes SQL on Environment "databaseUrl"
+        authenticated by Credential "databasePassword" with Input as JSONB parameter $1
       """
       SELECT trust_coordination.mission_create($1::jsonb) AS result
       """

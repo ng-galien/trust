@@ -29,6 +29,8 @@ await collect("assets/operations", "examples/operations", ".feature");
 await collect("assets/procedures", "examples/procedures", ".feature");
 for (const [file, id] of [
   ["AGENTS.md", "references/project-agent-guide"],
+  ["assets/operations/README.md", "references/operation-grammar"],
+  ["assets/procedures/GRAMMAR.md", "references/procedure-grammar"],
   ["packages/trust-extension-sdk/README.md", "references/extension-sdk"],
   ["assets/skills/trust/SKILL.md", "references/runner"],
   ["assets/skills/trust/references/results.md", "references/runner-results"],

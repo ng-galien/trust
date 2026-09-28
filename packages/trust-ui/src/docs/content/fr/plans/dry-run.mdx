@@ -5,7 +5,7 @@ order: 3
 screen: /dry-runs
 ---
 
-Un dry-run est un Plan dont les Facts viennent de l'opérateur. Même Procédure, mêmes Checks, même admission et même qualification, même cascade, même historique — rien d'externe ne s'exécute, aucune valeur d'Environnement n'est déléguée. C'est ainsi qu'une Procédure se répète avant qu'un agent ne l'exécute.
+Un dry-run est un Plan dont les Facts viennent de l'opérateur. Même Procédure, mêmes Checks, même admission et même qualification, même cascade, même historique — rien d'externe ne s'exécute, aucune valeur d'Environnement ni aucun credential n'est délégué. C'est ainsi qu'une Procédure se répète avant qu'un agent ne l'exécute.
 
 <Screenshot id="dryrun-cockpit" caption="Un dry-run avec son cockpit de répétition." legend={{
   "cockpit": "Le cockpit, accolé à chaque onglet du Plan ; redimensionnable, refermable (Cockpit / Répéter dans la barre d'onglets).",
@@ -41,5 +41,5 @@ Seul un dry-run peut ré-observer un Check satisfait : choisissez-le dans **Fait
 </Callout>
 
 <Details title="Les appels du cockpit" expert>
-`check.attempt.admit { attemptKey: "rehearse-<check>-<time>", checkUri, reobserve?, intent?, nextIntent? }` → accord (`environment: {}` sur un dry-run) ou refus (`check-not-actionable`, `session-unavailable`, `check-not-found`, `attempt-key-conflict`, ou une raison de chaînage d'intention) ; `check.attempt.facts { attemptKey, attemptHandle, checkUri, recordedAt, facts: [{ kind: <operation>, observedAt, values }] }` → accepté ou `fact-batch-rejected` ; `check.attempt.finalize { attemptHandle }` → `{ verdict, reasonCode: "check-qualified" | "qualification-not-satisfied", reason, checklistDelta: { newlySatisfied, newlyOpened, unchanged }, next }`. `next` vaut `RUN_CHECKS`, `RETRY_OR_ESCALATE`, `COMPLETE` ou `READ_PLAN` ; les entrées exécutables réutilisent `name`, `successReason` et `checkUri`. `plan.remove` efface un dry-run ; un Plan en direct est refusé (`plan-conflict`).
+`check.attempt.admit { attemptKey: "rehearse-<check>-<time>", checkUri, reobserve?, intent?, nextIntent? }` → accord (`environment: {}` et `credentials: {}` sur un dry-run) ou refus (`check-not-actionable`, `session-unavailable`, `check-not-found`, `attempt-key-conflict`, ou une raison de chaînage d'intention) ; `check.attempt.facts { attemptKey, attemptHandle, checkUri, recordedAt, facts: [{ kind: <operation>, observedAt, values }] }` → accepté ou `fact-batch-rejected` ; `check.attempt.finalize { attemptHandle }` → `{ verdict, reasonCode: "check-qualified" | "qualification-not-satisfied", reason, checklistDelta: { newlySatisfied, newlyOpened, unchanged }, next }`. `next` vaut `RUN_CHECKS`, `RETRY_OR_ESCALATE`, `COMPLETE` ou `READ_PLAN` ; les entrées exécutables réutilisent `name`, `successReason` et `checkUri`. `plan.remove` efface un dry-run ; un Plan en direct est refusé (`plan-conflict`).
 </Details>

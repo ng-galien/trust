@@ -92,6 +92,18 @@ test("real coordination extension prepares explicitly, observes external changes
     assert.equal((await db.query("SELECT to_regnamespace('trust_coordination') AS schema")).rows[0].schema, null);
     assert.equal((await lifecycle("prepare")).ok, true);
     assert.equal((await lifecycle("prepare")).ok, true, "compatible preparation is repeat-safe");
+    assert.deepEqual(
+      (
+        await db.query(
+          "SELECT table_name FROM information_schema.tables WHERE table_schema='trust_coordination' ORDER BY table_name",
+        )
+      ).rows.map((row) => row.table_name),
+      ["mission_events", "missions", "tags"],
+    );
+    assert.equal(
+      (await db.query("SELECT to_regnamespace('trust_coordination_classification') AS schema")).rows[0].schema,
+      null,
+    );
     assert.equal((await lifecycle("start")).ok, true);
     assert.equal((await lifecycle("start")).ok, true, "duplicate start is repeat-safe");
     assert.equal((await lifecycle("prepare")).ok, false, "running preparation is refused");
@@ -194,7 +206,7 @@ test("real coordination extension prepares explicitly, observes external changes
         })
       ).json();
     const tools = await mcp("tools/list", {});
-    assert.equal(tools.result.tools.filter((tool) => tool.name.startsWith("trust_extension_")).length, 1);
+    assert.ok(tools.result.tools.some((tool) => tool.name === "trust_extension_coordination"));
     const listed = await mcp("tools/call", {
       name: "trust_extension_coordination",
       arguments: { command: "missions.list", arguments: { tags: ["readability"] } },
@@ -321,6 +333,28 @@ test("real coordination extension prepares explicitly, observes external changes
     );
     assert.equal((await lifecycle("stop")).ok, true);
     assert.equal((await command("missions.suggest", { field: "project" })).status, 409);
+    const savedTags = (
+      await db.query("SELECT mission,tags,revision,change_id FROM trust_coordination.tags ORDER BY mission")
+    ).rows;
+    await db.query("CREATE SCHEMA trust_coordination_classification");
+    await db.query("ALTER SEQUENCE trust_coordination.changes SET SCHEMA trust_coordination_classification");
+    await db.query("ALTER TABLE trust_coordination.tags SET SCHEMA trust_coordination_classification");
+    assert.equal((await lifecycle("start")).ok, false, "the legacy tag location is not silently accepted");
+    assert.equal((await lifecycle("prepare")).ok, true, "explicit preparation consolidates an existing installation");
+    assert.deepEqual(
+      (await db.query("SELECT mission,tags,revision,change_id FROM trust_coordination.tags ORDER BY mission")).rows,
+      savedTags,
+      "consolidation preserves tag rows, revisions and change IDs",
+    );
+    assert.equal(
+      (await db.query("SELECT to_regnamespace('trust_coordination_classification') AS schema")).rows[0].schema,
+      null,
+    );
+    assert.equal((await lifecycle("start")).ok, true);
+    assert.deepEqual((await (await command("missions.list", { tags: ["project:trust"] })).json()).missions[0].tags, [
+      "project:trust",
+    ]);
+    assert.equal((await lifecycle("stop")).ok, true);
     // Explicit test-owned damage must be refused, not repaired by a subsequent prepare.
     await db.query("ALTER TABLE trust_coordination.missions RENAME COLUMN response TO incompatible_response");
     assert.equal((await lifecycle("prepare")).ok, false);

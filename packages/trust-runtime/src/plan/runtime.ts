@@ -17,13 +17,15 @@ import type {
   PlanEngagementInput,
   PlanEngagementResult,
   PlanMode,
+  PlanRelaunchInput,
+  PlanRelaunchResult,
   PlanResumptionInput,
   PlanResumptionResult,
   Refusal,
   ResolvedMissions,
   RuntimeJsonObject,
 } from "@trust/extension-sdk";
-import { OperationCompilationError, projectOperationEnvironment } from "@trust/operation";
+import { OperationCompilationError, projectOperationCredentials, projectOperationEnvironment } from "@trust/operation";
 import {
   CatalogProcedureCompilationError,
   type CompiledProcedure,
@@ -34,6 +36,7 @@ import { type AccessService, samePrincipal } from "../access/service.js";
 import type { AttemptCreation, AttemptStore } from "../attempt/store.js";
 import { checkDependenciesSatisfied } from "../check/actionability.js";
 import { qualifyCheck, validateFacts } from "../check/qualification.js";
+import type { CredentialService } from "../credential/service.js";
 import type { Database } from "../database/database.js";
 import type { EnvironmentService } from "../environment/service.js";
 import type { FactStore } from "../fact/store.js";
@@ -94,6 +97,7 @@ export interface PlanRuntimeDependencies {
   readonly database: Database;
   readonly semanticAuthority: string;
   readonly environmentService: EnvironmentService;
+  readonly credentialService: CredentialService;
   readonly procedures: Procedures;
   readonly planStore: PlanStore;
   readonly sessionStore: SessionStore;
@@ -111,6 +115,7 @@ export class PlanRuntime {
   readonly #database: Database;
   readonly #authority: string;
   readonly #environments: EnvironmentService;
+  readonly #credentials: CredentialService;
   readonly #procedures: Procedures;
   readonly #plans: PlanStore;
   readonly #sessions: SessionStore;
@@ -130,6 +135,7 @@ export class PlanRuntime {
     this.#database = dependencies.database;
     this.#authority = dependencies.semanticAuthority;
     this.#environments = dependencies.environmentService;
+    this.#credentials = dependencies.credentialService;
     this.#procedures = dependencies.procedures;
     this.#plans = dependencies.planStore;
     this.#sessions = dependencies.sessionStore;
@@ -616,6 +622,103 @@ export class PlanRuntime {
     };
   }
 
+  /**
+   * Resolves an escalated child Plan by abandoning its invocation generation. The parent synchronization then
+   * creates the next generation from the same pinned definition and inputs; the abandoned Plan keeps its history.
+   */
+  async relaunchPlan(input: PlanRelaunchInput, access?: AccessContext): Promise<PlanRelaunchResult> {
+    await this.#authorizePlan(access, "plan.relaunch", input.plan);
+    if (!isEscalationDeclaration(input.relaunchReason)) {
+      throw new PlanRuntimeError(
+        "plan-conflict",
+        "Plan relaunch requires a non-empty relaunchReason of at most 4096 characters",
+      );
+    }
+    const planSlug = input.plan;
+    const relaunchedAt = this.#now().toISOString();
+    const auditReason = `Relaunched as a new invocation generation: ${input.relaunchReason}`;
+    let result: PlanRelaunchResult | undefined;
+    let relaunched = false;
+    await planTransaction(this.#database, planSlug, async (transaction) => {
+      await this.#authorizePlan(access, "plan.relaunch", planSlug, transaction);
+      const relation = await transaction
+        .selectFrom("child_generations")
+        .selectAll()
+        .where("child_plan", "=", planSlug)
+        .executeTakeFirst();
+      if (!relation) throw new PlanRuntimeError("plan-conflict", `Plan ${planSlug} is not a child invocation`);
+      const escalations = this.#escalations.using(transaction);
+      const requested = await escalations.find(input.escalationId);
+      if (requested?.planSlug !== planSlug) {
+        throw new PlanRuntimeError(
+          "plan-conflict",
+          `Escalation ${input.escalationId} does not belong to Plan ${planSlug}`,
+        );
+      }
+      if (relation.superseded_at !== null) {
+        // A replayed request returns the generation it created; any other resolution is a conflict.
+        if (requested.resumeReason !== auditReason) {
+          throw new PlanRuntimeError(
+            "plan-conflict",
+            `Plan ${planSlug} is no longer the current invocation generation`,
+          );
+        }
+      } else {
+        const active = await escalations.findActive(planSlug);
+        if (active?.id !== input.escalationId) {
+          throw new PlanRuntimeError(
+            "plan-conflict",
+            `Escalation ${input.escalationId} is not active for Plan ${planSlug}`,
+          );
+        }
+        await escalations.resume(input.escalationId, relaunchedAt, auditReason);
+        await transaction
+          .updateTable("child_generations")
+          .set({ superseded_at: relaunchedAt })
+          .where("child_plan", "=", planSlug)
+          .where("superseded_at", "is", null)
+          .execute();
+        await this.#synchronizeChildren(transaction, relation.parent_plan);
+        relaunched = true;
+      }
+      const next = await transaction
+        .selectFrom("child_generations")
+        .selectAll()
+        .where("parent_plan", "=", relation.parent_plan)
+        .where("invocation_id", "=", relation.invocation_id)
+        .where("generation", ">", relation.generation)
+        .orderBy("generation")
+        .executeTakeFirst();
+      if (!next) {
+        throw new PlanRuntimeError(
+          "plan-conflict",
+          `The parent Plan ${relation.parent_plan} cannot start a new generation of this invocation now`,
+        );
+      }
+      const escalation = relaunched ? await escalations.find(input.escalationId) : requested;
+      result = {
+        contract: "trust.plan-relaunch@1",
+        status: "RELAUNCHED",
+        plan: planSlug,
+        escalationId: input.escalationId,
+        relaunchReason: input.relaunchReason,
+        relaunchedAt: escalation?.resumedAt ?? relaunchedAt,
+        parentPlan: relation.parent_plan,
+        invocationId: relation.invocation_id,
+        supersededGeneration: relation.generation,
+        generation: next.generation,
+        childPlan: next.child_plan,
+      };
+    });
+    if (!result) throw new Error("Plan relaunch transaction did not produce a result");
+    if (relaunched) {
+      this.#events.publish({ type: "plan.state", at: relaunchedAt, plan: planSlug });
+      this.#events.publish({ type: "plan.state", at: relaunchedAt, plan: result.parentPlan });
+      await this.#publishAncestorChanges(result.parentPlan);
+    }
+    return result;
+  }
+
   async replaceDeclarations(
     input: PlanDeclarationReplacementInput,
     access?: AccessContext,
@@ -971,6 +1074,7 @@ export class PlanRuntime {
           ? {}
           : projectOperationEnvironment(resolved.check.operation, this.#environments.resolve(attempt.environment) ?? {})
               .environment,
+      credentials: resolved.credentials,
       ...(executionConstraint === undefined || resolved.plan.mode === "dry-run" ? {} : { executionConstraint }),
       expiresAt: attempt.expiresAt,
     };
@@ -1441,7 +1545,17 @@ export class PlanRuntime {
           refusal: refusal(attemptKey, "attempt-key-conflict", "Attempt key is already bound to another intent chain"),
         };
       }
-      return { attemptKey, check, plan, session, reobserve: existing.reobserve, existing };
+      const existingCredentials = this.#admissionCredentials(attemptKey, plan, check);
+      if ("refusal" in existingCredentials) return existingCredentials;
+      return {
+        attemptKey,
+        check,
+        plan,
+        session,
+        reobserve: existing.reobserve,
+        existing,
+        credentials: existingCredentials.credentials,
+      };
     }
     const check = await this.#plans.findCurrentCheck(checkUri);
     let plan = check ? await this.#plans.findPlan(check.planSlug) : undefined;
@@ -1498,15 +1612,42 @@ export class PlanRuntime {
     }
     const intentFailure = await this.#validateIntentAdmission(plan, check, checks, active, admittedIntent, nextIntent);
     if (intentFailure) return { refusal: refusal(attemptKey, intentFailure.reasonCode, intentFailure.reason) };
+    const admissionCredentials = this.#admissionCredentials(attemptKey, plan, check);
+    if ("refusal" in admissionCredentials) return admissionCredentials;
     return {
       attemptKey,
       check,
       plan,
       session,
       reobserve,
+      credentials: admissionCredentials.credentials,
       ...(admittedIntent === undefined ? {} : { intent: admittedIntent }),
       ...(nextIntent === undefined ? {} : { nextIntent }),
       ...(restartIntent === undefined ? {} : { restartIntent }),
+    };
+  }
+
+  /** A dry-run executes nothing external and receives no Credential. A live grant carries exactly the
+      Credentials its Operation declares, and is refused while the Plan Environment lacks one. */
+  #admissionCredentials(
+    attemptKey: string,
+    plan: import("../model.js").Plan,
+    check: import("../model.js").PlanCheck,
+  ): { readonly credentials: Readonly<Record<string, string>> } | AdmissionFailure {
+    if (plan.mode === "dry-run") return { credentials: {} };
+    const { credentials, missing } = projectOperationCredentials(
+      check.operation,
+      this.#credentials.resolve(plan.environment),
+    );
+    if (missing.length === 0) return { credentials };
+    return {
+      refusal: refusal(
+        attemptKey,
+        "credential-missing",
+        `Environment "${plan.environment}" lacks the Credential${missing.length === 1 ? "" : "s"} ${missing
+          .map((name) => `"${name}"`)
+          .join(", ")} declared by Operation "${check.operation.operation}@${check.operation.version}"`,
+      ),
     };
   }
 
@@ -1760,6 +1901,8 @@ interface AdmissionResolution {
   readonly nextIntent?: string;
   readonly restartIntent?: string;
   readonly existing?: Attempt;
+  /** Held in memory for the grant only; never copied into the persisted Attempt. */
+  readonly credentials: Readonly<Record<string, string>>;
 }
 
 interface AdmissionFailure {

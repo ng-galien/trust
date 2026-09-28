@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 
 /** One PostgreSQL schema for the embedded and server adapters. */
-export const POSTGRES_SCHEMA_VERSION = 1;
+export const POSTGRES_SCHEMA_VERSION = 3;
 export const POSTGRES_SCHEMA = `
   CREATE TABLE source_templates (
     id TEXT COLLATE "C" PRIMARY KEY,
@@ -15,12 +15,48 @@ export const POSTGRES_SCHEMA = `
 
   CREATE TABLE registry_sources (
     name TEXT COLLATE "C" PRIMARY KEY,
-    kind TEXT COLLATE "C" NOT NULL CHECK (kind IN ('git', 'http')),
+    kind TEXT COLLATE "C" NOT NULL CHECK (kind IN ('git', 'http', 'file')),
     url TEXT COLLATE "C" NOT NULL,
     reference TEXT COLLATE "C",
     created_at TIMESTAMPTZ(3) NOT NULL,
     updated_at TIMESTAMPTZ(3) NOT NULL,
     CHECK ((kind = 'git') OR (reference IS NULL))
+  );
+
+  CREATE TABLE registry_source_indexes (
+    source_name TEXT COLLATE "C" PRIMARY KEY REFERENCES registry_sources(name) ON DELETE CASCADE,
+    revision TEXT COLLATE "C" NOT NULL,
+    index_json JSONB NOT NULL CHECK (jsonb_typeof(index_json) IN ('object')),
+    refreshed_at TIMESTAMPTZ(3) NOT NULL
+  );
+
+  CREATE TABLE registry_packages (
+    package_name TEXT COLLATE "C" PRIMARY KEY,
+    version TEXT COLLATE "C" NOT NULL,
+    source_name TEXT COLLATE "C" NOT NULL,
+    revision TEXT COLLATE "C" NOT NULL,
+    directory TEXT COLLATE "C" NOT NULL,
+    declaration_json JSONB NOT NULL CHECK (jsonb_typeof(declaration_json) IN ('object')),
+    installed_at TIMESTAMPTZ(3) NOT NULL,
+    updated_at TIMESTAMPTZ(3) NOT NULL
+  );
+
+  CREATE TABLE extension_installations (
+    installation_id TEXT COLLATE "C" PRIMARY KEY,
+    manifest TEXT COLLATE "C" NOT NULL,
+    environment TEXT COLLATE "C" NOT NULL,
+    grants_json JSONB NOT NULL CHECK (jsonb_typeof(grants_json) IN ('array')),
+    credential_environment_json JSONB NOT NULL CHECK (jsonb_typeof(credential_environment_json) IN ('array')),
+    auto_start BOOLEAN NOT NULL,
+    installed_at TIMESTAMPTZ(3) NOT NULL,
+    updated_at TIMESTAMPTZ(3) NOT NULL
+  );
+
+  CREATE TABLE extension_settings (
+    installation_id TEXT COLLATE "C" PRIMARY KEY,
+    settings_json JSONB NOT NULL CHECK (jsonb_typeof(settings_json) IN ('object')),
+    revision BIGINT NOT NULL CHECK (revision >= 1) CHECK (revision BETWEEN -9007199254740991 AND 9007199254740991),
+    updated_at TIMESTAMPTZ(3) NOT NULL
   );
 
   CREATE TABLE environments (

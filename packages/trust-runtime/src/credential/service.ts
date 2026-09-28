@@ -2,6 +2,7 @@ import type { CredentialReference } from "@trust/extension-sdk";
 import type { EnvironmentStore } from "../environment/store.js";
 import { assertEnvironmentName, assertValueName, EnvironmentConfigurationError } from "../environment/validation.js";
 import type { Clock } from "../time.js";
+import { CredentialSealer } from "./sealing.js";
 import type { CredentialStore } from "./store.js";
 
 export class CredentialService {
@@ -10,6 +11,7 @@ export class CredentialService {
   constructor(
     private readonly dependencies: {
       readonly credentialStore: CredentialStore;
+      readonly credentialSealer: CredentialSealer;
       readonly environmentStore: EnvironmentStore;
       readonly clock: Clock;
     },
@@ -17,8 +19,15 @@ export class CredentialService {
 
   async initialize(): Promise<void> {
     this.#credentials.clear();
-    for (const credential of await this.dependencies.credentialStore.list()) {
-      this.#environment(credential.environment).set(credential.name, credential.value);
+    const { credentialStore, credentialSealer } = this.dependencies;
+    for (const { environment, name, value } of await credentialStore.list()) {
+      if (CredentialSealer.isSealed(value)) {
+        this.#environment(environment).set(name, await credentialSealer.open(environment, name, value));
+      } else {
+        // Values stored before sealing existed (or imported from SQLite) are sealed in place once.
+        await credentialStore.reseal(environment, name, value, await credentialSealer.seal(environment, name, value));
+        this.#environment(environment).set(name, value);
+      }
     }
   }
 
@@ -48,7 +57,13 @@ export class CredentialService {
     if (!(await this.dependencies.environmentStore.exists(environment))) {
       throw new EnvironmentConfigurationError(`Environment "${environment}" is not configured`);
     }
-    await this.dependencies.credentialStore.save(environment, name, value, this.dependencies.clock.now().toISOString());
+    const sealed = await this.dependencies.credentialSealer.seal(environment, name, value);
+    await this.dependencies.credentialStore.save(
+      environment,
+      name,
+      sealed,
+      this.dependencies.clock.now().toISOString(),
+    );
     this.#environment(environment).set(name, value);
     return { environment, name };
   }

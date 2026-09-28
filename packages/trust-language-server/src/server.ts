@@ -677,9 +677,12 @@ function operationSuggestions(site: StepSite, tokens: readonly SentenceToken[], 
   const inputs = (model?.input ?? []).map((field) =>
     quotedValue(field.name, CompletionItemKind.Property, `Input: ${field.type}`),
   );
+  const credentials = (model?.credentials ?? []).map((credential) =>
+    quotedValue(credential.name, CompletionItemKind.Constant, "Declared Credential"),
+  );
   if (site.container === "scenario" && tokens.length === 0) return scenarioStepSuggestions();
   return stepGrammarExpectations(operationStepGrammar, tokens, site.container).flatMap((expectation) =>
-    operationGrammarSuggestions(expectation, environment, inputs),
+    operationGrammarSuggestions(expectation, environment, inputs, credentials),
   );
 }
 
@@ -687,6 +690,7 @@ function operationGrammarSuggestions(
   expectation: StepGrammarExpectation,
   environment: readonly Suggestion[],
   inputs: readonly Suggestion[],
+  credentials: readonly Suggestion[],
 ): Suggestion[] {
   if (expectation.kind === "literal") return [keyword(expectation.value, expectation.detail)];
   if (expectation.kind === "one-of") {
@@ -699,6 +703,7 @@ function operationGrammarSuggestions(
   }
   if (expectation.slot === "environment" || expectation.slot.endsWith("-environment")) return [...environment];
   if (expectation.slot === "input" || expectation.slot.endsWith("-input")) return [...inputs];
+  if (expectation.slot.endsWith("-credential")) return [...credentials];
   return [];
 }
 
@@ -1183,6 +1188,15 @@ function operationSymbols(document: OperationDocument): DocumentSymbol[] {
         SymbolKind.Variable,
         lspRange(field.range),
         lspRange(field.selectionRange),
+      ),
+    ),
+    ...document.credentials.map((credential) =>
+      DocumentSymbol.create(
+        credential.name,
+        "Credential",
+        SymbolKind.Constant,
+        lspRange(credential.range),
+        lspRange(credential.selectionRange),
       ),
     ),
     ...document.input.map((field) =>

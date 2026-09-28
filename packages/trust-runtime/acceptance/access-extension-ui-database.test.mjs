@@ -32,7 +32,7 @@ test("EXTENSION-UI allowed commands persist and forbidden writes leave data unch
     );
     const tagsBefore = (
       await fixture.extensionDatabase.query(
-        "SELECT mission,tags,revision FROM trust_coordination_classification.tags ORDER BY mission",
+        "SELECT mission,tags,revision FROM trust_coordination.tags ORDER BY mission",
       )
     ).rows;
     const responsesBefore = (
@@ -67,7 +67,7 @@ test("EXTENSION-UI allowed commands persist and forbidden writes leave data unch
     assert.deepEqual(
       (
         await fixture.extensionDatabase.query(
-          "SELECT mission,tags,revision FROM trust_coordination_classification.tags ORDER BY mission",
+          "SELECT mission,tags,revision FROM trust_coordination.tags ORDER BY mission",
         )
       ).rows,
       tagsBefore,
@@ -91,10 +91,9 @@ test("EXTENSION-UI allowed commands persist and forbidden writes leave data unch
     );
     assert.deepEqual(
       (
-        await fixture.extensionDatabase.query(
-          "SELECT tags,revision FROM trust_coordination_classification.tags WHERE mission=$1",
-          ["alice-mission"],
-        )
+        await fixture.extensionDatabase.query("SELECT tags,revision FROM trust_coordination.tags WHERE mission=$1", [
+          "alice-mission",
+        ])
       ).rows,
       [{ tags: ["shared-extension"], revision: 2 }],
     );

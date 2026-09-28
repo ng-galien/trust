@@ -1,4 +1,9 @@
-import type { CatalogMetadata, TemplateParameter } from "@trust/extension-sdk";
+import type {
+  CatalogMetadata,
+  RegistryPackageDeclaration,
+  RegistryPackageIndex,
+  TemplateParameter,
+} from "@trust/extension-sdk";
 import type { CompiledProcedure } from "@trust/procedure";
 import type { ColumnType, Generated, Kysely } from "kysely";
 import type { Attempt, CheckSnapshot, Plan, PlanCheck, PlanRevision, Session } from "../model.js";
@@ -15,7 +20,7 @@ export type StoredRoleValues =
 
 export interface RegistrySourceTable {
   name: string;
-  kind: "git" | "http";
+  kind: "git" | "http" | "file";
   url: string;
   reference: string | null;
   created_at: string;
@@ -226,8 +231,48 @@ export interface PlanEscalationTable {
   resume_reason: string | null;
 }
 
+export interface ExtensionInstallationTable {
+  installation_id: string;
+  manifest: string;
+  environment: string;
+  grants_json: JsonColumn<string[]>;
+  credential_environment_json: JsonColumn<string[]>;
+  auto_start: boolean;
+  installed_at: string;
+  updated_at: string;
+}
+
+export interface ExtensionSettingsTable {
+  installation_id: string;
+  settings_json: JsonColumn<Record<string, string | number | boolean>>;
+  revision: number;
+  updated_at: string;
+}
+
+export interface RegistrySourceIndexTable {
+  source_name: string;
+  revision: string;
+  index_json: JsonColumn<RegistryPackageIndex>;
+  refreshed_at: string;
+}
+
+export interface RegistryPackageTable {
+  package_name: string;
+  version: string;
+  source_name: string;
+  revision: string;
+  directory: string;
+  declaration_json: JsonColumn<RegistryPackageDeclaration>;
+  installed_at: string;
+  updated_at: string;
+}
+
 export interface TrustDatabase {
   registry_sources: RegistrySourceTable;
+  registry_source_indexes: RegistrySourceIndexTable;
+  registry_packages: RegistryPackageTable;
+  extension_installations: ExtensionInstallationTable;
+  extension_settings: ExtensionSettingsTable;
   environments: EnvironmentTable;
   source_templates: SourceTemplateTable;
   environment_variables: EnvironmentVariableTable;

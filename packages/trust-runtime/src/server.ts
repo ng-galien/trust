@@ -25,6 +25,8 @@ export interface RuntimeServerOptions {
   readonly accessResourceUrl?: string;
   readonly extensionsFile?: string;
   readonly extensionTimeoutMs?: number;
+  readonly packagesDirectory?: string;
+  readonly credentialKeyFile?: string;
   readonly host: string;
   readonly port: number;
   readonly instance?: string;
@@ -92,6 +94,8 @@ export const startRuntime = async ({
   accessResourceUrl,
   extensionsFile,
   extensionTimeoutMs,
+  packagesDirectory,
+  credentialKeyFile,
   host,
   port,
   instance,
@@ -142,6 +146,8 @@ export const startRuntime = async ({
       ...(accessResourceUrl ? { accessResourceUrl } : {}),
       ...(extensionsFile === undefined ? {} : { extensionsFile }),
       ...(extensionTimeoutMs === undefined ? {} : { extensionTimeoutMs }),
+      ...(packagesDirectory === undefined ? {} : { packagesDirectory }),
+      ...(credentialKeyFile === undefined ? {} : { credentialKeyFile }),
       ...(storage ? { storage } : {}),
       ...(semanticAuthority ? { semanticAuthority } : {}),
       ...(operations ? { operations } : {}),

@@ -38,7 +38,7 @@ TRUST_COORDINATION_DATABASE_URL=postgresql://flowlab@127.0.0.1:15432/flowlab nod
 
 The manager retains the runtime in tmux and stores its embedded history separately in `.trust/dogfood/pglite` (an older `runtime.sqlite` requires explicit import). The interface is `http://127.0.0.1:4173/plans`; the MCP endpoint is `http://127.0.0.1:4318/mcp`. The installer configures the `coordination` Environment and publishes through MCP from the repository Operation catalog.
 
-The runner obtains PostgreSQL credentials from its process environment. Set `PGPASSWORD` to the existing local test database password when running Checks; never put a password in a Plan, Operation, URL, or metadata. `TRUST_URL` can override the MCP helper endpoint; configure `TRUST_RPC_ENDPOINT` and `TRUST_OTLP_ENDPOINT` consistently for the runner when using other ports.
+The mission Operations (`coordination.mission-*@1.1.0`) declare the Credential `databasePassword` and authenticate with it. Store the database password once for the Environment through the operator credential interface (RPC `credential.save`); the Runner never reads `PGPASSWORD`, a password file or a password in the URL. Never put a password in a Plan, Operation, URL, or metadata. `TRUST_URL` can override the MCP helper endpoint; configure `TRUST_RPC_ENDPOINT` and `TRUST_OTLP_ENDPOINT` consistently for the runner when using other ports.
 
 ## First mission and subsequent missions
 

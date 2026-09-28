@@ -1,7 +1,12 @@
 import express, { type Response, Router } from "express";
 import { AccessError } from "../access/error.js";
 import type { AccessService } from "../access/service.js";
-import { ExtensionError, type ExtensionHost } from "../extensions/host.js";
+import {
+  ExtensionError,
+  type ExtensionHost,
+  ExtensionSettingsRejected,
+  parseExtensionSettingsUpdate,
+} from "../extensions/host.js";
 import type { PlanEvents } from "../plan/events.js";
 import { type PlanReader, ReadError } from "../plan/read.js";
 import { type PlanRuntime, PlanRuntimeError } from "../plan/runtime.js";
@@ -38,6 +43,16 @@ export function createExtensionsHttpHandler({
           throw new ExtensionError(400, "invalid-extension-request");
         accessService.authorize(access, `extension.${surface}`);
         response.json({ extension: await extension.transition(surface as "prepare" | "start" | "stop") });
+        return;
+      }
+      if (surface === "settings" && rest.length === 0 && request.method === "GET") {
+        accessService.authorize(access, "extension.settings.read");
+        response.json({ settings: await extensionHost.readSettings(id) });
+        return;
+      }
+      if (surface === "settings" && rest.length === 0 && request.method === "PUT") {
+        accessService.authorize(access, "extension.settings.update");
+        response.json(await extensionHost.updateSettings(parseExtensionSettingsUpdate(id, request.body)));
         return;
       }
       if (surface === "commands" && rest.length === 0 && request.method === "POST") {
@@ -219,7 +234,8 @@ function sendError(response: Response, error: unknown) {
   response.status(known ? error.status : 400).json({
     error: {
       code: known ? error.code : "invalid-extension-request",
-      message: "Extension request could not be completed.",
+      message: known ? error.message : "Extension request could not be completed.",
+      ...(error instanceof ExtensionSettingsRejected ? { issues: error.issues } : {}),
     },
   });
 }

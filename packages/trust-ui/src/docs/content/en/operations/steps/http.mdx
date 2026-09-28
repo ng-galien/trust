@@ -106,14 +106,23 @@ A status outside the accepted set interrupts the Operation before Produce. Trans
 ## Authentication
 
 Headers can use non-secret `string` Environment values. The URL itself must carry no credentials.
-Credential references are not exposed as Operation values, and this HTTP contract does not inject
-secret headers.
+A secret header takes its value from a credential declared in the `Credentials` table:
+
+```gherkin fragment
+    When HTTP "issue" sends "GET" to Environment "jiraIssueUrl" appending Input "issue"
+        with header "Authorization" from Credential "jiraToken" and reads JSON
+```
+
+- `from Credential` is accepted for headers only, never for a path segment, a query parameter or a body.
+- The Runner sets the header from the value TRUST delegated at admission. The value is masked in the step result, including response headers and body.
+- See [Credentials](/docs/operations/interface#credentials) for declaration, admission and masking.
 
 <Details title="Diagnostics specific to HTTP steps" expert>
 | Message | Cause |
 | --- | --- |
 | `HTTP "x" requires Environment "e" to be a url` | the Environment is a `directory` |
 | `HTTP "x" uses undeclared Environment "e"` | the name is not in the Environment table |
+| `HTTP "x" header "h" references undeclared Credential "c"` | the credential is not in the `Credentials` table |
 | `HTTP "x" path Input "i" must be one string` | `appending` an undeclared, `number` or `many` Input |
 | `HTTP "x" query/header/body Environment "e" must be a string` | a value source is not a `string` Environment |
 | `HTTP "x" method "…" is not registered for application requests` | unknown method, `PRI` or `*` |

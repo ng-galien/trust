@@ -10,9 +10,7 @@ test("EXTENSION-ACCESS actual extension stores preserve allowed changes and deny
     try {
       const coordination = await f.provider.issue({ subject: "alice", scope: "trust.extension.coordination.use" });
       const mobile = await f.provider.issue({ subject: "bob", scope: "trust.extension.mobile-companion.use" });
-      const before = (
-        await f.extensionDatabase.query("SELECT * FROM trust_coordination_classification.tags ORDER BY mission")
-      ).rows;
+      const before = (await f.extensionDatabase.query("SELECT * FROM trust_coordination.tags ORDER BY mission")).rows;
       assert.equal(
         (
           await f.command("coordination", mobile.token, "tags.replace", {
@@ -24,7 +22,7 @@ test("EXTENSION-ACCESS actual extension stores preserve allowed changes and deny
         403,
       );
       assert.deepEqual(
-        (await f.extensionDatabase.query("SELECT * FROM trust_coordination_classification.tags ORDER BY mission")).rows,
+        (await f.extensionDatabase.query("SELECT * FROM trust_coordination.tags ORDER BY mission")).rows,
         before,
       );
       f.okay(
@@ -37,7 +35,7 @@ test("EXTENSION-ACCESS actual extension stores preserve allowed changes and deny
       assert.equal(
         (
           await f.extensionDatabase.query(
-            "SELECT revision FROM trust_coordination_classification.tags WHERE mission='historical-mission'",
+            "SELECT revision FROM trust_coordination.tags WHERE mission='historical-mission'",
           )
         ).rows[0].revision,
         1,

@@ -97,6 +97,9 @@ export interface CompiledOperation {
   readonly source: string;
   readonly input: ObjectSchema;
   readonly environment: ObjectSchema;
+  /** Environment Credential names declared by `Given Credentials`, in source order. TRUST resolves
+      exactly these names at attempt admission. Absent when the source declares none. */
+  readonly credentials?: readonly string[];
   readonly steps: readonly OperationStep[];
   readonly produce: Produce;
   readonly produced: ObjectSchema;

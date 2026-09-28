@@ -21,12 +21,15 @@ export const operationLanguage = {
   httpMethods: HTTP_METHODS,
   phrases: {
     environment: "Environment",
+    credentials: "Credentials",
     input: "Input",
     produced: "Produced fields",
     produce: "Produce with JSONata",
   },
   jsonata: {
     roots: ["steps", "input", "environment", "execution"] as const,
+    /** Roots a projection can never read: Credentials reach only the steps that reference them. */
+    forbiddenRoots: ["credentials"] as const,
     functions: [
       "abs",
       "append",
@@ -104,6 +107,8 @@ export const operationLanguage = {
   syntax: {
     types: [
       "Environment",
+      "Credentials",
+      "Credential",
       "Input",
       "Produced",
       "Shell",
@@ -114,7 +119,7 @@ export const operationLanguage = {
       "Operation",
       "Execution",
     ] as const,
-    verbs: ["runs", "accepts", "sends", "executes", "appending", "with", "reads", "Produce"] as const,
+    verbs: ["runs", "accepts", "sends", "executes", "appending", "with", "reads", "authenticated", "Produce"] as const,
   },
   template: `# language: en
 @trust-dsl:1 @operation:domain.action @version:1.0.0
@@ -165,6 +170,23 @@ const httpValueSource = (prefix: string) =>
     ),
     stepSequence(operationLiteral("as", "Literal value"), operationQuoted(`${prefix}-literal`, "Literal value")),
   );
+const credentialSource = (slot: string) =>
+  stepSequence(
+    operationLiteral("from Credential", "Value from a declared Credential"),
+    operationQuoted(slot, "Operation Credential"),
+  );
+const httpHeaderSource = stepChoice(
+  stepSequence(
+    operationLiteral("from Input", "Value from an Input"),
+    operationQuoted("header-input", "Operation Input"),
+  ),
+  stepSequence(
+    operationLiteral("from Environment", "Value from the Environment"),
+    operationQuoted("header-environment", "Operation Environment"),
+  ),
+  credentialSource("header-credential"),
+  stepSequence(operationLiteral("as", "Literal value"), operationQuoted("header-literal", "Literal value")),
+);
 const httpPathSegment = stepChoice(
   stepSequence(
     operationLiteral("Input", "Path segment from an Input"),
@@ -183,6 +205,11 @@ export const operationStepGrammar: StepGrammar = {
       name: "environment",
       context: "background",
       expression: operationLiteral(operationLanguage.phrases.environment, "Environment interface table"),
+    },
+    {
+      name: "credentials",
+      context: "background",
+      expression: operationLiteral(operationLanguage.phrases.credentials, "Credentials interface table"),
     },
     {
       name: "input",
@@ -205,6 +232,13 @@ export const operationStepGrammar: StepGrammar = {
         operationLiteral("with cwd from Environment", "Working directory"),
         operationQuoted("environment", "Operation Environment"),
         appendInput,
+        stepRepeat(
+          stepSequence(
+            operationLiteral("with variable", "Process variable for this step only"),
+            operationQuoted("variable-name", "Process variable name"),
+            credentialSource("variable-credential"),
+          ),
+        ),
       ),
     },
     {
@@ -279,7 +313,7 @@ export const operationStepGrammar: StepGrammar = {
           stepSequence(
             operationLiteral("with header", "Request header"),
             operationQuoted("header-name", "Request header name"),
-            httpValueSource("header"),
+            httpHeaderSource,
           ),
         ),
         stepOptional(
@@ -304,6 +338,12 @@ export const operationStepGrammar: StepGrammar = {
         operationQuoted("step", "Step name"),
         operationLiteral("executes SQL on Environment", "PostgreSQL connection"),
         operationQuoted("environment", "Operation Environment"),
+        stepOptional(
+          stepSequence(
+            operationLiteral("authenticated by Credential", "Connection password from a declared Credential"),
+            operationQuoted("postgresql-credential", "Operation Credential"),
+          ),
+        ),
         operationLiteral("with Input as JSONB parameter $1", "Parameterized Operation Input"),
       ),
     },
@@ -330,6 +370,9 @@ export const operationHighlightVocabulary = {
     "query-environment",
     "header-input",
     "header-environment",
+    "header-credential",
+    "postgresql-credential",
+    "variable-credential",
     "body-input",
     "body-environment",
   ],
@@ -339,6 +382,10 @@ export const operationAuthoringSnippets = [
   {
     label: "Environment interface",
     insertText: `Given ${operationLanguage.phrases.environment}\n  | name | type |\n  | \${1:name} | \${2|${operationLanguage.environmentTypes.join(",")}|} |`,
+  },
+  {
+    label: "Credentials interface",
+    insertText: `And ${operationLanguage.phrases.credentials}\n  | name |\n  | \${1:name} |`,
   },
   {
     label: "Input interface",

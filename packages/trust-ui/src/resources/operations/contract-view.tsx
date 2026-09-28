@@ -10,8 +10,8 @@ import { EmptyState } from "../../ui/states.js";
 import {
   describeAcceptedStatuses,
   describeHttpBody,
+  describeHttpHeaderValue,
   describeHttpLocation,
-  describeHttpValue,
 } from "./http-view-model.js";
 import { stepTypeLabel } from "./model.js";
 
@@ -128,7 +128,7 @@ function StepBody({ step }: { step: OperationStep }) {
             <>
               <Term>{t("operations.contract.headers")}</Term>
               <dd className="mono">
-                {http.headers.map((header) => `${header.name}=${describeHttpValue(header.source)}`).join(", ")}
+                {http.headers.map((header) => `${header.name}=${describeHttpHeaderValue(header.source)}`).join(", ")}
               </dd>
             </>
           ) : null}

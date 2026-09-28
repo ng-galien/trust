@@ -249,6 +249,7 @@ test("a named Git registry source clones one repository and survives a runtime r
       contract: "trust.registry-source-removal@1",
       name: "tenant-git",
       removed: true,
+      keptPackages: [],
     });
     assert.deepEqual(
       ((await rpc(secondRuntime.endpoint, "registry.source.list", {})) as { sources: unknown[] }).sources,

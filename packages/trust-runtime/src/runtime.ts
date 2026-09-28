@@ -1,3 +1,4 @@
+import { resolve } from "node:path";
 import type {
   BrowserAuthenticationConfiguration,
   DevelopmentAuthenticationConfiguration,
@@ -12,6 +13,7 @@ import { DevelopmentAuthority } from "./access/development-authority.js";
 import { AccessService } from "./access/service.js";
 import { AttemptStore } from "./attempt/store.js";
 import { CatalogMetadataStore } from "./catalog/metadata.js";
+import { CredentialSealer } from "./credential/sealing.js";
 import { CredentialService } from "./credential/service.js";
 import { CredentialStore } from "./credential/store.js";
 import type { Database } from "./database/database.js";
@@ -19,6 +21,7 @@ import { createDatabase } from "./database/storage.js";
 import { EnvironmentService } from "./environment/service.js";
 import { EnvironmentStore } from "./environment/store.js";
 import { ExtensionHost } from "./extensions/host.js";
+import { ExtensionInstallationStore } from "./extensions/store.js";
 import { FactStore } from "./fact/store.js";
 import { Health } from "./health.js";
 import { createHttpApp } from "./http/app.js";
@@ -36,6 +39,7 @@ import { DEFAULT_SESSION_DURATION_MS, PlanRuntime } from "./plan/runtime.js";
 import { PlanStore } from "./plan/store.js";
 import { Procedures } from "./procedure/procedures.js";
 import { ProcedureStore } from "./procedure/store.js";
+import { RegistryPackages } from "./registry/packages.js";
 import { RegistryService } from "./registry/service.js";
 import { RegistrySourceStore } from "./registry/store.js";
 import { SessionStore } from "./session/store.js";
@@ -55,6 +59,7 @@ export interface RuntimeComponents {
   readonly developmentAuthority: DevelopmentAuthority | undefined;
   readonly accessResourceUrl: string | undefined;
   readonly extensionHost: ExtensionHost;
+  readonly extensionInstallationStore: ExtensionInstallationStore;
   readonly extensionsHttpHandler: Router;
   readonly extensionsFile: string | undefined;
   readonly extensionTimeoutMs: number;
@@ -69,10 +74,14 @@ export interface RuntimeComponents {
   readonly catalogMetadata: CatalogMetadataStore;
   readonly registrySourceStore: RegistrySourceStore;
   readonly registryService: RegistryService;
+  readonly registryPackages: RegistryPackages;
+  readonly packagesDirectory: string;
   readonly environmentStore: EnvironmentStore;
   readonly environmentService: EnvironmentService;
   readonly credentialStore: CredentialStore;
   readonly credentialService: CredentialService;
+  readonly credentialSealer: CredentialSealer;
+  readonly credentialKeyFile: string;
   readonly planStore: PlanStore;
   readonly procedureStore: ProcedureStore;
   readonly procedures: Procedures;
@@ -109,6 +118,10 @@ export interface RuntimeContainerOptions {
   accessResourceUrl?: string;
   extensionsFile?: string;
   extensionTimeoutMs?: number;
+  /** Runtime-owned registry package directory; defaults to `.trust/server/packages` below the working directory. */
+  packagesDirectory?: string;
+  /** Owner-only credential sealing key file; defaults to `.trust/server/credential.key` below the working directory. */
+  credentialKeyFile?: string;
   storage?: StorageConfiguration;
   database?: Database;
   semanticAuthority?: string;
@@ -160,6 +173,7 @@ export const createRuntimeContainer = async (
     accessService: asClass(AccessService).singleton(),
     extensionsFile: asValue(options.extensionsFile),
     extensionTimeoutMs: asValue(options.extensionTimeoutMs ?? 10_000),
+    extensionInstallationStore: asClass(ExtensionInstallationStore).singleton(),
     extensionHost: asClass(ExtensionHost)
       .singleton()
       .disposer((host) => host.close()),
@@ -172,6 +186,8 @@ export const createRuntimeContainer = async (
     catalogMetadata: asClass(CatalogMetadataStore).singleton(),
     registrySourceStore: asClass(RegistrySourceStore).singleton(),
     registryService: asClass(RegistryService).singleton(),
+    registryPackages: asClass(RegistryPackages).singleton(),
+    packagesDirectory: asValue(resolve(options.packagesDirectory ?? ".trust/server/packages")),
     sessionDurationMs: asValue(options.sessionDurationMs ?? DEFAULT_SESSION_DURATION_MS),
     database:
       options.database === undefined
@@ -195,6 +211,8 @@ export const createRuntimeContainer = async (
     environmentService: asClass(EnvironmentService).singleton(),
     credentialStore: asClass(CredentialStore).singleton(),
     credentialService: asClass(CredentialService).singleton(),
+    credentialSealer: asClass(CredentialSealer).singleton(),
+    credentialKeyFile: asValue(resolve(options.credentialKeyFile ?? ".trust/server/credential.key")),
     planRuntime: asClass(PlanRuntime).singleton(),
     planReader: asClass(PlanReader).singleton(),
     rpcHttpHandler: asFunction(createRpcHttpHandler).singleton(),

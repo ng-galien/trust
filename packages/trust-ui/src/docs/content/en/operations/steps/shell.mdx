@@ -77,6 +77,23 @@ An accepted exit is a normal step result: the projection reads `steps.test.exitC
       """
 ```
 
+## Credential variables
+
+A command that needs a secret receives it as one process variable, from a credential declared in the `Credentials` table:
+
+```gherkin fragment
+    And Shell "deploy" runs "./deploy.sh" with cwd from Environment "workspaceRoot" and Input "project"
+        with variable "DEPLOY_TOKEN" from Credential "deployToken"
+        with variable "REGISTRY_TOKEN" from Credential "registryToken"
+      | argument |
+      | publish  |
+```
+
+- The variable name is a process variable name (`[A-Za-z_][A-Za-z0-9_]*`), unique within the step.
+- The variable exists for this step only. Other steps, and the argument table, never see it.
+- The Runner masks the value in `stdout`, `stderr` and any error before the projection reads them.
+- See [Credentials](/docs/operations/interface#credentials) for declaration, admission and masking.
+
 ## Result
 
 | Field | Type |
@@ -148,6 +165,8 @@ Feature: Verify one Maven project revision
 | `Shell "x" argument references unknown Input "i"` / `… must be one string` | the `Input "…"` or `literal + Input "…"` source is undeclared, or is a `number` / `many` |
 | `Shell "x" argument literal + Input "i" requires a non-empty argument cell` | the prefix form with an empty `argument` cell |
 | `Shell "x" narrows its directory with unknown Input "i"` / `… directory Input "i" must be one string` | same rules for `and Input` |
+| `Shell "x" variable "V" must be a process variable name` · `Shell "x" repeats a variable name` | malformed or repeated `with variable` clause |
+| `Shell "x" variable "V" references undeclared Credential "c"` | the credential is not in the `Credentials` table |
 | `Shell "x" is unknown` | `accepts exits` names a step that does not exist |
 | `Shell exit code "n" must be an integer from 0 to 255` · `Shell "x" accepted exits must be non-empty and unique` | malformed exit table |
 | `Shell accepted exits must follow a Shell step` · `Shell cannot run after Produce` | ordering |

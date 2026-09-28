@@ -105,6 +105,21 @@ export class SnapshotStore {
     return row ? toSnapshot(row) : undefined;
   }
 
+  /** The latest Snapshot of each given Check in one query, keyed by Check URI. */
+  async findLatestByChecks(checkUris: readonly string[]): Promise<Map<string, CheckSnapshot>> {
+    if (checkUris.length === 0) return new Map();
+    const rows = await this.dependencies.database
+      .selectFrom("check_snapshots")
+      .selectAll()
+      .distinctOn("check_uri")
+      .where("check_uri", "in", checkUris)
+      .orderBy("check_uri")
+      .orderBy("calculated_at", "desc")
+      .orderBy("snapshot_id", "desc")
+      .execute();
+    return new Map(rows.map((row) => [row.check_uri, toSnapshot(row)]));
+  }
+
   async listHistory(checkUri: string): Promise<CheckSnapshot[]> {
     const rows = await this.dependencies.database
       .selectFrom("check_snapshots")

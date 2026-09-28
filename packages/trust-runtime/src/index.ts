@@ -47,6 +47,8 @@ try {
   runtime = await startRuntime({
     ...(configuration.server.extensionsFile ? { extensionsFile: configuration.server.extensionsFile } : {}),
     extensionTimeoutMs: configuration.server.extensionTimeoutMs,
+    packagesDirectory: configuration.server.packagesDirectory,
+    credentialKeyFile: configuration.server.credentialKeyFile,
     host,
     port,
     accessConfiguration: authentication.access,

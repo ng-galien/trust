@@ -1,10 +1,10 @@
 ---
 title: "Interface — Input, Environment, Produced fields"
-summary: "The three tables of the Background: what a Check gives the Operation, what the Environment gives it, and exactly what it returns."
+summary: "The tables of the Background: what a Check gives the Operation, what the Environment gives it, which Environment Credentials its steps use, and exactly what it returns."
 order: 2
 ---
 
-The `Background` of an Operation is its contract: what a Procedure binds (Input), what an <Term id="environment">Environment</Term> provides (Environment), what a Check can test (Produced fields). Everything is typed, named in lower camel case and closed — no optional value, no free-form key.
+The `Background` of an Operation is its contract: what a Procedure binds (Input), what an <Term id="environment">Environment</Term> provides (Environment), what a Check can test (Produced fields). Everything is typed, named in lower camel case and closed — no optional value, no free-form key. An optional fourth table, `Credentials`, names the secrets of the Environment that its steps use.
 
 > Input comes from the Check, Environment from the execution context, Produced fields go to the Check.
 
@@ -89,9 +89,95 @@ In the Source editor, the JSONata projection is an embedded language rather than
   A field copied from `input` (for example `"verifiedRevision": input.revision`) attests the **admitted context** the action ran with — it does not claim the external system re-observed that value. A field derived from a step result attests the **action result** itself.
 </Callout>
 
+## Credentials
+
+A token or a database password is a <Term id="credential">credential</Term>. The Operation declares it by **name** and references it from the step that uses it. The value is stored for the Environment and never appears in the source.
+
+```gherkin fragment title="Declare the names"
+    And Credentials
+      | name          |
+      | registryToken |
+      | dbPassword    |
+      | deployToken   |
+```
+
+- Optional, at most once. The header is exactly `| name |`, at least one row.
+- A name starts with a letter and uses letters, digits or underscores. It is the name of a credential stored for the Environment.
+- Every declared name must be referenced by at least one step. Every referenced name must be declared.
+
+A credential is referenced in exactly three places:
+
+| Step | Clause | What the step receives |
+| --- | --- | --- |
+| HTTP | `with header "<Header>" from Credential "<name>"` | the header value; never a path, query or body value |
+| PostgreSQL | `authenticated by Credential "<name>"` | the connection password |
+| Shell | `with variable "<VARIABLE>" from Credential "<name>"` | one process variable, for this step only; repeat the clause for several variables |
+
+```gherkin operation title="Three steps, three credential references"
+# language: en
+@trust-dsl:1 @operation:release.publish @version:1.0.0
+Feature: Publish one release with Environment credentials
+
+  Background: Operation interface
+    Given Environment
+      | name          | type      |
+      | registryUrl   | url       |
+      | databaseUrl   | string    |
+      | workspaceRoot | directory |
+    And Credentials
+      | name          |
+      | registryToken |
+      | dbPassword    |
+      | deployToken   |
+    And Input
+      | input   | type      | cardinality |
+      | project | reference | one         |
+    And Produced fields
+      | field      | type   | cardinality | domain |
+      | registry   | number | one         | any    |
+      | releases   | number | one         | any    |
+      | deployExit | number | one         | any    |
+
+  Scenario: Run
+    When HTTP "registry" sends "GET" to Environment "registryUrl" appending Input "project"
+        with header "Authorization" from Credential "registryToken" and reads JSON
+    And PostgreSQL "releases" executes SQL on Environment "databaseUrl"
+        authenticated by Credential "dbPassword" with Input as JSONB parameter $1
+      """
+      SELECT count(*)::int AS result FROM releases WHERE project = $1::jsonb->>'project'
+      """
+    And Shell "deploy" runs "./deploy.sh" with cwd from Environment "workspaceRoot" and Input "project"
+        with variable "DEPLOY_TOKEN" from Credential "deployToken"
+      | argument |
+      | publish  |
+    Then Produce with JSONata
+      """
+      {
+        "registry": steps.registry.status,
+        "releases": steps.releases.result,
+        "deployExit": steps.deploy.exitCode
+      }
+      """
+```
+
+What happens at execution:
+
+- **Admission.** On a live Plan, TRUST resolves exactly the declared names from the credentials of the Plan's Environment. A credential that is not declared is never delegated. A declared credential missing from the Environment refuses the attempt, reason `credential-missing`, before any external action.
+- **Dry-run.** A dry-run executes nothing external and receives no credential.
+- **Steps.** The Runner gives each value only to the step that references it. `Produce with JSONata` and a JSONata request body cannot read credentials: the `credentials` root is refused at compilation.
+- **Masking.** The Runner replaces every delegated value with `[credential <name>]` in step results, the action outcome, error messages and diagnostics before they leave the step. Facts, Runner results and traces never carry a credential value.
+
+<Callout kind="rule">
+  An Operation names the credentials it needs. The Environment holds their values. Only an admitted live attempt receives them, and only the steps that reference them use them.
+</Callout>
+
+<Details title="Compiled form of credentials" expert>
+The compiled Operation lists the declared names in `credentials` (absent when none are declared). Each reference compiles to a `{ "kind": "credential", "credential": "<name>" }` source: on the HTTP header, on the PostgreSQL `authentication`, or on the Shell `variables` entry. Compilation refuses an undeclared reference (`unknown-credential`), a repeated name (`duplicate-credential`), a declared name that no step references, and a projection that reads `credentials` (`credential-projection`). At admission, the grant carries the resolved values in a `credentials` map keyed by name, separate from the `environment` map. A dry-run grant carries an empty map.
+</Details>
+
 ## No secrets in the source
 
-HTTP headers are structured, but Operation source and readable Environment strings are not secret storage. The compiler refuses a secret-like value (an `sk-…` key, a `gh…_` token, a `Bearer …` value) — code `secret-like-value` — and the Runner refuses URLs with embedded credentials. Secrets belong to Environments as write-only credential references. See [Technical architecture](/docs/principles/architecture).
+HTTP headers are structured, but Operation source and readable Environment strings are not secret storage. The compiler refuses a secret-like value (an `sk-…` key, a `gh…_` token, a `Bearer …` value) — code `secret-like-value` — and the Runner refuses URLs with embedded credentials. A secret is an Environment credential, declared in `Credentials` and referenced by name. See [Environments](/docs/environments#credentials) for how an operator defines it.
 
 <Details title="Compiled form of the interface" expert>
 The compiler emits three closed JSON Schemas. Environment mapping is `directory → trust-directory`, `url → trust-url`, `string → trust-string`; every declared Environment value is required. Input and Produced mappings are unchanged; `many` wraps the item schema in an array and an enum domain adds `enum: [...]`.

@@ -108,14 +108,23 @@ Un statut hors de l'ensemble accepté interrompt l'Opération avant Produce. Une
 ## Authentification
 
 Les headers peuvent utiliser des valeurs d'Environment `string` non secrètes. L'URL elle-même ne
-doit porter aucun credential. Les références de credentials ne sont pas exposées comme valeurs
-d'Opération et ce contrat HTTP n'injecte pas de headers secrets.
+doit porter aucun credential. Un header secret prend sa valeur d'un credential déclaré dans la table `Credentials` :
+
+```gherkin fragment
+    When HTTP "issue" sends "GET" to Environment "jiraIssueUrl" appending Input "issue"
+        with header "Authorization" from Credential "jiraToken" and reads JSON
+```
+
+- `from Credential` n'est accepté que pour les headers, jamais pour un segment de chemin, un paramètre de query ou un corps.
+- Le Runner pose le header avec la valeur que TRUST a déléguée à l'admission. La valeur est masquée dans le résultat de l'étape, headers et corps de réponse compris.
+- Voir [Credentials](/docs/operations/interface#credentials) pour la déclaration, l'admission et le masquage.
 
 <Details title="Diagnostics propres aux étapes HTTP" expert>
 | Message | Cause |
 | --- | --- |
 | `HTTP "x" requires Environment "e" to be a url` | l'Environment est un `directory` |
 | `HTTP "x" uses undeclared Environment "e"` | le nom n'est pas dans la table Environment |
+| `HTTP "x" header "h" references undeclared Credential "c"` | le credential n'est pas dans la table `Credentials` |
 | `HTTP "x" path Input "i" must be one string` | `appending` d'un Input non déclaré, `number` ou `many` |
 | `HTTP "x" query/header/body Environment "e" must be a string` | la source de valeur n'est pas un Environment `string` |
 | `HTTP "x" method "…" is not registered for application requests` | méthode inconnue, `PRI` ou `*` |

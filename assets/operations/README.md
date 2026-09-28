@@ -16,7 +16,8 @@ An Operation contains:
   compiler as `description`, never used by execution;
 - typed `Input` supplied by the Procedure Check;
 - typed `Environment` supplied by execution configuration;
-- ordered Shell, File-read or HTTP steps;
+- optional `Credentials`: the names of Environment secrets that its steps reference explicitly;
+- ordered Shell, File-read, HTTP or PostgreSQL steps;
 - one final JSONata expression;
 - the exact typed fields produced by that expression;
 - optional free classification tags `@x-<key>:<value>` (for example `@x-family:software-delivery`
@@ -50,6 +51,57 @@ replace the default accepted `200`-`299` range with an exact status table. The E
 not already carry a query string when the step declares one. There is no free URL interpolation.
 File read accepts one fixed relative path below a directory Environment.
 
+## Credentials
+
+An Operation that needs a secret (a token, a database password) declares it by name in its
+interface and references it explicitly from the step that uses it. The source never contains the
+value.
+
+```gherkin
+Given Environment
+  | name        | type      |
+  | serviceUrl  | url       |
+  | databaseUrl | string    |
+  | root        | directory |
+And Credentials
+  | name        |
+  | apiToken    |
+  | dbPassword  |
+  | deployToken |
+```
+
+`Credentials` is a one-column `name` table. A name starts with a letter and uses letters, digits or
+underscores; it is the name of a Credential stored for the Environment. Each Credential is
+referenced in one of three places:
+
+```gherkin
+When HTTP "call" sends "GET" to Environment "serviceUrl"
+    with header "Authorization" from Credential "apiToken" and reads JSON
+And PostgreSQL "query" executes SQL on Environment "databaseUrl"
+    authenticated by Credential "dbPassword" with Input as JSONB parameter $1
+And Shell "deploy" runs "deploy" with cwd from Environment "root"
+    with variable "DEPLOY_TOKEN" from Credential "deployToken"
+```
+
+- An HTTP header takes its value from the Credential (`from Credential` is accepted for headers
+  only, never for path, query or body).
+- A PostgreSQL connection authenticates with the Credential as its password.
+- A Shell step receives the Credential as one process variable, for that step only. A step may
+  declare several variables with repeated `with variable` clauses; names are unique per step.
+
+The compiler refuses a reference to an undeclared Credential, a repeated or malformed name, and a
+declared Credential that no step references. `Produce with JSONata` and a JSONata request body cannot
+read Credentials: the `credentials` root is refused. A secret-like literal in the source is refused
+as before.
+
+The compiled Operation lists the declared names in `credentials` (absent when none are declared);
+each reference compiles to a `{ "kind": "credential", "credential": "<name>" }` source on the HTTP
+header, the PostgreSQL `authentication` or the Shell `variables` entry. At attempt admission TRUST
+resolves exactly the declared names from the Environment's Credentials and refuses the attempt when
+one is missing, before any external action. A dry-run receives no Credential.
+
+## Step results
+
 Every step result has one stable shape:
 
 ```text
@@ -57,9 +109,10 @@ Shell     -> exitCode, stdout, stderr
 File Text -> relativePath, content
 File JSON -> relativePath, content
 HTTP      -> status, headers, body
+PostgreSQL -> result
 ```
 
-`Produce with JSONata` sees `input`, `environment`, `steps` and `execution.id`. It must return exactly
+`Produce with JSONata` sees `input`, `environment`, `steps` and `execution.id`, never Credentials. It must return exactly
 the declared fields. The JSONata subset is closed by the compiler.
 
 A field copied from `input` attests the admitted context used by the executed action. It does not

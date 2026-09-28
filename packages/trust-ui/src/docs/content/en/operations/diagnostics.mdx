@@ -18,6 +18,9 @@ The compiler either returns a compiled Operation or **one diagnostic**: a code, 
 | `unknown-environment` | a step uses an Environment name that is not declared |
 | `duplicate-environment` · `duplicate-input` · `duplicate-produced-field` · `duplicate-step` | a name is declared twice |
 | `secret-like-value` | the source contains something that looks like a credential |
+| `unknown-credential` | a step references a credential that the `Credentials` table does not declare |
+| `duplicate-credential` | a credential name is declared twice |
+| `credential-projection` | `Produce with JSONata` or a JSONata request body reads the `credentials` root |
 
 ## Messages by cause
 
@@ -42,6 +45,13 @@ The compiler either returns a compiled Operation or **one diagnostic**: a code, 
 - `Cardinality "…" must be one or many` · `Only string fields may declare an enum domain` · `Domain "…" is invalid` · `Domain "…" repeats a value`.
 - `Environment "…" is repeated` · `Input "…" is repeated` · `Produced field "…" is repeated`.
 - `Operation interface must use Given or And` · `Unknown Operation interface step "…"`.
+
+### Credentials
+- `Operation repeats Credentials` · `Table must declare name` — the table is declared twice, or has the wrong header.
+- `Credential "…" must start with a letter and use only letters, digits or underscores` · `Credential "…" is repeated`.
+- `… references undeclared Credential "…"` — an HTTP header, PostgreSQL authentication or Shell variable names an undeclared credential.
+- `Credential "…" is declared but no step references it`.
+- `… cannot read Credentials; a Credential reaches only the steps that reference it` — a projection reads `credentials`.
 
 ### Steps
 - `Unknown Operation step "…"` — the sentence matches none of Shell, File, HTTP, accepted exits/statuses, Produce.

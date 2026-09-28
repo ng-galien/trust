@@ -1,6 +1,6 @@
 # Coordination extension
 
-This trusted local extension owns a PostgreSQL read API and a separately built federated page. It does not qualify Checks, access the TRUST core database, or launch agents. Mission state and TRUST Plan qualification remain distinct.
+This trusted local extension owns a PostgreSQL read API and a separately built federated page. It does not qualify Checks, read or write TRUST core tables, or launch agents. Its `trust_coordination` schema can live in the same database as the core `public` schema. Mission state and TRUST Plan qualification remain distinct.
 
 To delegate work to an agent through this integration, follow [the delegation methodology](DELEGATION.md): persist the mission, dispatch the assigned worker, claim and submit through the Runner, then review and observe completion.
 
@@ -33,7 +33,7 @@ The runtime receives `PGPASSWORD` through its server environment. Passwords do n
 
 ## Lifecycle
 
-- **Prepare** is an explicit operator action while stopped. It creates an absent coordination schema and the separate organizational classification schema transactionally under a database advisory lock. Existing compatible schemas are accepted without modification. An incomplete/incompatible schema is refused, never overwritten or migrated. Installing classification on a previous installation creates only its new schema; it does not alter existing mission tables.
+- **Prepare** is an explicit operator action while stopped. It creates the coordination schema and its mission, event and tag tables transactionally under a database advisory lock. Existing compatible schemas are accepted without modification. For an installation with tags in the former classification schema, it moves the tag table and sequence into `trust_coordination` in the same transaction, preserving their rows and revisions, then removes the empty former schema. Conflicting or incompatible schemas are refused.
 - **Start** verifies the read schema and permissions, opens its own pool, then begins detecting changes. It never prepares implicitly.
 - **Stop** closes only this extension's reads, timer and pool. It does not delete data, stop independent Runners, or modify their admission or qualification.
 
@@ -56,7 +56,7 @@ The running extension contributes one tool, `trust_extension_coordination`, not 
 - `missions.list` filters by search, external state, project, assignee and editable tags before applying its limit and offset. Tags are combined with AND. The result includes a total and each mission's tags and classification revision.
 - `tags.replace` replaces a mission's organizational tags with an expected revision. Conflicting edits return a conflict instead of overwriting another user's changes. Tags are case-sensitive, trimmed, unique, at most 32 per mission and 64 characters each.
 
-Classification lives in `trust_coordination_classification`, separately from immutable Plan labels, mission requests and responses. Editing it does not advance a Check or change a mission outcome. The original Plan labels remain available as a distinct read-only filter. Procedure and label filtering uses the authorized Plan summaries, not inferred task types; missions whose Plan is unavailable cannot be classified by those fields.
+Organizational tags live in `trust_coordination.tags` alongside the mission tables. They remain distinct from immutable Plan labels, mission requests and responses: editing them does not advance a Check or change a mission outcome. The original Plan labels remain available as a distinct read-only filter. Procedure and label filtering uses the authorized Plan summaries, not inferred task types; missions whose Plan is unavailable cannot be classified by those fields.
 
 The MCP tool appears only while the extension is running. The host emits catalog-change notifications using its supported MCP 2025 Streamable HTTP transport; clients must rediscover tools to see changes. This does not automatically configure a new connection in every agent client.
 

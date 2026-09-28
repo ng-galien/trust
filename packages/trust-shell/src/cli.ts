@@ -1,4 +1,14 @@
-import { publicTrustConfiguration } from "@trust/extension-sdk";
+import {
+  publicTrustConfiguration,
+  type RegistryPackageCatalog,
+  type RegistryPackageInstallation,
+  type RegistryPackageUninstallation,
+  type RegistryPackageUpdate,
+  type RegistrySource,
+  type RegistrySourceIndexView,
+  type RegistrySourceRemoval,
+} from "@trust/extension-sdk";
+import { matchRegistrySource } from "@trust/extension-sdk/match";
 import { readServerConfiguration } from "./configuration.js";
 
 import { resolveTrustInstallation } from "./installation.js";
@@ -63,31 +73,35 @@ export async function runTrustCli(arguments_: readonly string[]): Promise<void> 
     return;
   }
   throw new TypeError(
-    "usage: trust server start | trust server status | trust server config | trust runner deploy <absolute-directory> | trust registry <list|add|remove|sync>",
+    "usage: trust server start | trust server status | trust server config | trust runner deploy <absolute-directory> | trust registry <list|add|remove|sync|refresh|packages|installed|install|update|uninstall>",
   );
 }
 
 async function runRegistryCommand(arguments_: readonly string[]): Promise<void> {
   const options = { url: (await readServerConfiguration()).configuration.shell.url };
-  if (arguments_[0] === "list" && arguments_.length === 1) {
-    const result = (await callTrustRpc(options, "registry.source.list", {})) as RegistryCatalog;
+  const call = (method: string, params: unknown) => callTrustRpc(options, method, params);
+  const [command, ...rest] = arguments_;
+  if (command === "list" && rest.length === 0) {
+    const result = (await call("registry.source.list", {})) as { readonly sources: readonly RegistrySource[] };
     if (result.sources.length === 0) {
       process.stdout.write("No registry sources configured.\n");
       return;
     }
     for (const source of result.sources) {
-      const reference = source.kind === "git" && source.reference !== undefined ? ` (ref: ${source.reference})` : "";
+      const reference = matchRegistrySource(source, {
+        git: (git) => (git.reference === undefined ? "" : ` (ref: ${git.reference})`),
+        http: () => "",
+        file: () => "",
+      });
       process.stdout.write(`${source.name}\t${source.kind}\t${source.url}${reference}\n`);
     }
     return;
   }
-  if (arguments_[0] === "add" && (arguments_.length === 4 || arguments_.length === 6)) {
-    const [, name, kind, url, flag, reference] = arguments_;
-    if (kind !== "git" && kind !== "http") throw registryUsage();
-    if (arguments_.length === 6 && (kind !== "git" || flag !== "--ref" || reference === undefined)) {
-      throw registryUsage();
-    }
-    const result = (await callTrustRpc(options, "registry.source.save", {
+  if (command === "add" && (rest.length === 3 || rest.length === 5)) {
+    const [name, kind, url, flag, reference] = rest;
+    if (kind !== "git" && kind !== "http" && kind !== "file") throw registryUsage();
+    if (rest.length === 5 && (kind !== "git" || flag !== "--ref" || reference === undefined)) throw registryUsage();
+    const result = (await call("registry.source.save", {
       name,
       kind,
       url,
@@ -96,49 +110,114 @@ async function runRegistryCommand(arguments_: readonly string[]): Promise<void> 
     process.stdout.write(`Registry source ${result.source.name} saved.\n`);
     return;
   }
-  if (arguments_[0] === "remove" && arguments_.length === 2) {
-    const result = (await callTrustRpc(options, "registry.source.remove", {
-      name: arguments_[1],
-    })) as { readonly name: string; readonly removed: boolean };
+  if (command === "remove" && rest.length === 1) {
+    const result = (await call("registry.source.remove", { name: rest[0] })) as RegistrySourceRemoval;
     process.stdout.write(
       result.removed
         ? `Registry source ${result.name} removed.\n`
         : `Registry source ${result.name} was not configured.\n`,
     );
+    if (result.keptPackages.length > 0)
+      process.stdout.write(`Installed packages kept: ${result.keptPackages.join(", ")}\n`);
     return;
   }
-  if (arguments_[0] === "sync" && arguments_.length === 2) {
-    const result = (await callTrustRpc(options, "registry.source.sync", {
-      name: arguments_[1],
-    })) as RegistrySync;
+  if (command === "sync" && rest.length === 1) {
+    const result = (await call("registry.source.sync", { name: rest[0] })) as {
+      readonly source: RegistrySource;
+      readonly summary: { readonly imported: number; readonly unchanged: number };
+    };
     process.stdout.write(
       `Registry source ${result.source.name} synchronized: ${result.summary.imported} imported, ${result.summary.unchanged} unchanged.\n`,
     );
     return;
   }
+  if ((command === "refresh" || command === "packages") && rest.length === 1) {
+    const index = (await call(command === "refresh" ? "registry.source.refresh" : "registry.source.read", {
+      name: rest[0],
+    })) as RegistrySourceIndexView;
+    process.stdout.write(`Registry source ${index.source.name} at ${index.revision} (read ${index.refreshedAt})\n`);
+    for (const value of index.packages)
+      process.stdout.write(
+        `${value.name}\t${value.version}\t${value.categories.join(",")}\t${value.installedVersion === null ? "not installed" : `installed ${value.installedVersion}`}\n`,
+      );
+    return;
+  }
+  if (command === "installed" && rest.length === 0) {
+    const catalog = (await call("registry.package.list", {})) as RegistryPackageCatalog;
+    for (const value of catalog.packages)
+      process.stdout.write(
+        `${value.name}\t${value.version}\t${value.source}\t${value.latestVersion !== null && value.latestVersion !== value.version ? `available ${value.latestVersion}` : "current"}\n`,
+      );
+    return;
+  }
+  if (command === "install" && rest.length >= 3) {
+    const [source, name, version, ...flags] = rest;
+    const values = flagValues(flags, ["--environment", "--grant", "--settings", "--credential-environment"]);
+    const environment = values.get("--environment")?.[0];
+    const result = (await call("registry.package.install", {
+      source,
+      package: name,
+      version,
+      ...(environment === undefined
+        ? {}
+        : {
+            extension: {
+              environment,
+              grants: values.get("--grant") ?? [],
+              credentialEnvironment: values.get("--credential-environment") ?? [],
+              settings: JSON.parse(values.get("--settings")?.[0] ?? "{}") as unknown,
+            },
+          }),
+    })) as RegistryPackageInstallation;
+    process.stdout.write(
+      `Package ${result.package.name}@${result.package.version} installed at ${result.package.directory} (build ${result.steps.build}).\n`,
+    );
+    return;
+  }
+  if (command === "update" && rest.length === 2) {
+    const result = (await call("registry.package.update", {
+      package: rest[0],
+      version: rest[1],
+    })) as RegistryPackageUpdate;
+    process.stdout.write(
+      `Package ${result.package.name} updated from ${result.previousVersion} to ${result.package.version}.\n`,
+    );
+    return;
+  }
+  if (command === "uninstall" && (rest.length === 1 || (rest.length === 2 && rest[1] === "--delete-data"))) {
+    const result = (await call("registry.package.uninstall", {
+      package: rest[0],
+      ...(rest.length === 2 ? { deleteData: true } : {}),
+    })) as RegistryPackageUninstallation;
+    const describe = (items: RegistryPackageUninstallation["removed"]) =>
+      items.map((item) => `${item.kind} ${item.name}${item.version ? `@${item.version}` : ""}`).join("; ");
+    process.stdout.write(`Package ${result.package.name}@${result.package.version} uninstalled.\n`);
+    process.stdout.write(`Removed: ${describe(result.removed)}\nKept: ${describe(result.kept)}\n`);
+    return;
+  }
   throw registryUsage();
+}
+
+function flagValues(flags: readonly string[], names: readonly string[]): Map<string, string[]> {
+  const values = new Map<string, string[]>();
+  for (let index = 0; index < flags.length; index += 2) {
+    const name = flags[index] ?? "";
+    const value = flags[index + 1];
+    if (!names.includes(name) || value === undefined) throw registryUsage();
+    values.set(name, [...(values.get(name) ?? []), value]);
+  }
+  return values;
 }
 
 function registryUsage(): TypeError {
   return new TypeError(
-    "usage: trust registry list | trust registry add <name> <git|http> <url> [--ref <reference>] | trust registry remove <name> | trust registry sync <name>",
+    [
+      "usage: trust registry list | add <name> <git|http|file> <url-or-absolute-path> [--ref <reference>] | remove <name> | sync <name>",
+      "       trust registry refresh <source> | packages <source> | installed",
+      "       trust registry install <source> <package> <version> [--environment <name> [--grant <capability>]... [--credential-environment <VARIABLE>]... [--settings <json>]]",
+      "       trust registry update <package> <version> | uninstall <package> [--delete-data]",
+    ].join("\n"),
   );
-}
-
-interface RegistrySource {
-  readonly name: string;
-  readonly kind: "git" | "http";
-  readonly url: string;
-  readonly reference?: string;
-}
-
-interface RegistryCatalog {
-  readonly sources: readonly RegistrySource[];
-}
-
-interface RegistrySync {
-  readonly source: RegistrySource;
-  readonly summary: { readonly imported: number; readonly unchanged: number };
 }
 
 async function waitForShutdown(close: () => Promise<void>): Promise<void> {

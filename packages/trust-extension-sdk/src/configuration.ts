@@ -20,6 +20,10 @@ export interface TrustConfiguration {
     readonly semanticAuthority: string;
     readonly operationsDirectory?: string;
     readonly extensionsFile?: string;
+    /** Runtime-owned directory of registry packages, organized as `<package>/<version>`. */
+    readonly packagesDirectory: string;
+    /** Owner-only file holding the key that seals Environment credentials at rest; created on first use. */
+    readonly credentialKeyFile: string;
     readonly sessionDurationMs: number;
     readonly trialTimeoutMs: number;
     readonly extensionTimeoutMs: number;
@@ -164,6 +168,8 @@ export const TRUST_CONFIGURATION_SCHEMA = fields({
     semanticAuthority: text,
     operationsDirectory: text,
     extensionsFile: text,
+    packagesDirectory: text,
+    credentialKeyFile: text,
     sessionDurationMs: integer,
     trialTimeoutMs: integer,
     extensionTimeoutMs: integer,
@@ -363,6 +369,18 @@ export function resolveTrustConfiguration(options: {
     options.mode === "server" ? `${stateDirectory}/operations` : undefined,
   );
   const extensionsFile = pathValue("server", "extensionsFile", "TRUST_EXTENSIONS_FILE");
+  const packagesDirectory = pathValue(
+    "server",
+    "packagesDirectory",
+    "TRUST_PACKAGES_DIRECTORY",
+    `${stateDirectory}/packages`,
+  )!;
+  const credentialKeyFile = pathValue(
+    "server",
+    "credentialKeyFile",
+    "TRUST_CREDENTIAL_KEY_FILE",
+    `${stateDirectory}/credential.key`,
+  )!;
   const runnerTrialScript = pathValue(
     "server",
     "runnerTrialScript",
@@ -473,6 +491,8 @@ export function resolveTrustConfiguration(options: {
         semanticAuthority: authority,
         ...(operationsDirectory ? { operationsDirectory } : {}),
         ...(extensionsFile ? { extensionsFile } : {}),
+        packagesDirectory,
+        credentialKeyFile,
         ...(runnerTrialScript ? { runnerTrialScript } : {}),
         ...(diagnosticsEndpoint ? { diagnosticsEndpoint } : {}),
         sessionDurationMs: numberValue("server", "sessionDurationMs", "TRUST_SESSION_DURATION_MS", 86400000),
