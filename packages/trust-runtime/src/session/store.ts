@@ -2,6 +2,7 @@ import type { Selectable } from "kysely";
 import type { Database, SessionTable } from "../database/database.js";
 import { isDatabaseUuid } from "../database/database.js";
 import type { Session } from "../model.js";
+import { readOnce } from "../plan/transaction.js";
 
 type SessionRow = Selectable<SessionTable>;
 
@@ -30,7 +31,11 @@ export class SessionStore {
     return this.findWhere(planSlug);
   }
 
-  async findAvailable(planSlug: string, now: Date): Promise<Session | undefined> {
+  findAvailable(planSlug: string, now: Date): Promise<Session | undefined> {
+    return readOnce(this.dependencies.database, `session:${planSlug}`, () => this.#findAvailable(planSlug, now));
+  }
+
+  async #findAvailable(planSlug: string, now: Date): Promise<Session | undefined> {
     const row = await this.dependencies.database
       .selectFrom("sessions")
       .selectAll()

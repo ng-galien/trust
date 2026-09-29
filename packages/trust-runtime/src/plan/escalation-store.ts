@@ -2,6 +2,7 @@ import type { Selectable } from "kysely";
 import type { Database, PlanEscalationTable } from "../database/database.js";
 import { isDatabaseUuid } from "../database/database.js";
 import type { PlanEscalation } from "../model.js";
+import { readOnce } from "./transaction.js";
 
 type EscalationRow = Selectable<PlanEscalationTable>;
 
@@ -33,7 +34,11 @@ export class EscalationStore {
       .execute();
   }
 
-  async findActive(planSlug: string): Promise<PlanEscalation | undefined> {
+  findActive(planSlug: string): Promise<PlanEscalation | undefined> {
+    return readOnce(this.dependencies.database, `escalation:${planSlug}`, () => this.#findActive(planSlug));
+  }
+
+  async #findActive(planSlug: string): Promise<PlanEscalation | undefined> {
     const row = await this.dependencies.database
       .selectFrom("plan_escalations")
       .selectAll()

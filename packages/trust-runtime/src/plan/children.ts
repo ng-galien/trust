@@ -6,6 +6,7 @@ import { SnapshotStore } from "../snapshot/store.js";
 import { buildPlanRevision } from "./build.js";
 import { semanticJson } from "./semantic-json.js";
 import { PlanStore } from "./store.js";
+import { readOnce } from "./transaction.js";
 
 export interface CompositionState {
   complete: boolean;
@@ -17,7 +18,11 @@ export interface CompositionState {
   parent: import("@trust/extension-sdk").PlanParentView | null;
 }
 
-export async function ancestorBlocker(database: Database, plan: string): Promise<string | undefined> {
+export function ancestorBlocker(database: Database, plan: string): Promise<string | undefined> {
+  return readOnce(database, `ancestor:${plan}`, () => findAncestorBlocker(database, plan));
+}
+
+async function findAncestorBlocker(database: Database, plan: string): Promise<string | undefined> {
   const seen = new Set<string>();
   let current = plan;
   while (!seen.has(current)) {
@@ -69,7 +74,11 @@ export async function invocationDependencyDigest(database: Database, check: Plan
   return hash(signature);
 }
 
-export async function readComposition(database: Database, slug: string): Promise<CompositionState> {
+export function readComposition(database: Database, slug: string): Promise<CompositionState> {
+  return readOnce(database, `composition:${slug}`, () => composition(database, slug));
+}
+
+async function composition(database: Database, slug: string): Promise<CompositionState> {
   const plans = new PlanStore({ database });
   const plan = await plans.findPlan(slug);
   if (!plan) throw new Error("Unknown composed Plan");

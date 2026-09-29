@@ -4,6 +4,7 @@ import type { Selectable } from "kysely";
 import type { ActiveCheckQualificationTable, CheckSnapshotTable, Database } from "../database/database.js";
 import type { ActiveCheckQualification, CheckSnapshot, PlanCheck } from "../model.js";
 import { semanticJson } from "../plan/semantic-json.js";
+import { readOnce } from "../plan/transaction.js";
 
 type SnapshotRow = Selectable<CheckSnapshotTable>;
 type ActiveQualificationRow = Selectable<ActiveCheckQualificationTable>;
@@ -215,7 +216,13 @@ export class SnapshotStore {
       .execute();
   }
 
-  async listActive(planSlug: string, planRevision: number): Promise<ActiveCheckQualification[]> {
+  listActive(planSlug: string, planRevision: number): Promise<ActiveCheckQualification[]> {
+    return readOnce(this.dependencies.database, `active:${planSlug}:${planRevision}`, () =>
+      this.#listActive(planSlug, planRevision),
+    );
+  }
+
+  async #listActive(planSlug: string, planRevision: number): Promise<ActiveCheckQualification[]> {
     const rows = await this.dependencies.database
       .selectFrom("active_check_qualifications")
       .selectAll()

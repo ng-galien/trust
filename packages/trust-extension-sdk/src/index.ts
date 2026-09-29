@@ -354,7 +354,8 @@ export interface PlanView {
 }
 
 /** Read-only episode assembled from the current Plan, its Checks, and accepted child missions.
-    The source views retain their own revision, Fact, and qualification provenance. */
+    The source views retain their own revision, Fact, and qualification provenance. The Plan views carry empty
+    `revisions` and `sessions`: read the Plan itself for its revision history and sessions. */
 export interface DelegationEpisodeView {
   readonly contract: "trust.delegation-episode@1";
   readonly root: DelegationEpisodePlanView;

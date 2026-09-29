@@ -31,7 +31,7 @@ import { ancestorBlocker, readComposition } from "./children.js";
 import type { EscalationStore } from "./escalation-store.js";
 import { completesPlanOnValidation } from "./intent.js";
 import type { PlanStore } from "./store.js";
-import { planReadTransaction, planTransaction } from "./transaction.js";
+import { planReadTransaction, planTransaction, readTransaction, shareComposition } from "./transaction.js";
 
 const DEFAULT_PROCEDURE_PAGE_SIZE = 49_152;
 const MAX_PROCEDURE_PAGE_SIZE = 65_536;
@@ -209,15 +209,19 @@ export class PlanReader {
       limit: limit + 1,
     });
     const plans = page.slice(0, limit);
-    // One Plan transaction at a time: sibling Plans share their root lock, so parallel transactions would each
-    // hold a pool connection while waiting for that lock and starve every other request.
-    const views = [];
-    for (const plan of plans) {
-      const view = await planReadTransaction(this.#database, plan.slug, async (database) => {
-        const reader = this.#using(database);
+    // One read transaction for the page: parents and children share their lookups, readers never block readers.
+    const summaries = await readTransaction(this.#database, async (database) => {
+      const reader = this.#using(database);
+      const read = [];
+      for (const plan of plans) {
+        await shareComposition(database, plan.slug);
         await reader.#authorizePlan(access, "plan.list", plan.slug);
-        return reader.#readPlanBySlug(plan.slug, false, false);
-      });
+        read.push(await reader.#readPlanBySlug(plan.slug, false, false));
+      }
+      return read;
+    });
+    const views = [];
+    for (const view of summaries) {
       views.push({
         creator: view.creator,
         descendantEscalations: view.descendantEscalations,
@@ -505,8 +509,9 @@ export class PlanReader {
     return { contract: "trust.delegation-episode@1", root, branches };
   }
 
+  /** An episode follows live progress: its Plan views omit the revision history and sessions (read the Plan for them). */
   async #readEpisodePlan(planSlug: string): Promise<DelegationEpisodePlanView> {
-    const plan = await this.#readPlanBySlug(planSlug);
+    const plan = await this.#readPlanBySlug(planSlug, false, false);
     const checks = await Promise.all(plan.checks.map((check) => this.#readCheck(check.checkUri)));
     return { plan, checks };
   }
