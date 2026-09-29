@@ -106,9 +106,10 @@ export function OperationOverlay({ mode = "item" }: { mode?: "item" | "new" }) {
 
   // A new immutable version gets its own file; it must never overwrite a published source.
   const save = useSaveOperation();
-  const onSave = () =>
+  const onSave = () => {
+    if (!compiled) return;
     save.mutate(
-      { source, sourceName: `${compiled!.operation}@${compiled!.version}.feature` },
+      { source, sourceName: `${compiled.operation}@${compiled.version}.feature` },
       {
         onSuccess: ({ operation }) =>
           draft.settle(
@@ -118,6 +119,7 @@ export function OperationOverlay({ mode = "item" }: { mode?: "item" | "new" }) {
           ),
       },
     );
+  };
   const saveError = mutationError(save.error);
   const occupied = Boolean(
     compiled &&

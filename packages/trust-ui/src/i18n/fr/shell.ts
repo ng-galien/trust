@@ -5,6 +5,7 @@ export const shell: Translation<typeof en> = {
   brand: "TRUST",
   help: "Documentation de cet écran",
   nav: {
+    close: "Fermer la navigation",
     label: "Navigation",
     expand: "Déployer la navigation",
     collapse: "Replier la navigation",

@@ -19,6 +19,7 @@ export function Select<T extends string>({
   options,
   placeholder,
   ariaLabel,
+  id,
   className,
   size = "md",
   align = "start",
@@ -27,7 +28,9 @@ export function Select<T extends string>({
   onChange: (value: T) => void;
   options: Array<SelectOption<T>>;
   placeholder?: string;
-  ariaLabel: string;
+  /** Accessible name; omitted when a form label targets the trigger through `id`. */
+  ariaLabel?: string;
+  id?: string;
   className?: string;
   size?: "sm" | "md";
   align?: "start" | "end";
@@ -42,6 +45,7 @@ export function Select<T extends string>({
       trigger={({ open, toggle }) => (
         <button
           type="button"
+          id={id}
           aria-label={ariaLabel}
           aria-haspopup="listbox"
           aria-expanded={open}

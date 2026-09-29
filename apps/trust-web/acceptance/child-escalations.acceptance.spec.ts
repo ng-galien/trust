@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import type { AttemptFinalizationResult, CheckAttemptAdmissionResult, PlanView } from "@trust/extension-sdk";
 
 const scope = `Given Procedure scope
       | check | authorized | forbidden |
@@ -36,24 +37,31 @@ test("root shows all current descendant escalations, navigates to origin and ref
   page,
   request,
 }) => {
-  const rpc = async (method: string, params: unknown): Promise<any> => {
+  const rpc = async <T = unknown>(method: string, params: unknown): Promise<T> => {
     const response = await request.post("http://127.0.0.1:4397/rpc", {
       data: { jsonrpc: "2.0", id: method, method, params },
     });
     const envelope = await response.json();
     expect(envelope.error).toBeUndefined();
-    return envelope.result;
+    return envelope.result as T;
   };
-  const read = (plan: string) => rpc("plan.read", { plan });
+  const read = (plan: string) => rpc<PlanView>("plan.read", { plan });
+  /** A value the scenario requires: absence fails the test with its reason. */
+  const present = <T>(value: T | null | undefined, what: string): T => {
+    if (value === null || value === undefined) throw new Error(`Missing ${what}`);
+    return value;
+  };
+  const childOf = (view: PlanView, name: string) =>
+    present(view.invocations.find((value) => value.name === name)?.childPlan, `child Plan ${name}`);
   let sequence = 0;
   const escalate = async (plan: string, reason: string) => {
     const view = await read(plan);
-    const admission = await rpc("check.attempt.admit", {
+    const admission = await rpc<CheckAttemptAdmissionResult>("check.attempt.admit", {
       contract: "trust.check-admission-request@1",
-      checkUri: view.checks[0].checkUri,
+      checkUri: present(view.checks[0], "first Check").checkUri,
       attemptKey: `browser-escalation-${++sequence}`,
     });
-    expect(admission.status).toBe("ADMITTED");
+    if (admission.status !== "ADMITTED") throw new Error(`Admission refused: ${admission.reason}`);
     const now = new Date().toISOString();
     await rpc("check.attempt.facts", {
       contract: "trust.fact-batch-request@1",
@@ -72,7 +80,7 @@ test("root shows all current descendant escalations, navigates to origin and ref
     });
     expect(
       (
-        await rpc("check.attempt.finalize", {
+        await rpc<AttemptFinalizationResult>("check.attempt.finalize", {
           contract: "trust.attempt-finalization-request@1",
           attemptHandle: admission.attemptHandle,
         })
@@ -105,9 +113,9 @@ test("root shows all current descendant escalations, navigates to origin and ref
     declarations: { repository: "trust" },
   });
   const root = await read("other-plan");
-  const changing = root.invocations.find((value: any) => value.name === "changing").childPlan;
-  const stable = root.invocations.find((value: any) => value.name === "stable").childPlan;
-  const nested = (await read(changing)).invocations[0].childPlan;
+  const changing = childOf(root, "changing");
+  const stable = childOf(root, "stable");
+  const nested = present((await read(changing)).invocations[0]?.childPlan, "nested child Plan");
   expect((await read(changing)).checks).toHaveLength(0);
   expect((await read(changing)).currentIntentCheckUri).toBeNull();
   await page.goto(`/dry-runs/${changing}`);
@@ -128,10 +136,10 @@ test("root shows all current descendant escalations, navigates to origin and ref
   const restart = await request.post("http://127.0.0.1:4398/restart");
   expect(restart.ok()).toBe(true);
   const resumedRoot = await read("other-plan");
-  expect(resumedRoot.invocations.map((value: any) => value.childPlan)).toEqual(
-    root.invocations.map((value: any) => value.childPlan),
+  expect(resumedRoot.invocations.map((value) => value.childPlan)).toEqual(
+    root.invocations.map((value) => value.childPlan),
   );
-  expect((await read(changing)).invocations[0].childPlan).toBe(nested);
+  expect((await read(changing)).invocations[0]?.childPlan).toBe(nested);
   await escalate(stable, "Sibling repository needs separate review.");
   await expect(alerts).toContainText("2 descendant escalations");
   await expect(page.getByText("Runtime live", { exact: true })).toBeVisible();
@@ -145,7 +153,7 @@ test("root shows all current descendant escalations, navigates to origin and ref
     "The parent has its own independent blocker.",
   );
   await expect(alerts.getByRole("listitem")).toHaveCount(2);
-  const own = (await read("other-plan")).activeEscalation;
+  const own = present((await read("other-plan")).activeEscalation, "own escalation");
   await rpc("plan.resume", {
     plan: "other-plan",
     escalationId: own.escalationId,
@@ -153,12 +161,12 @@ test("root shows all current descendant escalations, navigates to origin and ref
   });
   await expect(page.locator('[data-doc="plan.escalation"]')).toHaveCount(0);
   const originLink = alerts.locator(`a[href^="/dry-runs/${nested}?"]`);
-  const href = await originLink.getAttribute("href");
-  expect(new URL(href!, page.url()).searchParams.get("sel")).toBe(
-    `check:${(await read(nested)).activeEscalation.checkUri}`,
+  const href = present(await originLink.getAttribute("href"), "origin link");
+  expect(new URL(href, page.url()).searchParams.get("sel")).toBe(
+    `check:${present((await read(nested)).activeEscalation, "nested escalation").checkUri}`,
   );
   const originTab = await page.context().newPage();
-  await originTab.goto(new URL(href!, page.url()).href);
+  await originTab.goto(new URL(href, page.url()).href);
   await expect(originTab.locator('[data-doc="plan.escalation"]')).toContainText(
     "Nested repository needs operator authority.",
   );
@@ -194,7 +202,7 @@ test("root shows all current descendant escalations, navigates to origin and ref
   expect(await remote.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
   await page.screenshot({ path: "test-results/child-escalations-mobile.png" });
   await page.setViewportSize({ width: 1440, height: 1000 });
-  const escalation = (await read(stable)).activeEscalation;
+  const escalation = present((await read(stable)).activeEscalation, "stable escalation");
   await rpc("plan.resume", {
     plan: stable,
     escalationId: escalation.escalationId,
@@ -211,7 +219,7 @@ test("root shows all current descendant escalations, navigates to origin and ref
   });
   await expect(alerts).toHaveCount(0);
   expect((await read(nested)).escalations).toHaveLength(1);
-  expect((await read(stable)).escalations[0].resumeReason).toBe("Sibling review completed.");
+  expect((await read(stable)).escalations[0]?.resumeReason).toBe("Sibling review completed.");
   await page.getByText("Previous generations", { exact: true }).click();
   await page.getByRole("link", { name: "Superseded generation 1", exact: true }).click();
   await expect(page).toHaveURL(new RegExp(`/dry-runs/${changing}$`));

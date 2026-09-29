@@ -71,13 +71,13 @@ export function toRows(
     const known = environments?.find(
       (entry) => entry.operation === operation.operation && entry.version === operation.version,
     );
-    const [domain, ...rest] = operation.operation.split(".");
+    const [domain = "", ...rest] = operation.operation.split(".");
     return {
       operation,
       metadata: current,
       tags: catalogTags(current.classification),
       id: operation.operation,
-      domain: rest.length ? domain! : "",
+      domain: rest.length ? domain : "",
       action: rest.length ? rest.join(".") : operation.operation,
       stepTypes: Array.from(new Set(operation.steps.map((step) => step.type))),
       inputs: schemaKeys(operation.input),
@@ -86,7 +86,7 @@ export function toRows(
       usedBy: procedures.filter(({ procedure }) =>
         procedure.operations.some((used) => used.operation === operation.operation),
       ),
-      family: familyOf(rest.length ? domain! : "", operation, current.classification),
+      family: familyOf(rest.length ? domain : "", operation, current.classification),
       nature: natureOf(operation, current.classification),
       runnableOn: known ? known.environments.filter((entry) => entry.compatible).map((entry) => entry.name) : undefined,
     };

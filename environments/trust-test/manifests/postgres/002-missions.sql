@@ -114,3 +114,75 @@ BEGIN
   SELECT * INTO STRICT m FROM trust_coordination.missions WHERE mission = input->>'mission';
   RETURN trust_coordination.mission_view(m);
 END $$;
+
+-- Independent review checklist of one mission: the reviewer states one verdict with evidence per declared rule and
+-- per contract criterion. The database refuses a review by the assignee and a malformed checklist, then counts what
+-- is missing; the verdicts remain the named reviewer's statements.
+CREATE TABLE IF NOT EXISTS trust_coordination.reviews (
+  sequence bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  mission text NOT NULL REFERENCES trust_coordination.missions(mission),
+  reviewer text NOT NULL CHECK (reviewer <> ''),
+  checklist jsonb NOT NULL CHECK (jsonb_typeof(checklist) = 'array'),
+  result jsonb NOT NULL,
+  recorded_at timestamptz NOT NULL DEFAULT clock_timestamp()
+);
+
+CREATE OR REPLACE FUNCTION trust_coordination.review_record(input jsonb)
+RETURNS jsonb LANGUAGE plpgsql AS $$
+DECLARE
+  m trust_coordination.missions; k text; items jsonb; item jsonb;
+  rules text[]; criteria text[]; subjects text[] := '{}'; result jsonb;
+BEGIN
+  IF (SELECT array_agg(key ORDER BY key) FROM jsonb_object_keys(input) key)
+     IS DISTINCT FROM ARRAY['checklist','contract','mission','reviewer','rules'] THEN
+    RAISE EXCEPTION 'Review fields do not match the contract';
+  END IF;
+  FOREACH k IN ARRAY ARRAY['mission','reviewer','rules','contract','checklist'] LOOP
+    IF jsonb_typeof(input->k) IS DISTINCT FROM 'string' OR length(btrim(input->>k)) = 0 THEN
+      RAISE EXCEPTION 'Review field % must be a non-empty string', k;
+    END IF;
+  END LOOP;
+  SELECT * INTO STRICT m FROM trust_coordination.missions WHERE mission = input->>'mission';
+  IF input->>'reviewer' = m.request->>'assignee' THEN
+    RAISE EXCEPTION 'The assignee cannot review its own mission';
+  END IF;
+  rules := regexp_split_to_array(btrim(input->>'rules'), '\s+');
+  SELECT coalesce(array_agg(value), '{}') INTO criteria
+    FROM jsonb_array_elements_text((input->>'contract')::jsonb->'requirements');
+  items := (input->>'checklist')::jsonb->'items';
+  IF jsonb_typeof(items) IS DISTINCT FROM 'array' OR jsonb_array_length(items) = 0 THEN
+    RAISE EXCEPTION 'The checklist must be an object with a non-empty items array';
+  END IF;
+  FOR item IN SELECT value FROM jsonb_array_elements(items) LOOP
+    IF (SELECT array_agg(key ORDER BY key) FROM jsonb_object_keys(item) key)
+       IS DISTINCT FROM ARRAY['evidence','subject','verdict']
+       OR item->>'verdict' NOT IN ('pass','fail')
+       OR jsonb_typeof(item->'evidence') IS DISTINCT FROM 'string' THEN
+      RAISE EXCEPTION 'Each checklist item has exactly a subject, a pass or fail verdict and an evidence string';
+    END IF;
+    IF NOT ((item->>'subject') = ANY (SELECT 'rule:' || r FROM unnest(rules) r)
+            OR (item->>'subject') = ANY (SELECT 'criterion:' || c FROM unnest(criteria) c)) THEN
+      RAISE EXCEPTION 'Checklist subject % is neither a declared rule nor a contract criterion', item->>'subject';
+    END IF;
+    IF (item->>'subject') = ANY (subjects) THEN
+      RAISE EXCEPTION 'Checklist subject % appears twice', item->>'subject';
+    END IF;
+    subjects := subjects || (item->>'subject');
+  END LOOP;
+  result := jsonb_build_object(
+    'mission', m.mission,
+    'reviewer', input->>'reviewer',
+    'assignee', m.request->>'assignee',
+    'items', jsonb_array_length(items),
+    'passed', (SELECT count(*) FROM jsonb_array_elements(items) i WHERE i->>'verdict' = 'pass'),
+    'failed', (SELECT count(*) FROM jsonb_array_elements(items) i WHERE i->>'verdict' = 'fail'),
+    'missingRules', (SELECT count(*) FROM unnest(rules) r WHERE NOT ('rule:' || r) = ANY (subjects)),
+    'missingCriteria', (SELECT count(*) FROM unnest(criteria) c WHERE NOT ('criterion:' || c) = ANY (subjects)),
+    'withoutEvidence', (SELECT count(*) FROM jsonb_array_elements(items) i WHERE length(btrim(i->>'evidence')) = 0),
+    'summary', coalesce((SELECT string_agg(i->>'subject', ', ') FROM jsonb_array_elements(items) i
+                         WHERE i->>'verdict' = 'fail'), '')
+  );
+  INSERT INTO trust_coordination.reviews(mission, reviewer, checklist, result)
+    VALUES (m.mission, input->>'reviewer', items, result);
+  RETURN result;
+END $$;

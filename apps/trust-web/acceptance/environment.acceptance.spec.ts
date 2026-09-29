@@ -8,7 +8,7 @@ test("the header selects the current environment and the run view follows it", a
   await page.goto("/operations/git.head-read?tab=run");
   const switcher = page.getByRole("button", { name: "Current environment" });
   await expect(switcher).toHaveText(/^(local|staging)$/);
-  const first = (await switcher.textContent())!.trim();
+  const first = ((await switcher.textContent()) ?? "").trim();
   // The run view proposes the current environment.
   await expect(page.getByRole("button", { name: "Environment", exact: true })).toContainText(first);
   // Pick another environment from the header: the run view follows, the URL does not change.
@@ -33,7 +33,7 @@ test("an operation the current environment cannot run says which values are miss
   await page.goto("/operations/aviation.aircraft-read?tab=run");
   const switcher = page.getByRole("button", { name: "Current environment" });
   await expect(switcher).toHaveText(/^(local|staging)$/);
-  const current = (await switcher.textContent())!.trim();
+  const current = ((await switcher.textContent()) ?? "").trim();
   await expect(
     page.getByText(`Not runnable on the current environment ${current}: missing aircraftUrl.`),
   ).toBeVisible();

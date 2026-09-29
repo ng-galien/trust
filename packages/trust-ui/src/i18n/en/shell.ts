@@ -2,6 +2,7 @@ export const shell = {
   brand: "TRUST",
   help: "Documentation of this screen",
   nav: {
+    close: "Close navigation",
     label: "Navigation",
     expand: "Expand navigation",
     collapse: "Collapse navigation",

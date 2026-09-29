@@ -1,0 +1,29 @@
+/* Management pages on a phone: the header keeps its navigation toggle and home link; the sidebar becomes a drawer. */
+.mobile-backdrop {
+  display: none;
+}
+@media (max-width: 640px) {
+  .mobile-shell > header > :not(a):not([data-nav-toggle]) {
+    display: none;
+  }
+  .mobile-shell > div > aside {
+    display: none;
+  }
+  .mobile-shell[data-drawer="open"] > div > aside {
+    display: flex;
+    position: fixed;
+    top: var(--header-h);
+    bottom: 0;
+    left: 0;
+    z-index: 40;
+    width: min(20rem, 85vw);
+    box-shadow: var(--shadow-3);
+  }
+  .mobile-shell[data-drawer="open"] .mobile-backdrop {
+    display: block;
+    position: fixed;
+    inset: var(--header-h) 0 0 0;
+    z-index: 30;
+    background: var(--color-overlay-backdrop);
+  }
+}

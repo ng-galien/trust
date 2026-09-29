@@ -99,13 +99,6 @@ export function orderPrerequisites(
   });
 }
 
-/** Scenarios that declare the given Scenario as prerequisite (direct). */
-function dependentScenarios(procedure: CompiledProcedure, slug: string): string[] {
-  return procedure.scenarios
-    .filter((scenario) => scenario.dependencies.includes(slug))
-    .map((scenario) => scenario.slug);
-}
-
 /** Checks reset by a new verdict on any of the given Checks — the runtime's transitive `dependentChecks`. */
 export function downstreamOf(procedure: CompiledProcedure, seeds: readonly string[]): Set<string> {
   const links = dataLinks(procedure);
@@ -139,8 +132,7 @@ export function upstreamOf(procedure: CompiledProcedure, seeds: readonly string[
   const seedSet = new Set(seeds);
   const needed = new Set<string>();
   const queue = [...seeds];
-  while (queue.length) {
-    const name = queue.shift()!;
+  for (let name = queue.shift(); name !== undefined; name = queue.shift()) {
     const check = procedure.checks.find((candidate) => candidate.name === name);
     if (!check) continue;
     const next = new Set<string>();

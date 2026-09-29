@@ -36,7 +36,7 @@ import { OperationLanguageReference, ProcedureLanguageReference } from "./compon
 import { Screenshot } from "./components/screenshot.js";
 import { MdxPre, Snippet } from "./components/snippet.js";
 import { ArchitectureFigure, ModelFigure } from "./figures/index.js";
-import { type DocsNode, type DocsPage, findNode, findPage, pageSequence, pageTree, searchPages } from "./pages.js";
+import { type DocsNode, type DocsPage, findPage, pageSequence, pageTree, searchPages } from "./pages.js";
 import { standalone } from "./standalone.js";
 
 /* The documentation area: contents tree · article · "on this page". Pages are MDX under `content/`;

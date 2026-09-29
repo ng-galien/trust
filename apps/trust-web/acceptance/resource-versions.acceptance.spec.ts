@@ -8,6 +8,14 @@ test.beforeEach(async ({ page }) => {
   await expect(page.locator('[data-doc="shell.sidebar"]')).toBeVisible({ timeout: 30_000 });
 });
 
+/** The fields of the Operation catalog listing this scenario reads. */
+interface ListedOperation {
+  readonly operation: string;
+  readonly version: string;
+  readonly source?: string;
+}
+type OperationCatalog = readonly ListedOperation[] | { readonly operations: readonly ListedOperation[] };
+
 test("PostgreSQL Operation overview and expanded step render without a page crash", async ({ page }) => {
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
@@ -150,12 +158,12 @@ test("catalog identities contain semantically ordered exact versions and authori
   page,
   request,
 }) => {
-  const rpc = async (method: string, params: unknown): Promise<any> => {
+  const rpc = async <T = unknown>(method: string, params: unknown): Promise<T> => {
     const result = await (
       await request.post(runtimeRpcUrl, { data: { jsonrpc: "2.0", id: method, method, params } })
     ).json();
     expect(result.error).toBeUndefined();
-    return result.result;
+    return result.result as T;
   };
   const original = (
     await readFile(new URL("../../../assets/operations/git.head-read.feature", import.meta.url), "utf8")
@@ -237,17 +245,15 @@ Feature: Versioned Procedure
   const save = page.getByRole("button", { name: "Publish version", exact: true });
   await expect(save).toBeEnabled();
   await expect(page.getByRole("status").filter({ hasText: "Unpublished draft for a new version." })).toBeVisible();
-  const beforePublish = await rpc("operation.list", {});
-  expect(
-    beforePublish.operations.some((value: any) => value.operation === "ui.versioned" && value.version === "1.11.0"),
-  ).toBe(false);
+  const listed = (catalog: OperationCatalog) => ("operations" in catalog ? catalog.operations : catalog);
+  const beforePublish = listed(await rpc<OperationCatalog>("operation.list", {}));
+  expect(beforePublish.some((value) => value.operation === "ui.versioned" && value.version === "1.11.0")).toBe(false);
   await expect(page.getByRole("button", { name: "Delete", exact: true })).toHaveCount(0);
   await save.click();
   await expect(page).toHaveURL(/version=1.11.0/);
   await expect(selector).toHaveValue("1.11.0");
-  const catalog = await rpc("operation.list", {});
-  const operations = Array.isArray(catalog) ? catalog : catalog.operations;
-  expect(operations.find((value: any) => value.operation === "ui.versioned" && value.version === "1.9.0").source).toBe(
+  const operations = listed(await rpc<OperationCatalog>("operation.list", {}));
+  expect(operations.find((value) => value.operation === "ui.versioned" && value.version === "1.9.0")?.source).toBe(
     original.replace("@version:1.0.0", "@version:1.9.0"),
   );
   await selector.selectOption("1.9.0");

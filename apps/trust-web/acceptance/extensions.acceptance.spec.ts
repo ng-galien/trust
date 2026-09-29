@@ -1,5 +1,11 @@
 import { expect, type Page, test } from "@playwright/test";
 
+/** A value the scenario requires: absence fails the test with its reason. */
+function present<T>(value: T | null | undefined, what: string): T {
+  if (value === null || value === undefined) throw new Error(`Missing ${what}`);
+  return value;
+}
+
 async function chooseFacet(page: Page, name: string, value: string) {
   const trigger = page.getByRole("button", { name: "Filters", exact: true });
   if ((await trigger.getAttribute("aria-expanded")) !== "true") await trigger.click();
@@ -89,11 +95,17 @@ test("built federated workspace preserves mission versus Plan state and safely r
     if (response.ok()) loaded.push(response.url());
   });
   await page.goto("/extensions");
-  await expect(page.getByRole("heading", { name: "Extensions", exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "Prepare", exact: true }).click();
-  await expect(page.getByRole("button", { name: "Start", exact: true })).toBeEnabled();
-  await page.getByRole("button", { name: "Start", exact: true }).click();
-  await page.getByRole("link", { name: "Open workspace" }).click();
+  await expect(page.getByRole("heading", { name: "Installed extensions", exact: true })).toBeVisible();
+  // Lifecycle transitions are offered in the row menu, each with its visible outcome.
+  const actions = page.getByRole("button", { name: "Actions for Agent coordination" });
+  await actions.click();
+  await page.getByRole("menuitem", { name: /^Prepare storage/ }).click();
+  await expect(page.getByRole("status").filter({ hasText: "Storage of Agent coordination prepared" })).toBeVisible();
+  await actions.click();
+  await page.getByRole("menuitem", { name: /^Start/ }).click();
+  await expect(page.getByRole("status").filter({ hasText: "Agent coordination started" })).toBeVisible();
+  await actions.click();
+  await page.getByRole("menuitem", { name: "Open workspace" }).click();
   await expect(page.getByRole("heading", { name: "Agent coordination" })).toBeVisible();
   const missionRow = page.locator('[data-mission="federation-acceptance"]');
   await expect(missionRow).not.toContainText("federation-acceptance");
@@ -128,19 +140,19 @@ test("built federated workspace preserves mission versus Plan state and safely r
   await page.screenshot({ path: "test-results/coordination-mobile.png", fullPage: true });
   await page.setViewportSize({ width: 1440, height: 1000 });
   const panel = page.getByRole("dialog");
-  const workspaceBounds = await page.locator("section.coordination").boundingBox();
-  const panelBounds = await panel.boundingBox();
-  expect(panelBounds!.y).toBeGreaterThan(0);
-  expect(Math.abs(panelBounds!.y - workspaceBounds!.y)).toBeLessThan(2);
-  expect(panelBounds!.y + panelBounds!.height).toBeLessThanOrEqual(1001);
+  const workspaceBounds = present(await page.locator("section.coordination").boundingBox(), "workspace bounds");
+  const panelBounds = present(await panel.boundingBox(), "panel bounds");
+  expect(panelBounds.y).toBeGreaterThan(0);
+  expect(Math.abs(panelBounds.y - workspaceBounds.y)).toBeLessThan(2);
+  expect(panelBounds.y + panelBounds.height).toBeLessThanOrEqual(1001);
   const resize = page.getByRole("separator", { name: "Panel width" });
   await resize.focus();
-  const widthBefore = (await panel.boundingBox())!.width;
+  const widthBefore = present(await panel.boundingBox(), "panel bounds").width;
   await page.keyboard.press("ArrowLeft");
-  expect((await panel.boundingBox())!.width).toBeGreaterThan(widthBefore);
+  expect(present(await panel.boundingBox(), "panel bounds").width).toBeGreaterThan(widthBefore);
   await page.getByRole("button", { name: "Pin", exact: true }).click();
   await expect(panel).toHaveClass(/is-pinned/);
-  const originalPanel = await panel.elementHandle();
+  const originalPanel = present(await panel.elementHandle(), "panel element");
   const refreshed = page.waitForResponse((response) => {
     const request = response.request();
     return request.url().endsWith("/commands") && request.postDataJSON()?.command === "missions.list";
@@ -149,10 +161,10 @@ test("built federated workspace preserves mission versus Plan state and safely r
   await refreshed;
   await expect(page.getByRole("button", { name: "Refresh", exact: true })).toBeFocused();
   await expect(panel).toHaveClass(/is-pinned/);
-  expect(await originalPanel!.evaluate((element) => element.isConnected)).toBe(true);
+  expect(await originalPanel.evaluate((element) => element.isConnected)).toBe(true);
   await page.waitForResponse((response) => new URL(response.url()).pathname === "/extensions");
   await expect(panel).toHaveClass(/is-pinned/);
-  expect(await originalPanel!.evaluate((element) => element.isConnected)).toBe(true);
+  expect(await originalPanel.evaluate((element) => element.isConnected)).toBe(true);
   await page.getByRole("button", { name: "Unpin", exact: true }).click();
   await page.screenshot({ path: "test-results/coordination-desktop.png", fullPage: true });
   await page.keyboard.press("Escape");
@@ -162,8 +174,13 @@ test("built federated workspace preserves mission versus Plan state and safely r
     .getByRole("navigation", { name: "Breadcrumb" })
     .getByRole("link", { name: "Extensions", exact: true })
     .click();
-  await page.getByRole("button", { name: "Stop", exact: true }).click();
-  await expect(page.getByRole("link", { name: "Open workspace" })).toHaveCount(0);
+  await page.getByRole("button", { name: "Actions for Agent coordination" }).click();
+  await page.getByRole("menuitem", { name: /^Stop/ }).click();
+  await expect(page.getByRole("status").filter({ hasText: "Agent coordination stopped" })).toBeVisible();
+  // A stopped extension offers no workspace any more.
+  await page.getByRole("button", { name: "Actions for Agent coordination" }).click();
+  await expect(page.getByRole("menuitem", { name: "Open workspace" })).toHaveCount(0);
+  await page.keyboard.press("Escape");
 });
 
 test("compact navigation cancels delayed closure on re-entry and survives mode replacement", async ({ page }) => {
@@ -196,7 +213,8 @@ test("an unavailable remote has a retry action and recovers from a transient loa
   request,
 }) => {
   await request.post("/extensions/coordination/start", { data: {} });
-  await page.route("**/extensions/coordination/assets/remoteEntry.js", (route) => route.abort(), { times: 1 });
+  // The host retries a failed remote twice on its own; a third failure shows the explicit retry action.
+  await page.route("**/extensions/coordination/assets/remoteEntry.js*", (route) => route.abort(), { times: 3 });
   await page.goto("/extensions/coordination");
   await expect(page.getByRole("alert")).toContainText("The extension could not be loaded.");
   await page.getByRole("button", { name: "Retry", exact: true }).click();
@@ -502,9 +520,12 @@ test("resource links use host navigation and Back restores filters and the open 
   await expect(page.locator("#procedure-title")).toBeVisible();
   await page.goBack();
   await expect(dialog).toBeVisible();
-  const href = await dialog.getByRole("link", { name: "Open Plan", exact: true }).getAttribute("href");
+  const href = present(
+    await dialog.getByRole("link", { name: "Open Plan", exact: true }).getAttribute("href"),
+    "Plan link",
+  );
   const tab = await page.context().newPage();
-  await tab.goto(new URL(href!, page.url()).href);
+  await tab.goto(new URL(href, page.url()).href);
   await expect(tab.locator("#plan-title")).toBeVisible();
   await tab.close();
   await page.getByRole("button", { name: "Close panel", exact: true }).click();

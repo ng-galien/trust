@@ -1,4 +1,5 @@
 import type { ButtonHTMLAttributes, ReactNode, Ref } from "react";
+import { Link, type LinkProps } from "react-router";
 
 import { cx } from "../lib/format.js";
 
@@ -42,6 +43,23 @@ export function Button({
       {icon}
       {children}
     </button>
+  );
+}
+
+/** Navigation styled as a button: the action opens a page rather than acting in place. */
+export function ButtonLink({
+  variant = "secondary",
+  size = "md",
+  icon,
+  className,
+  children,
+  ...rest
+}: LinkProps & { variant?: Variant; size?: Size; icon?: ReactNode }) {
+  return (
+    <Link className={cx(base, variants[variant], sizes[size], className)} {...rest}>
+      {icon}
+      {children}
+    </Link>
   );
 }
 

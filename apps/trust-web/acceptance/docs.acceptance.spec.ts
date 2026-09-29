@@ -40,13 +40,8 @@ async function fences(): Promise<Fence[]> {
     const pattern = /^```(\w+)([^\n]*)\n([\s\S]*?)^```/gm;
     for (const match of text.matchAll(pattern)) {
       const line = text.slice(0, match.index).split("\n").length;
-      out.push({
-        file: path.relative(contentRoot, file),
-        line,
-        language: match[1]!,
-        meta: match[2]!.trim(),
-        code: match[3]!,
-      });
+      const [, language = "", meta = "", code = ""] = match;
+      out.push({ file: path.relative(contentRoot, file), line, language, meta: meta.trim(), code });
     }
   }
   return out;
@@ -82,15 +77,13 @@ test("the documented dynamic mission includes a complete inline Procedure that c
   const parent = examples.find((fence) => fence.meta.includes('id="dynamic-mission-parent"'));
   const worker = examples.find((fence) => fence.meta.includes('id="dynamic-mission-worker"'));
   const declaration = examples.find((fence) => fence.meta.includes('id="dynamic-mission-declarations"'));
-  expect(parent).toBeDefined();
-  expect(worker).toBeDefined();
-  expect(declaration).toBeDefined();
-  const missions = JSON.parse(declaration!.code);
+  if (!parent || !worker || !declaration) throw new Error("The documented dynamic mission examples are missing");
+  const missions = JSON.parse(declaration.code);
   expect(missions.work).toHaveLength(1);
   expect(missions.work[0].definition.kind).toBe("inline");
-  expect(missions.work[0].definition.procedureSource).toBe(worker!.code);
+  expect(missions.work[0].definition.procedureSource).toBe(worker.code);
   expect(missions.work[0].definition.operationSources).toEqual([]);
-  for (const source of [parent!.code, missions.work[0].definition.procedureSource]) {
+  for (const source of [parent.code, missions.work[0].definition.procedureSource]) {
     const result = await rpc(request, "procedure.compile", { source, sourceName: "documented-mission.feature" });
     expect(result.error, JSON.stringify(result.error)).toBeUndefined();
     expect(result.result).toBeDefined();
@@ -102,7 +95,7 @@ test("every screenshot the documentation references has been captured, with its 
   for (const file of await mdxFiles(contentRoot)) {
     const text = await readFile(file, "utf8");
     for (const match of text.matchAll(/<Screenshot\s+id="([^"]+)"([\s\S]*?)\/>/g)) {
-      const id = match[1]!;
+      const [, id = "", attributes = ""] = match;
       const png = path.join(capturesRoot, `${id}.light.en.png`);
       const sidecar = path.join(capturesRoot, `${id}.light.en.json`);
       if (!existsSync(png) || !existsSync(sidecar)) {
@@ -110,7 +103,7 @@ test("every screenshot the documentation references has been captured, with its 
         continue;
       }
       const capture = JSON.parse(await readFile(sidecar, "utf8")) as { callouts: Array<{ key: string }> };
-      for (const key of Array.from(match[2]!.matchAll(/"([\w.]+)":/g)).map((entry) => entry[1]!)) {
+      for (const key of Array.from(attributes.matchAll(/"([\w.]+)":/g)).map((entry) => entry[1] ?? "")) {
         if (!capture.callouts.some((callout) => callout.key === key))
           missing.push(`${path.relative(contentRoot, file)}: ${id} has no box for "${key}"`);
       }

@@ -254,8 +254,7 @@ export function setIntentChaining(source: string, enabled: boolean): string {
   const featureLine = lines.findIndex((line) => /^[ \t]*Feature:/.test(line));
   if (featureLine < 0) return source;
   const present = lines.slice(0, featureLine).some((line) => tagTokens(line).includes(tag));
-  for (let index = 0; index < featureLine; index += 1) {
-    const line = lines[index]!;
+  for (const [index, line] of lines.slice(0, featureLine).entries()) {
     const tokens = tagTokens(line);
     if (!tokens.includes(tag)) continue;
     const indentation = /^[ \t]*/.exec(line)?.[0] ?? "";
@@ -265,7 +264,8 @@ export function setIntentChaining(source: string, enabled: boolean): string {
     const dslLine = lines
       .slice(0, featureLine)
       .findLastIndex((line) => tagTokens(line).some((token) => token.startsWith(procedureLanguage.tags.dsl)));
-    if (dslLine >= 0) lines[dslLine] = `${lines[dslLine]!.trimEnd()} ${tag}`;
+    const dsl = lines[dslLine];
+    if (dsl !== undefined) lines[dslLine] = `${dsl.trimEnd()} ${tag}`;
     else lines.splice(featureLine, 0, tag);
   }
   return lines.join(newline);

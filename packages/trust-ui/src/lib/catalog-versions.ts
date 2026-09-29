@@ -8,9 +8,11 @@ export function catalogIdentities<T>(
 ): T[] {
   const groups = new Map<string, T[]>();
   for (const value of values) groups.set(identity(value), [...(groups.get(identity(value)) ?? []), value]);
-  return [...groups.values()].map((entries) => {
+  // Every group holds at least one value: its latest stable version, or else its latest prerelease.
+  return [...groups.values()].flatMap((entries) => {
     const ordered = [...entries].sort((a, b) => compareVersions(version(b), version(a)));
-    return ordered.find((value) => !isPrerelease(version(value))) ?? ordered[0]!;
+    const chosen = ordered.find((value) => !isPrerelease(version(value))) ?? ordered[0];
+    return chosen === undefined ? [] : [chosen];
   });
 }
 

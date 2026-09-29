@@ -24,7 +24,7 @@ export function Breadcrumb({ items, className }: { items: Crumb[]; className?: s
           <span className={cx("truncate-1", item.mono && "mono", last && "font-medium text-text")}>{item.label}</span>
         );
         return (
-          <Fragment key={item.to ?? item.label}>
+          <Fragment key={`${item.label}:${item.to ?? ""}`}>
             {index > 0 ? <ChevronRight size={12} className="shrink-0 text-faint" /> : null}
             {item.to && !last ? (
               <Link to={item.to} className="hover:text-text">

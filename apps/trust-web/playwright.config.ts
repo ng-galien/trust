@@ -15,6 +15,8 @@ export default defineConfig({
         "extensions.acceptance.spec.ts",
         "child-escalations.acceptance.spec.ts",
         "svg-rendering.acceptance.spec.ts",
+        // Runs against its own runtime and local registries (playwright.registry.config.ts).
+        "registry.acceptance.spec.ts",
       ],
     },
     // Documentation screenshots — `npm run docs:capture`; never part of the acceptance run.

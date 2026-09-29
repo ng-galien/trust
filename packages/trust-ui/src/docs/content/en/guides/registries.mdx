@@ -1,22 +1,234 @@
 ---
-title: "Synchronize a registry"
-summary: "Configure a Git or HTTP source and import its Operations and Procedures."
+title: "Install packages from a registry"
+summary: "From extension management, add a Git, HTTP or local file source, refresh its index, then install, configure, update and uninstall its packages."
 order: 5
 ---
 
-A registry distributes authored definitions. It does not take part in a running Plan: synchronization copies verified Operations and Procedures into the local TRUST catalogs, where the normal compilation and publication rules apply.
+A registry distributes versioned packages. A package can carry extension code, Operations and Procedures. A registry takes no part in a running Plan: installing a package places its files on the server, imports its definitions into the catalogs under the usual compilation and publication rules, and registers its extension.
 
-<Steps>
-  <Step title="Prepare one index">Use the `trust.registry-index@1` contract. Each artifact entry names its `kind`, relative `path`, authored `name` and `version`, and lowercase SHA-256 digest. Put `trust-registry.json` at the root of a Git repository. For HTTP, expose the index itself at the configured URL and keep artifacts on the same origin.</Step>
-  <Step title="Register the source">Run `npm exec -- trust registry add NAME git URL [--ref REF]` or `npm exec -- trust registry add NAME http INDEX_URL`. The named source is stored in the runtime database. Saving the same name updates its configuration.</Step>
-  <Step title="Synchronize explicitly">Run `npm exec -- trust registry sync NAME`. TRUST retrieves the index and all artifacts, verifies their digests and identities, compiles the whole batch, then imports Operations before Procedures. It reports how many definitions were imported or already unchanged.</Step>
-  <Step title="Inspect or remove configuration">`npm exec -- trust registry list` prints the configured sources. `npm exec -- trust registry remove NAME` removes only the source configuration; definitions already imported remain governed by their catalog rules.</Step>
-</Steps>
+## Extension management
 
-<Callout kind="rule" title="Synchronization never runs a Plan">
-  A registry supplies definitions. It does not authorize an Attempt, deploy a Runner, choose an Environment or qualify a Check.
+Extension management is the entry point for every registry action. Open it from the sidebar with **Extensions**. The installed extensions are listed there with their state, and every registry action starts from the same place:
+
+| Action | What it changes |
+| --- | --- |
+| Add a source | Stores a named Git, HTTP or local file source. Nothing is read or installed. |
+| Refresh a source | Reads the index of the source and records the packages and versions it offers. |
+| Browse packages | Shows the packages of the last refreshed index, their contents and the installed version. |
+| Install a package | Installs one selected package at one exact version. |
+| Configure settings | Validates and stores the settings values of an installed extension. |
+| Update a package | Moves one installed package to another version offered by its source. |
+| Uninstall a package | Removes the package files and its extension installation. |
+| Remove a source | Removes the source configuration only. |
+
+Every action names its source and its package, and its result lists what changed. Preparing the storage of an extension, starting it and stopping it remain separate actions on the installed extension.
+
+## Sources
+
+A source is a named location of one index. There are three kinds:
+
+- **Git**: the URL of a repository, with an optional branch or tag. The index is always `trust-registry.json` at the repository root.
+- **HTTP**: the URL of the index itself. HTTPS is required, except on the loopback address during development.
+- **Local file**: the absolute path of an index file on the server.
+
+Adding a source only stores its configuration. Adding a source with the same name again replaces that configuration.
+
+## Packages
+
+One index offers several packages, and may offer several versions of each. A package has a name, an exact version, an optional title and description, and contents in three independent categories:
+
+- **extension code**: an extension directory with its `extension.json`;
+- **Operations**;
+- **Procedures**.
+
+Each category is optional; a package declares at least one. No category requires another, and a package without extension code is never built.
+
+Packages are selected individually. An installation concerns one package at one exact version; installing a package never installs another package of the same index. One version of a package is installed at a time.
+
+## Refresh policy
+
+<Callout kind="rule" title="A refresh never updates an installed package">
+  TRUST reads a remote index only on an explicit refresh of its source. There is no automatic, scheduled or startup refresh. A refresh records which packages and versions the source offers; it never installs, updates or uninstalls a package.
+</Callout>
+
+- Adding a source, browsing its packages and listing the installed packages never contact the source. They show the index recorded by the last refresh.
+- Installing and updating contact the source to acquire the files of the selected version. The version must be offered by the last refreshed index, and every file must match the digests of that index. A Git source is read at the commit recorded by the refresh.
+- When a refresh shows a newer version of an installed package, the installed package keeps its version until you update it.
+
+## Install a package
+
+Choose a source, one of its packages and a version from the last refresh. For a package with extension code, also give the Environment of the extension, the capabilities granted to it among those it requests, and its settings values. TRUST then:
+
+1. acquires the files of the selected version;
+2. verifies every digest and every declared identity;
+3. builds the extension code when it declares a `package.json`;
+4. places the package in its own directory for this package and version;
+5. imports the Operations, then the Procedures, into the catalogs;
+6. registers the extension, stopped.
+
+A failure at any step installs nothing. After installation, prepare the storage of the extension when it has one, then start it.
+
+## Extension settings
+
+An extension declares its settings in its `extension.json`: types, required settings, defaults and constraints between settings. The values belong to one installation. TRUST validates them against the declaration and stores them; they are never written into the package. A credential setting holds the name of an environment variable: TRUST resolves it when the extension starts and never returns its value.
+
+Changing the settings of a running extension stops it, renews it with the new values and starts it again. When the new values select a store without a schema, the extension stays stopped until you prepare and start it. The previous store is neither modified nor migrated. A change based on an outdated reading of the settings is refused.
+
+## Update a package
+
+An update is always explicit: choose an installed package and a version offered by the last refresh of its source. Settings and granted capabilities carry over unless you replace them, and they must satisfy the new version. Existing Plans keep the Operation and Procedure versions they pinned; the new versions are published next to them. If the update fails, TRUST restores the previous version and restarts its extension when it was running.
+
+A package keeps its source. To take a package from another source, uninstall it, then install it from that source.
+
+## Uninstall a package or remove a source
+
+Uninstalling removes the package files, the extension installation and its settings. It keeps:
+
+- the published Operation and Procedure versions, which are immutable and may be referenced by Plans;
+- Plans and their history;
+- the source;
+- the data stored by the extension, unless you explicitly request its deletion and the extension supports it.
+
+The result lists the removed and the kept items.
+
+Removing a source removes its configuration and its refreshed index. The packages installed from it stay installed, and the result lists them. They cannot be updated until a source with the same name is added and refreshed again.
+
+<Callout kind="rule" title="A registry never runs a Plan">
+  A registry supplies packages. It does not authorize an Attempt, deploy a Runner, choose an Environment for a Plan or qualify a Check.
 </Callout>
 
 <Details title="Index contract" expert>
-The JSON object contains exactly `contract` and `artifacts`. Every artifact contains exactly `kind`, `path`, `name`, `version` and `sha256`. Paths are normalized relative paths without traversal. HTTP sources require HTTPS, except for loopback development. The runtime limits index and artifact sizes, rejects duplicate paths or identities, and refuses a conflicting immutable Procedure version.
+The index is a JSON object with exactly `contract` (`trust.registry-index@2`), `base` and `packages`. `base` is `.` or a relative directory. It is resolved from the index location: the repository root for Git, the directory of the index file for a local file, the index URL for HTTP. Every content path is relative to `base`.
+
+A package contains `name` (lowercase letters, digits and hyphens, starting with a letter, at most 64 characters), an exact SemVer `version`, optional `title` and `description`, and at least one of `extension`, `operations` and `procedures`. A `name` and `version` pair appears once per index.
+
+Each entry of `operations` and `procedures` has exactly `path`, `name`, `version` and `sha256`, the lowercase SHA-256 of the exact file bytes. `name` and `version` must match the tags of the definition.
+
+`extension` has `path`, which locates `extension.json`, with `name` and `version` equal to its `id` and `version`, its `sha256`, and `files`: every other file of the extension directory with its `path` and `sha256`, at most 2,000. A `package.json` at the root of that directory makes the installer build the extension: `npm ci` with a lock file, `npm install` otherwise, then `npm run build` when the script exists. The build inherits no `TRUST_` variable, token, key or cloud credential. A build failure refuses the installation and reports the end of the build output.
+
+Paths are normalized relative paths without traversal and never leave the source through a symbolic link. HTTP contents stay on the origin of the index. The index is limited to 1 MiB and each file to 4 MiB. A source URL never contains credentials; a private Git repository relies on the Git access of the server account.
+
+The revision of a refresh is the Git commit, or the SHA-256 of the index bytes for HTTP and local file sources. An HTTP or local file source serves the current bytes of each file: a file changed since the refresh fails its digest check, and the installation is refused until the next refresh. A Git installation fails when the recorded commit is no longer available from the configured branch or tag.
+
+A package is placed in `<packages directory>/<name>/<version>` by an atomic rename from a staging directory. The packages directory belongs to the runtime configuration (`packagesDirectory`, environment variable `TRUST_PACKAGES_DIRECTORY`).
+</Details>
+
+<Details title="Worked example" expert>
+This local index offers two packages, each with one Operation. Save it as `trust-registry.json`, with the Operation files under `operations/` next to it.
+
+```json id="registry-example-index"
+{
+  "contract": "trust.registry-index@2",
+  "base": ".",
+  "packages": [
+    {
+      "name": "readme-reads",
+      "version": "1.0.0",
+      "title": "README reads",
+      "operations": [
+        {
+          "path": "operations/readme-read.feature",
+          "name": "example.readme-read",
+          "version": "1.0.0",
+          "sha256": "c765098698d5654a72415ab6e231d63d9b859330ef0deaf02f0016a8b1071ff4"
+        }
+      ]
+    },
+    {
+      "name": "license-reads",
+      "version": "1.0.0",
+      "title": "License reads",
+      "operations": [
+        {
+          "path": "operations/license-read.feature",
+          "name": "example.license-read",
+          "version": "1.0.0",
+          "sha256": "c314fe57e92f16c981f93d2d52104ca9dbc5d2d4fab5761016893671e0ce6706"
+        }
+      ]
+    }
+  ]
+}
+```
+
+`operations/readme-read.feature`:
+
+```gherkin operation id="registry-example-readme-read"
+# language: en
+@trust-dsl:1 @operation:example.readme-read @version:1.0.0
+Feature: Read the README
+
+  Background: Operation interface
+    Given Environment
+      | name          | type      |
+      | workspaceRoot | directory |
+    And Produced fields
+      | field | type   | cardinality | domain |
+      | text  | string | one         | any    |
+
+  Scenario: Run
+    When File "readme" reads "README.md" as Text from Environment "workspaceRoot"
+    Then Produce with JSONata
+      """
+      { "text": steps.readme.content }
+      """
+```
+
+`operations/license-read.feature`:
+
+```gherkin operation id="registry-example-license-read"
+# language: en
+@trust-dsl:1 @operation:example.license-read @version:1.0.0
+Feature: Read the license
+
+  Background: Operation interface
+    Given Environment
+      | name          | type      |
+      | workspaceRoot | directory |
+    And Produced fields
+      | field | type   | cardinality | domain |
+      | text  | string | one         | any    |
+
+  Scenario: Run
+    When File "license" reads "LICENSE" as Text from Environment "workspaceRoot"
+    Then Produce with JSONata
+      """
+      { "text": steps.license.content }
+      """
+```
+
+After a refresh, both packages are offered and neither is installed. Installing `readme-reads` imports `example.readme-read@1.0.0` only; `license-reads` stays available.
+</Details>
+
+<Details title="Command line" expert>
+The `trust` command of the checkout calls the same runtime functions:
+
+- `npm exec -- trust registry add NAME git URL [--ref REF]`, `add NAME http INDEX_URL`, `add NAME file /absolute/path/trust-registry.json`;
+- `npm exec -- trust registry list` and `remove NAME`;
+- `npm exec -- trust registry refresh NAME` reads the index; `packages NAME` prints the last refreshed index without contacting the source;
+- `npm exec -- trust registry installed` prints the installed packages and a newer available version;
+- `npm exec -- trust registry install SOURCE PACKAGE VERSION [--environment ENV [--grant CAPABILITY]... [--credential-environment VARIABLE]... [--settings JSON]]`;
+- `npm exec -- trust registry update PACKAGE VERSION` and `uninstall PACKAGE [--delete-data]`.
+</Details>
+
+<Details title="RPC and MCP" expert>
+RPC and MCP call the same runtime functions. Each MCP tool name is the RPC method prefixed with `trust_`, dots replaced by underscores.
+
+| RPC method | MCP tool | Result contract |
+| --- | --- | --- |
+| `registry.source.list {}` | `trust_registry_source_list` | `trust.registry-source-catalog@1` |
+| `registry.source.save { name, kind, url, reference? }` | `trust_registry_source_save` | `trust.registry-source@1` |
+| `registry.source.remove { name }` | `trust_registry_source_remove` | `trust.registry-source-removal@1` with `keptPackages` |
+| `registry.source.refresh { name }` | `trust_registry_source_refresh` | `trust.registry-source-index@1` |
+| `registry.source.read { name }` | `trust_registry_source_read` | `trust.registry-source-index@1`, never contacting the source |
+| `registry.package.list {}` | `trust_registry_package_list` | `trust.registry-package-catalog@1` |
+| `registry.package.install { source, package, version, extension? }` | `trust_registry_package_install` | `trust.registry-package-installation@1` |
+| `registry.package.update { package, version, settings?, grants? }` | `trust_registry_package_update` | `trust.registry-package-update@1` |
+| `registry.package.uninstall { package, deleteData? }` | `trust_registry_package_uninstall` | `trust.registry-package-uninstallation@1` |
+
+`extension` holds `environment`, `grants?`, `credentialEnvironment?`, `autoStart?` and `settings?`. A refusal is the JSON-RPC error `-32050` whose data is `trust.registry-error@1` with a `reason`, such as `index-not-refreshed`, `unknown-package`, `artifact-integrity-mismatch` or `build-failed`, and the failed `step` when one applies.
+
+Extension settings are read and replaced with `trust_extension_settings_read { extension }` and `trust_extension_settings_update { extension, expectedRevision, settings }`, or `GET` and `PUT /extensions/<id>/settings`. The update result reports `preparationRequired` when the renewed extension needs `trust_extension_prepare` before `trust_extension_start`.
+
+`registry.source.sync` (`trust_registry_source_sync`) remains for sources that still publish the earlier `trust.registry-index@1`: it imports their Operations and Procedures and installs no package.
 </Details>

@@ -144,10 +144,21 @@ await rpc("plan.engage", {
   metadata: { labels: ["interface"] },
   rootInputs: { repository: "trust" },
 });
+// The interface under test is built from the current sources into this disposable directory, never a stale dist.
+const webEnvironment = { TRUST_RUNTIME_URL: "http://127.0.0.1:4397", TRUST_WEB_PORT: "4177" };
+const webDist = path.join(temporary, "web-dist");
+const vite = path.join(root, "node_modules/vite/bin/vite.js");
+const build = spawn(process.execPath, [vite, "build", "--outDir", webDist, "--emptyOutDir"], {
+  cwd: path.join(root, "apps/trust-web"),
+  env: { ...process.env, ...webEnvironment },
+  stdio: "inherit",
+});
+const [code] = await once(build, "exit");
+if (code !== 0) throw new Error(`Interface build failed with exit code ${code}`);
 start(
-  [path.join(root, "node_modules/vite/bin/vite.js"), "preview", "--host", "127.0.0.1", "--port", "4177"],
+  [vite, "preview", "--host", "127.0.0.1", "--port", "4177", "--outDir", webDist],
   path.join(root, "apps/trust-web"),
-  { TRUST_RUNTIME_URL: "http://127.0.0.1:4397", TRUST_WEB_PORT: "4177" },
+  webEnvironment,
 );
 // Dedicated acceptance only: restart this test-owned process with the same temporary database.
 if (process.env.TRUST_ACCEPTANCE_RESTART_CONTROL) {

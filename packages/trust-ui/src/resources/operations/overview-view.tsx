@@ -91,12 +91,15 @@ export function OverviewView({
                 {" "}
                 —{" "}
                 {produced
-                  .filter(({ spec }) => spec.enum)
-                  .map(({ name, spec }) =>
-                    t("operations.overview.isOneOf", {
-                      name,
-                      values: spec.enum!.map((value) => JSON.stringify(value)).join(", "),
-                    }),
+                  .flatMap(({ name, spec }) =>
+                    spec.enum
+                      ? [
+                          t("operations.overview.isOneOf", {
+                            name,
+                            values: spec.enum.map((value) => JSON.stringify(value)).join(", "),
+                          }),
+                        ]
+                      : [],
                   )
                   .join("; ")}
                 .

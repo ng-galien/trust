@@ -358,11 +358,6 @@
     font-size: var(--text-ui);
     line-height: 1.6;
   }
-  .docs-article > div > p,
-  .docs-article > div > ul,
-  .docs-article > div > ol {
-    margin: 0 0 0.9rem;
-  }
   .docs-article ul,
   .docs-article ol {
     padding-left: 1.4rem;
@@ -372,6 +367,11 @@
   }
   .docs-article ol {
     list-style: decimal;
+  }
+  .docs-article > div > p,
+  .docs-article > div > ul,
+  .docs-article > div > ol {
+    margin: 0 0 0.9rem;
   }
   .docs-article li {
     margin: 0.25rem 0;

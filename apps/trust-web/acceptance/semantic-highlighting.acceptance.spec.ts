@@ -73,15 +73,15 @@ Feature: Semantic colors
     "reference",
   );
   const js = lines.filter({ hasText: "fact.workingTree" });
-  for (const [text, color] of [
+  const tokens: ReadonlyArray<readonly [string, string]> = [
     ["fact", "keyword"],
     ["workingTree", "property"],
     ["===", "verb"],
     ['"dirty"', "string"],
     ["true", "keyword-control"],
     ["fail", "keyword-control"],
-  ])
-    await tone(page, js.getByText(text!, { exact: true }), color!);
+  ];
+  for (const [text, color] of tokens) await tone(page, js.getByText(text, { exact: true }), color);
   await expect(page.getByText("Language server unavailable")).toBeHidden();
   await page.screenshot({ path: "test-results/semantic-highlighting-light.png" });
   await page.goto("/overview");

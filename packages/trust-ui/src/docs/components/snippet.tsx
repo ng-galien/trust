@@ -12,7 +12,8 @@ import { Diagram } from "./diagram.js";
 const tokenDefinitions = new Map(highlightTokenTable.map((definition) => [definition.kind, definition]));
 
 function tokenStyle(kind: HighlightTokenKind) {
-  const definition = tokenDefinitions.get(kind)!;
+  const definition = tokenDefinitions.get(kind);
+  if (!definition) return {};
   const color = definition.tone === "text" ? "var(--color-text)" : `var(--color-editor-${definition.tone})`;
   return {
     color,

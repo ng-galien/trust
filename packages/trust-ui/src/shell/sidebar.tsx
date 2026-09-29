@@ -1,18 +1,21 @@
-import { Blocks, BookOpen, ChevronRight, Plus, Settings } from "lucide-react";
+import { Blocks, BookOpen, ChevronRight, LayoutPanelLeft, Library, Plus, Settings } from "lucide-react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { NavLink, useLocation, useNavigate } from "react-router";
+import { Link, NavLink, useLocation, useNavigate } from "react-router";
 import { useExtensions } from "../lib/extensions.js";
 import { cx } from "../lib/format.js";
 import { toggleAnchor, usePreference } from "../lib/preferences.js";
 import { Count } from "../ui/badge.js";
 import { Popover } from "../ui/menu.js";
 import { AnchorExplorer, AnchorHeaderActions } from "./anchor-explorer.js";
+import { useMobileNavigation } from "./mobile-navigation.js";
 import { overviewAnchor, type ResourceAnchor, resourceAnchors, sections, useAnchorItems } from "./resources.js";
 
 export function Sidebar() {
   const sidebarMode = usePreference("sidebarMode");
-  return sidebarMode === "compact" ? <CompactSidebar /> : <ExtendedSidebar />;
+  const drawer = useMobileNavigation();
+  // The phone drawer always shows the extended navigation.
+  return sidebarMode === "compact" && !drawer.open ? <CompactSidebar /> : <ExtendedSidebar />;
 }
 
 /* ---------------------------------------------------------------- extended */
@@ -32,7 +35,6 @@ function ExtendedSidebar() {
           icon={<overviewAnchor.icon size={16} strokeWidth={1.8} />}
           label={t(overviewAnchor.label)}
         />
-        <ExtensionsNavigation />
         {sections.map((section) => (
           <div key={section.id} className="flex flex-col gap-0.5">
             <span className="kicker px-2 pt-4 pb-1">{t(section.label)}</span>
@@ -47,6 +49,7 @@ function ExtendedSidebar() {
               ))}
           </div>
         ))}
+        <ExtensionsNavigation />
       </nav>
       <div className="flex flex-col gap-0.5 border-t border-border px-2 py-2">
         <NavRow to="/docs" icon={<BookOpen size={16} strokeWidth={1.8} />} label={t("shell.nav.docs")} />
@@ -73,40 +76,68 @@ function NavRow({ to, icon, label }: { to: string; icon: ReactNode; label: strin
   );
 }
 
+/** Which extension entry a path belongs to: installed extensions and their packages and settings, sources, or one workspace. */
+function extensionArea(pathname: string): string | null {
+  if (pathname === "/extensions" || /^\/extensions\/(packages|settings)\//.test(pathname)) return "installed";
+  if (pathname === "/extensions/sources" || pathname.startsWith("/extensions/sources/")) return "sources";
+  const workspace = /^\/extensions\/([^/]+)$/.exec(pathname);
+  return workspace ? `workspace:${decodeURIComponent(workspace[1] ?? "")}` : null;
+}
+
+/** The Extensions section: installed extensions, registry sources, then each extension's own workspace. */
 function ExtensionsNavigation({ compact = false, onActivate }: { compact?: boolean; onActivate?: () => void }) {
   const { t } = useTranslation();
+  const location = useLocation();
   const catalog = useExtensions();
-  const expanded = usePreference("expandedAnchors").includes("extensions");
-  const label = t("extensions.title");
-  const available = catalog.data?.extensions.filter((extension) => extension.ui) ?? [];
-  const contents = (close?: () => void) => (
-    <div className="flex flex-col gap-0.5">
+  const area = extensionArea(location.pathname);
+  const label = t("registry.nav.section");
+  const workspaces = catalog.data?.extensions.filter((extension) => extension.ui) ?? [];
+  const entry = (key: string, to: string, text: string, icon: ReactNode, close?: () => void) => (
+    <Link
+      key={key}
+      to={to}
+      onClick={close}
+      aria-current={area === key ? "page" : undefined}
+      className={cx(
+        "flex h-8 items-center gap-2.5 rounded-(--radius-2) px-2 text-ui hover:bg-surface-2",
+        area === key ? "bg-surface-3 font-semibold text-text" : "text-text",
+      )}
+    >
+      <span className="text-muted">{icon}</span>
+      <span className="min-w-0 flex-1 truncate">{text}</span>
+    </Link>
+  );
+  const entries = (close?: () => void) => (
+    <>
+      {entry("installed", "/extensions", t("registry.nav.installed"), <Blocks size={16} strokeWidth={1.8} />, close)}
+      {entry(
+        "sources",
+        "/extensions/sources",
+        t("registry.nav.sources"),
+        <Library size={16} strokeWidth={1.8} />,
+        close,
+      )}
       {catalog.isError ? (
-        <p role="alert" className="p-2 text-body text-danger">
+        <p role="alert" className="px-2 py-1 text-body text-danger">
           {t("extensions.failed")}
         </p>
-      ) : catalog.isLoading ? (
-        <p role="status" className="p-2 text-body text-muted">
-          {t("extensions.loading")}
-        </p>
-      ) : (
-        available.map((extension) => (
-          <NavLink
-            key={extension.id}
-            to={`/extensions/${encodeURIComponent(extension.id)}`}
-            onClick={close}
-            className={({ isActive }) =>
-              cx(
-                "truncate rounded-(--radius-2) px-2 py-1.5 text-ui hover:bg-surface-2",
-                isActive && "bg-surface-3 font-semibold",
-              )
-            }
-          >
-            {extension.title}
-          </NavLink>
-        ))
-      )}
-    </div>
+      ) : workspaces.length ? (
+        <>
+          <span className="px-2 pt-2 pb-0.5 text-micro uppercase tracking-[0.06em] text-faint">
+            {t("registry.nav.workspaces")}
+          </span>
+          {workspaces.map((extension) =>
+            entry(
+              `workspace:${extension.id}`,
+              `/extensions/${encodeURIComponent(extension.id)}`,
+              extension.title,
+              <LayoutPanelLeft size={15} strokeWidth={1.8} />,
+              close,
+            ),
+          )}
+        </>
+      ) : null}
+    </>
   );
   if (compact)
     return (
@@ -121,45 +152,28 @@ function ExtensionsNavigation({ compact = false, onActivate }: { compact?: boole
             onPointerEnter={onActivate}
             onFocus={onActivate}
             onClick={toggle}
-            className="inline-flex h-8 w-8 items-center justify-center rounded-(--radius-2) text-muted hover:bg-surface-2"
+            className={cx(
+              "inline-flex h-8 w-8 items-center justify-center rounded-(--radius-2) text-muted hover:bg-surface-2",
+              area && "bg-surface-3 text-text",
+            )}
           >
             <Blocks size={17} strokeWidth={1.8} />
           </button>
         )}
       >
         {(close) => (
-          <>
-            <NavLink
-              to="/extensions"
-              onClick={close}
-              className="mb-2 block border-b border-border px-2 pb-2 text-ui font-semibold"
-            >
-              {label}
-            </NavLink>
-            {contents(close)}
-          </>
+          <div className="flex flex-col gap-0.5">
+            <span className="kicker px-2 pb-1">{label}</span>
+            {entries(close)}
+          </div>
         )}
       </Popover>
     );
   return (
-    <div>
-      <div className="flex items-center">
-        <button
-          type="button"
-          aria-label={t(expanded ? "shell.nav.collapseAnchor" : "shell.nav.expandAnchor", { anchor: label })}
-          aria-expanded={expanded}
-          onClick={() => toggleAnchor("extensions")}
-          className="inline-flex h-8 w-6 shrink-0 items-center justify-center text-muted"
-        >
-          <ChevronRight size={13} className={cx("transition-transform", expanded && "rotate-90")} />
-        </button>
-        <div className="min-w-0 flex-1">
-          <NavRow to="/extensions" icon={<Blocks size={16} strokeWidth={1.8} />} label={label} />
-        </div>
-        <Count value={available.length} />
-      </div>
-      {expanded && <div className="my-1 ml-[15px] border-l border-border pl-1.5">{contents()}</div>}
-    </div>
+    <nav aria-label={label} className="flex flex-col gap-0.5">
+      <span className="kicker px-2 pt-4 pb-1">{label}</span>
+      {entries()}
+    </nav>
   );
 }
 
@@ -283,7 +297,6 @@ function CompactSidebar() {
           icon={<overviewAnchor.icon size={17} strokeWidth={1.8} />}
           onPointerEnter={() => setFlyout(null)}
         />
-        <ExtensionsNavigation compact onActivate={() => setFlyout(null)} />
         {sections.map((section) => (
           <div key={section.id} className="flex flex-col items-center gap-1">
             <span className="my-1.5 h-px w-5 bg-border" aria-hidden />
@@ -308,6 +321,8 @@ function CompactSidebar() {
               ))}
           </div>
         ))}
+        <span className="my-1.5 h-px w-5 bg-border" aria-hidden />
+        <ExtensionsNavigation compact onActivate={() => setFlyout(null)} />
       </nav>
       <div className="flex flex-col items-center gap-1 border-t border-border py-2">
         <RailLink

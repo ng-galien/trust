@@ -1,16 +1,10 @@
 export const extensions = {
   title: "Extensions",
-  description: "Manage installed extensions and open their workspace.",
-  refresh: "Refresh",
-  prepare: "Prepare",
-  start: "Start",
-  stop: "Stop",
-  open: "Open workspace",
+  refresh: "Refresh state",
   empty: "No extensions installed.",
   loading: "Loading extension…",
   unavailable: "This extension is unavailable. Start it from Extensions.",
   failed: "The extension could not be loaded.",
-  actionFailed: "The extension action failed. Refresh to see its current state.",
   retry: "Retry",
   back: "All extensions",
   states: {

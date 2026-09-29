@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { lazy, Suspense, useMemo } from "react";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router";
-import { ExtensionPage, ExtensionsHome } from "./extensions/extensions.js";
+import { ExtensionPage } from "./extensions/extensions.js";
 import { AuthenticationBoundary } from "./lib/authentication-boundary.js";
 import { RuntimeContext } from "./lib/runtime-context.js";
 import { EnvironmentOverlay, EnvironmentsHome } from "./resources/environments/environments-home.js";
@@ -14,6 +14,14 @@ import { PlanOverlay } from "./resources/plans/plan-overlay.js";
 import { PlansHome } from "./resources/plans/plans-home.js";
 import { ProcedureOverlay } from "./resources/procedures/procedure-overlay.js";
 import { ProceduresHome } from "./resources/procedures/procedures-home.js";
+import { AvailablePackagePage } from "./resources/registry/available-package-page.js";
+import { InstalledExtensionsPage, RegistrySourcesPage } from "./resources/registry/extension-management.js";
+import { ExtensionSettingsPage } from "./resources/registry/extension-settings-page.js";
+import { InstalledPackagePage } from "./resources/registry/installed-package-page.js";
+import { PackageUninstallPage } from "./resources/registry/package-uninstall-page.js";
+import { PackageUpdatePage } from "./resources/registry/package-update-page.js";
+import { SourceNewPage } from "./resources/registry/source-new.js";
+import { SourcePage } from "./resources/registry/source-page.js";
 import { SettingsHome } from "./resources/settings/settings-home.js";
 import { TemplateOverlay } from "./resources/templates/template-overlay.js";
 import { TemplatesHome } from "./resources/templates/templates-home.js";
@@ -67,7 +75,18 @@ export function TrustApplication({ runtimeUrl }: { runtimeUrl: string }) {
                   <Route path=":template" element={<TemplateOverlay />} />
                 </Route>
                 <Route path="/settings" element={<SettingsHome />} />
-                <Route path="/extensions" element={<ExtensionsHome />} />
+                <Route path="/extensions" element={<InstalledExtensionsPage />} />
+                <Route path="/extensions/sources" element={<RegistrySourcesPage />} />
+                <Route path="/extensions/sources/new" element={<SourceNewPage />} />
+                <Route path="/extensions/sources/:source" element={<SourcePage />} />
+                <Route
+                  path="/extensions/sources/:source/packages/:package/:version"
+                  element={<AvailablePackagePage />}
+                />
+                <Route path="/extensions/packages/:package" element={<InstalledPackagePage />} />
+                <Route path="/extensions/packages/:package/update" element={<PackageUpdatePage />} />
+                <Route path="/extensions/packages/:package/uninstall" element={<PackageUninstallPage />} />
+                <Route path="/extensions/settings/:extension" element={<ExtensionSettingsPage />} />
                 <Route path="/extensions/:extension" element={<ExtensionPage />} />
                 <Route
                   path="/docs/*"

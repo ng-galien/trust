@@ -1,22 +1,234 @@
 ---
-title: "Synchroniser une registry"
-summary: "Configurer une source Git ou HTTP et importer ses Opérations et Procédures."
+title: "Installer des paquets depuis un registre"
+summary: "Depuis la gestion des extensions, ajouter une source Git, HTTP ou fichier local, actualiser son index, puis installer, configurer, mettre à jour et désinstaller ses paquets."
 order: 5
 ---
 
-Une registry distribue des définitions écrites. Elle n'intervient pas dans un Plan en cours : la synchronisation copie les Opérations et Procédures vérifiées dans les catalogues locaux de TRUST, où les règles normales de compilation et de publication s'appliquent.
+Un registre distribue des paquets versionnés. Un paquet peut contenir du code d'extension, des Opérations et des Procédures. Un registre n'intervient pas dans un Plan en cours : installer un paquet place ses fichiers sur le serveur, importe ses définitions dans les catalogues selon les règles habituelles de compilation et de publication, et enregistre son extension.
 
-<Steps>
-  <Step title="Préparer un index">Utilisez le contrat `trust.registry-index@1`. Chaque entrée indique son `kind`, son `path` relatif, ses `name` et `version` déclarés, ainsi que son empreinte SHA-256 en minuscules. Placez `trust-registry.json` à la racine d'un dépôt Git. En HTTP, exposez directement l'index à l'URL configurée et gardez les artefacts sur la même origine.</Step>
-  <Step title="Enregistrer la source">Exécutez `npm exec -- trust registry add NAME git URL [--ref REF]` ou `npm exec -- trust registry add NAME http INDEX_URL`. La source nommée est conservée dans la base du runtime. Enregistrer de nouveau le même nom met sa configuration à jour.</Step>
-  <Step title="Synchroniser explicitement">Exécutez `npm exec -- trust registry sync NAME`. TRUST récupère l'index et tous les artefacts, vérifie leurs empreintes et leurs identités, compile le lot complet, puis importe les Opérations avant les Procédures. Le résultat distingue les définitions importées de celles déjà inchangées.</Step>
-  <Step title="Inspecter ou retirer la configuration">`npm exec -- trust registry list` affiche les sources configurées. `npm exec -- trust registry remove NAME` retire uniquement la configuration de la source ; les définitions déjà importées restent soumises aux règles de leur catalogue.</Step>
-</Steps>
+## Gestion des extensions
 
-<Callout kind="rule" title="La synchronisation n'exécute jamais un Plan">
-  Une registry fournit des définitions. Elle n'autorise pas une Attempt, ne déploie pas de Runner, ne choisit pas d'Environment et ne qualifie pas de Check.
+La gestion des extensions est le point d'entrée de toutes les actions du registre. Ouvrez-la depuis la barre latérale avec **Extensions**. Les extensions installées y figurent avec leur état, et chaque action du registre part du même endroit :
+
+| Action | Ce qu'elle change |
+| --- | --- |
+| Ajouter une source | Enregistre une source Git, HTTP ou fichier local nommée. Rien n'est lu ni installé. |
+| Actualiser une source | Lit l'index de la source et enregistre les paquets et versions qu'elle propose. |
+| Consulter les paquets | Affiche les paquets du dernier index actualisé, leur contenu et la version installée. |
+| Installer un paquet | Installe un paquet choisi, dans une version exacte. |
+| Configurer les settings | Valide et enregistre les valeurs de settings d'une extension installée. |
+| Mettre à jour un paquet | Fait passer un paquet installé à une autre version proposée par sa source. |
+| Désinstaller un paquet | Retire les fichiers du paquet et l'installation de son extension. |
+| Retirer une source | Retire uniquement la configuration de la source. |
+
+Chaque action nomme sa source et son paquet, et son résultat liste ce qui a changé. Préparer le stockage d'une extension, la démarrer et l'arrêter restent des actions distinctes sur l'extension installée.
+
+## Sources
+
+Une source est l'emplacement nommé d'un index. Il en existe trois sortes :
+
+- **Git** : l'URL d'un dépôt, avec une branche ou un tag optionnel. L'index est toujours `trust-registry.json` à la racine du dépôt.
+- **HTTP** : l'URL de l'index lui-même. HTTPS est exigé, sauf sur l'adresse de loopback en développement.
+- **Fichier local** : le chemin absolu d'un fichier d'index sur le serveur.
+
+Ajouter une source enregistre seulement sa configuration. Ajouter de nouveau une source du même nom remplace cette configuration.
+
+## Paquets
+
+Un index propose plusieurs paquets, et éventuellement plusieurs versions de chacun. Un paquet a un nom, une version exacte, un titre et une description optionnels, et un contenu réparti en trois catégories indépendantes :
+
+- **code d'extension** : un répertoire d'extension avec son `extension.json` ;
+- **Opérations** ;
+- **Procédures**.
+
+Chaque catégorie est optionnelle ; un paquet en déclare au moins une. Aucune catégorie n'en impose une autre, et un paquet sans code d'extension n'est jamais construit.
+
+Les paquets se choisissent individuellement. Une installation porte sur un paquet dans une version exacte ; installer un paquet n'installe jamais un autre paquet du même index. Une seule version d'un paquet est installée à la fois.
+
+## Politique d'actualisation
+
+<Callout kind="rule" title="Une actualisation ne met jamais à jour un paquet installé">
+  TRUST lit un index distant uniquement lors d'une actualisation explicite de sa source. Il n'y a pas d'actualisation automatique, planifiée ou au démarrage. Une actualisation enregistre les paquets et versions que propose la source ; elle n'installe, ne met à jour et ne désinstalle jamais un paquet.
+</Callout>
+
+- Ajouter une source, consulter ses paquets et lister les paquets installés ne contactent jamais la source. Ils montrent l'index enregistré par la dernière actualisation.
+- Installer et mettre à jour contactent la source pour acquérir les fichiers de la version choisie. La version doit être proposée par le dernier index actualisé, et chaque fichier doit correspondre aux empreintes de cet index. Une source Git est lue au commit enregistré par l'actualisation.
+- Quand une actualisation montre une version plus récente d'un paquet installé, le paquet installé conserve sa version jusqu'à ce que vous le mettiez à jour.
+
+## Installer un paquet
+
+Choisissez une source, l'un de ses paquets et une version issue de la dernière actualisation. Pour un paquet avec du code d'extension, indiquez aussi l'Environnement de l'extension, les capacités accordées parmi celles qu'elle demande, et ses valeurs de settings. TRUST alors :
+
+1. acquiert les fichiers de la version choisie ;
+2. vérifie chaque empreinte et chaque identité déclarée ;
+3. construit le code d'extension lorsqu'il déclare un `package.json` ;
+4. place le paquet dans son propre répertoire pour ce paquet et cette version ;
+5. importe les Opérations, puis les Procédures, dans les catalogues ;
+6. enregistre l'extension, arrêtée.
+
+Un échec à n'importe quelle étape n'installe rien. Après l'installation, préparez le stockage de l'extension lorsqu'elle en a un, puis démarrez-la.
+
+## Settings d'extension
+
+Une extension déclare ses settings dans son `extension.json` : types, settings obligatoires, valeurs par défaut et contraintes entre settings. Les valeurs appartiennent à une installation. TRUST les valide contre la déclaration et les enregistre ; elles ne sont jamais écrites dans le paquet. Un setting de credential contient le nom d'une variable d'environnement : TRUST la résout au démarrage de l'extension et ne renvoie jamais sa valeur.
+
+Modifier les settings d'une extension en cours d'exécution l'arrête, la renouvelle avec les nouvelles valeurs et la redémarre. Lorsque les nouvelles valeurs sélectionnent un stockage sans schéma, l'extension reste arrêtée jusqu'à ce que vous la prépariez et la démarriez. L'ancien stockage n'est ni modifié ni migré. Une modification fondée sur une lecture périmée des settings est refusée.
+
+## Mettre à jour un paquet
+
+Une mise à jour est toujours explicite : choisissez un paquet installé et une version proposée par la dernière actualisation de sa source. Les settings et les capacités accordées sont conservés sauf si vous les remplacez, et ils doivent satisfaire la nouvelle version. Les Plans existants conservent les versions d'Opérations et de Procédures qu'ils ont épinglées ; les nouvelles versions sont publiées à côté. Si la mise à jour échoue, TRUST rétablit la version précédente et redémarre son extension si elle était en cours d'exécution.
+
+Un paquet conserve sa source. Pour prendre un paquet dans une autre source, désinstallez-le, puis installez-le depuis cette source.
+
+## Désinstaller un paquet ou retirer une source
+
+Désinstaller retire les fichiers du paquet, l'installation de l'extension et ses settings. Sont conservés :
+
+- les versions publiées d'Opérations et de Procédures, immuables et éventuellement référencées par des Plans ;
+- les Plans et leur historique ;
+- la source ;
+- les données stockées par l'extension, sauf si vous demandez explicitement leur suppression et que l'extension la prend en charge.
+
+Le résultat liste les éléments retirés et conservés.
+
+Retirer une source retire sa configuration et son index actualisé. Les paquets installés depuis cette source restent installés, et le résultat les liste. Ils ne peuvent plus être mis à jour tant qu'une source du même nom n'a pas été ajoutée et actualisée de nouveau.
+
+<Callout kind="rule" title="Un registre n'exécute jamais un Plan">
+  Un registre fournit des paquets. Il n'autorise pas une Attempt, ne déploie pas de Runner, ne choisit pas d'Environnement pour un Plan et ne qualifie pas de Check.
 </Callout>
 
 <Details title="Contrat de l'index" expert>
-L'objet JSON contient exactement `contract` et `artifacts`. Chaque artefact contient exactement `kind`, `path`, `name`, `version` et `sha256`. Les chemins sont relatifs, normalisés et sans traversée. Les sources HTTP exigent HTTPS, sauf en développement sur l'adresse locale. Le runtime limite la taille de l'index et des artefacts, refuse les chemins ou identités répétés, ainsi qu'une version de Procédure immuable en conflit.
+L'index est un objet JSON contenant exactement `contract` (`trust.registry-index@2`), `base` et `packages`. `base` vaut `.` ou un répertoire relatif. Il est résolu depuis l'emplacement de l'index : la racine du dépôt pour Git, le répertoire du fichier d'index pour un fichier local, l'URL de l'index pour HTTP. Chaque chemin de contenu est relatif à `base`.
+
+Un paquet contient `name` (lettres minuscules, chiffres et tirets, commençant par une lettre, 64 caractères au plus), une `version` SemVer exacte, un `title` et une `description` optionnels, et au moins l'un de `extension`, `operations` et `procedures`. Une paire `name` et `version` apparaît une seule fois par index.
+
+Chaque entrée de `operations` et `procedures` contient exactement `path`, `name`, `version` et `sha256`, l'empreinte SHA-256 en minuscules des octets exacts du fichier. `name` et `version` doivent correspondre aux tags de la définition.
+
+`extension` contient `path`, qui localise `extension.json`, avec `name` et `version` égaux à son `id` et à sa `version`, son `sha256`, et `files` : chaque autre fichier du répertoire de l'extension avec son `path` et son `sha256`, 2 000 au plus. Un `package.json` à la racine de ce répertoire fait construire l'extension par l'installateur : `npm ci` avec un fichier de verrouillage, `npm install` sinon, puis `npm run build` lorsque le script existe. La construction n'hérite d'aucune variable `TRUST_`, d'aucun jeton, d'aucune clé ni d'aucun credential cloud. Un échec de construction refuse l'installation et rapporte la fin de la sortie de construction.
+
+Les chemins sont des chemins relatifs normalisés, sans traversée, et ne sortent jamais de la source par un lien symbolique. Les contenus HTTP restent sur l'origine de l'index. L'index est limité à 1 Mio et chaque fichier à 4 Mio. L'URL d'une source ne contient jamais de credentials ; un dépôt Git privé s'appuie sur l'accès Git du compte du serveur.
+
+La révision d'une actualisation est le commit Git, ou l'empreinte SHA-256 des octets de l'index pour les sources HTTP et fichier local. Une source HTTP ou fichier local sert les octets courants de chaque fichier : un fichier modifié depuis l'actualisation échoue à la vérification de son empreinte, et l'installation est refusée jusqu'à la prochaine actualisation. Une installation Git échoue lorsque le commit enregistré n'est plus disponible depuis la branche ou le tag configuré.
+
+Un paquet est placé dans `<packages directory>/<name>/<version>` par un renommage atomique depuis un répertoire de préparation. Le répertoire des paquets relève de la configuration du runtime (`packagesDirectory`, variable d'environnement `TRUST_PACKAGES_DIRECTORY`).
+</Details>
+
+<Details title="Exemple complet" expert>
+Cet index local propose deux paquets, chacun avec une Opération. Enregistrez-le sous `trust-registry.json`, avec les fichiers d'Opération sous `operations/` à côté.
+
+```json id="registry-example-index"
+{
+  "contract": "trust.registry-index@2",
+  "base": ".",
+  "packages": [
+    {
+      "name": "readme-reads",
+      "version": "1.0.0",
+      "title": "README reads",
+      "operations": [
+        {
+          "path": "operations/readme-read.feature",
+          "name": "example.readme-read",
+          "version": "1.0.0",
+          "sha256": "c765098698d5654a72415ab6e231d63d9b859330ef0deaf02f0016a8b1071ff4"
+        }
+      ]
+    },
+    {
+      "name": "license-reads",
+      "version": "1.0.0",
+      "title": "License reads",
+      "operations": [
+        {
+          "path": "operations/license-read.feature",
+          "name": "example.license-read",
+          "version": "1.0.0",
+          "sha256": "c314fe57e92f16c981f93d2d52104ca9dbc5d2d4fab5761016893671e0ce6706"
+        }
+      ]
+    }
+  ]
+}
+```
+
+`operations/readme-read.feature` :
+
+```gherkin operation id="registry-example-readme-read"
+# language: en
+@trust-dsl:1 @operation:example.readme-read @version:1.0.0
+Feature: Read the README
+
+  Background: Operation interface
+    Given Environment
+      | name          | type      |
+      | workspaceRoot | directory |
+    And Produced fields
+      | field | type   | cardinality | domain |
+      | text  | string | one         | any    |
+
+  Scenario: Run
+    When File "readme" reads "README.md" as Text from Environment "workspaceRoot"
+    Then Produce with JSONata
+      """
+      { "text": steps.readme.content }
+      """
+```
+
+`operations/license-read.feature` :
+
+```gherkin operation id="registry-example-license-read"
+# language: en
+@trust-dsl:1 @operation:example.license-read @version:1.0.0
+Feature: Read the license
+
+  Background: Operation interface
+    Given Environment
+      | name          | type      |
+      | workspaceRoot | directory |
+    And Produced fields
+      | field | type   | cardinality | domain |
+      | text  | string | one         | any    |
+
+  Scenario: Run
+    When File "license" reads "LICENSE" as Text from Environment "workspaceRoot"
+    Then Produce with JSONata
+      """
+      { "text": steps.license.content }
+      """
+```
+
+Après une actualisation, les deux paquets sont proposés et aucun n'est installé. Installer `readme-reads` importe uniquement `example.readme-read@1.0.0` ; `license-reads` reste disponible.
+</Details>
+
+<Details title="Ligne de commande" expert>
+La commande `trust` du checkout appelle les mêmes fonctions du runtime :
+
+- `npm exec -- trust registry add NAME git URL [--ref REF]`, `add NAME http INDEX_URL`, `add NAME file /absolute/path/trust-registry.json` ;
+- `npm exec -- trust registry list` et `remove NAME` ;
+- `npm exec -- trust registry refresh NAME` lit l'index ; `packages NAME` affiche le dernier index actualisé sans contacter la source ;
+- `npm exec -- trust registry installed` affiche les paquets installés et une version plus récente disponible ;
+- `npm exec -- trust registry install SOURCE PACKAGE VERSION [--environment ENV [--grant CAPABILITY]... [--credential-environment VARIABLE]... [--settings JSON]]` ;
+- `npm exec -- trust registry update PACKAGE VERSION` et `uninstall PACKAGE [--delete-data]`.
+</Details>
+
+<Details title="RPC et MCP" expert>
+RPC et MCP appellent les mêmes fonctions du runtime. Le nom de chaque outil MCP est la méthode RPC préfixée par `trust_`, les points remplacés par des tirets bas.
+
+| Méthode RPC | Outil MCP | Contrat du résultat |
+| --- | --- | --- |
+| `registry.source.list {}` | `trust_registry_source_list` | `trust.registry-source-catalog@1` |
+| `registry.source.save { name, kind, url, reference? }` | `trust_registry_source_save` | `trust.registry-source@1` |
+| `registry.source.remove { name }` | `trust_registry_source_remove` | `trust.registry-source-removal@1` avec `keptPackages` |
+| `registry.source.refresh { name }` | `trust_registry_source_refresh` | `trust.registry-source-index@1` |
+| `registry.source.read { name }` | `trust_registry_source_read` | `trust.registry-source-index@1`, sans contacter la source |
+| `registry.package.list {}` | `trust_registry_package_list` | `trust.registry-package-catalog@1` |
+| `registry.package.install { source, package, version, extension? }` | `trust_registry_package_install` | `trust.registry-package-installation@1` |
+| `registry.package.update { package, version, settings?, grants? }` | `trust_registry_package_update` | `trust.registry-package-update@1` |
+| `registry.package.uninstall { package, deleteData? }` | `trust_registry_package_uninstall` | `trust.registry-package-uninstallation@1` |
+
+`extension` contient `environment`, `grants?`, `credentialEnvironment?`, `autoStart?` et `settings?`. Un refus est l'erreur JSON-RPC `-32050` dont les données sont `trust.registry-error@1` avec une `reason`, par exemple `index-not-refreshed`, `unknown-package`, `artifact-integrity-mismatch` ou `build-failed`, et l'étape `step` en échec lorsqu'elle s'applique.
+
+Les settings d'extension se lisent et se remplacent avec `trust_extension_settings_read { extension }` et `trust_extension_settings_update { extension, expectedRevision, settings }`, ou `GET` et `PUT /extensions/<id>/settings`. Le résultat de la modification indique `preparationRequired` lorsque l'extension renouvelée exige `trust_extension_prepare` avant `trust_extension_start`.
+
+`registry.source.sync` (`trust_registry_source_sync`) demeure pour les sources qui publient encore l'ancien `trust.registry-index@1` : il importe leurs Opérations et Procédures et n'installe aucun paquet.
 </Details>

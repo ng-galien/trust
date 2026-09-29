@@ -8,7 +8,7 @@ import { mutationError } from "../lib/mutations.js";
 import { Button } from "../ui/button.js";
 import { ConfirmDialog } from "../ui/confirm.js";
 import { SearchInput } from "../ui/controls.js";
-import { Menu } from "../ui/menu.js";
+import { Menu, menuSeparator } from "../ui/menu.js";
 import { type AnchorItem, type ResourceAnchor, useAnchorItems } from "./resources.js";
 
 const visibleLimit = 8;
@@ -156,9 +156,11 @@ function AnchorItemRow({
           {item.meta ? <span className="ml-auto shrink-0 text-meta text-faint">{item.meta}</span> : null}
         </Link>
         <Menu
-          trigger={({ open, toggle }) => (
+          label={t("shell.nav.actionsFor", { item: item.label })}
+          trigger={({ open, toggle, attributes }) => (
             <button
               type="button"
+              {...attributes}
               aria-label={t("shell.nav.actionsFor", { item: item.label })}
               onClick={toggle}
               className={cx(
@@ -184,8 +186,9 @@ function AnchorItemRow({
                     label: t("common.actions.duplicate"),
                     icon: <Copy size={13} />,
                     onSelect: () => {
+                      if (!item.duplicateTo) return;
                       onNavigate?.();
-                      navigate(item.duplicateTo!);
+                      navigate(item.duplicateTo);
                     },
                   },
                 ]
@@ -193,7 +196,7 @@ function AnchorItemRow({
             ...(anchor.id === "operations" || anchor.id === "procedures"
               ? []
               : [
-                  { label: "", separator: true },
+                  menuSeparator,
                   removeBlocked
                     ? {
                         label: t("common.actions.delete"),
@@ -238,8 +241,9 @@ export function AnchorHeaderActions({ anchor, onNavigate }: { anchor: ResourceAn
       size="sm"
       icon={<Plus size={13} />}
       onClick={() => {
+        if (!anchor.createTo) return;
         onNavigate?.();
-        navigate(anchor.createTo!);
+        navigate(anchor.createTo);
       }}
     >
       {t("common.actions.new")}

@@ -15,7 +15,6 @@ import {
   schemaProperties,
   typeLabel,
   validateObject,
-  validateValue,
 } from "./schema-validate.js";
 import { Select } from "./select.js";
 
@@ -211,7 +210,7 @@ function FieldInput({
   if (target.enum && type !== "array") {
     return (
       <Select
-        ariaLabel={id}
+        id={id}
         value={value === undefined || value === null ? "" : String(value)}
         onChange={(next) => onChange(coerce(target, next))}
         options={target.enum.map((option) => ({ value: String(option), label: String(option) }))}
@@ -447,7 +446,7 @@ export function ListEditor({
       ))}
       {enumOptions ? (
         <Select
-          ariaLabel={`${id} add`}
+          id={id}
           value=""
           onChange={(next) => add(next)}
           options={enumOptions

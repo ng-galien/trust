@@ -354,10 +354,9 @@ function layout(
     .map((link) => ({ link, start: rowY(link.from), end: rowY(link.to) }))
     .sort((a, b) => a.start - b.start || b.end - b.start - (a.end - a.start));
   const lanes = new Map<DataLink, number>();
-  const active: Array<{ end: number; lane: number }> = [];
+  let active: Array<{ end: number; lane: number }> = [];
   for (const span of spans) {
-    for (let index = active.length - 1; index >= 0; index -= 1)
-      if (active[index]!.end <= span.start) active.splice(index, 1);
+    active = active.filter((entry) => entry.end > span.start);
     let lane = 0;
     while (active.some((entry) => entry.lane === lane)) lane += 1;
     lanes.set(span.link, lane);
@@ -401,10 +400,9 @@ function layout(
     )
     .sort((a, b) => a.start - b.start || b.end - b.start - (a.end - a.start));
   const bypassLanes = new Map<string, number>();
-  const activeBypass: Array<{ end: number; lane: number }> = [];
+  let activeBypass: Array<{ end: number; lane: number }> = [];
   for (const span of skipping) {
-    for (let index = activeBypass.length - 1; index >= 0; index -= 1)
-      if (activeBypass[index]!.end <= span.start) activeBypass.splice(index, 1);
+    activeBypass = activeBypass.filter((entry) => entry.end > span.start);
     let lane = 0;
     while (activeBypass.some((entry) => entry.lane === lane)) lane += 1;
     bypassLanes.set(span.key, lane);
@@ -414,12 +412,14 @@ function layout(
   const nodes: Node<ScenarioNodeData>[] = [];
   const edges: Edge[] = [];
   procedure.scenarios.forEach((scenario, index) => {
-    const geo = geometry.get(scenario.slug)!;
+    const geo = geometry.get(scenario.slug);
+    if (!geo) return;
     const checkRows: CheckRow[] = scenario.checks.map((name) => {
       const check = procedure.checks.find((candidate) => candidate.name === name);
       const state: LiveState = live.get(name);
       const inbound = links.filter((link) => link.to === name);
       const outbound = links.filter((link) => link.from === name);
+      const instances = instancesOf.get(name) ?? [];
       return {
         id: `check:${name}`,
         name,
@@ -431,7 +431,7 @@ function layout(
           check?.executionConstraint === undefined ? undefined : describeExecutionConstraint(check.executionConstraint),
         state,
         emphasis: emphasis.check(name),
-        instances: (instancesOf.get(name)?.length ?? 0) > 1 ? instancesOf.get(name)! : [],
+        instances: instances.length > 1 ? instances : [],
         highlight: false,
         handles: { in: inbound.length > 0, out: outbound.length > 0 },
       };
@@ -1148,12 +1148,18 @@ function useRowBounds() {
 
 /** Polyline with rounded corners (quadratic arcs of the given radius at every turn). */
 function orthogonalPath(points: Array<[number, number]>, radius: number): string {
-  if (points.length < 2) return "";
-  let path = `M ${points[0]![0]} ${points[0]![1]}`;
+  const first = points[0];
+  const last = points.at(-1);
+  if (points.length < 2 || !first || !last) return "";
+  let path = `M ${first[0]} ${first[1]}`;
   for (let index = 1; index < points.length - 1; index += 1) {
-    const [px, py] = points[index - 1]!;
-    const [cx, cy] = points[index]!;
-    const [nx, ny] = points[index + 1]!;
+    const previous = points[index - 1];
+    const corner = points[index];
+    const following = points[index + 1];
+    if (!previous || !corner || !following) continue;
+    const [px, py] = previous;
+    const [cx, cy] = corner;
+    const [nx, ny] = following;
     const inLength = Math.hypot(cx - px, cy - py);
     const outLength = Math.hypot(nx - cx, ny - cy);
     const r = Math.min(radius, inLength / 2, outLength / 2);
@@ -1167,8 +1173,7 @@ function orthogonalPath(points: Array<[number, number]>, radius: number): string
     const outY = cy + Math.sign(ny - cy) * r;
     path += ` L ${inX} ${inY} Q ${cx} ${cy} ${outX} ${outY}`;
   }
-  const [lx, ly] = points[points.length - 1]!;
-  return `${path} L ${lx} ${ly}`;
+  return `${path} L ${last[0]} ${last[1]}`;
 }
 
 /** Chip on an edge; follows the edge emphasis. Hovering it (or the edge) lights the whole route (and, for experts, unfolds the DSL reading of the link);
@@ -1673,7 +1678,8 @@ function PanelSection({
 function scenarioLevels(procedure: CompiledProcedure): Map<string, number> {
   const result = new Map<string, number>();
   const visit = (slug: string, trail = new Set<string>()): number => {
-    if (result.has(slug)) return result.get(slug)!;
+    const known = result.get(slug);
+    if (known !== undefined) return known;
     if (trail.has(slug)) return 0;
     const scenario = procedure.scenarios.find((candidate) => candidate.slug === slug);
     if (!scenario || scenario.dependencies.length === 0) return 0;

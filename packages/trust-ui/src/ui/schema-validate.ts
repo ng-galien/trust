@@ -198,8 +198,8 @@ export function validateValue(spec: PropertySpec, value: unknown): string | unde
     if (!value || typeof value !== "object" || Array.isArray(value)) return i18next.t("ui.schema.message.mustBeObject");
     if (spec.properties) {
       const nested = validateObject(spec as ObjectSchema, value as RuntimeJsonObject);
-      if (nested.length)
-        return i18next.t("ui.schema.message.nested", { field: nested[0]!.field, message: nested[0]!.message });
+      const [first] = nested;
+      if (first) return i18next.t("ui.schema.message.nested", { field: first.field, message: first.message });
     }
     return undefined;
   }

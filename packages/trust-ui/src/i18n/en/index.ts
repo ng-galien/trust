@@ -8,6 +8,7 @@ import { operations } from "./operations.js";
 import { overview } from "./overview.js";
 import { plans } from "./plans.js";
 import { procedures } from "./procedures.js";
+import { registry } from "./registry.js";
 import { settings } from "./settings.js";
 import { shared } from "./shared.js";
 import { shell } from "./shell.js";
@@ -21,6 +22,7 @@ export const en = {
   delegation,
   templates,
   extensions,
+  registry,
   common,
   shell,
   ui,

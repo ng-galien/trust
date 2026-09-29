@@ -1,4 +1,4 @@
-import { CircleHelp, Moon, PanelLeftClose, PanelLeftOpen, Search, Server, Sun } from "lucide-react";
+import { CircleHelp, Menu, Moon, PanelLeftClose, PanelLeftOpen, Search, Server, Sun, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useLocation, useNavigate } from "react-router";
@@ -10,6 +10,7 @@ import { useHealth } from "../lib/runtime-context.js";
 import { IconButton } from "../ui/button.js";
 import { Kbd, SegmentedControl } from "../ui/controls.js";
 import { Select } from "../ui/select.js";
+import { isManagementPath, useMobileNavigation, usePhone } from "./mobile-navigation.js";
 import { resourceAnchors, useAnchorItems } from "./resources.js";
 
 export function Header() {
@@ -18,19 +19,35 @@ export function Header() {
   const theme = useResolvedTheme();
   const sidebarMode = usePreference("sidebarMode");
   const compact = sidebarMode === "compact";
+  const location = useLocation();
+  // Only management pages turn the sidebar into a phone drawer.
+  const phone = usePhone() && isManagementPath(location.pathname);
+  const drawer = useMobileNavigation();
   const live = useLiveMode();
   const status = health.isLoading ? "checking" : health.isSuccess ? "healthy" : "unavailable";
 
   return (
     <header className="flex h-(--header-h) shrink-0 items-center gap-6 border-b border-border bg-surface px-3">
-      <IconButton
-        label={compact ? t("shell.nav.expand") : t("shell.nav.collapse")}
-        aria-expanded={!compact}
-        onClick={() => updatePreferences({ sidebarMode: compact ? "extended" : "compact" })}
-        className="-mr-4"
-      >
-        {compact ? <PanelLeftOpen size={17} strokeWidth={1.8} /> : <PanelLeftClose size={17} strokeWidth={1.8} />}
-      </IconButton>
+      {phone ? (
+        <IconButton
+          label={t("shell.nav.label")}
+          aria-expanded={drawer.open}
+          data-nav-toggle=""
+          onClick={() => drawer.setOpen(!drawer.open)}
+          className="-mr-4"
+        >
+          {drawer.open ? <X size={17} strokeWidth={1.8} /> : <Menu size={17} strokeWidth={1.8} />}
+        </IconButton>
+      ) : (
+        <IconButton
+          label={compact ? t("shell.nav.expand") : t("shell.nav.collapse")}
+          aria-expanded={!compact}
+          onClick={() => updatePreferences({ sidebarMode: compact ? "extended" : "compact" })}
+          className="-mr-4"
+        >
+          {compact ? <PanelLeftOpen size={17} strokeWidth={1.8} /> : <PanelLeftClose size={17} strokeWidth={1.8} />}
+        </IconButton>
+      )}
       <a href="/overview" className="flex w-40 shrink-0 items-center gap-2.5" aria-label={t("shell.nav.home")}>
         <span className="grid h-6 w-6 place-items-center rounded-(--radius-1) bg-surface-inverse text-body font-bold text-inverse">
           T
@@ -195,19 +212,14 @@ function GlobalSearch() {
     if (!needle) return [];
     const match = (label: string) => label.toLowerCase().includes(needle);
     return [
-      {
-        anchor: resourceAnchors.find((anchor) => anchor.id === "operations")!,
-        items: operations.items.filter((item) => match(item.label)).slice(0, 5),
-      },
-      {
-        anchor: resourceAnchors.find((anchor) => anchor.id === "procedures")!,
-        items: procedures.items.filter((item) => match(item.label)).slice(0, 5),
-      },
-      {
-        anchor: resourceAnchors.find((anchor) => anchor.id === "plans")!,
-        items: plans.items.filter((item) => match(item.label)).slice(0, 5),
-      },
-    ].filter((group) => group.items.length > 0);
+      { id: "operations", items: operations.items },
+      { id: "procedures", items: procedures.items },
+      { id: "plans", items: plans.items },
+    ].flatMap(({ id, items }) => {
+      const anchor = resourceAnchors.find((candidate) => candidate.id === id);
+      const found = items.filter((item) => match(item.label)).slice(0, 5);
+      return anchor && found.length > 0 ? [{ anchor, items: found }] : [];
+    });
   }, [query, operations.items, procedures.items, plans.items]);
 
   const first = groups[0]?.items[0];
