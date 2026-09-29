@@ -15,7 +15,7 @@ import {
 import { type ReactNode, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useParams, useSearchParams } from "react-router";
-import { GherkinEditor } from "../../gherkin-editor.js";
+import { GherkinEditor, JsonViewer } from "../../lazy-editors.js";
 import { catalogIdentities, orderedVersions } from "../../lib/catalog-versions.js";
 import { plural } from "../../lib/format.js";
 import { mutationError, usePublishProcedure } from "../../lib/mutations.js";
@@ -24,7 +24,6 @@ import { usePlans, useProcedureCatalog, useProcedures, useRuntime } from "../../
 import { StatusBadge } from "../../ui/badge.js";
 import { Button } from "../../ui/button.js";
 import { Expert } from "../../ui/expert.js";
-import { JsonViewer } from "../../ui/json-viewer.js";
 import { EmptyState, ErrorBox, LoadingState } from "../../ui/states.js";
 import { CatalogMetadataEditor } from "../shared/catalog-metadata-editor.js";
 import { EmptyRelation, InspectorSection, RelationLink } from "../shared/inspector.js";

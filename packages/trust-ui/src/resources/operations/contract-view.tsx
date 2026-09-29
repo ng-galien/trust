@@ -4,8 +4,8 @@ import { matchOperationStep, matchShellArgument } from "@trust/operation/match";
 import { Braces } from "lucide-react";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
+import { JsonViewer } from "../../lazy-editors.js";
 import { Badge } from "../../ui/badge.js";
-import { JsonViewer } from "../../ui/json-viewer.js";
 import { EmptyState } from "../../ui/states.js";
 import {
   describeAcceptedStatuses,

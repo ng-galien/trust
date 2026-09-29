@@ -54,6 +54,13 @@ export async function ensureTrustLanguageClient(url: string): Promise<void> {
   }
   languageServerUrl = url;
   languageClientStart = (async () => {
+    // The manager keeps the first configuration of a language: a reconnection drops the client bound to the closed
+    // socket so that the fresh socket below is the one used.
+    try {
+      await languageClients.dispose(true);
+    } catch {
+      // A client that never started has nothing to release.
+    }
     const webSocket = await authenticatedWebSocket(url);
     languageClients.setConfig({
       languageId: "trust",

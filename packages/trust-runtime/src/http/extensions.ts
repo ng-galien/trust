@@ -71,8 +71,9 @@ export function createExtensionsHttpHandler({
         extension.requireRunning();
         extension.requireGrant("plans.declare");
         const input = parsePlanDeclarationReplacement(request.body);
-        if (input.plan !== decodeURIComponent(rest[1]!)) throw new ExtensionError(400, "invalid-extension-request");
-        const plan = await planReader.readPlanBySlug(input.plan, false, access);
+        if (input.plan !== decodeURIComponent(rest[1] ?? ""))
+          throw new ExtensionError(400, "invalid-extension-request");
+        const plan = await planReader.readLivePlanBySlug(input.plan, access);
         if (plan.environment !== extension.installation.environment) throw new ExtensionError(404, "plan-not-found");
         response.json(await planRuntime.replaceDeclarations(input, access));
         return;
@@ -87,7 +88,7 @@ export function createExtensionsHttpHandler({
           if (typeof value !== "string") throw new ExtensionError(400, "invalid-extension-query");
           query[key] = value;
         }
-        const result = await extension.read({ path: "/" + rest.join("/"), query }, access);
+        const result = await extension.read({ path: `/${rest.join("/")}`, query }, access);
         if (
           !result ||
           !Number.isInteger(result.status) ||
@@ -115,7 +116,8 @@ export function createExtensionsHttpHandler({
         }
         if (rest.length === 2) {
           try {
-            const plan = await planReader.readPlanBySlug(decodeURIComponent(rest[1]!), false, access);
+            // Extensions follow current progress: the revision history and sessions stay on the Plan read.
+            const plan = await planReader.readLivePlanBySlug(decodeURIComponent(rest[1] ?? ""), access);
             if (plan.environment !== extension.installation.environment) throw new Error();
             response.json(plan);
           } catch {
@@ -127,7 +129,7 @@ export function createExtensionsHttpHandler({
       if (surface === "trust" && rest[0] === "episodes" && rest.length === 2) {
         extension.requireGrant("plans.read");
         try {
-          const episode = await planReader.readDelegationEpisode(decodeURIComponent(rest[1]!), access);
+          const episode = await planReader.readDelegationEpisode(decodeURIComponent(rest[1] ?? ""), access);
           if (episode.root.plan.environment !== extension.installation.environment) throw new Error();
           if (
             episode.branches.some(({ child }) => child && child.plan.environment !== extension.installation.environment)
@@ -152,7 +154,7 @@ export function createExtensionsHttpHandler({
             .authenticate(request.get("authorization"))
             .then(async (current) => {
               accessService.authorizeExtension(current, id);
-              if (planSlug) await planReader.readPlanBySlug(planSlug, false, current);
+              if (planSlug) await planReader.readLivePlanBySlug(planSlug, current);
               if (!closed) response.write(`event: change\ndata: ${JSON.stringify(value)}\n\n`);
             })
             .catch(() => response.end());
@@ -168,15 +170,16 @@ export function createExtensionsHttpHandler({
             send({ type: "resync" });
             return;
           }
+          const changed = event.plan;
           void accessService
             .authenticate(request.get("authorization"))
             .then((current) => {
               accessService.authorizeExtension(current, id);
-              return planReader.readPlanBySlug(event.plan!, false, current);
+              return planReader.readLivePlanBySlug(changed, current);
             })
             .then((plan) => {
               if (plan.environment === extension.installation.environment)
-                send({ type: "plan.changed", plan: event.plan }, event.plan);
+                send({ type: "plan.changed", plan: changed }, changed);
             })
             .catch(() => undefined);
         });

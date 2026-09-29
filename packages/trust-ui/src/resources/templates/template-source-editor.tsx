@@ -1,5 +1,5 @@
 import type { TemplateParameter } from "@trust/extension-sdk";
-import { GherkinEditor } from "../../gherkin-editor.js";
+import { GherkinEditor } from "../../lazy-editors.js";
 import { usePreference, useResolvedTheme } from "../../lib/preferences.js";
 import { useRuntime } from "../../lib/runtime-context.js";
 

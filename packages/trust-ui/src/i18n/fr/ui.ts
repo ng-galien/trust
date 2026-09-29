@@ -51,6 +51,9 @@ export const ui: Translation<typeof en> = {
   infoPopover: {
     description: "Description",
   },
+  editor: {
+    loading: "Chargement de l’éditeur…",
+  },
   jsonViewer: {
     loading: "Chargement de la visionneuse…",
   },

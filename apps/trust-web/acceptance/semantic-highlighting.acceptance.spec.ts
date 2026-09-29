@@ -59,7 +59,8 @@ Feature: Semantic colors
     page,
     check
       .locator("span")
-      .filter({ hasText: /^"?git\.head-read"?$/ })
+      // A reference is the whole quoted name@selector.
+      .filter({ hasText: /^"?git\.head-read@\*"?$/ })
       .last(),
     "reference",
   );

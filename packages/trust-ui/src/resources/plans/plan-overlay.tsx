@@ -21,7 +21,8 @@ import {
 import { Children, Fragment, type ReactNode, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useLocation, useNavigate, useParams } from "react-router";
-import { type EditorDecoration, GherkinEditor } from "../../gherkin-editor.js";
+import type { EditorDecoration } from "../../gherkin-editor.js";
+import { GherkinEditor } from "../../lazy-editors.js";
 import { useCurrentEnvironment } from "../../lib/environment.js";
 import { cx, plural, relativeTime } from "../../lib/format.js";
 import {

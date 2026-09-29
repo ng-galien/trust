@@ -1,6 +1,31 @@
-import type { ExtensionPageProps } from "@trust/extension-sdk";
+import type { ExtensionEventStream, ExtensionPageProps } from "@trust/extension-sdk";
 import { AuthenticatedEventSource } from "../lib/authenticated-events.js";
 import type { BrowserAuthentication } from "../lib/authentication.js";
+
+/** One subscriber of an extension's shared event stream: the same contract as a stream of its own. */
+class EventSubscription extends EventTarget implements ExtensionEventStream {
+  readyState = 0;
+  onopen: ((event: Event) => void) | null = null;
+  onerror: ((event: Event) => void) | null = null;
+  constructor(private readonly release: (subscription: EventSubscription) => void) {
+    super();
+  }
+  close(): void {
+    this.readyState = 2;
+    this.release(this);
+  }
+}
+
+/** The extension's single connection: every event it receives is delivered to each current subscriber. */
+class SharedEventSource extends AuthenticatedEventSource {
+  readonly subscribers = new Set<EventSubscription>();
+  override dispatchEvent(event: Event): boolean {
+    const message = event as MessageEvent;
+    for (const subscriber of this.subscribers)
+      subscriber.dispatchEvent(new MessageEvent(event.type, { data: message.data, lastEventId: message.lastEventId }));
+    return super.dispatchEvent(event);
+  }
+}
 
 /** One installed extension gets a bounded transport, not the host's credential. */
 export function createExtensionTransport(
@@ -13,7 +38,9 @@ export function createExtensionTransport(
   const origin = new URL(baseUrl || window.location.origin, window.location.origin).origin;
   const prefix = `/extensions/${extensionId}/`;
   const controller = new AbortController();
-  const streams = new Set<AuthenticatedEventSource>();
+  // Browsers keep a handful of connections per server: every view of the extension shares one event stream,
+  // so long-lived subscriptions never starve its requests.
+  let shared: SharedEventSource | undefined;
   const resolve = (input: string, events: boolean): URL => {
     if (input.includes("\\")) throw new Error("Extension request is outside its transport");
     const rawPath = input.split(/[?#]/u)[0] ?? "";
@@ -70,22 +97,45 @@ export function createExtensionTransport(
       fetch: (input, init) => send(input, init),
       openEvents() {
         controller.signal.throwIfAborted();
-        const stream = new AuthenticatedEventSource(`${origin}${prefix}events`, (input, init) =>
-          send(input, init, true),
-        );
-        streams.add(stream);
-        const close = stream.close.bind(stream);
-        stream.close = () => {
-          streams.delete(stream);
-          close();
-        };
-        return stream;
+        if (!shared) {
+          const source = new SharedEventSource(`${origin}${prefix}events`, (input, init) => send(input, init, true));
+          source.onopen = (event) => {
+            for (const subscriber of source.subscribers) {
+              subscriber.readyState = 1;
+              subscriber.onopen?.(event);
+            }
+          };
+          source.onerror = (event) => {
+            for (const subscriber of source.subscribers) {
+              subscriber.readyState = 0;
+              subscriber.onerror?.(event);
+            }
+          };
+          shared = source;
+        }
+        const source = shared;
+        const subscription = new EventSubscription((closed) => {
+          source.subscribers.delete(closed);
+          if (source.subscribers.size === 0 && shared === source) {
+            source.close();
+            shared = undefined;
+          }
+        });
+        source.subscribers.add(subscription);
+        // A late subscriber of an open stream still learns that it is connected.
+        if (source.readyState === 1)
+          setTimeout(() => {
+            if (subscription.readyState !== 0 || !source.subscribers.has(subscription)) return;
+            subscription.readyState = 1;
+            subscription.onopen?.(new Event("open"));
+          }, 0);
+        return subscription;
       },
     },
     dispose() {
       controller.abort();
-      for (const stream of streams) stream.close();
-      streams.clear();
+      shared?.close();
+      shared = undefined;
     },
   };
 }

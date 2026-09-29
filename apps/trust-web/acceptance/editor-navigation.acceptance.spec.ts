@@ -34,7 +34,8 @@ test("LSP references open the exact resource version and retain their source ori
   await page.goto(origin);
   const editor = page.locator(".monaco-editor");
   await expect(editor.locator(".view-lines")).toContainText("dragon-heist.scout", { timeout: 15_000 });
-  const operation = editor.getByText(/^"?dragon-heist\.scout"?$/).first();
+  // A reference token is the whole quoted name@selector.
+  const operation = editor.getByText(/^"?dragon-heist\.scout@\*"?$/).first();
   await operation.hover();
   await expect(page.locator(".monaco-hover").filter({ hasText: "Produced" }).first()).toBeVisible();
   await operation.click({ modifiers: [modifier] });
@@ -42,7 +43,7 @@ test("LSP references open the exact resource version and retain their source ori
   await expect(page.getByRole("heading", { level: 1 })).toContainText("scout");
   await page.getByRole("button", { name: "Close", exact: true }).click();
   await expect(page).toHaveURL(origin);
-  const procedure = editor.getByText(/^"?dragon-heist-distraction"?$/).first();
+  const procedure = editor.getByText(/^"?dragon-heist-distraction@1\.0\.0"?$/).first();
   await procedure.scrollIntoViewIfNeeded();
   await procedure.hover();
   await expect(page.locator(".monaco-hover").filter({ hasText: "1.0.0" }).first()).toBeVisible();

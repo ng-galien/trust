@@ -3,7 +3,7 @@ import { BookOpen, Braces, Copy, FileCode2, FlaskConical, GitBranch, Pencil, Pla
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useParams, useSearchParams } from "react-router";
-import { GherkinEditor } from "../../gherkin-editor.js";
+import { GherkinEditor } from "../../lazy-editors.js";
 import { catalogIdentities, orderedVersions } from "../../lib/catalog-versions.js";
 import { plural } from "../../lib/format.js";
 import { mutationError, useSaveOperation } from "../../lib/mutations.js";

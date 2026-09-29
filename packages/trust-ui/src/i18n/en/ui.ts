@@ -48,6 +48,9 @@ export const ui = {
   infoPopover: {
     description: "Description",
   },
+  editor: {
+    loading: "Loading the editor…",
+  },
   jsonViewer: {
     loading: "Loading viewer…",
   },

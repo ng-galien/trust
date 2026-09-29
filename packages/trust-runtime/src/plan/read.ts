@@ -140,6 +140,15 @@ export class PlanReader {
     });
   }
 
+  /** The live Plan view without its revision history and sessions, for surfaces that follow current progress. */
+  async readLivePlanBySlug(planSlug: string, access?: AccessContext): Promise<PlanView> {
+    return planReadTransaction(this.#database, planSlug, async (database) => {
+      const reader = this.#using(database);
+      await reader.#authorizePlan(access, "plan.read", planSlug);
+      return reader.#readPlanBySlug(planSlug, false, false);
+    });
+  }
+
   async readCheck(checkUri: string, access?: AccessContext): Promise<CheckView> {
     await this.#authorizeCheck(access, "check.read", checkUri);
     const { plan } = await this.#resolve(checkUri);
@@ -462,12 +471,12 @@ export class PlanReader {
       checks: checkViews,
       latestRevisionChange: await this.#revisionChange(plan.slug, revision, active),
       latestQualification:
-        latestQualification === undefined
+        latestQualification === undefined || latestQualificationAttempt === undefined
           ? null
           : {
               checkUri: latestQualification.checkUri,
               attemptHandle: latestQualification.attemptHandle,
-              executionId: latestQualificationAttempt!.executionId,
+              executionId: latestQualificationAttempt.executionId,
               verdict: latestQualification.verdict,
               reasonCode: latestQualification.reasonCode,
               reason: latestQualification.reason,
