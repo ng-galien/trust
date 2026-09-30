@@ -5,6 +5,36 @@ import path from "node:path";
 import test from "node:test";
 import { startPublicRuntime } from "./support/runtime-process.js";
 
+interface McpTool {
+  name: string;
+  inputSchema: { properties: { command: { enum: string[] } }; oneOf: unknown[] };
+  annotations: { readOnlyHint: boolean };
+}
+/** The MCP response fields these scenarios read. */
+interface McpResponse {
+  result: {
+    capabilities: { tools: { listChanged: boolean } };
+    tools: McpTool[];
+    content: { type: string; text: string }[];
+    isError?: boolean;
+  };
+}
+interface ExtensionEntry {
+  id: string;
+  state: string;
+}
+interface ToolContent {
+  extension: ExtensionEntry;
+  extensions: ExtensionEntry[];
+  error: string;
+}
+
+async function readStream(stream: Response) {
+  assert.match(stream.headers.get("content-type") ?? "", /text\/event-stream/);
+  if (!stream.body) throw new Error("The event stream has no body");
+  return stream.body.getReader();
+}
+
 test("one extension MCP tool shares declared commands with HTTP and announces running catalog changes", {
   timeout: 30_000,
 }, async () => {
@@ -20,13 +50,14 @@ export function createExtension() {
       if (command === 'records.fail') throw new Error('private-secret-stack');
       if (command === 'records.crash') process.exit(1);
       if (command === 'records.hang') return new Promise(() => {});
+      if (command === 'records.block') for (;;) {}
       if (Object.keys(args).length !== 1 || !Number.isInteger(args.value)) return {status:400,body:{error:'invalid-value'},text:'Value must be an integer.'};
       return {status:200,body:{value:args.value,calls:++calls},text:'Recorded value '+args.value+'.'};
     }
   };
 }`,
   );
-  const commands = ["records.save", "records.fail", "records.crash", "records.hang"].map((name) => ({
+  const commands = ["records.save", "records.fail", "records.crash", "records.hang", "records.block"].map((name) => ({
     name,
     description: name,
     inputSchema: {
@@ -56,7 +87,10 @@ export function createExtension() {
     registry,
     JSON.stringify({ extensions: [{ manifest, configuration: {}, environment: "local", grants: [] }] }),
   );
-  const runtime = await startPublicRuntime("trust-extension-command-runtime-", { extensionsFile: registry });
+  const runtime = await startPublicRuntime("trust-extension-command-runtime-", {
+    extensionsFile: registry,
+    processEnvironment: { TRUST_EXTENSION_TIMEOUT_MS: "1500" },
+  });
   const headers = { "content-type": "application/json", "mcp-protocol-version": "2025-03-26" };
   const rpc = async (method: string, params?: unknown) => {
     const response = await fetch(`${runtime.endpoint}/mcp`, {
@@ -64,7 +98,7 @@ export function createExtension() {
       headers,
       body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
     });
-    return (await response.json()) as any;
+    return (await response.json()) as McpResponse;
   };
   const post = (suffix: string, body: unknown = {}) =>
     fetch(`${runtime.endpoint}/extensions/sample-extension/${suffix}`, {
@@ -73,7 +107,7 @@ export function createExtension() {
       body: JSON.stringify(body),
     });
   const call = (args: unknown) => rpc("tools/call", { name: "trust_extension_sample_extension", arguments: args });
-  const catalog = async () => (await rpc("tools/list")).result.tools as any[];
+  const catalog = async () => (await rpc("tools/list")).result.tools;
   let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
   try {
     const core = await catalog();
@@ -98,20 +132,21 @@ export function createExtension() {
     const stream = await fetch(`${runtime.endpoint}/mcp`, {
       headers: { accept: "text/event-stream", "mcp-protocol-version": "2025-03-26" },
     });
-    assert.match(stream.headers.get("content-type")!, /text\/event-stream/);
-    reader = stream.body!.getReader();
-    const next = async () => new TextDecoder().decode((await reader!.read()).value);
+    const events = await readStream(stream);
+    reader = events;
+    const next = async () => new TextDecoder().decode((await events.read()).value);
     assert.match(await next(), /connected/);
     assert.equal((await post("start")).status, 200);
     assert.match(await next(), /event: message\ndata: .*"method":"notifications\/tools\/list_changed"/);
     const listed = await catalog();
     assert.equal(listed.length, core.length + 1);
     const tool = listed.find((tool) => tool.name === "trust_extension_sample_extension");
+    assert.ok(tool);
     assert.deepEqual(
       tool.inputSchema.properties.command.enum,
       commands.map((command) => command.name),
     );
-    assert.equal(tool.inputSchema.oneOf.length, 4);
+    assert.equal(tool.inputSchema.oneOf.length, 5);
     assert.equal(tool.annotations.readOnlyHint, false);
     assert.equal((await post("commands", { command: "records.save", arguments: { value: 7 } })).status, 200);
     const result = await call({ command: "records.save", arguments: { value: 8 } });
@@ -128,7 +163,7 @@ export function createExtension() {
     }
     const invalidArgument = await call({ command: "records.save", arguments: { value: "bad" } });
     assert.equal(invalidArgument.result.isError, true);
-    assert.equal(invalidArgument.result.content[0].text, "Value must be an integer.");
+    assert.equal(invalidArgument.result.content[0]?.text, "Value must be an integer.");
     assert.deepEqual(await (await post("commands", { command: "records.save", arguments: {} })).json(), {
       error: "invalid-value",
     });
@@ -150,7 +185,10 @@ export function createExtension() {
     assert.deepEqual(await catalog(), core);
     await post("start");
     await next();
+    // A slow command fails alone and keeps the tool; a frozen process is failed and leaves the catalog.
     assert.equal((await call({ command: "records.hang", arguments: {} })).result.isError, true);
+    assert.equal((await catalog()).length, core.length + 1);
+    assert.equal((await call({ command: "records.block", arguments: {} })).result.isError, true);
     assert.match(await next(), /notifications\/tools\/list_changed/);
     assert.deepEqual(await catalog(), core);
   } finally {
@@ -210,15 +248,15 @@ test("extension lifecycle MCP tools expose actual states and control only a name
       headers: { "content-type": "application/json", "mcp-protocol-version": "2025-03-26" },
       body: JSON.stringify({ jsonrpc: "2.0", id: name, method: "tools/call", params: { name, arguments: args } }),
     });
-    return (await response.json()) as any;
+    return (await response.json()) as McpResponse;
   };
-  const content = (response: any) => JSON.parse(response.result.content[0].text);
+  const content = (response: McpResponse): ToolContent => JSON.parse(response.result.content[0]?.text ?? "null");
   try {
     const listedTools = (await fetch(`${runtime.endpoint}/mcp`, {
       method: "POST",
       headers: { "content-type": "application/json", "mcp-protocol-version": "2025-03-26" },
       body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list" }),
-    }).then((response) => response.json())) as any;
+    }).then((response) => response.json())) as McpResponse;
     for (const name of [
       "trust_extensions_list",
       "trust_extension_status",
@@ -228,11 +266,11 @@ test("extension lifecycle MCP tools expose actual states and control only a name
       "trust_extension_restart",
     ])
       assert.equal(
-        listedTools.result.tools.some((tool: any) => tool.name === name),
+        listedTools.result.tools.some((tool) => tool.name === name),
         true,
       );
     assert.deepEqual(
-      content(await rpc("trust_extensions_list")).extensions.map((entry: any) => [entry.id, entry.state]),
+      content(await rpc("trust_extensions_list")).extensions.map((entry) => [entry.id, entry.state]),
       [
         ["healthy", "STOPPED"],
         ["failing", "STOPPED"],
@@ -291,15 +329,17 @@ test("a declared extension command requires an actual child hook before catalog 
   );
   const runtime = await startPublicRuntime("trust-extension-missing-runtime-", { extensionsFile: registry });
   try {
-    const catalog = (await fetch(`${runtime.endpoint}/extensions`).then((response) => response.json())) as any;
-    assert.equal(catalog.extensions[0].state, "FAILED");
+    const catalog = (await fetch(`${runtime.endpoint}/extensions`).then((response) => response.json())) as {
+      extensions: ExtensionEntry[];
+    };
+    assert.equal(catalog.extensions[0]?.state, "FAILED");
     const result = (await fetch(`${runtime.endpoint}/mcp`, {
       method: "POST",
       headers: { "content-type": "application/json", "mcp-protocol-version": "2025-03-26" },
       body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list" }),
-    }).then((response) => response.json())) as any;
+    }).then((response) => response.json())) as McpResponse;
     assert.equal(
-      result.result.tools.some((tool: any) => tool.name === "trust_extension_missing"),
+      result.result.tools.some((tool) => tool.name === "trust_extension_missing"),
       false,
     );
   } finally {

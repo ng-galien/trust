@@ -14,11 +14,14 @@ test("environments and credential references persist without exposing credential
   const dataDirectory = await mkdtemp(path.join(tmpdir(), "trust-environment-configuration-"));
   const storage = { kind: "pglite" as const, directory: path.join(dataDirectory, "pglite") };
   const credentialValue = "acceptance-secret-that-must-not-be-returned";
+  // Restarts reopen the same sealed store, so they share its sealing key.
+  const processEnvironment = { TRUST_CREDENTIAL_KEY_FILE: path.join(dataDirectory, "credential.key") };
 
   try {
     const first = await startPublicRuntime("trust-environment-first-", {
       storage,
       operationsDirectory,
+      processEnvironment,
     });
     try {
       const savedEnvironment = await rpc(first.endpoint, "environment.save", {
@@ -80,6 +83,7 @@ test("environments and credential references persist without exposing credential
     const second = await startPublicRuntime("trust-environment-second-", {
       storage,
       operationsDirectory,
+      processEnvironment,
     });
     try {
       const environments = await rpc(second.endpoint, "environment.list", {});
@@ -158,6 +162,7 @@ test("environments and credential references persist without exposing credential
 
     const third = await startPublicRuntime("trust-environment-third-", {
       storage,
+      processEnvironment,
     });
     try {
       assert.deepEqual(await rpc(third.endpoint, "environment.list", {}), {

@@ -37,6 +37,12 @@ const list = (value, predicate, name) => {
   return value;
 };
 
+/** The first 500 characters of a failure's own message and its cause (node:test wraps hook failures). */
+function failureMessage(error) {
+  const parts = [error?.message, error?.cause?.message].filter((part) => typeof part === "string" && part.length > 0);
+  return parts.join(" — ").slice(0, 500) || "failed without a message";
+}
+
 export function parseContract(serialized, layer) {
   if (typeof serialized !== "string" || serialized.length > 65536) fail("Invalid verification contract");
   const value = JSON.parse(serialized);
@@ -80,6 +86,9 @@ export function parseContract(serialized, layer) {
   return value;
 }
 
+/** Static and dynamic imports with a relative specifier. */
+const LOCAL_IMPORT = /(?:\bfrom\s*|\bimport\s*\(\s*|\bimport\s+)["'](\.{1,2}\/[^"']+)["']/gu;
+
 async function snapshot(root, contract) {
   const entries = new Map();
   let bytes = 0;
@@ -97,13 +106,28 @@ async function snapshot(root, contract) {
       entries.set(relative, hash(await readFile(absolute)));
     } else fail(`Unsupported verification file: ${relative}`);
   }
-  for (const relative of new Set([
-    ...contract.sourcePaths,
-    ...contract.artifactPaths,
-    ...contract.testFiles,
-    ...contract.assertions.map((entry) => entry.file),
-  ]))
-    await visit(relative);
+  const tests = new Set([...contract.testFiles, ...contract.assertions.map((entry) => entry.file)]);
+  for (const relative of new Set([...contract.sourcePaths, ...contract.artifactPaths, ...tests])) await visit(relative);
+  // The support modules a test imports belong to the verified closure even when the contract does not list them:
+  // relative imports are followed from each test file, recursively inside that test file's directory.
+  const followed = new Set();
+  async function followImports(relative, scope) {
+    if (followed.has(relative) || !/\.(mjs|cjs|js|ts)$/u.test(relative)) return;
+    followed.add(relative);
+    const source = await readFile(path.join(root, relative), "utf8");
+    for (const [, specifier] of source.matchAll(LOCAL_IMPORT)) {
+      const target = path.normalize(path.join(path.dirname(relative), specifier));
+      if (target.startsWith("..") || path.isAbsolute(target)) continue;
+      try {
+        await visit(target);
+      } catch (error) {
+        if (error.code === "ENOENT") continue;
+        throw error;
+      }
+      if (target.startsWith(scope)) await followImports(target, scope);
+    }
+  }
+  for (const relative of tests) await followImports(relative, `${path.dirname(relative)}${path.sep}`);
   for (const name of ["package.json", "package-lock.json"]) {
     try {
       await visit(name);
@@ -201,6 +225,8 @@ export async function executeVerification({
             file: path.relative(root, data.file ?? ""),
             name: data.name,
             status: data.skip || data.todo ? "skipped" : event.type === "test:pass" ? "passed" : "failed",
+            // A failure keeps its bounded cause, including a failed before() hook, so a report explains itself.
+            ...(event.type === "test:fail" ? { failure: failureMessage(data.details?.error) } : {}),
           });
         if (
           event.type === "test:fail" &&
@@ -233,6 +259,7 @@ export async function executeVerification({
     return {
       ...required,
       status: matching.length === 1 ? matching[0].status : matching.length === 0 ? "missing" : "ambiguous",
+      ...(matching.length === 1 && matching[0].failure ? { failure: matching[0].failure } : {}),
     };
   });
   report.missing = report.assertions.filter((entry) => entry.status !== "passed").length;

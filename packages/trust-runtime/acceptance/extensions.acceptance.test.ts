@@ -25,6 +25,7 @@ export function createExtension({ publishChanged, configuration }) {
     async read({path}) {
       if (path === '/crash') process.exit(1);
       if (path === '/hang') return new Promise(() => {});
+      if (path === '/block') for (;;) {}
       if (path === '/signal') publishChanged();
       if (path === '/error') throw new Error('private-data secret stack');
       return { status: 200, body: { ok: true, leaked: process.env.TRUST_DATABASE_URL ?? process.env.TRUST_PGLITE_DIRECTORY ?? null } };
@@ -76,16 +77,22 @@ export function createExtension({ publishChanged, configuration }) {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
     });
-    const body = (await response.json()) as any;
+    const body = (await response.json()) as { error?: unknown; result: unknown };
     assert.equal(body.error, undefined, JSON.stringify(body));
     return body.result;
   };
+  const extensionStates = async () =>
+    ((await (await get("")).json()) as { extensions: { state: string; ui?: unknown }[] }).extensions;
+  const reading = (response: Response) => {
+    if (!response.body) throw new Error("The event stream has no body");
+    return response.body.getReader();
+  };
   const deniedEventsAbort = new AbortController();
   try {
-    const initial = (await (await get("")).json()) as any;
-    assert.equal(initial.extensions[0].state, "STOPPED");
-    assert.equal(initial.extensions[0].ui, undefined);
-    assert.equal(initial.extensions[2].state, "RUNNING", "autoStart must run without calling the failing prepare hook");
+    const initial = await extensionStates();
+    assert.equal(initial[0]?.state, "STOPPED");
+    assert.equal(initial[0]?.ui, undefined);
+    assert.equal(initial[2]?.state, "RUNNING", "autoStart must run without calling the failing prepare hook");
     assert.equal((await get("example/api/data")).status, 409);
     assert.equal((await post("example/prepare")).status, 200);
     assert.equal((await post("example/start")).status, 200);
@@ -102,7 +109,7 @@ export function createExtension({ publishChanged, configuration }) {
     });
     assert.equal(deniedEvents.status, 200, "extension-owned events do not require Plan installation grants");
     let deniedEventsText = "";
-    const deniedReader = deniedEvents.body!.getReader();
+    const deniedReader = reading(deniedEvents);
     const readingDeniedEvents = (async () => {
       try {
         for (;;) {
@@ -126,15 +133,15 @@ export function createExtension({ publishChanged, configuration }) {
         environment,
         rootInputs: { repository: "trust" },
       });
-    const plans = (await (await get("example/trust/plans")).json()) as any;
+    const plans = (await (await get("example/trust/plans")).json()) as { plans: { plan: string }[] };
     assert.deepEqual(
-      plans.plans.map((plan: any) => plan.plan),
+      plans.plans.map((plan) => plan.plan),
       ["local-plan"],
     );
     assert.equal((await get("example/trust/plans/foreign-plan")).status, 404);
     assert.equal((await get("example/trust/plans/local-plan")).status, 200);
     const events = await get("example/events");
-    const reader = events.body!.getReader();
+    const reader = reading(events);
     const next = async () => new TextDecoder().decode((await reader.read()).value);
     assert.match(await next(), /resync/);
     await get("example/api/signal");
@@ -164,10 +171,16 @@ export function createExtension({ publishChanged, configuration }) {
     assert.equal(error.status, 502);
     assert.doesNotMatch(await error.text(), /private-data|secret|stack/);
     assert.equal((await get("example/api/crash")).status, 502);
-    assert.equal(((await (await get("")).json()) as any).extensions[0].state, "FAILED");
+    assert.equal((await extensionStates())[0]?.state, "FAILED");
     await post("example/start");
-    assert.equal((await get("example/api/hang")).status, 502);
-    assert.equal(((await (await get("")).json()) as any).extensions[0].state, "FAILED");
+    // A slow read fails alone while the process still answers; a frozen process is failed.
+    assert.equal((await get("example/api/hang")).status, 504);
+    assert.equal((await extensionStates())[0]?.state, "RUNNING");
+    assert.equal((await get("example/api/")).status, 200);
+    assert.equal((await get("example/api/block")).status, 504);
+    for (let count = 0; count < 50 && (await extensionStates())[0]?.state !== "FAILED"; count++)
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    assert.equal((await extensionStates())[0]?.state, "FAILED");
     const publicText = JSON.stringify(await (await get("")).json());
     assert.doesNotMatch(publicText, /private-data|configuration|credentialEnvironment|server.mjs/);
   } finally {

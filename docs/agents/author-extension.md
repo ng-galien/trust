@@ -32,7 +32,8 @@ standalone federated page, extension-owned PostgreSQL or legacy PGlite data, and
    action; start must not silently initialize or replace incompatible storage.
    Stop releases owned resources, not independent Runners or TRUST history.
 5. Keep credentials out of browser props and public catalogs. Read granted Plan
-   projections through the host capability. Notifications trigger rereads; they
+   projections through the host capability: the page's `trustBase` surfaces, or
+   `ExtensionContext.trust` on the server with the invocation context in progress. Notifications trigger rereads; they
    are not authoritative state. Treat unavailable projections as unavailable,
    never infer a terminal Plan state from an external response.
 6. Use the host navigation functions when supplied for Plan and Procedure links.

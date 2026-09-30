@@ -2,7 +2,7 @@ import { type AccessConfiguration, authorityUrl } from "@trust/extension-sdk";
 import { matchAccessConfiguration } from "@trust/extension-sdk/match";
 import { createLocalJWKSet, type JSONWebKeySet, type JWTPayload, jwtVerify } from "jose";
 import type { Clock } from "../time.js";
-import { type AccessFetch, type AccessSecretResolver } from "./configuration.js";
+import type { AccessFetch, AccessSecretResolver } from "./configuration.js";
 import { AccessError } from "./error.js";
 
 type SharedConfiguration = Exclude<AccessConfiguration, { mode: "local" | "fixed" }>;

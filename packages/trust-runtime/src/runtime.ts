@@ -22,6 +22,7 @@ import { EnvironmentService } from "./environment/service.js";
 import { EnvironmentStore } from "./environment/store.js";
 import { ExtensionHost } from "./extensions/host.js";
 import { ExtensionInstallationStore } from "./extensions/store.js";
+import { ExtensionTrustGateway } from "./extensions/trust-gateway.js";
 import { FactStore } from "./fact/store.js";
 import { Health } from "./health.js";
 import { createHttpApp } from "./http/app.js";
@@ -59,6 +60,7 @@ export interface RuntimeComponents {
   readonly developmentAuthority: DevelopmentAuthority | undefined;
   readonly accessResourceUrl: string | undefined;
   readonly extensionHost: ExtensionHost;
+  readonly extensionTrustGateway: ExtensionTrustGateway;
   readonly extensionInstallationStore: ExtensionInstallationStore;
   readonly extensionsHttpHandler: Router;
   readonly extensionsFile: string | undefined;
@@ -145,16 +147,17 @@ export const createRuntimeContainer = async (
   const accessConfiguration = parseAccessConfiguration(options.accessConfiguration ?? { mode: "local" });
   const database = options.database ?? (await createDatabase({ storage }));
 
+  const developmentAuthentication = options.developmentAuthentication;
   container.register({
     accessConfiguration: asValue(accessConfiguration),
     browserAuthentication: asValue(options.browserAuthentication),
     developmentAuthentication: asValue(options.developmentAuthentication),
-    developmentAuthority: options.developmentAuthentication
+    developmentAuthority: developmentAuthentication
       ? asFunction(({ clock }: { clock: Clock }) => {
           if (accessConfiguration.mode !== "local-jwt")
             throw new TypeError("Development authentication requires JWT access");
           return new DevelopmentAuthority(
-            options.developmentAuthentication!,
+            developmentAuthentication,
             accessConfiguration.issuer,
             accessConfiguration.audience,
             clock,
@@ -174,6 +177,7 @@ export const createRuntimeContainer = async (
     extensionsFile: asValue(options.extensionsFile),
     extensionTimeoutMs: asValue(options.extensionTimeoutMs ?? 10_000),
     extensionInstallationStore: asClass(ExtensionInstallationStore).singleton(),
+    extensionTrustGateway: asClass(ExtensionTrustGateway).singleton(),
     extensionHost: asClass(ExtensionHost)
       .singleton()
       .disposer((host) => host.close()),

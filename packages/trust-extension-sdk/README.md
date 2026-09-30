@@ -109,9 +109,10 @@ security sandbox.
 
 ## Optional capabilities, commands and page
 
-- Request `plans.read` or `plans.subscribe` only when needed; the operator grants
-  a subset. The host exposes Environment-filtered Plan reads and notifications,
-  not direct database access. Missing grants must remain refusals.
+- Request `plans.read`, `plans.subscribe`, `plans.declare` or `catalog.read` only
+  when needed; the operator grants a subset. The host exposes Environment-filtered
+  Plan reads and notifications and exact catalog reads, not direct database access.
+  Missing grants must remain refusals.
 - Optional manifest `mcp` declares named commands and closed input schemas.
   Implement lifecycle `command` to handle their validated requests. The running
   extension contributes one MCP tool; the public HTTP command route uses the same
@@ -134,6 +135,23 @@ is an example choice, not an SDK requirement. See the
 [authoring task guide](../../docs/agents/author-extension.md) for verification and
 the independent [package acceptance](acceptance/package.acceptance.test.mjs) for
 the executable contract check.
+
+## TRUST access from the extension server
+
+`ExtensionContext.trust` gives the server process the same granted surfaces as the
+page: `listPlans`, `readPlan` and `readEpisode` (`plans.read`),
+`replaceDeclarations` (`plans.declare`), and `readProcedure` / `readOperation` for
+one exact published version (`catalog.read`). Each call passes the
+`ExtensionInvocationContext` of the `read` or `command` in progress: the host
+applies that caller's access, the installation grants and the installation
+Environment, and calls the same runtime services as RPC/MCP. A context kept after
+its invocation returns is refused with `invocation-ended`; there is no background
+identity. Refusals are `ExtensionTrustError` with a closed `failure`; a Plan outside
+the caller's rights or the Environment is `not-found`. Executing an Operation stays
+the Runner's role.
+
+A `read` or `command` that exceeds the installation time limit fails alone with 504;
+the host fails the process only when it no longer answers a liveness probe.
 
 ## Plan inputs from extension forms
 

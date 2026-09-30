@@ -89,14 +89,6 @@ export function createExtensionsHttpHandler({
           query[key] = value;
         }
         const result = await extension.read({ path: `/${rest.join("/")}`, query }, access);
-        if (
-          !result ||
-          !Number.isInteger(result.status) ||
-          result.status < 200 ||
-          result.status > 599 ||
-          result.body === undefined
-        )
-          throw new ExtensionError(502, "invalid-extension-response");
         if (result.status >= 400) throw new ExtensionError(result.status, "extension-read-failed");
         response.status(result.status).json(result.body);
         return;

@@ -138,14 +138,17 @@ async function configureEnvironment(endpoint: string, environment: string, value
   }
 }
 
+/** A loaded machine starting several runtimes at once can take well over ten seconds; the delay is configurable. */
+const LISTEN_TIMEOUT_MS = Number(process.env.TRUST_ACCEPTANCE_LISTEN_TIMEOUT_MS ?? 60_000);
+
 function listeningEndpoint(runtime: ChildProcessWithoutNullStreams): Promise<string> {
   return new Promise((resolve, reject) => {
     let stdout = "";
     let stderr = "";
     const timeout = setTimeout(() => {
       cleanup();
-      reject(new Error(`TRUST runtime did not listen within 10 seconds. stderr=${stderr}`));
-    }, 10_000);
+      reject(new Error(`TRUST runtime did not listen within ${LISTEN_TIMEOUT_MS} ms. stderr=${stderr}`));
+    }, LISTEN_TIMEOUT_MS);
     timeout.unref();
     const cleanup = (): void => {
       clearTimeout(timeout);

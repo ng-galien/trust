@@ -442,7 +442,7 @@ test("REG-120 AC1 explicit preparation creates an absent schema", async () => {
   assert.equal(prepared.body.extension.state, "STOPPED");
   assert.equal(prepared.body.extension.error, undefined);
   const dump = await dumpStore(stores.a);
-  assert.deepEqual(dump.schema_version, ['{"version":5}']);
+  assert.deepEqual(dump.schema_version, ['{"version":6}']);
   assert.deepEqual(dump.corpora, []);
   assert.equal((await lifecycle("corpus", "start")).status, 200);
   assert.equal((await descriptor("corpus")).state, "RUNNING");

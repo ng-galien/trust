@@ -31,7 +31,7 @@ test("intent admission and interruption publish committed Plan state changes", {
       rootInputs: { repository: "trust" },
       mode: "dry-run",
     })) as { checkUris: string[] };
-    const checkUri = engaged.checkUris[0]!;
+    const checkUri = defined(engaged.checkUris[0], "engaged Check");
     await fetch(`${runtime.endpoint}/mcp`, {
       method: "POST",
       headers: { "content-type": "application/json", "mcp-protocol-version": "2025-03-26" },
@@ -242,8 +242,9 @@ test("Plan pages, Check history and live events are served at public boundaries"
     const procedureSummaries = (await rpc(runtime.endpoint, "procedure.list", { summary: true })) as {
       procedures: Array<{ procedure: Record<string, unknown> }>;
     };
-    assert.equal(Object.hasOwn(procedureSummaries.procedures[0]!.procedure, "source"), false);
-    assert.equal(Object.hasOwn(procedureSummaries.procedures[0]!.procedure, "checks"), false);
+    const summary = defined(procedureSummaries.procedures[0], "Procedure summary");
+    assert.equal(Object.hasOwn(summary.procedure, "source"), false);
+    assert.equal(Object.hasOwn(summary.procedure, "checks"), false);
 
     for (const plan of ["rehearsal-a", "rehearsal-b", "rehearsal-c"]) {
       await engage(runtime.endpoint, plan);
@@ -269,11 +270,11 @@ test("Plan pages, Check history and live events are served at public boundaries"
     });
 
     let view = await readPlan(runtime.endpoint, "rehearsal-a");
-    const first = await admit(runtime.endpoint, view.actionableChecks[0]!, "history-first");
+    const first = await admit(runtime.endpoint, defined(view.actionableChecks[0], "actionable Check"), "history-first");
     await facts(runtime.endpoint, first, { headRevision: "abc", workingTree: "dirty" });
     await finalize(runtime.endpoint, first.attemptHandle);
     view = await readPlan(runtime.endpoint, "rehearsal-a");
-    const second = await admit(runtime.endpoint, view.checks[0]!.checkUri, "history-second", true);
+    const second = await admit(runtime.endpoint, defined(view.checks[0], "Check").checkUri, "history-second", true);
     await facts(runtime.endpoint, second, { headRevision: "def", workingTree: "clean" });
     await finalize(runtime.endpoint, second.attemptHandle);
     await rpc(runtime.endpoint, "check.escalate", {
@@ -286,7 +287,7 @@ test("Plan pages, Check history and live events are served at public boundaries"
     view = await readPlan(runtime.endpoint, "rehearsal-a");
     await rpc(runtime.endpoint, "plan.resume", {
       plan: "rehearsal-a",
-      escalationId: view.activeEscalation!.escalationId,
+      escalationId: defined(view.activeEscalation, "active escalation").escalationId,
       resumeReason: "The operator reviewed the escalation and authorized a fresh observation.",
     });
 
@@ -328,7 +329,9 @@ test("Plan pages, Check history and live events are served at public boundaries"
     assert.equal(closed.sessionState, "UNAVAILABLE");
     await rpc(runtime.endpoint, "plan.remove", { plan: "rehearsal-a" });
 
-    const events = await stream.takeUntil((event) => event.type === "plan.removed" && event.plan === "rehearsal-a");
+    // A removed Plan can no longer be access-filtered, so the stream announces it as a resync.
+    const events = await stream.takeUntil((event) => event.type === "runtime.changed");
+    assert.equal(events.at(-1)?.resync, true);
     assert.ok(events.some((event) => event.type === "plan.engaged" && event.plan === "rehearsal-a"));
     assert.ok(events.some((event) => event.type === "plan.revision" && event.cause === "verdict"));
     assert.ok(events.some((event) => event.type === "plan.state" && event.workState === "ESCALATED"));
@@ -408,6 +411,11 @@ interface StreamEvent {
   readonly cause?: string;
   readonly workState?: string;
   readonly session?: { readonly state: string };
+}
+
+function defined<T>(value: T | null | undefined, label: string): T {
+  assert.ok(value !== undefined && value !== null, `${label} is missing`);
+  return value;
 }
 
 async function openPlanEvents(

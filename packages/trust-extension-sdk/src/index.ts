@@ -23,8 +23,11 @@ export type {
   ExtensionLifecycle,
   ExtensionPageProps,
   ExtensionState,
+  ExtensionTrust,
+  ExtensionTrustFailure,
   ExtensionUiTransport,
 } from "./extension.js";
+export { EXTENSION_TRUST_FAILURES, ExtensionTrustError } from "./extension.js";
 export type {
   RegistryAvailablePackage,
   RegistryCatalogImportEntry,
@@ -169,7 +172,7 @@ export interface Installation {
   mcp?: { description: string; commands: CommandDeclaration[] };
 }
 
-export const EXTENSION_CAPABILITIES = ["plans.read", "plans.subscribe", "plans.declare"] as const;
+export const EXTENSION_CAPABILITIES = ["plans.read", "plans.subscribe", "plans.declare", "catalog.read"] as const;
 export type ExtensionCapability = (typeof EXTENSION_CAPABILITIES)[number];
 
 /** Registry installer request: one installed `extension.json` and this installation's own values. */

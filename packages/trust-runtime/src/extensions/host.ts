@@ -19,6 +19,7 @@ import {
   type ExtensionSettingsValues,
   type ExtensionSettingsView,
   type ExtensionState,
+  ExtensionTrustError,
   extensionCredentialSettings,
   formatExtensionSettingsIssues,
   type Installation,
@@ -30,6 +31,11 @@ import type { Clock } from "../time.js";
 import { extensionInvocation } from "./access.js";
 import { extensionToolName, installationOf, readInstallations, readManifest } from "./manifest.js";
 import type { ExtensionInstallationStore } from "./store.js";
+import type { ExtensionTrustGateway } from "./trust-gateway.js";
+
+/** A slow invocation fails alone; the process is failed only when it no longer answers this liveness probe. */
+const LIVENESS_PROBE_MS = 2_000;
+type ExtensionAnswer = Partial<Record<"status" | "body" | "text" | "deleted", unknown>>;
 
 export interface CommandResult {
   status: number;
@@ -103,13 +109,22 @@ export class ExtensionInstance {
   readonly events = new EventEmitter();
   #child: ChildProcess | undefined;
   #sequence = 0;
-  #pending = new Map<number, { resolve(value: any): void; reject(error: Error): void; timer: NodeJS.Timeout }>();
+  #pending = new Map<
+    number,
+    {
+      resolve(value: ExtensionAnswer | undefined): void;
+      reject(error: Error): void;
+      timer: NodeJS.Timeout;
+      access?: AccessContext;
+    }
+  >();
   #queue: Promise<unknown> = Promise.resolve();
   #retired = false;
   constructor(
     readonly installation: Installation,
     readonly timeout: number,
     private readonly authority: AccessService,
+    private readonly gateway: ExtensionTrustGateway,
   ) {}
   descriptor(): ExtensionDescriptor {
     const { id, title, version, ui } = this.installation;
@@ -131,10 +146,20 @@ export class ExtensionInstance {
   requireGrant(grant: ExtensionCapability) {
     if (!this.installation.grants.includes(grant)) throw new ExtensionError(403, "extension-capability-denied");
   }
-  async read(input: unknown, access?: AccessContext) {
+  async read(input: unknown, access?: AccessContext): Promise<{ status: number; body: unknown }> {
     this.requireRunning();
     const context = extensionInvocation(this.authority, this.installation.id, access);
-    return this.#call("read", input, context);
+    const result = await this.#call("read", input, context, access);
+    const status = result?.status;
+    if (
+      typeof status !== "number" ||
+      !Number.isInteger(status) ||
+      status < 200 ||
+      status > 599 ||
+      result?.body === undefined
+    )
+      throw new ExtensionError(502, "invalid-extension-response");
+    return { status, body: result.body };
   }
   async command(input: unknown, access?: AccessContext): Promise<CommandResult> {
     this.requireRunning();
@@ -154,18 +179,20 @@ export class ExtensionInstance {
     if (!this.installation.mcp?.commands.some((command) => command.name === envelope.command))
       throw new ExtensionError(400, "extension-command-not-declared");
     const context = extensionInvocation(this.authority, this.installation.id, access);
-    const result = await this.#call("command", envelope, context);
+    const result = await this.#call("command", envelope, context, access);
+    const status = result?.status;
+    const text = result?.text;
     if (
-      !result ||
-      !Number.isInteger(result.status) ||
-      result.status < 200 ||
-      result.status > 599 ||
-      result.body === undefined ||
-      typeof result.text !== "string" ||
-      !result.text.trim()
+      typeof status !== "number" ||
+      !Number.isInteger(status) ||
+      status < 200 ||
+      status > 599 ||
+      result?.body === undefined ||
+      typeof text !== "string" ||
+      !text.trim()
     )
       throw new ExtensionError(502, "invalid-extension-response");
-    return result;
+    return { status, body: result.body, text };
   }
   /** Stop, then refuse every later transition: the host renewed or removed this installation. */
   retire() {
@@ -257,11 +284,24 @@ export class ExtensionInstance {
       stdio: ["ignore", "ignore", "ignore", "ipc"],
     });
     this.#child = child;
-    child.on("message", (raw: any) => {
+    child.on("message", (message: unknown) => {
+      const raw = message as {
+        changed?: unknown;
+        trust?: number;
+        id?: number;
+        failed?: unknown;
+        failure?: unknown;
+        result?: unknown;
+      };
       if (raw.changed === true) {
         if (this.state === "RUNNING") this.events.emit("changed");
         return;
       }
+      if (typeof raw.trust === "number" && Number.isSafeInteger(raw.trust)) {
+        this.#answerTrust(child, { ...raw, trust: raw.trust });
+        return;
+      }
+      if (typeof raw.id !== "number") return;
       const pending = this.#pending.get(raw.id);
       if (!pending) return;
       clearTimeout(pending.timer);
@@ -272,7 +312,10 @@ export class ExtensionInstance {
             ? refusal(`extension-${raw.failure}`)
             : new ExtensionError(502, "extension-failed"),
         );
-      else pending.resolve(raw.result);
+      else
+        pending.resolve(
+          raw.result && typeof raw.result === "object" && !Array.isArray(raw.result) ? raw.result : undefined,
+        );
     });
     child.on("error", () => {
       if (this.#child === child) this.#fail();
@@ -288,15 +331,45 @@ export class ExtensionInstance {
       commands: this.installation.mcp?.commands.map((command) => command.name) ?? [],
     });
   }
-  #call(method: string, input?: unknown, context?: ExtensionInvocationContext): Promise<any> {
+  /** The answer is untrusted process output; each caller validates the fields it uses. */
+  #call(
+    method: string,
+    input?: unknown,
+    context?: ExtensionInvocationContext,
+    access?: AccessContext,
+  ): Promise<ExtensionAnswer | undefined> {
+    const invocation = method === "read" || method === "command";
     return new Promise((resolve, reject) => {
       const id = ++this.#sequence;
-      const timer = setTimeout(() => this.#fail(), this.timeout);
-      this.#pending.set(id, { resolve, reject, timer });
+      const expire = () => {
+        if (!invocation) return this.#fail();
+        this.#pending.delete(id);
+        reject(new ExtensionError(504, "extension-timeout"));
+        this.#call("ping").catch(() => {});
+      };
+      const timer = setTimeout(expire, method === "ping" ? Math.min(LIVENESS_PROBE_MS, this.timeout) : this.timeout);
+      this.#pending.set(id, { resolve, reject, timer, ...(access ? { access } : {}) });
       this.#child?.send({ id, method, input, context }, (error) => {
         if (error) this.#fail();
       });
     });
+  }
+  /** A TRUST call from the extension process, answered with the access of its invocation still in progress. */
+  #answerTrust(child: ChildProcess, raw: { trust: number; invocation?: unknown; method?: unknown; input?: unknown }) {
+    const reply = (value: object) => {
+      if (this.#child === child) child.send({ trust: raw.trust, ...value }, () => {});
+    };
+    const pending = typeof raw.invocation === "number" ? this.#pending.get(raw.invocation) : undefined;
+    if (!pending) return reply({ failure: "invocation-ended" });
+    this.gateway.call(this.installation, raw.method, raw.input, pending.access).then(
+      (result) => reply({ result }),
+      (error: unknown) =>
+        reply(
+          error instanceof ExtensionTrustError
+            ? { failure: error.failure, message: error.message }
+            : { failure: "unavailable" },
+        ),
+    );
   }
   #terminate() {
     const child = this.#child;
@@ -328,6 +401,7 @@ export class ExtensionHost implements ExtensionInstallationHost {
       extensionsFile: string | undefined;
       extensionTimeoutMs: number;
       accessService: AccessService;
+      extensionTrustGateway: ExtensionTrustGateway;
       extensionInstallationStore: ExtensionInstallationStore;
       clock: Clock;
     },
@@ -351,6 +425,7 @@ export class ExtensionHost implements ExtensionInstallationHost {
           stored ? { ...installation, settings: stored.values } : installation,
           this.dependencies.extensionTimeoutMs,
           this.dependencies.accessService,
+          this.dependencies.extensionTrustGateway,
         ),
       );
     }
@@ -410,7 +485,12 @@ export class ExtensionHost implements ExtensionInstallationHost {
     return validation.values;
   }
   #instance(installation: Installation) {
-    return new ExtensionInstance(installation, this.dependencies.extensionTimeoutMs, this.dependencies.accessService);
+    return new ExtensionInstance(
+      installation,
+      this.dependencies.extensionTimeoutMs,
+      this.dependencies.accessService,
+      this.dependencies.extensionTrustGateway,
+    );
   }
   async readSettings(id: string): Promise<ExtensionSettingsView> {
     const { installation } = this.get(id);
@@ -550,11 +630,11 @@ export class ExtensionHost implements ExtensionInstallationHost {
       .filter((instance) => instance.state === "RUNNING" && instance.installation.mcp)
       .map((instance) => {
         const { id, title, mcp } = instance.installation;
-        const commands = mcp!.commands;
+        const commands = mcp?.commands ?? [];
         return {
           name: extensionToolName(id),
           title,
-          description: mcp!.description,
+          description: mcp?.description,
           annotations: { readOnlyHint: commands.every((command) => command.readOnly) },
           inputSchema: {
             type: "object",

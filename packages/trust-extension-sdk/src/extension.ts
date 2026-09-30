@@ -1,4 +1,13 @@
+import type { CompiledOperation } from "@trust/operation";
+import type { CompiledProcedure } from "@trust/procedure";
 import type { ExternalPrincipal } from "./access.js";
+import type {
+  DelegationEpisodeView,
+  PlanDeclarationReplacementInput,
+  PlanDeclarationReplacementResult,
+  PlanSummaryView,
+  PlanView,
+} from "./index.js";
 
 /** Request-local identity projected by the trusted host; no bearer or user-supplied authority. */
 export type ExtensionInvocationContext =
@@ -25,6 +34,53 @@ export interface ExtensionContext {
   configuration: Readonly<Record<string, import("./settings.js").ExtensionSettingValue>>;
   environment: string;
   publishChanged(): void;
+  /** TRUST surfaces granted to this installation, confined to its environment. */
+  trust: ExtensionTrust;
+}
+
+/**
+ * Server-side TRUST access. Each call names the `read` or `command` invocation still in progress: TRUST applies
+ * that caller's rights and the installation's grants, as for the extension page. Outside an invocation every call
+ * is refused. Executing an Operation stays the Runner's role.
+ */
+export interface ExtensionTrust {
+  /** Requires `plans.read`. */
+  listPlans(invocation: ExtensionInvocationContext): Promise<readonly PlanSummaryView[]>;
+  /** Requires `plans.read`. */
+  readPlan(plan: string, invocation: ExtensionInvocationContext): Promise<PlanView>;
+  /** Requires `plans.read`; the Plan and every child Plan of the episode belong to the installation environment. */
+  readEpisode(plan: string, invocation: ExtensionInvocationContext): Promise<DelegationEpisodeView>;
+  /** Requires `plans.declare`. */
+  replaceDeclarations(
+    input: PlanDeclarationReplacementInput,
+    invocation: ExtensionInvocationContext,
+  ): Promise<PlanDeclarationReplacementResult>;
+  /** Requires `catalog.read`; one exact published version. */
+  readProcedure(procedure: string, version: string, invocation: ExtensionInvocationContext): Promise<CompiledProcedure>;
+  /** Requires `catalog.read`; one exact published version. */
+  readOperation(operation: string, version: string, invocation: ExtensionInvocationContext): Promise<CompiledOperation>;
+}
+
+export const EXTENSION_TRUST_FAILURES = [
+  "capability-denied",
+  "access-denied",
+  "invocation-ended",
+  "invalid-request",
+  "not-found",
+  "refused",
+  "unavailable",
+] as const;
+export type ExtensionTrustFailure = (typeof EXTENSION_TRUST_FAILURES)[number];
+
+/** Closed refusal of a server-side TRUST call; `message` is the public reason of a `refused` Plan change. */
+export class ExtensionTrustError extends Error {
+  constructor(
+    readonly failure: ExtensionTrustFailure,
+    message: string = failure,
+  ) {
+    super(message);
+    this.name = "ExtensionTrustError";
+  }
 }
 export type ExtensionFactory = (context: ExtensionContext) => ExtensionLifecycle | Promise<ExtensionLifecycle>;
 export type ExtensionState = "STOPPED" | "PREPARING" | "STARTING" | "RUNNING" | "STOPPING" | "FAILED";
