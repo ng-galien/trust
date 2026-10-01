@@ -199,6 +199,12 @@ export const registry: Translation<typeof en> = {
           description: "Écrit les valeurs qu’un agent déclare dans un Plan, par la déclaration contrôlée par révision.",
         },
       },
+      catalog: {
+        read: {
+          label: "Lire le catalogue",
+          description: "Lit les Procédures et Operations publiées, une version exacte à la fois.",
+        },
+      },
     },
     title: "Installation",
     action: "Installer {{name}} {{version}}",

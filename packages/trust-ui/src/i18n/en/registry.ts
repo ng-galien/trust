@@ -192,6 +192,12 @@ export const registry = {
           description: "Writes the values an agent declares in a Plan, through the revision-checked declaration.",
         },
       },
+      catalog: {
+        read: {
+          label: "Read the catalog",
+          description: "Reads published Procedures and Operations, one exact version at a time.",
+        },
+      },
     },
     title: "Installation",
     action: "Install {{name}} {{version}}",

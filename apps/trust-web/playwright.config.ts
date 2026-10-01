@@ -17,6 +17,8 @@ export default defineConfig({
         "svg-rendering.acceptance.spec.ts",
         // Runs against its own runtime and local registries (playwright.registry.config.ts).
         "registry.acceptance.spec.ts",
+        // Runs against its own runtime with the Corpus extension (playwright.corpus.config.ts).
+        "corpus-document.acceptance.spec.ts",
       ],
     },
     // Documentation screenshots — `npm run docs:capture`; never part of the acceptance run.
