@@ -1,16 +1,18 @@
-import { execFile } from "node:child_process";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
-import { promisify } from "node:util";
 import { expect, type Locator, type Page, test } from "@playwright/test";
-import { CORPUS_RUNTIME_PORT, DIAGRAM_THREAD, FRAMEWORK_PLAN, MISSIONS } from "./support/corpus-fixture.js";
+import {
+  checkOf,
+  corpusApi,
+  missionCard,
+  missionCards,
+  noPageOverflow,
+  openCorpus,
+  rpc,
+  runCheck,
+} from "./support/corpus-browser.js";
+import { DIAGRAM_THREAD, FRAMEWORK_PLAN, MISSIONS } from "./support/corpus-fixture.js";
 
 /* The Corpus extension, built from its sources, on a disposable runtime seeded by support/corpus-server.mjs. */
 
-const exec = promisify(execFile);
-const root = fileURLToPath(new URL("../../../", import.meta.url));
-const runtime = `http://127.0.0.1:${CORPUS_RUNTIME_PORT}`;
-const threadUrl = `/extensions/corpus?thread=${DIAGRAM_THREAD}`;
 const TIME_ZONE = "Europe/Paris";
 
 type Episode = {
@@ -28,64 +30,15 @@ type Episode = {
   }[];
 };
 
-async function rpc<Result>(method: string, params: unknown): Promise<Result> {
-  const response = await fetch(`${runtime}/rpc`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ jsonrpc: "2.0", id: method, method, params }),
-  });
-  const payload = (await response.json()) as { result?: Result; error?: unknown };
-  if (payload.error) throw new Error(`${method}: ${JSON.stringify(payload.error)}`);
-  return payload.result as Result;
-}
-const episode = async () =>
-  (await (await fetch(`${runtime}/extensions/corpus/trust/episodes/${FRAMEWORK_PLAN}`)).json()) as Episode;
+const episode = async () => (await (await fetch(`${corpusApi}/trust/episodes/${FRAMEWORK_PLAN}`)).json()) as Episode;
 async function childPlan(mission: string) {
   const plan = await rpc<Episode["root"]["plan"]>("plan.read", { plan: FRAMEWORK_PLAN });
   const child = plan.invocations.find((invocation) => invocation.mission?.id === mission)?.childPlan;
   if (!child) throw new Error(`Mission ${mission} has no child Plan`);
   return child;
 }
-async function checkOf(plan: string, name: string) {
-  const read = await rpc<{ checks: { name: string; checkUri: string }[] }>("plan.read", { plan });
-  const check = read.checks.find((candidate) => candidate.name === name);
-  if (!check) throw new Error(`Check ${name} is absent from ${plan}`);
-  return check;
-}
-/** Facts reach TRUST only through the Runner, exactly as a worker runs a Check. */
-async function runCheck(plan: string, name: string) {
-  const environment = Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith("TRUST_")));
-  const { stdout } = await exec(
-    process.execPath,
-    [
-      path.join(root, "packages/trust-runner/dist/skill/trust/scripts/run.js"),
-      (await checkOf(plan, name)).checkUri,
-      "--json",
-    ],
-    {
-      env: { ...environment, TRUST_RPC_ENDPOINT: `${runtime}/rpc`, TRUST_OTLP_ENDPOINT: `${runtime}/v1/traces` },
-      timeout: 60000,
-    },
-  );
-  return (JSON.parse(stdout) as { result: { qualification: { verdict: string } } }).result.qualification;
-}
-
-const preferences = (language: "en" | "fr") => ({ state: { language, theme: "light" }, version: 0 });
-/** Opens the thread in a fresh light session and fails the test on any console error or page error. */
-async function openThread(page: Page, language: "en" | "fr" = "en") {
-  const errors: string[] = [];
-  page.on("console", (message) => {
-    if (message.type() === "error") errors.push(message.text());
-  });
-  page.on("pageerror", (error) => errors.push(error.message));
-  await page.addInitScript(
-    (value) => localStorage.setItem("trust.ui.preferences", JSON.stringify(value)),
-    preferences(language),
-  );
-  await page.goto(threadUrl);
-  await expect(page.getByRole("heading", { name: "Document diagrams", level: 1 })).toBeVisible({ timeout: 30000 });
-  return errors;
-}
+const openThread = (page: Page, language: "en" | "fr" = "en") =>
+  openCorpus(page, `/extensions/corpus?thread=${DIAGRAM_THREAD}`, "Document diagrams", language);
 const svgOf = async (image: Locator) => {
   const source = (await image.getAttribute("src")) ?? "";
   return decodeURIComponent(source.replace(/^data:image\/svg\+xml;charset=utf-8,/, ""));
@@ -108,20 +61,6 @@ const tokensOf = (figure: Locator) =>
     probe.remove();
     return tokens;
   });
-const noPageOverflow = (page: Page) =>
-  page.evaluate(() => {
-    const app = document.querySelector(".corpus-app");
-    return document.documentElement.scrollWidth <= innerWidth && (!app || app.scrollWidth <= app.clientWidth);
-  });
-const missionCards = (page: Page) =>
-  page
-    .getByRole("region", { name: "Missions", exact: true })
-    .getByRole("listitem")
-    .filter({
-      has: page.getByRole("list", { name: /^(Progress: |Progression : )/ }),
-    });
-const missionCard = (page: Page, mission: string) =>
-  missionCards(page).filter({ has: page.getByRole("link", { name: mission, exact: true }) });
 async function missionOrder(page: Page) {
   const names = await missionCards(page).evaluateAll((cards) =>
     cards.map((card) => card.querySelector("a")?.textContent?.trim() ?? ""),
@@ -389,7 +328,7 @@ test("REQ-090 AC2 a mission card shows its generation, start time and end time w
   await expect(missionCard(french, "mission-relaunched")).toContainText("Génération 2");
   await expect(missionCard(french, "mission-running")).toContainText("Démarrée");
   await expect(
-    missionCard(french, "mission-running").getByRole("list", { name: "Progression : 1 Checks validés sur 3" }),
+    missionCard(french, "mission-running").getByRole("list", { name: "Progression : 1 sur 3 Checks validés" }),
   ).toBeVisible();
   await expect(french.getByText("Terminées : 1 sur 5")).toBeVisible();
   expect(frenchErrors).toEqual([]);

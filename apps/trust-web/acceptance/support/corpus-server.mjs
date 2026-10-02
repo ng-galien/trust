@@ -3,17 +3,32 @@
 import { execFile, spawn } from "node:child_process";
 import { once } from "node:events";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { createServer, request as forward } from "node:http";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 import {
+  ADDED_MISSION,
+  ADDITION,
+  CONFLICT_BODY,
+  CONFLICT_THREAD,
+  CORPUS_PROXY_PORT,
   CORPUS_RUNTIME_PORT,
   CORPUS_WEB_PORT,
+  CURRENT_MISSION,
   DIAGRAM_THREAD,
   FRAMEWORK_PLAN,
+  INHERITED_MISSIONS,
   MISSION_PROCEDURE,
   MISSIONS,
+  REFRAMED_BODY,
+  REFRAMED_OLD_PLAN,
+  REFRAMED_PLAN,
+  REFRAMED_THREAD,
+  REGISTRY_BODY,
+  REGISTRY_THREAD,
+  ROUTED_BLOCK,
   THREAD_BODY,
 } from "./corpus-fixture.ts";
 
@@ -135,7 +150,48 @@ async function escalate(plan, name, attemptHandle) {
   });
   return (await readPlan(plan)).activeEscalation;
 }
-const childOf = async (id) => (await readPlan(FRAMEWORK_PLAN)).invocations.find((i) => i.mission?.id === id).childPlan;
+const childOf = async (id, plan = FRAMEWORK_PLAN) =>
+  (await readPlan(plan)).invocations.find((i) => i.mission?.id === id).childPlan;
+const engage = (plan, thread, procedureVersion) =>
+  rpc("plan.engage", {
+    contract: "trust.plan-engagement-request@1",
+    procedure: "corpus-thread-framework",
+    procedureVersion,
+    plan,
+    environment: "local",
+    rootInputs: { thread },
+  });
+const mission = (thread, id, verdict = "pass") => ({
+  id,
+  rootInputs: { thread, mission: id, verdict },
+  definition: { kind: "published", reference: "corpus-ui-mission@0.1.0" },
+});
+/** Engage framework 0.4.0 on an open thread, attach and link it, check its requirements and approve its framing. */
+async function approvedFraming(thread, plan) {
+  await engage(plan, thread, "0.4.0");
+  const { revision } = await command("threads.read", { id: thread });
+  await declare(plan, { "target corpus": "trust", "thread revision": revision });
+  for (const name of ["attach thread", "link framework", "check requirements"])
+    await expectVerdict(plan, name, "VALIDATED");
+  const { revision: checked } = await command("threads.read", { id: thread });
+  await declare(plan, { "refinement choice": "continue", "approved revision": checked });
+  await expectVerdict(plan, "approve framing", "VALIDATED");
+  return checked;
+}
+/** Stop Corpus, write its disposable store directly, start it again: retained data no command creates any more. */
+async function editCorpusStore(statement, values) {
+  await post(`${base}/stop`, {});
+  const { PGlite } = await import(
+    pathToFileURL(path.join(corpus, "node_modules/@electric-sql/pglite/dist/index.js")).href
+  );
+  const store = await PGlite.create(path.join(temporary, "corpus"));
+  try {
+    await store.query(statement, values);
+  } finally {
+    await store.close();
+  }
+  await post(`${base}/start`, {});
+}
 
 // 1. The Corpus installation loads the current server sources and serves a UI built from the current sources.
 const installed = path.join(temporary, "extension");
@@ -166,7 +222,7 @@ await writeFile(
         manifest: path.join(installed, "extension.json"),
         configuration: { databasePath: path.join(temporary, "corpus") },
         environment: "local",
-        grants: ["plans.read", "plans.subscribe", "plans.declare"],
+        grants: ["plans.read", "plans.subscribe", "plans.declare", "catalog.read"],
         autoStart: false,
       },
     ],
@@ -222,20 +278,7 @@ await rpc("environment.save", {
 
 // 3. The thread, attached and linked through its governed framework Checks, its first framing approved.
 await command("threads.open", { id: DIAGRAM_THREAD, title: "Document diagrams", body: THREAD_BODY });
-await rpc("plan.engage", {
-  contract: "trust.plan-engagement-request@1",
-  procedure: "corpus-thread-framework",
-  procedureVersion: "0.4.0",
-  plan: FRAMEWORK_PLAN,
-  environment: "local",
-  rootInputs: { thread: DIAGRAM_THREAD },
-});
-await declare(FRAMEWORK_PLAN, { "target corpus": "trust", "thread revision": 1 });
-for (const name of ["attach thread", "link framework", "check requirements"])
-  await expectVerdict(FRAMEWORK_PLAN, name, "VALIDATED");
-const { revision: checked } = await command("threads.read", { id: DIAGRAM_THREAD });
-await declare(FRAMEWORK_PLAN, { "refinement choice": "continue", "approved revision": checked });
-await expectVerdict(FRAMEWORK_PLAN, "approve framing", "VALIDATED");
+await approvedFraming(DIAGRAM_THREAD, FRAMEWORK_PLAN);
 
 // 4. The missions; the order of their Checks below fixes their latest activity, oldest first.
 await declare(
@@ -276,8 +319,142 @@ await expectVerdict(await childOf(running), "claim work", "VALIDATED");
 const completePlan = await childOf(complete);
 for (const name of ["claim work", "verify work", "review work"]) await expectVerdict(completePlan, name, "VALIDATED");
 
-// 5. The web host built from the current sources.
-const webEnvironment = { TRUST_RUNTIME_URL: runtimeUrl, TRUST_WEB_PORT: String(CORPUS_WEB_PORT) };
+// 5. The technical requirement registry: approved blocks of two governed threads, one shared by two facets, one
+// contradicting the nature of its published Procedure, and a block added after the approval, still pending.
+await command("facets.create", {
+  id: "documentation",
+  corpus: "trust",
+  title: "Documentation",
+  description: "Integrated documentation",
+  materialization: "packages/trust-ui/src/docs",
+});
+await rpc("operation.save", {
+  source: await readFile(path.join(procedures, "requirement-declaration.operation.feature"), "utf8"),
+  sourceName: "requirement-declaration.operation.feature",
+});
+for (const name of ["ui-wireframe-first", "ui-translations", "ui-theme-tokens"])
+  await rpc("procedure.publish", {
+    source: await readFile(path.join(procedures, "requirements", `${name}.procedure.feature`), "utf8"),
+  });
+await command("threads.open", { id: REGISTRY_THREAD, title: "Interface registry", body: REGISTRY_BODY });
+const registered = await approvedFraming(REGISTRY_THREAD, `${REGISTRY_THREAD}-framework`);
+await command("threads.revise", {
+  id: REGISTRY_THREAD,
+  expectedRevision: registered,
+  title: "Interface registry",
+  body: `${REGISTRY_BODY}\n${ROUTED_BLOCK}`,
+  author: "owner",
+  reason: "Propose the routed pages rule",
+});
+await command("threads.open", { id: CONFLICT_THREAD, title: "Theme rule", body: CONFLICT_BODY });
+await approvedFraming(CONFLICT_THREAD, `${CONFLICT_THREAD}-framework`);
+
+// 6. A thread delivered under framework 0.1.0, then reframed under a 0.4.0 framework Plan with work of its own.
+await rpc("operation.save", {
+  source: await readFile(path.join(procedures, "thread-read.operation.feature"), "utf8"),
+  sourceName: "thread-read.operation.feature",
+});
+await rpc("procedure.publish", {
+  source: await readFile(path.join(procedures, "thread-framework.procedure.feature"), "utf8"),
+});
+await command("threads.open", { id: REFRAMED_THREAD, title: "Reframed delivery", body: REFRAMED_BODY });
+await engage(REFRAMED_OLD_PLAN, REFRAMED_THREAD, "0.1.0");
+await declare(REFRAMED_OLD_PLAN, { "target corpus": "trust", "thread revision": 1, "refinement choice": "continue" });
+for (const name of ["attach thread", "observe refinement"]) await expectVerdict(REFRAMED_OLD_PLAN, name, "VALIDATED");
+await declare(
+  REFRAMED_OLD_PLAN,
+  {},
+  {
+    work: [mission(REFRAMED_THREAD, INHERITED_MISSIONS.complete), mission(REFRAMED_THREAD, INHERITED_MISSIONS.running)],
+  },
+);
+const inherited = await childOf(INHERITED_MISSIONS.complete, REFRAMED_OLD_PLAN);
+for (const name of ["claim work", "verify work", "review work"]) await expectVerdict(inherited, name, "VALIDATED");
+await expectVerdict(await childOf(INHERITED_MISSIONS.running, REFRAMED_OLD_PLAN), "claim work", "VALIDATED");
+// Retained threads are still linked to their old framework; no command creates such a link any more.
+await editCorpusStore("UPDATE trust_corpus.threads SET framework_plan=$2 WHERE id=$1", [
+  REFRAMED_THREAD,
+  REFRAMED_OLD_PLAN,
+]);
+await approvedFraming(REFRAMED_THREAD, REFRAMED_PLAN);
+await declare(REFRAMED_PLAN, {}, { work: [mission(REFRAMED_THREAD, CURRENT_MISSION)] });
+await expectVerdict(await childOf(CURRENT_MISSION, REFRAMED_PLAN), "claim work", "VALIDATED");
+// An approved addition whose own mission is in progress.
+await rpc("procedure.publish", {
+  source: await readFile(path.join(procedures, "thread-addition.procedure.feature"), "utf8"),
+});
+const { revision: added } = await command("threads.read", { id: REFRAMED_THREAD });
+await declare(
+  REFRAMED_PLAN,
+  {},
+  {
+    work: [
+      mission(REFRAMED_THREAD, CURRENT_MISSION),
+      {
+        id: ADDITION,
+        rootInputs: { thread: REFRAMED_THREAD, "thread revision": added },
+        definition: { kind: "published", reference: "corpus-thread-addition@0.1.0" },
+      },
+    ],
+  },
+);
+const addition = await childOf(ADDITION, REFRAMED_PLAN);
+await declare(addition, { "approval choice": "continue", "approved revision": added });
+await expectVerdict(addition, "approve addition", "VALIDATED");
+await declare(addition, {}, { work: [mission(REFRAMED_THREAD, ADDED_MISSION)] });
+await expectVerdict(await childOf(ADDED_MISSION, addition), "claim work", "VALIDATED");
+
+// 7. A proxy between the web host and the runtime. A spec makes a chosen read fail with
+// POST /__faults {"path": "/extensions/corpus/…", "fail": true}, and heals it with "fail": false.
+const faults = new Set();
+const proxy = createServer((incoming, outgoing) => {
+  const { pathname } = new URL(incoming.url ?? "/", runtimeUrl);
+  if (pathname === "/__faults" && incoming.method === "POST") {
+    let body = "";
+    incoming.on("data", (chunk) => {
+      body += chunk;
+    });
+    incoming.on("end", () => {
+      const { path: target, fail } = JSON.parse(body);
+      if (fail) faults.add(target);
+      else faults.delete(target);
+      outgoing.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify({ faults: [...faults] }));
+    });
+    return;
+  }
+  if (faults.has(pathname)) {
+    outgoing
+      .writeHead(503, { "content-type": "application/json" })
+      .end(JSON.stringify({ message: "Read refused by the acceptance proxy." }));
+    return;
+  }
+  const upstream = forward(
+    {
+      host: "127.0.0.1",
+      port: CORPUS_RUNTIME_PORT,
+      path: incoming.url,
+      method: incoming.method,
+      headers: { ...incoming.headers, host: `127.0.0.1:${CORPUS_RUNTIME_PORT}` },
+    },
+    (answer) => {
+      outgoing.writeHead(answer.statusCode ?? 502, answer.headers);
+      answer.pipe(outgoing);
+    },
+  );
+  upstream.on("error", () => {
+    if (!outgoing.headersSent) outgoing.writeHead(502);
+    outgoing.end();
+  });
+  outgoing.on("close", () => upstream.destroy());
+  incoming.pipe(upstream);
+});
+await new Promise((resolve) => proxy.listen(CORPUS_PROXY_PORT, "127.0.0.1", resolve));
+
+// 8. The web host built from the current sources, reaching the runtime through the proxy.
+const webEnvironment = {
+  TRUST_RUNTIME_URL: `http://127.0.0.1:${CORPUS_PROXY_PORT}`,
+  TRUST_WEB_PORT: String(CORPUS_WEB_PORT),
+};
 const webDist = path.join(temporary, "web-dist");
 const vite = path.join(root, "node_modules/vite/bin/vite.js");
 await build([vite, "build", "--outDir", webDist, "--emptyOutDir"], path.join(root, "apps/trust-web"), webEnvironment);

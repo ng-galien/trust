@@ -3,7 +3,7 @@ import { CORPUS_WEB_PORT } from "./acceptance/support/corpus-fixture.js";
 
 export default defineConfig({
   testDir: "./acceptance",
-  testMatch: "corpus-document.acceptance.spec.ts",
+  testMatch: ["corpus-document.acceptance.spec.ts", "corpus-facet.acceptance.spec.ts"],
   workers: 1,
   reporter: "line",
   timeout: 90000,
