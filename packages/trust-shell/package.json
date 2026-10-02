@@ -23,11 +23,13 @@
     "build": "tsc -b tsconfig.json",
     "clean": "node --input-type=module -e \"import { rmSync } from 'node:fs'; rmSync('dist', { recursive: true, force: true })\"",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test:acceptance": "npm run build --workspace=@trust/runtime && npm run build --workspace=@trust/web && npm run build && node --test --test-concurrency=1 dist/acceptance/*.acceptance.test.js"
+    "package:npm": "npm run build && node scripts/package-npm.mjs",
+    "test:acceptance": "npm run build --workspace=@trust/runtime && npm run build --workspace=@trust/web && npm run build && node --test --test-concurrency=1 dist/acceptance/*.acceptance.test.js acceptance/*.acceptance.test.mjs"
   },
   "dependencies": {
+    "@trust/extension-sdk": "file:../trust-extension-sdk",
     "esbuild": "^0.28.2",
-    "@trust/extension-sdk": "file:../trust-extension-sdk"
+    "smol-toml": "1.9.0"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",

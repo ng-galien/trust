@@ -1,9 +1,7 @@
 import { randomUUID } from "node:crypto";
-import { cp, lstat, mkdir, readFile, rename, rm } from "node:fs/promises";
+import { cp, lstat, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";
-
-import { build } from "esbuild";
 
 import type { TrustInstallation } from "./installation.js";
 
@@ -15,6 +13,7 @@ const REQUIRED_FILES = [
   "scripts/auth.js",
   "scripts/mcp-stdio.js",
   "scripts/trial.js",
+  "scripts/package.json",
 ] as const;
 
 export async function packageRunnerSkill(
@@ -26,8 +25,15 @@ export async function packageRunnerSkill(
   if (options.replace === true) await rm(output, { recursive: true, force: true });
   else if (await pathExists(output)) throw new Error(`Runner destination already exists: ${output}`);
 
-  await mkdir(path.join(output, "scripts"), { recursive: true });
   try {
+    const runnerPackageRoot = installation.runnerPackageRoot;
+    if (runnerPackageRoot === undefined) {
+      await cp(installation.runnerSkillSource, output, { recursive: true, errorOnExist: true, force: false });
+      await assertRunnerPackage(output);
+      return output;
+    }
+    await mkdir(path.join(output, "scripts"), { recursive: true });
+    const { build } = await import("esbuild");
     await Promise.all([
       cp(path.join(installation.runnerSkillSource, "SKILL.md"), path.join(output, "SKILL.md")),
       cp(path.join(installation.runnerSkillSource, "agents"), path.join(output, "agents"), { recursive: true }),
@@ -36,10 +42,10 @@ export async function packageRunnerSkill(
     await build({
       absWorkingDir: installation.root,
       entryPoints: {
-        auth: path.join(installation.runnerPackageRoot, "src/auth/main.ts"),
-        run: path.join(installation.runnerPackageRoot, "scripts/run.ts"),
-        "mcp-stdio": path.join(installation.runnerPackageRoot, "scripts/mcp-stdio.ts"),
-        trial: path.join(installation.runnerPackageRoot, "scripts/trial.ts"),
+        auth: path.join(runnerPackageRoot, "src/auth/main.ts"),
+        run: path.join(runnerPackageRoot, "scripts/run.ts"),
+        "mcp-stdio": path.join(runnerPackageRoot, "scripts/mcp-stdio.ts"),
+        trial: path.join(runnerPackageRoot, "scripts/trial.ts"),
       },
       bundle: true,
       platform: "node",
@@ -51,6 +57,8 @@ export async function packageRunnerSkill(
       target: "node24",
       outdir: path.join(output, "scripts"),
     });
+    // The bundles are ES modules; this marker keeps them runnable wherever the Runner is deployed.
+    await writeFile(path.join(output, "scripts/package.json"), `${JSON.stringify({ type: "module" })}\n`);
     await assertRunnerPackage(output);
     return output;
   } catch (error) {
@@ -105,7 +113,7 @@ export function validateDestination(installation: TrustInstallation, destination
   const protectedRoots = [path.resolve(homedir()), installation.root];
   const forbidden = new Set([
     path.parse(resolved).root,
-    installation.runnerPackageRoot,
+    ...(installation.runnerPackageRoot === undefined ? [] : [installation.runnerPackageRoot]),
     installation.runnerSkillSource,
   ]);
   if (forbidden.has(resolved) || protectedRoots.some((protectedRoot) => isSameOrAncestor(resolved, protectedRoot))) {

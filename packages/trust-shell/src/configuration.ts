@@ -5,6 +5,7 @@ import {
   loadTrustConfiguration,
   type ResolvedTrustConfiguration,
 } from "@trust/extension-sdk";
+import { defaultRunnerTrialScript } from "./installation.js";
 
 export async function readServerConfiguration(
   environment: ConfigurationEnvironment = process.env,
@@ -14,7 +15,7 @@ export async function readServerConfiguration(
     environment,
     mode: "server",
     resolvePath: resolve,
-    defaultRunnerTrialScript: resolve(import.meta.dirname, "../../../trust-runner/dist/skill/trust/scripts/trial.js"),
+    defaultRunnerTrialScript: defaultRunnerTrialScript(),
     readJson: async (file) => JSON.parse(await readFile(file, "utf8")) as unknown,
     ...(defaultStateDirectory ? { defaultStateDirectory } : {}),
   });
