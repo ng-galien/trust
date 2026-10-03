@@ -185,30 +185,12 @@ test("root shows all current descendant escalations, navigates to origin and ref
   await expect(page.locator('a[data-doc="home.card"][href="/dry-runs/other-plan"]')).toContainText(
     "2 descendant escalations",
   );
-  await request.post("/extensions/coordination/prepare", { data: {} });
-  await request.post("/extensions/coordination/start", { data: {} });
-  await page.goto("/extensions/coordination?coord.search=other-0");
-  await expect(page.locator('[data-mission="other-0"]')).toContainText("2 descendant escalations");
-  await expect(
-    page.getByRole("navigation", { name: "In progress", exact: true }).locator('[data-mission="other-0"]'),
-  ).toBeVisible();
-  await page.locator('[data-mission="other-0"]').click();
-  const remote = page.getByRole("region", { name: "Descendant escalations", exact: true });
-  await expect(remote.getByRole("listitem")).toHaveCount(2);
-  await expect(remote.locator(`a[href="/dry-runs/${nested}"]`)).toBeVisible();
-  await page.setViewportSize({ width: 390, height: 844 });
-  await expect(remote.getByRole("listitem")).toHaveCount(2);
-  await expect(remote.getByRole("heading", { name: "2 descendant escalations", exact: true })).toBeInViewport();
-  expect(await remote.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
-  await page.screenshot({ path: "test-results/child-escalations-mobile.png" });
-  await page.setViewportSize({ width: 1440, height: 1000 });
   const escalation = present((await read(stable)).activeEscalation, "stable escalation");
   await rpc("plan.resume", {
     plan: stable,
     escalationId: escalation.escalationId,
     resumeReason: "Sibling review completed.",
   });
-  await expect(remote.getByRole("listitem")).toHaveCount(1);
   await page.goto("/dry-runs/other-plan");
   await expect(alerts).toContainText("1 descendant escalation");
   await rpc("plan.declarations.replace", {
@@ -226,5 +208,4 @@ test("root shows all current descendant escalations, navigates to origin and ref
   await expect(page.getByRole("region", { name: "Child Plans", exact: true })).toContainText("Superseded generation 1");
   await page.getByRole("link", { name: "Parent Plan: other-plan", exact: true }).click();
   await expect(alerts).toHaveCount(0);
-  await request.post("/extensions/coordination/stop", { data: {} });
 });

@@ -270,15 +270,6 @@ function createWebServer(
       return;
     }
     const pathname = requestPath(request.url);
-    if (pathname === "/mobile/mobile-comp" || pathname === "/mobile/mobile-comp/") {
-      if (request.method !== "GET" && request.method !== "HEAD") {
-        response.writeHead(405, { allow: "GET, HEAD" }).end();
-        return;
-      }
-      const query = new URL(request.url ?? "", "http://localhost").search;
-      response.writeHead(302, { location: `/mobile/mobile-companion/${query}`, "cache-control": "no-store" }).end();
-      return;
-    }
     const gateway = mobileGatewayRequest(request.url, mobileUpstreams);
     if (gateway) {
       proxyHttp(request, response, gateway.upstream.host, gateway.upstream.port, gateway.path, true);

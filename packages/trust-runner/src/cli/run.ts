@@ -48,6 +48,7 @@ export async function runCli(options: RunnerCliOptions = {}): Promise<number> {
     const runner = createCheckRunner({
       checkClient: new CheckClient(endpoint, 30_000, authorization),
       facts: new OtlpFactExporter(otlpEndpoint, 30_000, authorization),
+      ...(authorization === undefined ? {} : { http: { runtimeRpc: { endpoint, authorization } } }),
       diagnostics: logging.diagnostics,
       shell: {
         additionalPath: [...startup.resolved.configuration.runner.additionalPath, ...configuration.additionalPath],

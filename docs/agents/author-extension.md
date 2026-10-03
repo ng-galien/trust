@@ -3,18 +3,14 @@
 ## Prerequisites and outcome
 
 Read the [minimal public SDK guide](../../packages/trust-extension-sdk/README.md).
-The optional examples are [Dragon Heist](../../extensions/dragon-heist/README.md)
-and [coordination](../../extensions/coordination/README.md). The outcome is an
+The optional example is [Dragon Heist](../../extensions/dragon-heist/README.md). The outcome is an
 independently compiled extension using public contracts, with lifecycle and
 integration behavior verified at the host boundary. Distribution bundles are a
 separate, deferred task.
 
-The [mobile companion](../../extensions/mobile-companion/README.md) documents a
-standalone federated page, extension-owned PostgreSQL or legacy PGlite data, and a controlled web gateway.
-
 ## Steps
 
-1. Define what belongs to the integration. External game or mission storage,
+1. Define what belongs to the integration. External domain storage,
    domain consistency and external actions remain outside TRUST. The extension
    never qualifies Checks or accesses the runtime's database implementation.
 2. Import SDK contracts with `import type`. Implement `ExtensionFactory` and its

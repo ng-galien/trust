@@ -45,3 +45,14 @@ Procedure versions. It resolves referenced dependencies, validates Input binding
 qualification, then embeds the used Operation and child definitions. Child Invocations remain
 separate from Checks. Runtime compilation supplies only published child versions; the foundation
 limits and Invocation syntax are specified in [GRAMMAR.md](GRAMMAR.md).
+
+## Historical delegation definitions
+
+`agent-delegation` and `agent-delegation-verified` are retained sources for already
+published definitions and pinned Plans. They describe the retired Coordination
+workflow; do not use them for new work. New delegation uses native mission
+collections and child Plans as described in [the delegation recipe](../../docs/agents/recipes/delegation.md).
+Corpus version 2 delegation Procedures use those native records without a second
+mission, claim or response store. The old `coordination.*` Operations and their
+helpers remain only to keep existing Plans executable; neither retired extension
+is installed or required by the new procedures.

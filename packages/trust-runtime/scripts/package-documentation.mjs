@@ -34,11 +34,8 @@ for (const [file, id] of [
   ["packages/trust-extension-sdk/README.md", "references/extension-sdk"],
   ["assets/skills/trust/SKILL.md", "references/runner"],
   ["assets/skills/trust/references/results.md", "references/runner-results"],
-  ["extensions/coordination/README.md", "references/coordination"],
-  ["extensions/coordination/DELEGATION.md", "references/delegation"],
   ["extensions/dragon-heist/README.md", "references/dragon-heist"],
   ["extensions/dragon-heist/extension.json", "examples/dragon-heist-manifest"],
-  ["extensions/coordination/extension.json", "examples/coordination-manifest"],
 ])
   entries.push({ file, id });
 const byFile = new Map(entries.map((entry) => [entry.file, entry]));

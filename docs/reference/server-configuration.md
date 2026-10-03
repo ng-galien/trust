@@ -109,11 +109,11 @@ An explicitly selected development profile can use `development` in place of `br
       "users": [{
         "login": "developer@example.com",
         "subject": "developer-stable-id",
-        "scopes": ["trust.plan.list.own", "trust.extension.mobile-companion.use"]
+        "scopes": ["trust.plan.list.own", "trust.extension.corpus.use"]
       }],
       "local": {
         "subject": "developer-stable-id",
-        "scopes": ["trust.plan.list.own", "trust.extension.mobile-companion.use"],
+        "scopes": ["trust.plan.list.own", "trust.extension.corpus.use"],
         "codeFile": "/private/trust/dev-login-code.json"
       },
       "services": [{
@@ -140,6 +140,8 @@ The Runner can use a private `TRUST_AUTH_FILE` with `{ "version": 2, "mode": "de
 ## Runner and existing runtime updates
 
 A Runner-only file may contain `runner` and `logging` sections. Shared Runner credentials remain private `TRUST_AUTH_FILE` data, bound to the RPC/OTLP origin with exact `/rpc` and `/v1/traces` paths. Tokens are not accepted through `TRUST_ACCESS_TOKEN`, `TRUST_REFRESH_TOKEN` or `TRUST_AUTHORIZATION`. Credential refresh updates that private file; startup configuration is not reloaded. Runner login's explicit private enrollment file is a separate OAuth enrollment operation, not another server startup contract.
+
+An Operation HTTP step whose rendered URL exactly matches `runner.rpcEndpoint` uses that same Runner authentication, unless it declares an explicit Authorization header. The server still enforces the caller's access policy. No Runner credential is forwarded to another origin, path, query string or redirect. This supports reading an assigned Plan through public RPC without duplicating its credential in an Environment; reflected credentials are masked before Runner diagnostics and results.
 
 Changing the file while a process runs has no effect. Restart applies the new startup values and preserves the selected database. Business Environment values, named credentials, registry sources and extension lifecycle retain their existing authorized public update operations; they are not overwritten from startup JSON. Plan roots, ownership and declaration semantics remain unchanged. A general extension-use grant does not imply any Plan or lifecycle permission.
 

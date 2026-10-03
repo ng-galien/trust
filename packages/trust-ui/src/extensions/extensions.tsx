@@ -1,5 +1,5 @@
 import { loadRemote, registerRemotes } from "@module-federation/enhanced/runtime";
-import { Component, type ComponentType, type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
+import { Component, type ComponentType, type ReactNode, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useLocation, useNavigate, useParams } from "react-router";
 import { useExtensions } from "../lib/extensions.js";
@@ -74,16 +74,6 @@ export function ExtensionPage({ bare = false }: { bare?: boolean }) {
   const remoteName = remote?.name;
   const remoteEntry = remote?.entry;
   const remoteModule = remote?.module;
-  const reportMobile = useCallback(
-    (stage: string, code: string) => {
-      if (bare && id === "mobile-companion")
-        (window as Window & { __trustMobileReport?: (stage: string, code: string) => void }).__trustMobileReport?.(
-          stage,
-          code,
-        );
-    },
-    [bare, id],
-  );
   // biome-ignore lint/correctness/useExhaustiveDependencies: Recreate the remote page when the authentication controller changes.
   useEffect(() => {
     let active = true;
@@ -100,17 +90,11 @@ export function ExtensionPage({ bare = false }: { bare?: boolean }) {
       .then((module) => {
         if (!module?.default) throw new Error("No extension page");
         if (active) {
-          reportMobile("remote-import", "loaded");
           setRemote(() => module.default);
         }
       })
-      .catch((error: unknown) => {
+      .catch(() => {
         if (!active) return;
-        const name = error instanceof Error ? error.name : "unknown";
-        reportMobile(
-          "remote-import",
-          ["TypeError", "SyntaxError", "ReferenceError", "Error"].includes(name) ? name : "unknown",
-        );
         if (retry < 2)
           setTimeout(
             () => {
@@ -123,7 +107,7 @@ export function ExtensionPage({ bare = false }: { bare?: boolean }) {
     return () => {
       active = false;
     };
-  }, [remoteName, remoteEntry, remoteModule, baseUrl, retry, reportMobile, authentication]);
+  }, [remoteName, remoteEntry, remoteModule, baseUrl, retry, authentication]);
   const fallback = (
     <div role="alert" className="p-6">
       <p>{t("extensions.failed")}</p>

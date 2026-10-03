@@ -161,9 +161,7 @@ EXPORT-42's description”; allowed read only; forbidden editing or approving;
 expected observed Result `description`; report the actual TRUST outcome and any
 blocker. Host messaging transports the assignment, not the Result qualification.
 
-If using the coordination extension, follow its [mission/claim/response/review
-workflow](../../../extensions/coordination/DELEGATION.md). It is not required for
-generic child Plan composition.
+Native child Plans already retain the mission inputs, agent declarations and qualified Results. Do not mirror them into an external mission registry.
 
 ## 4. Enrich the method without rewriting its history
 

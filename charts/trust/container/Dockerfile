@@ -9,8 +9,6 @@ RUN npx tsc -b \
  && npm run package:documentation --workspace=@trust/runtime \
  && npm run build --workspace=@trust/web \
  && npm run package:skill --workspace=@trust/runner \
- && npm run build --workspace=@trust-extension/coordination \
- && npm run build --workspace=@trust-extension/mobile-companion \
  && npm run build --workspace=@trust-extension/dragon-heist
 RUN npm prune --omit=dev --no-audit --no-fund
 

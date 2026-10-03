@@ -19,7 +19,7 @@ test("extension Plan declarations retain principal, environment, revision and cl
       "export const createExtension=()=>({async prepare(){},async start(){},async stop(){},async read(){return {status:200,body:{}};}});",
     );
     const installations = [];
-    for (const id of ["dragon-heist", "coordination"]) {
+    for (const id of ["dragon-heist", "extension-b"]) {
       const manifest = path.join(directory, `${id}.json`);
       await writeFile(
         manifest,
@@ -55,7 +55,7 @@ test("extension Plan declarations retain principal, environment, revision and cl
     const admin = await provider.issue({ subject: "admin", scope: DEVELOPMENT_SCOPES.join(" ") });
     const alice = await provider.issue({
       subject: "alice",
-      scope: [...scopes(), "trust.extension.dragon-heist.use", "trust.extension.coordination.use"].join(" "),
+      scope: [...scopes(), "trust.extension.dragon-heist.use", "trust.extension.extension-b.use"].join(" "),
     });
     const bob = await provider.issue({
       subject: "bob",
@@ -110,7 +110,7 @@ test("extension Plan declarations retain principal, environment, revision and cl
     assert.equal((await send(bob.token)).status, 403);
     assert.equal((await send(noWrite.token)).status, 403);
     assert.equal((await send(noExtension.token)).status, 403);
-    assert.equal((await send(alice.token, { extension: "coordination" })).status, 403);
+    assert.equal((await send(alice.token, { extension: "extension-b" })).status, 403);
     assert.equal((await send(alice.token, { plan: "input-foreign" })).status, 404);
     assert.equal((await send(alice.token, { plan: "missing" })).status, 404);
     assert.equal((await send(alice.token, { declarations: { workspace: "replacement" } })).status, 400);

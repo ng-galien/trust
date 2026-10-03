@@ -7,7 +7,7 @@ default_rules = false
 
 [rules.taxonomy]
 patterns = ["dependency", "call-flow"]
-components = ["gherkin", "operation", "procedure", "language-server", "runtime", "ui", "editor", "authority", "extension-host", "extension-sdk", "coordination", "coordination-ui", "dragon-heist", "dragon-heist-ui"]
+components = ["gherkin", "operation", "procedure", "language-server", "runtime", "ui", "editor", "authority", "extension-host", "extension-sdk", "dragon-heist", "dragon-heist-ui"]
 
 # Cross-package imports use the npm specifier (`@trust/...`) and are indexed as
 # `external_pkg:` monikers, never as workspace `dir:` paths. Every *_target alias
@@ -52,25 +52,15 @@ authority_language_behavior_target = "target ~ '**/external_pkg:/@trust./*:/^(ma
 
 gherkin_parse_step_grammar_target = "target ~ '**/external_pkg:/@trust.gherkin/function:parseStepGrammar'"
 
-# These components describe responsibilities: coordination-ui is the browser
-# part of coordination, while extension-host spans runtime and UI adapters.
+# The extension host spans runtime and UI adapters.
 extension_host_source = "source ~ '**/dir:packages/dir:trust-runtime/dir:src/dir:extensions/**' OR source ~ '**/dir:packages/dir:trust-runtime/dir:src/dir:http/module:extensions/**' OR source ~ '**/dir:packages/dir:trust-runtime/dir:src/dir:http/module:extensions' OR source ~ '**/dir:packages/dir:trust-ui/dir:src/dir:extensions/**'"
-coordination_source = "source ~ '**/dir:extensions/dir:coordination/module:/^(server|commands)$/**' OR source ~ '**/dir:extensions/dir:coordination/module:/^(server|commands)$/' OR $coordination_ui_source"
-coordination_ui_source = "source ~ '**/dir:extensions/dir:coordination/dir:ui/**'"
-coordination_target = "target ~ '**/dir:extensions/dir:coordination/**' OR target ~ '**/external_pkg:/@trust-extension.coordination/**'"
-coordination_server_target = "target ~ '**/dir:extensions/dir:coordination/module:/^(server|commands)$/**' OR target ~ '**/dir:extensions/dir:coordination/module:/^(server|commands)$/' OR target ~ '**/external_pkg:/@trust-extension.coordination/path:/^(server|commands)$/**' OR target ~ '**/external_pkg:/@trust-extension.coordination/path:/^(server|commands)$/'"
-coordination_ui_server_api_target = "target ~ '**/external_pkg:pg/**' OR target ~ '**/sdk:ts/path:/^node:/**'"
 dragon_heist_source = "source ~ '**/dir:extensions/dir:dragon-heist/module:/^(server|game|store|commands)$/**' OR source ~ '**/dir:extensions/dir:dragon-heist/module:/^(server|game|store|commands)$/' OR $dragon_heist_ui_source"
 dragon_heist_ui_source = "source ~ '**/dir:extensions/dir:dragon-heist/dir:ui/**'"
 dragon_heist_target = "target ~ '**/dir:extensions/dir:dragon-heist/**' OR target ~ '**/external_pkg:/@trust-extension.dragon-heist/**'"
 dragon_heist_server_target = "target ~ '**/dir:extensions/dir:dragon-heist/module:/^(server|game|store|commands)$/**' OR target ~ '**/dir:extensions/dir:dragon-heist/module:/^(server|game|store|commands)$/' OR target ~ '**/sdk:ts/path:/^node:/**'"
 
 [profiles.extension-boundaries]
-enable = [
-  "^refs\\.extension-host-dependency-excludes-coordination$",
-  "^refs\\.coordination-dependency-excludes-runtime-and-ui-implementation$",
-  "^refs\\.coordination-ui-dependency-excludes-server-implementation$",
-]
+enable = ["^refs\\.extension-host-dependency-excludes-extension-implementation$"]
 
 [profiles.canonical-contracts]
 enable = [
@@ -176,25 +166,11 @@ expr = "($ui_source AND NOT $ui_docs_highlight_source) => NOT $authority_languag
 message = "UI code invokes language behavior directly instead of consuming the language server or compiled models."
 
 [[refs.where]]
-id = "extension-host-dependency-excludes-coordination"
+id = "extension-host-dependency-excludes-extension-implementation"
 severity = "error"
-expr = "$extension_host_source => NOT $coordination_target"
-message = "The generic extension host must not statically depend on the coordination implementation."
-rationale = "Extension hosting spans the runtime lifecycle, HTTP adapter and federated UI loader. Installed manifests select the implementation; the host must remain usable without coordination. This rule checks emitted static references only: computed child imports and federation remote loading require public runtime acceptance evidence."
-
-[[refs.where]]
-id = "coordination-dependency-excludes-runtime-and-ui-implementation"
-severity = "error"
-expr = "$coordination_source => NOT ($runtime_target OR $ui_target)"
-message = "Coordination must use its supplied host capabilities, not import TRUST runtime or UI implementation."
-rationale = "The coordination server and commands modules own the external PostgreSQL integration and its browser view consumes supplied URLs and language. Neither reaches TRUST database, qualification, container or UI internals. Coordination includes coordination-ui as a responsibility subset; build scripts and acceptance harnesses are outside this production boundary."
-
-[[refs.where]]
-id = "coordination-ui-dependency-excludes-server-implementation"
-severity = "error"
-expr = "$coordination_ui_source => NOT ($coordination_server_target OR $coordination_ui_server_api_target)"
-message = "The coordination browser view must not import its server, PostgreSQL driver or Node APIs."
-rationale = "The separately built federation remote reads through host-supplied endpoints. PostgreSQL connections and server credentials remain in the extension backend; static imports must not pull that implementation into the browser bundle. This boundary does not prove bundle contents or dynamic import targets."
+expr = "$extension_host_source => NOT ((target ~ '**/dir:extensions/**' AND NOT ($runtime_target OR $ui_target)) OR target ~ '**/external_pkg:/@trust-extension.*/**')"
+message = "The generic host loads installed manifests; it must not import an extension implementation."
+rationale = "Installed extensions remain optional. Native delegation and qualification are owned by TRUST and do not depend on an extension's domain storage."
 
 [[refs.where]]
 id = "runtime-dependency-excludes-dragon-heist"

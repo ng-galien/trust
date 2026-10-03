@@ -1,5 +1,10 @@
 # Delegating the first TRUST mission
 
+> Historical retained installation. Coordination and Mobile Companion are retired.
+> Do not run this installer for new work; use native mission collections and child Plans
+> as described in `docs/agents/recipes/delegation.md`. These records document existing
+> pinned Plans and are retained without changing their history.
+
 This is a working recipe for one trusted local coordinator and one agent. The host dispatches the agent; TRUST does not start processes or transport agent messages.
 
 The Procedure is `assets/procedures/agent-delegation.feature`. Its four Operations call the external PostgreSQL business functions in `manifests/postgres/002-missions.sql`. No delegation-specific rule was added to the runtime.

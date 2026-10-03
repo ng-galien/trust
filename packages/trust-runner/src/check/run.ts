@@ -1,6 +1,7 @@
 import type { CheckContinuation, CheckFinalizationResult } from "@trust/extension-sdk";
 import { matchCheckExecutionConstraint } from "@trust/procedure/match";
 import { type DiagnosticsSink, now, nullSink } from "../diagnostics/events.js";
+import type { HttpRunnerConfiguration } from "../http/run.js";
 import type { JsonObject } from "../lib/json.js";
 import { runOperation } from "../operation/run.js";
 import type { PostgresqlRunnerConfiguration } from "../postgresql/run.js";
@@ -54,6 +55,7 @@ export interface CheckRunnerOptions {
   readonly diagnostics?: DiagnosticsSink;
   readonly shell?: ShellRunnerConfiguration;
   readonly postgresql?: PostgresqlRunnerConfiguration;
+  readonly http?: HttpRunnerConfiguration;
 }
 
 export function createCheckRunner(options: CheckRunnerOptions) {
@@ -139,6 +141,7 @@ export function createCheckRunner(options: CheckRunnerOptions) {
             clock,
             ...(options.shell === undefined ? {} : { shell: options.shell }),
             ...(options.postgresql === undefined ? {} : { postgresql: options.postgresql }),
+            ...(options.http === undefined ? {} : { http: options.http }),
           },
           admission.credentials,
         );

@@ -56,7 +56,7 @@ test("an extension server reads and declares through TRUST with its caller's acc
     const installations = [];
     for (const [id, grants] of [
       ["dragon-heist", ["plans.read", "plans.declare", "catalog.read"]],
-      ["coordination", []],
+      ["extension-b", []],
     ]) {
       const manifest = path.join(directory, `${id}.json`);
       await writeFile(
@@ -87,7 +87,7 @@ test("an extension server reads and declares through TRUST with its caller's acc
     });
     const endpoint = `http://127.0.0.1:${runtime.port}`;
     const admin = await provider.issue({ subject: "admin", scope: DEVELOPMENT_SCOPES.join(" ") });
-    const use = ["trust.extension.dragon-heist.use", "trust.extension.coordination.use"];
+    const use = ["trust.extension.dragon-heist.use", "trust.extension.extension-b.use"];
     const alice = await provider.issue({
       subject: "alice",
       scope: [...scopes(), "trust.procedure.read", "trust.operation.read", ...use].join(" "),
@@ -162,17 +162,16 @@ test("an extension server reads and declares through TRUST with its caller's acc
     assert.equal(procedure.result.procedure, "optional-agent-declarations", JSON.stringify(procedure));
     const operation = await probe(alice.token, {
       call: "readOperation",
-      operation: "coordination.gate-run",
+      operation: "workspace.gate-run",
       version: "1.0.0",
     });
-    assert.equal(operation.result.operation, "coordination.gate-run", JSON.stringify(operation));
+    assert.equal(operation.result.operation, "workspace.gate-run", JSON.stringify(operation));
     assert.equal(
-      (await probe(alice.token, { call: "readOperation", operation: "coordination.gate-run", version: "9.9.9" }))
-        .failure,
+      (await probe(alice.token, { call: "readOperation", operation: "workspace.gate-run", version: "9.9.9" })).failure,
       "not-found",
     );
     assert.equal(
-      (await probe(bob.token, { call: "readOperation", operation: "coordination.gate-run", version: "1.0.0" })).failure,
+      (await probe(bob.token, { call: "readOperation", operation: "workspace.gate-run", version: "1.0.0" })).failure,
       "access-denied",
     );
 
@@ -183,7 +182,7 @@ test("an extension server reads and declares through TRUST with its caller's acc
       declare(2),
       { call: "readProcedure", procedure: "optional-agent-declarations", version: "1.0.0" },
     ])
-      assert.equal((await probe(alice.token, request, "coordination")).failure, "capability-denied");
+      assert.equal((await probe(alice.token, request, "extension-b")).failure, "capability-denied");
 
     // An invocation's access ends with it.
     assert.equal((await probe(alice.token, { call: "keep" })).result, "kept");

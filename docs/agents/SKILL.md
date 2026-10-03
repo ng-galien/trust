@@ -117,9 +117,8 @@ read it from an available checkout; report missing access when it blocks the tas
   or run an unrelated demonstration as part of an ordinary task.
 
 Read [Dragon Heist](dragon-heist.md) only when asked to run that demonstration or
-when its nested composition clarifies the current task. Read the
-[coordination methodology](../../extensions/coordination/DELEGATION.md) when using
-that extension. Neither example prescribes other Procedures or extensions.
+when its nested composition clarifies the current task. Native delegation needs
+no coordination extension or external mission database.
 
 ## Finish the assignment
 

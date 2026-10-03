@@ -16,7 +16,7 @@ import {
 import { matchOperationStep } from "@trust/operation/match";
 import { type DiagnosticsSink, now, nullSink, type StepReporter, summarizeValue } from "../diagnostics/events.js";
 import { runFileRead } from "../file-read/run.js";
-import { runHttp } from "../http/run.js";
+import { type HttpRunnerConfiguration, runHttp } from "../http/run.js";
 import { isJsonObject, type JsonObject } from "../lib/json.js";
 import { type PostgresqlRunnerConfiguration, runPostgresql } from "../postgresql/run.js";
 import type { ShellRunnerConfiguration } from "../shell/run.js";
@@ -35,6 +35,7 @@ export interface OperationRunnerConfiguration {
   readonly clock?: Clock;
   readonly shell?: ShellRunnerConfiguration;
   readonly postgresql?: PostgresqlRunnerConfiguration;
+  readonly http?: HttpRunnerConfiguration;
 }
 
 /** `credentials` holds the Credentials TRUST delegated for the admitted attempt; a trial or a
@@ -127,8 +128,17 @@ async function executeOperation(
             ),
           "file-read": ({ file }) => runFileRead(file, input, environment, reporter),
           http: ({ http }) =>
-            runHttp(http, input, environment, steps, execution, reporter, timeoutMs, clock, (name) =>
-              credentials.resolve(name, `HTTP step "${step.name}"`),
+            runHttp(
+              http,
+              input,
+              environment,
+              steps,
+              execution,
+              reporter,
+              timeoutMs,
+              clock,
+              (name) => credentials.resolve(name, `HTTP step "${step.name}"`),
+              configuration.http,
             ),
           postgresql: ({ postgresql }) =>
             runPostgresql(

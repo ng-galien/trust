@@ -28,7 +28,7 @@ Set `TRUST_AUTH_FILE` to the absolute credential path, `TRUST_RPC_ENDPOINT` to t
 
 The private credential stores version 1, exact runtime `origin`, trusted `issuer`, OAuth `clientId`, `accessToken`, millisecond `expiresAt`, optional `refreshToken`, optional confidential `clientSecret`, and `resource`. Before expiry the helper refreshes via discovered endpoints on the configured issuer origin. It writes rotated credentials atomically with mode `0600`; an exclusive file lock coordinates concurrent processes. A stale lock fails closed and requires the operator to verify the other process before removing it. Authentication errors are sanitized.
 
-Only the exact configured RPC and OTLP URLs receive the bearer header. HTTP redirects are not followed. Operation HTTP calls do not receive Runner authorization, and Shell child environments strip every `TRUST_` variable. This isolates accidental forwarding; an external program running as the same OS user is not sandboxed from files the user can read.
+Only the exact configured RPC and OTLP URLs receive the bearer header. An Operation HTTP step targeting the exact configured RPC URL reuses the Runner's identity and credential refresh, unless the Operation declares its own Authorization header. The server applies the same access policy to this request. Other origins, paths and query strings receive no Runner credential, and HTTP redirects are not followed. The inherited credential is masked before diagnostics, step results and Facts. Shell child environments strip every `TRUST_` variable. This isolates accidental forwarding; an external program running as the same OS user is not sandboxed from files the user can read.
 
 ## Two explicit resource profiles
 

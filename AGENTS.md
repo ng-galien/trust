@@ -15,11 +15,11 @@ checklist verdict. An agent never infers whether its action advanced the Plan.
 For operational authoring and execution guidance, start with the
 [operational skill](docs/agents/SKILL.md), then read the relevant task reference.
 
-To delegate work through the coordination extension, first read
-[the extension's delegation methodology](extensions/coordination/DELEGATION.md).
-It documents mission creation before host dispatch, worker claim and response,
-coordinator review, live visibility, and public MCP access when native tools are
-not loaded. This is an extension-specific workflow, not a generic engine rule.
+Delegation uses native mission collections and child Plans. Read
+[the delegation recipe](docs/agents/recipes/delegation.md). Host dispatch assigns an
+existing child Plan to a worker; declarations, Checks and returned Results remain
+in TRUST. Corpus organizes specifications and references these Plans. Do not create
+a second mission registry, claim store, response store or execution lifecycle in Corpus.
 
 ## Active repository map
 

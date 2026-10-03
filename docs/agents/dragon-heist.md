@@ -119,6 +119,6 @@ Runtime [four-level escalation acceptance](../../packages/trust-runtime/acceptan
 separately covers descendant navigation, independent branches and supersession.
 Neither replaces a human-visible IHM walkthrough with real agents.
 
-For the next reusable example, follow [coordination delegation](../../extensions/coordination/DELEGATION.md):
-external missions and their responses replace game moves, but only TRUST decides
-Check qualification and Plan completion. Bundle distribution remains deferred.
+For a reusable work example, follow [native delegation](recipes/delegation.md):
+TRUST retains child Plan inputs and declarations, qualifies Checks and imports
+returned Results. No external mission registry is required.

@@ -90,11 +90,10 @@ Inline sources and their resolved definitions remain in persistent Plan history.
 
 ## Select extension-specific instructions
 
-When the assignment uses the coordination extension, read its complete
-[delegation methodology](../../extensions/coordination/DELEGATION.md) before
-creating or dispatching a mission. Follow its worker claim, response and coordinator
-review flow. A host task launched outside that Procedure is not automatically a
-coordination mission.
+Native mission collections create child Plans before host dispatch. The child
+Plan already owns the assignment and agent declarations; do not create an
+external mission, claim or response record to mirror it. The host assigns that
+Plan to its worker. TRUST qualifies Checks and imports returned Results.
 
 Read [Dragon Heist](dragon-heist.md) only for a requested game demonstration or
 when its nested Plan example is needed. Do not execute it to validate an unrelated
@@ -116,7 +115,6 @@ resuming the ancestor by guesswork. Multiple active escalations remain distinct.
 After a transport error, inspect the current Plan and Check before repeating an
 external action. A lost response may hide accepted Facts or finalization. Do not
 reset a runtime or edit its database to unstick a workflow. Changed mission scope
-does not authorize rewriting immutable root inputs; use the coordination guide's
-replacement-Plan process when applicable.
+does not authorize rewriting immutable root inputs; declare a separate mission with its own Plan when the scope changes.
 
 Detailed reference: [agent execution and results](../../packages/trust-ui/src/docs/content/en/plans/agent.mdx).

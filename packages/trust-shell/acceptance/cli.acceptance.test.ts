@@ -128,13 +128,6 @@ test("trust server start serves the compiled UI and server status observes its p
     const extensions = await fetch(`http://127.0.0.1:${webPort}/extensions`);
     assert.equal(extensions.status, 200);
     assert.deepEqual(await extensions.json(), { extensions: [] });
-    const shortMobileLink = await fetch(`http://127.0.0.1:${webPort}/mobile/mobile-comp?project=trust`, {
-      redirect: "manual",
-    });
-    assert.equal(shortMobileLink.status, 302);
-    assert.equal(shortMobileLink.headers.get("location"), "/mobile/mobile-companion/?project=trust");
-    assert.equal(shortMobileLink.headers.get("cache-control"), "no-store");
-    assert.equal((await fetch(`http://127.0.0.1:${webPort}${shortMobileLink.headers.get("location")}`)).status, 200);
     const proxied = await fetch(`http://127.0.0.1:${webPort}/mobile/apps/maket/documents/example/read?mode=phone`, {
       headers: { origin: "https://private-tailnet.invalid", referer: "https://private-tailnet.invalid/mobile/" },
     });
@@ -158,17 +151,17 @@ test("trust server start serves the compiled UI and server status observes its p
     });
     assert.equal(message, "mobile-ws");
     websocket.close();
-    for (const route of ["/extensions", "/extensions/coordination"]) {
+    for (const route of ["/extensions", "/extensions/example"]) {
       const navigation = await fetch(`http://127.0.0.1:${webPort}${route}`, { headers: { accept: "text/html" } });
       assert.equal(navigation.status, 200);
       assert.match(navigation.headers.get("content-type") ?? "", /text\/html/);
       assert.match(await navigation.text(), /<title>TRUST<\/title>/);
     }
     for (const route of [
-      "/extensions/coordination/api/missions",
-      "/extensions/coordination/assets/remoteEntry.js",
-      "/extensions/coordination/events",
-      "/extensions/coordination/trust/plans",
+      "/extensions/example/api/missions",
+      "/extensions/example/assets/remoteEntry.js",
+      "/extensions/example/events",
+      "/extensions/example/trust/plans",
     ]) {
       const backend = await fetch(`http://127.0.0.1:${webPort}${route}`, { headers: { accept: "text/html" } });
       assert.equal(backend.status, 404);
@@ -231,7 +224,7 @@ test("the optional web password protects runtime and app routes without forwardi
   const origin = `http://127.0.0.1:${webPort}`;
   try {
     await waitFor(`${origin}/health`, server, () => stderr, { authorization });
-    for (const route of ["/mobile/mobile-companion", "/rpc", "/mcp", "/extensions", "/mobile/apps/maket/"]) {
+    for (const route of ["/extensions/example", "/rpc", "/mcp", "/extensions", "/mobile/apps/maket/"]) {
       const denied = await fetch(`${origin}${route}`);
       assert.equal(denied.status, 401, route);
       assert.match(denied.headers.get("www-authenticate") ?? "", /Basic/);

@@ -1,6 +1,6 @@
 ---
 title: "Delegating a mission"
-summary: "Declare child missions and distinguish their execution from the coordination integration."
+summary: "Declare native child missions and return their verified Results."
 order: 5
 ---
 
@@ -148,39 +148,12 @@ Only the **fully validated current child Plan** contributes its Result values. A
 
 </Details>
 
-<Details title="Coordination extension (PostgreSQL)">
+<Details title="Corpus and execution ownership">
 
-**Coordination extension recipe.**
+Corpus organizes threads, facets, specifications and requirements, and links them to TRUST Plans. TRUST retains mission inputs, declarations, child Plans, Checks, Facts and Results. Agent hosts dispatch workers to those Plans. Corpus does not need an external mission, claim or response registry.
 
-The following PostgreSQL workflow is a separate integration recipe. Its stored request, worker claim and response do not replace core mission collections or child Plan lifecycle.
+Corpus delegation Procedures version 2 use this native lifecycle. Their acceptance and review Operations observe tests and declared checklists without storing a second execution state. A completed response is observed from the child Plan after its required Checks; it does not replace those Checks.
 
-The `agent-delegation` Procedure coordinates one bounded mission. The host launches the agent. An external PostgreSQL database retains its instructions and response; TRUST controls when each Operation can run and qualifies the observed result.
-
-| Stage | Responsible actor | Result |
-| --- | --- | --- |
-| Create mission | Coordinator | The request, assignment, expected result and scope are persisted. |
-| Claim mission | Assigned worker | The database records ownership and returns the instructions. |
-| Submit response | Worker | The report and a completed or blocked outcome are persisted. |
-| Observe completion | Coordinator | TRUST qualifies the stored outcome; a blocker leads to escalation. |
-
-The worker receives a Check URI, reads the Plan and follows its current intent. After doing the work, it declares `response` and `outcome` through MCP with the current revision. The submission Check then appears. The worker executes it through the runner; declaring a response alone does not persist it in the external database or satisfy the Check.
-
-If the worker loses its successful claim output, a fresh client can read the Plan with the same Check URI. The engagement context restores the immutable instructions, expected result and scope supplied at engagement; these are not newly observed database Facts. Continue with the current intent and next actionable Check, without replaying the satisfied claim.
-
-A persisted blocked response remains immutable. Further recovery work uses a new successor mission with new Plan and mission identifiers and a reference to its predecessor. Resuming the old Plan does not authorize replacing the original response.
-
-The same mission identifier cannot be reused for another request. Claiming with the assigned identity and submitting an identical response are replay-safe. A different response cannot overwrite the first submission. The database retains creation, claim and outcome events; TRUST retains attempts, accepted Facts, qualifications and intentions.
-
-<Callout>
-Completion means that the agent returned and stored a completed response. It is not independent verification of the response's correctness. Use additional Checks or a review Procedure when that is required.
-</Callout>
-
-**Current boundary.**
-
-This first recipe runs on a trusted local host. The declared agent name correlates work; it does not authenticate a caller. Scope text is not an executable permission policy for the agent's other capabilities. Launching workers, discovering pending missions and recovering interrupted host processes remain outside this Procedure.
-
-The retained test PostgreSQL deployment has no persistent volume: it survives client restarts, not pod replacement. Preserve both extension PostgreSQL data and the core runtime history before treating this as durable production storage.
-
-The repository's `environments/trust-test/delegations/README.md` contains setup commands, the first actual request and the public acceptance recipe. The supplied first request belongs to its retained Plan: choose new identifiers for new work.
+Coordination and Mobile Companion have been retired. Their older published definitions and retained records remain historical; existing Plans retain their pinned definitions. New work uses native mission collections.
 
 </Details>

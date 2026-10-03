@@ -1,8 +1,16 @@
 import { defineConfig } from "@playwright/test";
-import federation from "./playwright.extensions.config.js";
-
 export default defineConfig({
-  ...federation,
+  testDir: "./acceptance",
   testMatch: "child-escalations.acceptance.spec.ts",
-  webServer: { ...federation.webServer, env: { TRUST_ACCEPTANCE_RESTART_CONTROL: "4398" } },
+  workers: 1,
+  reporter: "line",
+  timeout: 60000,
+  use: { baseURL: "http://127.0.0.1:4177", viewport: { width: 1440, height: 1000 }, trace: "retain-on-failure" },
+  webServer: {
+    command: "node acceptance/support/child-escalations-server.mjs",
+    env: { TRUST_ACCEPTANCE_RESTART_CONTROL: "4398" },
+    url: "http://127.0.0.1:4177/health",
+    reuseExistingServer: false,
+    timeout: 120000,
+  },
 });

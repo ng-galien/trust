@@ -9,8 +9,6 @@
   "workspaces": [
     "packages/trust-extension-sdk",
     "extensions/dragon-heist",
-    "extensions/coordination",
-    "extensions/mobile-companion",
     "apps/trust-desktop",
     "apps/trust-web",
     "packages/trust-runtime",

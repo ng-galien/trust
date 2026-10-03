@@ -12,10 +12,19 @@ import {
 } from "@trust/operation";
 import { matchHttpBody, matchHttpFormat, matchHttpHeaderSource } from "@trust/operation/match";
 
+import type { RunnerAuthorization } from "../auth/credentials.js";
 import { clip, nullReporter, type StepReporter } from "../diagnostics/events.js";
 import type { JsonObject } from "../lib/json.js";
 import { type Clock, instantMilliseconds, SystemClock } from "../time.js";
 import { parseHttpJson, requestHttp } from "./request.js";
+
+export interface HttpRunnerConfiguration {
+  /** First-party RPC only. Other Operation destinations use their declared Credentials. */
+  readonly runtimeRpc?: {
+    readonly endpoint: string;
+    readonly authorization: RunnerAuthorization;
+  };
+}
 
 export class HttpStatusError extends Error {
   constructor(
@@ -38,6 +47,7 @@ export async function runHttp(
   timeoutMs?: number,
   clock: Clock = new SystemClock(),
   resolveCredential: (credential: string) => string = undelegated,
+  configuration: HttpRunnerConfiguration = {},
 ): Promise<HttpTextResult | HttpJsonResult | HttpEmptyResult> {
   const baseUrl = environment[http.url.environment];
   if (typeof baseUrl !== "string") {
@@ -65,6 +75,20 @@ export async function runHttp(
       }),
     ),
   );
+  // Reuse the Runner's authenticated identity only for its exact configured RPC URL.
+  // Never override an explicit Operation authorization or forward it to another destination.
+  const runtime = configuration.runtimeRpc;
+  const runtimeHeaders =
+    runtime && url === runtime.endpoint && !Object.keys(headers).some((name) => name.toLowerCase() === "authorization")
+      ? await runtime.authorization.headers(url)
+      : {};
+  Object.assign(headers, runtimeHeaders);
+  const privateValues = Object.values(runtimeHeaders).flatMap((value) => [value, value.replace(/^Bearer /i, "")]);
+  const mask = (text: string): string =>
+    privateValues.reduce(
+      (result, value) => (value ? result.replaceAll(value, "[runner authorization]") : result),
+      text,
+    );
   const body = await requestBody(http, input, environment, steps, execution, resolveInput, resolveEnvironment);
   if (http.body !== undefined && !Object.keys(headers).some((name) => name.toLowerCase() === "content-type")) {
     headers["content-type"] = matchHttpBody(http.body, {
@@ -75,22 +99,31 @@ export async function runHttp(
   }
   reporter.log(
     "http.request",
-    `${http.method} ${url}${
-      Object.keys(headers).length === 0
-        ? ""
-        : `\n${Object.entries(headers)
-            .map(([name, value]) => `${name}: ${credentialHeaders.get(name) ?? value}`)
-            .join("\n")}`
-    }${body === undefined ? "" : `\n\n${clip(body, 8_192)}`}`,
+    mask(
+      `${http.method} ${url}${
+        Object.keys(headers).length === 0
+          ? ""
+          : `\n${Object.entries(headers)
+              .map(([name, value]) => `${name}: ${credentialHeaders.get(name) ?? value}`)
+              .join("\n")}`
+      }${body === undefined ? "" : `\n\n${clip(body, 8_192)}`}`,
+    ),
   );
   const startedAt = instantMilliseconds(clock);
-  const response = await requestHttp({
+  const received = await requestHttp({
     method: http.method,
     url,
     ...(Object.keys(headers).length === 0 ? {} : { headers }),
     ...(body === undefined ? {} : { body }),
     ...(timeoutMs === undefined ? {} : { timeoutMs }),
   });
+  // Mask before diagnostics, JSON parsing, later steps, Facts and actionOutcome.
+  const response = {
+    ...received,
+    statusText: mask(received.statusText),
+    headers: Object.fromEntries(Object.entries(received.headers).map(([name, value]) => [mask(name), mask(value)])),
+    body: mask(received.body),
+  };
   reporter.log(
     "http.response",
     `HTTP ${response.status}${response.statusText ? ` ${response.statusText}` : ""} (${instantMilliseconds(clock) - startedAt} ms)\n${Object.entries(

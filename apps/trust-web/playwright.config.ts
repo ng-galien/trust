@@ -12,9 +12,7 @@ export default defineConfig({
       name: "acceptance",
       testMatch: /\.acceptance\.spec\.ts$/,
       testIgnore: [
-        "extensions.acceptance.spec.ts",
         "child-escalations.acceptance.spec.ts",
-        "svg-rendering.acceptance.spec.ts",
         // Runs against its own runtime and local registries (playwright.registry.config.ts).
         "registry.acceptance.spec.ts",
         // Runs against its own runtime with the Corpus extension (playwright.corpus.config.ts).

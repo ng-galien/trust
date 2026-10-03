@@ -129,8 +129,8 @@ security sandbox.
   browser props, manifest values or public catalog output.
 
 For one complete optional example, inspect the
-[coordination manifest](../../extensions/coordination/extension.json) and
-[lifecycle guide](../../extensions/coordination/README.md). Its PostgreSQL storage
+[Dragon Heist manifest](../../extensions/dragon-heist/extension.json) and
+[lifecycle guide](../../extensions/dragon-heist/README.md). Its game storage
 is an example choice, not an SDK requirement. See the
 [authoring task guide](../../docs/agents/author-extension.md) for verification and
 the independent [package acceptance](acceptance/package.acceptance.test.mjs) for

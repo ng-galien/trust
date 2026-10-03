@@ -6,7 +6,7 @@ import { PLAN_ACCESS_ACTIONS, RESOURCE_ACCESS_ACTIONS } from '../../../packages/
 
 export const DEVELOPMENT_RESOURCE = 'urn:trust:runtime';
 export const DEVELOPMENT_INTROSPECTION_RESOURCE = 'urn:trust:runtime:introspection';
-const extensionUse = ['coordination', 'mobile-companion', 'dragon-heist'].map(id => `trust.extension.${id}.use`);
+const extensionUse = ['corpus', 'extension-a', 'extension-b', 'dragon-heist'].map(id => `trust.extension.${id}.use`);
 const own = PLAN_ACCESS_ACTIONS.map(action => `trust.${action}.own`);
 const all = PLAN_ACCESS_ACTIONS.map(action => `trust.${action}.all`);
 const catalog = RESOURCE_ACCESS_ACTIONS.map(action => `trust.${action}`);
