@@ -148,7 +148,7 @@ export class ExtensionInstance {
   }
   async read(input: unknown, access?: AccessContext): Promise<{ status: number; body: unknown }> {
     this.requireRunning();
-    const context = extensionInvocation(this.authority, this.installation.id, access);
+    const context = extensionInvocation(this.authority, this.installation.id, access, "read");
     const result = await this.#call("read", input, context, access);
     const status = result?.status;
     if (
@@ -176,9 +176,15 @@ export class ExtensionInstance {
       Array.isArray(envelope.arguments)
     )
       throw new ExtensionError(400, "invalid-extension-command");
-    if (!this.installation.mcp?.commands.some((command) => command.name === envelope.command))
-      throw new ExtensionError(400, "extension-command-not-declared");
-    const context = extensionInvocation(this.authority, this.installation.id, access);
+    const declared = this.installation.mcp?.commands.find((command) => command.name === envelope.command);
+    if (!declared) throw new ExtensionError(400, "extension-command-not-declared");
+    // The host applies the character each command declares: a read right opens read commands only.
+    const context = extensionInvocation(
+      this.authority,
+      this.installation.id,
+      access,
+      declared.readOnly ? "read" : "write",
+    );
     const result = await this.#call("command", envelope, context, access);
     const status = result?.status;
     const text = result?.text;

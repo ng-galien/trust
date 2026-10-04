@@ -1,8 +1,9 @@
 import {
   type AccessConfiguration,
   type AccessContext,
+  type ExtensionCommandAccess,
   type ExternalPrincipal,
-  extensionUseScope,
+  extensionScope,
   type PlanAccessScope,
   parseAccessConfiguration,
 } from "@trust/extension-sdk";
@@ -193,9 +194,23 @@ export class AccessService {
     authorizeAccess(this.#context(context), action, owner);
   }
 
-  /** Extension data use is distinct from lifecycle and every core Plan permission. */
-  authorizeExtension(context: AccessContext | undefined, extensionId: string): void {
-    this.authorize(context, extensionUseScope(extensionId).slice("trust.".length));
+  /**
+   * Extension data use is distinct from lifecycle and every core Plan permission. The `use` right opens everything,
+   * the `write` right opens read and write surfaces, and the `read` right opens read surfaces only.
+   */
+  authorizeExtension(context: AccessContext | undefined, extensionId: string, right?: ExtensionCommandAccess): void {
+    const accepted = [
+      extensionScope(extensionId, "use"),
+      ...(right === undefined ? [] : [extensionScope(extensionId, "write")]),
+      ...(right === "read" ? [extensionScope(extensionId, "read")] : []),
+    ];
+    matchAccessContext(this.#context(context), {
+      local: () => undefined,
+      authenticated: ({ scopes }) => {
+        if (!accepted.some((scope) => scopes.includes(scope)))
+          throw new AccessError("forbidden", "Required action permission is missing");
+      },
+    });
   }
 
   planScope(context: AccessContext | undefined, action: string): PlanAccessScope {

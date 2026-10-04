@@ -5,13 +5,15 @@ export type { BrowserAuthenticationConfiguration } from "./browser-authenticatio
 export type {
   AccessAction,
   AccessContext,
+  ExtensionCommandAccess,
+  ExtensionCommandAction,
   ExtensionUseAction,
   ExternalPrincipal,
   PlanAccessAction,
   PlanAccessScope,
   ResourceAccessAction,
 } from "./access.js";
-export { extensionUseScope, PLAN_ACCESS_ACTIONS, RESOURCE_ACCESS_ACTIONS } from "./access.js";
+export { extensionScope, extensionUseScope, PLAN_ACCESS_ACTIONS, RESOURCE_ACCESS_ACTIONS } from "./access.js";
 
 export type { CatalogMetadata, CatalogMetadataUpdate } from "./catalog.js";
 export type {

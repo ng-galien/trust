@@ -2,6 +2,7 @@
 // Runs one closed quality gate of a delegated mission with fixed commands and reports it on four lines:
 // gate, passed (1 or 0), findings, one-line summary. It always exits 0 so the Runner records the observation.
 import { spawn } from "node:child_process";
+import { measureInterfaceRules } from "./interface-rules.mjs";
 
 const TIMEOUT_MS = 600000;
 const run = (command, args) => runIn(".", command, args);
@@ -37,22 +38,44 @@ const gates = {
       summary: match ? match[0] : `code-moniker exited with ${result.code}`,
     };
   },
-  /** Typecheck of the interface packages and Biome errors in them. */
+  /** Typecheck of the interface packages, Biome errors in them, and the measured interface rules. */
   async interface() {
     const checks = [
       ["npm", ["run", "typecheck", "--workspace=@trust/ui"]],
       ["npm", ["run", "typecheck", "--workspace=@trust/web"]],
       ["npx", ["biome", "check", "--diagnostic-level=error", "packages/trust-ui", "apps/trust-web"]],
     ];
-    const failed = [];
-    for (const [command, args] of checks) {
-      const result = await run(command, args);
-      if (result.code !== 0) failed.push(`${command} ${args.join(" ")}`);
-    }
+    const [rules, ...results] = await Promise.all([
+      gates["interface-rules"](),
+      ...checks.map(([command, args]) => run(command, args)),
+    ]);
+    const failed = checks
+      .filter((_, index) => results[index].code !== 0)
+      .map(([command, args]) => `${command} ${args.join(" ")}`);
+    const findings = failed.length + rules.findings;
     return {
-      passed: failed.length === 0,
-      findings: failed.length,
-      summary: failed.length ? `failed: ${failed.join("; ")}` : "typecheck and Biome pass",
+      passed: findings === 0,
+      findings,
+      summary: [failed.length ? `failed: ${failed.join("; ")}` : "typecheck and Biome pass", rules.summary].join("; "),
+    };
+  },
+  /** Translation key parity between English and French catalogues, and colours written outside the token files. */
+  async "interface-rules"() {
+    const { findings, styleSheets } = await measureInterfaceRules(".");
+    for (const finding of findings) process.stderr.write(`${finding}\n`);
+    return {
+      passed: findings.length === 0,
+      findings: findings.length,
+      summary: findings.length
+        ? `${findings.length} interface rule finding(s): ${findings
+            .map((finding) =>
+              finding
+                .replace(/: key "/u, ': "')
+                .replace(/ is in (English|French) only(?: \([^)]*\))?$/u, " $1 only")
+                .replace(" writes colour ", " "),
+            )
+            .join("; ")}`
+        : `translation keys match and ${styleSheets} style sheets use theme tokens`,
     };
   },
   /** Every change of the checkout, submodules and untracked files included, is committed by the coordinator. */

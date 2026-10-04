@@ -32,7 +32,8 @@ separate, deferred task.
    `ExtensionContext.trust` on the server with the invocation context in progress. Notifications trigger rereads; they
    are not authoritative state. Treat unavailable projections as unavailable,
    never infer a terminal Plan state from an external response.
-6. Use the host navigation functions when supplied for Plan and Procedure links.
+6. Write the extension page under the [interface authoring](author-interface.md) rules.
+   Use the host navigation functions when supplied for Plan and Procedure links.
    Preserve the page's search state through the supplied navigation contract;
    do not reconstruct routing in every extension.
 7. Build the extension and verify the packaged SDK independently of the server.

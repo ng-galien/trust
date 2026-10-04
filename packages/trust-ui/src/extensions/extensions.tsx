@@ -21,8 +21,13 @@ class RemoteBoundary extends Component<{ children: ReactNode; fallback: ReactNod
     return this.state.failed ? this.props.fallback : this.props.children;
   }
 }
-export function ExtensionPage({ bare = false }: { bare?: boolean }) {
-  const { extension: id } = useParams();
+/**
+ * The page of one extension. A workspace (an extension with a UI) owns every address below /extensions/<id>; the
+ * shell passes its identity, since nested workspace addresses have no route parameter of their own.
+ */
+export function ExtensionPage({ bare = false, extension: workspace }: { bare?: boolean; extension?: string }) {
+  const params = useParams();
+  const id = workspace ?? params.extension;
   const location = useLocation();
   const navigate = useNavigate();
   const navigation = useMemo(
@@ -118,7 +123,8 @@ export function ExtensionPage({ bare = false }: { bare?: boolean }) {
   );
   return (
     <div className={bare ? "min-h-dvh min-w-0 bg-bg text-text" : "extension-workspace min-h-full min-w-0 flex-1 bg-bg"}>
-      {!bare && (
+      {/* A workspace presents itself; the Extensions header remains only for an extension without a UI. */}
+      {!bare && catalog.isSuccess && !extension?.ui && (
         <div className="bg-surface px-6 pt-4 pb-2">
           <Breadcrumb
             items={[

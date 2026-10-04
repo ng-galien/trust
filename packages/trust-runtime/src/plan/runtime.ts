@@ -1096,7 +1096,8 @@ export class PlanRuntime {
       if ("refusal" in resolved) return { contract: "trust.check-admission@1", ...resolved.refusal };
     }
     const attempt = creation.attempt;
-    if (creation.created && attempt.intent !== undefined) {
+    // Every admitted Attempt is announced: a follower sees that a Check started, before its Facts arrive.
+    if (creation.created) {
       this.#events.publish({
         type: "plan.state",
         at: this.#now().toISOString(),

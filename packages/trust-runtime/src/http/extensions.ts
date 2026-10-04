@@ -67,7 +67,7 @@ export function createExtensionsHttpHandler({
         rest[2] === "declarations" &&
         request.method === "POST"
       ) {
-        accessService.authorizeExtension(access, id);
+        accessService.authorizeExtension(access, id, "write");
         extension.requireRunning();
         extension.requireGrant("plans.declare");
         const input = parsePlanDeclarationReplacement(request.body);
@@ -79,7 +79,7 @@ export function createExtensionsHttpHandler({
         return;
       }
       if (request.method !== "GET") throw new ExtensionError(405, "extension-read-only");
-      if (surface === "trust" || surface === "events") accessService.authorizeExtension(access, id);
+      if (surface === "trust" || surface === "events") accessService.authorizeExtension(access, id, "read");
       else if (surface !== "api") accessService.authorize(access, "extension.status");
       extension.requireRunning();
       if (surface === "api") {
@@ -139,13 +139,15 @@ export function createExtensionsHttpHandler({
           .set({ "Content-Type": "text/event-stream", "Cache-Control": "no-cache", Connection: "keep-alive" });
         response.flushHeaders();
         expireAccessStream(access, response);
-        guardAccessStream(accessService, request, response, [`extension.${id}.use`]);
+        guardAccessStream(accessService, request, response, (current) =>
+          accessService.authorizeExtension(current, id, "read"),
+        );
         let closed = false;
         const send = (value: unknown, planSlug?: string) => {
           void accessService
             .authenticate(request.get("authorization"))
             .then(async (current) => {
-              accessService.authorizeExtension(current, id);
+              accessService.authorizeExtension(current, id, "read");
               if (planSlug) await planReader.readLivePlanBySlug(planSlug, current);
               if (!closed) response.write(`event: change\ndata: ${JSON.stringify(value)}\n\n`);
             })
@@ -166,7 +168,7 @@ export function createExtensionsHttpHandler({
           void accessService
             .authenticate(request.get("authorization"))
             .then((current) => {
-              accessService.authorizeExtension(current, id);
+              accessService.authorizeExtension(current, id, "read");
               return planReader.readLivePlanBySlug(changed, current);
             })
             .then((plan) => {

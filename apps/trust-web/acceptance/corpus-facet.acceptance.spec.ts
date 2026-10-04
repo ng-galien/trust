@@ -46,8 +46,8 @@ const threadTitles: Record<string, string> = {
   [REGISTRY_THREAD]: "Interface registry",
   [CONFLICT_THREAD]: "Theme rule",
 };
-/** The extension's own breadcrumb, below the host's. */
-const corpusBreadcrumb = (page: Page) => page.locator(".corpus-app").getByRole("navigation", { name: "Breadcrumb" });
+/** The extension's trail of the screens followed. */
+const corpusTrail = (page: Page) => page.locator(".corpus-app").getByRole("navigation", { name: "Trail" });
 const entries = (page: Page) => page.getByRole("list", { name: "Registry entries" }).getByRole("listitem");
 /** The registry entry of one Procedure reference; its values are named by their terms. */
 const row = (page: Page, procedure: string) =>
@@ -58,14 +58,12 @@ const value = (entry: ReturnType<typeof row>, term: "Nature" | "Statement" | "Or
 test("TRQ-010 AC1 a facet page lists its registry entries with Procedure reference, nature, statement and origin", async ({
   page,
 }) => {
-  const errors = await openCorpus(page, facetUrl("interface"), "Interface — technical requirements");
-  // The wireframe's breadcrumb and tabs, with the registry selected and counted.
-  const crumbs = corpusBreadcrumb(page);
-  await expect(crumbs.getByRole("link")).toHaveText(["Corpus", "TRUST", "Facets", "Interface"]);
-  await expect(crumbs.locator('[aria-current="page"]')).toHaveText("Technical requirements");
-  const tabs = page.getByRole("navigation", { name: "Facet sections" });
-  await expect(tabs.getByRole("link")).toHaveText([/^Threads/, /^Technical requirements\s*3$/, "Materialization"]);
-  await expect(tabs.getByRole("link", { name: /^Technical requirements/ })).toHaveAttribute("aria-current", "page");
+  const errors = await openCorpus(page, facetUrl("interface"), "Interface");
+  // The trail of the screens followed, and the registry counted on the one-page facet screen.
+  const trail = corpusTrail(page);
+  await expect(trail.getByRole("link")).toHaveText(["Corpus"]);
+  await expect(trail.locator('[aria-current="page"]')).toHaveText("Interface");
+  await expect(page.getByRole("heading", { name: /^Technical requirements\s*3$/, level: 2 })).toBeVisible();
 
   // Every entry of the facet's registry, as the read API returns it.
   const { entries: listed, conflicts } = await registry("interface");
@@ -109,11 +107,11 @@ test("TRQ-010 AC1 a facet page lists its registry entries with Procedure referen
   await expect(page.getByRole("heading", { name: "Interface — registry history", level: 1 })).toBeVisible();
   await expect(page.getByRole("region", { name: "Registry history" }).getByRole("listitem")).toHaveCount(3);
   await page.goBack();
-  await expect(page.getByRole("heading", { name: "Interface — technical requirements", level: 1 })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Interface", level: 1 })).toBeVisible();
 
   // Each entry leads to its origin thread, where the technical blocks render as cards with their registry status.
   await row(page, "ui-wireframe-first@1.0.0").getByRole("link", { name: "Interface registry" }).click();
-  await expect(page).toHaveURL(new RegExp(`thread=${REGISTRY_THREAD}`));
+  await expect(page).toHaveURL(new RegExp(`/threads/${REGISTRY_THREAD}$`));
   const document = page.getByRole("article", { name: "Thread document" });
   await expect(document.getByRole("heading", { name: "Interface registry", level: 1 })).toBeVisible();
   await expect(document).not.toContainText("::::");
@@ -140,7 +138,7 @@ test("TRQ-010 AC1 a facet page lists its registry entries with Procedure referen
 
   // Phone width: the registry reads as cards, without page overflow.
   await page.setViewportSize({ width: 390, height: 844 });
-  await visit(page, facetUrl("interface"), "Interface — technical requirements");
+  await visit(page, facetUrl("interface"), "Interface");
   await expect(row(page, "ui-wireframe-first@1.0.0")).toBeVisible();
   expect(await noPageOverflow(page)).toBe(true);
   expect(errors).toEqual([]);
@@ -149,7 +147,7 @@ test("TRQ-010 AC1 a facet page lists its registry entries with Procedure referen
 test("TRQ-010 AC2 a requirement attached to several facets appears on each facet page as one entry", async ({
   page,
 }) => {
-  const errors = await openCorpus(page, facetUrl("interface"), "Interface — technical requirements");
+  const errors = await openCorpus(page, facetUrl("interface"), "Interface");
   const [interfaceRegistry, documentationRegistry] = await Promise.all([
     registry("interface"),
     registry("documentation"),
@@ -165,9 +163,13 @@ test("TRQ-010 AC2 a requirement attached to several facets appears on each facet
   await expect(page.getByRole("region", { name: "Shared requirements" })).toHaveText(
     "Shared with Documentation for ui-translations@1.0.0",
   );
-  await corpusBreadcrumb(page).getByRole("link", { name: "Facets" }).click();
-  await page.getByRole("button", { name: "Documentation", exact: true }).click();
-  await expect(page.getByRole("heading", { name: "Documentation — technical requirements", level: 1 })).toBeVisible();
+  // The facet's neighbourhood leads to its corpus, whose facets include Documentation.
+  await page.getByRole("complementary", { name: "Facet summary" }).getByRole("link", { name: "Corpus: TRUST" }).click();
+  await page
+    .getByRole("navigation", { name: "Facets of TRUST" })
+    .getByRole("button", { name: "Documentation", exact: true })
+    .click();
+  await expect(page.getByRole("heading", { name: "Documentation", level: 1 })).toBeVisible();
   await expect(entries(page)).toHaveCount(1);
   await expect(row(page, "ui-translations@1.0.0")).toHaveCount(1);
   await expect(value(row(page, "ui-translations@1.0.0"), "Statement")).toHaveText(
@@ -218,7 +220,7 @@ test("TRQ-070 AC2 a reframed thread shows the missions completed under its repla
   await inherited.getByRole("link", { name: INHERITED_MISSIONS.complete, exact: true }).click();
   await expect(page).toHaveURL(/view=mission/);
   await expect(page.getByRole("heading", { name: INHERITED_MISSIONS.complete, level: 1 })).toBeVisible();
-  await expect(corpusBreadcrumb(page)).toContainText(INHERITED_MISSIONS.complete);
+  await expect(corpusTrail(page)).toContainText(INHERITED_MISSIONS.complete);
   await page.goBack();
   await expect(missionCards(page, "Inherited missions")).toHaveCount(1);
   for (const width of [1280, 390]) {
@@ -235,7 +237,7 @@ test("TRQ-010 AC1 a facet page reports a registry read failure instead of hiding
   const streams = countEventStreams(page);
   await fault(registryPath, true);
   try {
-    const errors = await openCorpus(page, facetUrl("interface"), "Interface — technical requirements");
+    const errors = await openCorpus(page, facetUrl("interface"), "Interface");
     // The failure is reported with its reason and a retry; the registry is not shown as empty.
     const failure = page.getByRole("alert").filter({ hasText: "The registry of Interface cannot be read." });
     await expect(failure).toContainText("Read refused by the acceptance proxy.");
@@ -259,7 +261,7 @@ test("TRQ-010 AC1 a facet page reports a registry read failure instead of hiding
   const french = await page.context().newPage();
   await fault(registryPath, true);
   try {
-    await openCorpus(french, facetUrl("interface"), "Interface — exigences techniques", "fr");
+    await openCorpus(french, facetUrl("interface"), "Interface", "fr");
     const failure = french.getByRole("alert").filter({ hasText: "Le registre de la facette Interface est illisible." });
     await expect(failure.getByRole("button", { name: "Réessayer" })).toBeVisible();
     await fault(registryPath, false);

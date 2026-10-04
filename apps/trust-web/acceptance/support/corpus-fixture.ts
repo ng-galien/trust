@@ -158,3 +158,37 @@ ${requirement("CORPUS-UI-REQ-040", "REFRAMED_DELIVERY", "The delivered work is k
 /** An addition of the reframed thread's current framework and the mission it founds. */
 export const ADDITION = "reframed-addition";
 export const ADDED_MISSION = "added-mission";
+
+/** The entry screen: a second corpus whose threads touch several facets in every state, and a thread without corpus. */
+export const ENTRY_CORPUS = { id: "exploration", title: "Delegation exploration" };
+export const ENTRY_FACETS = [
+  { id: "concepts", title: "Concepts" },
+  /** It represents the TRUST corpus, so its facet screen links to that corpus. */
+  { id: "sources", title: "Sources", representedCorpus: "trust" },
+  { id: "experiments", title: "Delegation experiments" },
+];
+export const ENTRY_THREADS = {
+  /** Active, touching the three facets of the exploration corpus. */
+  topology: { id: "delegation-topology", title: "Delegation topology language" },
+  /** Completed by hand today. */
+  vocabulary: { id: "framework-vocabulary", title: "Framework vocabulary" },
+  /** Paused. */
+  survey: { id: "source-survey", title: "Source survey" },
+  /** Active and attached to no corpus. */
+  loose: { id: "loose-idea", title: "Loose idea" },
+};
+
+/**
+ * The reading screens: a child of the topology thread, attached to TRUST on the Interface facet, with a child of its
+ * own; and a thread with thirteen children, more neighbours than its map shows. Their titles stay out of the entry
+ * screen's searches and filters.
+ */
+export const READING_THREADS = {
+  notation: { id: "topology-notation", title: "Topology notation", intention: "Write the notation of a topology." },
+  examples: { id: "notation-examples", title: "Notation examples" },
+  crowded: { id: "crowded-thread", title: "Crowded thread" },
+};
+export const CROWD = Array.from({ length: 13 }, (_, index) => ({
+  id: `crowd-member-${index + 1}`,
+  title: `Crowd member ${index + 1}`,
+}));

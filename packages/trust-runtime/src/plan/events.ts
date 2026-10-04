@@ -23,7 +23,8 @@ export class PlanEvents {
   }
 
   replay(lastEventId: string | undefined): { readonly events: readonly PlanEvent[]; readonly resync: boolean } {
-    if (lastEventId === undefined) return { events: this.#events, resync: false };
+    // A first connection has no cursor: the client reads its state through RPC, so no past event is replayed.
+    if (lastEventId === undefined) return { events: [], resync: false };
     const separator = lastEventId.lastIndexOf(":");
     const generation = separator < 0 ? "" : lastEventId.slice(0, separator);
     const sequence = separator < 0 ? Number.NaN : Number(lastEventId.slice(separator + 1));

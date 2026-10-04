@@ -50,13 +50,14 @@ export function guardAccessStream(
   service: AccessService,
   request: Request,
   response: Response,
-  actions: readonly string[] = [],
+  actions: readonly string[] | ((context: AccessContext) => void) = [],
 ): void {
   const heartbeat = setInterval(() => {
     void service
       .authenticate(request.get("authorization"))
       .then((context) => {
-        for (const action of actions) service.authorize(context, action);
+        if (typeof actions === "function") actions(context);
+        else for (const action of actions) service.authorize(context, action);
       })
       .catch(() => response.end());
   }, 15_000);

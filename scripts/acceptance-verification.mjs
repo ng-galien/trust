@@ -93,6 +93,8 @@ async function snapshot(root, contract) {
   const entries = new Map();
   let bytes = 0;
   async function visit(relative) {
+    // Installed dependencies are not the work under verification: they are never part of the closure.
+    if (path.basename(relative) === "node_modules") return;
     const absolute = path.join(root, relative);
     const stat = await lstat(absolute);
     if ((await realpath(absolute)) !== absolute) fail(`Symbolic link refused in verification closure: ${relative}`);

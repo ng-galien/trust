@@ -16,12 +16,17 @@ import {
   CORPUS_PROXY_PORT,
   CORPUS_RUNTIME_PORT,
   CORPUS_WEB_PORT,
+  CROWD,
   CURRENT_MISSION,
   DIAGRAM_THREAD,
+  ENTRY_CORPUS,
+  ENTRY_FACETS,
+  ENTRY_THREADS,
   FRAMEWORK_PLAN,
   INHERITED_MISSIONS,
   MISSION_PROCEDURE,
   MISSIONS,
+  READING_THREADS,
   REFRAMED_BODY,
   REFRAMED_OLD_PLAN,
   REFRAMED_PLAN,
@@ -404,9 +409,60 @@ await expectVerdict(addition, "approve addition", "VALIDATED");
 await declare(addition, {}, { work: [mission(REFRAMED_THREAD, ADDED_MISSION)] });
 await expectVerdict(await childOf(ADDED_MISSION, addition), "claim work", "VALIDATED");
 
-// 7. A proxy between the web host and the runtime. A spec makes a chosen read fail with
+// 7. The entry screen: a second corpus whose threads touch several facets, in every state, and a thread without corpus.
+await command("corpora.create", { ...ENTRY_CORPUS, description: "Exploratory work on delegation" });
+for (const facet of ENTRY_FACETS)
+  await command("facets.create", {
+    ...facet,
+    corpus: ENTRY_CORPUS.id,
+    description: `${facet.title} of the exploration`,
+    materialization: `exploration/${facet.id}`,
+  });
+async function entryThread({ id, title }, facets) {
+  await command("threads.open", { id, title, body: `## Goal\n\nExplore ${title.toLowerCase()} for the entry screen.` });
+  if (facets) {
+    const { revision } = await command("threads.read", { id });
+    await command("threads.attach", {
+      id,
+      expectedRevision: revision,
+      corpus: ENTRY_CORPUS.id,
+      intentions: facets.map((facet) => ({ facet, intention: `Explore ${facet} for ${title}.` })),
+    });
+  }
+  return (await command("threads.read", { id })).revision;
+}
+await entryThread(ENTRY_THREADS.topology, ["concepts", "sources", "experiments"]);
+const vocabulary = await entryThread(ENTRY_THREADS.vocabulary, ["concepts"]);
+await command("threads.close", { id: ENTRY_THREADS.vocabulary.id, expectedRevision: vocabulary });
+const survey = await entryThread(ENTRY_THREADS.survey, ["sources"]);
+await command("threads.freeze", { id: ENTRY_THREADS.survey.id, expectedRevision: survey });
+await entryThread(ENTRY_THREADS.loose);
+
+// 8. The reading screens: a child thread with a parent, a child and a facet, and a thread with thirteen children.
+async function readingThread({ id, title }, parentThread, intentions = []) {
+  await command("threads.open", { id, title, body: `## Goal\n\nRead ${title.toLowerCase()}.`, parentThread });
+  const { revision } = await command("threads.read", { id });
+  await command("threads.attach", { id, expectedRevision: revision, corpus: "trust", intentions });
+}
+const { notation, examples, crowded } = READING_THREADS;
+await readingThread(notation, ENTRY_THREADS.topology.id, [{ facet: "interface", intention: notation.intention }]);
+await readingThread(examples, notation.id);
+await readingThread(crowded);
+for (const member of CROWD) await readingThread(member, crowded.id);
+
+// 9. A proxy between the web host and the runtime. A spec makes a chosen read fail with
 // POST /__faults {"path": "/extensions/corpus/…", "fail": true}, and heals it with "fail": false.
+// POST /__caller {"write": false} makes the browser a caller with the read right only: the proxy refuses each write
+// command exactly as the host refuses it to such a caller; {"write": true} restores every right.
 const faults = new Set();
+let writer = true;
+const writeCommands = new Set(manifest.mcp.commands.filter((c) => !c.readOnly).map((c) => c.name));
+const readBody = (incoming) =>
+  new Promise((resolve) => {
+    const chunks = [];
+    incoming.on("data", (chunk) => chunks.push(chunk));
+    incoming.on("end", () => resolve(Buffer.concat(chunks)));
+  });
 const proxy = createServer((incoming, outgoing) => {
   const { pathname } = new URL(incoming.url ?? "/", runtimeUrl);
   if (pathname === "/__faults" && incoming.method === "POST") {
@@ -422,12 +478,49 @@ const proxy = createServer((incoming, outgoing) => {
     });
     return;
   }
+  if (pathname === "/__caller" && incoming.method === "POST") {
+    void readBody(incoming).then((body) => {
+      writer = JSON.parse(String(body)).write !== false;
+      outgoing.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify({ write: writer }));
+    });
+    return;
+  }
+  if (!writer && pathname === "/extensions/corpus/commands" && incoming.method === "POST") {
+    void readBody(incoming).then((body) => {
+      let name = "";
+      try {
+        name = JSON.parse(String(body)).command;
+      } catch {}
+      if (writeCommands.has(name))
+        outgoing
+          .writeHead(403, { "content-type": "application/json" })
+          .end(JSON.stringify({ error: { code: "access-denied", message: "Access denied" } }));
+      else relay(incoming, outgoing, body);
+    });
+    return;
+  }
+  if (!writer && pathname === "/extensions/corpus/api/workspace" && incoming.method === "GET") {
+    // The workspace read of a caller with the read right only says so, as the Corpus server does for that caller.
+    void fetch(`${runtimeUrl}${incoming.url}`)
+      .then(async (answer) => {
+        const workspace = await answer.json();
+        outgoing
+          .writeHead(answer.status, { "content-type": "application/json" })
+          .end(JSON.stringify({ ...workspace, writable: false }));
+      })
+      .catch(() => outgoing.writeHead(502).end());
+    return;
+  }
   if (faults.has(pathname)) {
     outgoing
       .writeHead(503, { "content-type": "application/json" })
       .end(JSON.stringify({ message: "Read refused by the acceptance proxy." }));
     return;
   }
+  relay(incoming, outgoing);
+});
+/** Forwards one request to the runtime; a body already read is sent as it was received. */
+function relay(incoming, outgoing, body) {
   const upstream = forward(
     {
       host: "127.0.0.1",
@@ -446,11 +539,12 @@ const proxy = createServer((incoming, outgoing) => {
     outgoing.end();
   });
   outgoing.on("close", () => upstream.destroy());
-  incoming.pipe(upstream);
-});
+  if (body) upstream.end(body);
+  else incoming.pipe(upstream);
+}
 await new Promise((resolve) => proxy.listen(CORPUS_PROXY_PORT, "127.0.0.1", resolve));
 
-// 8. The web host built from the current sources, reaching the runtime through the proxy.
+// 10. The web host built from the current sources, reaching the runtime through the proxy.
 const webEnvironment = {
   TRUST_RUNTIME_URL: `http://127.0.0.1:${CORPUS_PROXY_PORT}`,
   TRUST_WEB_PORT: String(CORPUS_WEB_PORT),

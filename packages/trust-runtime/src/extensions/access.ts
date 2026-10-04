@@ -1,4 +1,4 @@
-import type { AccessContext, ExtensionInvocationContext } from "@trust/extension-sdk";
+import type { AccessContext, ExtensionCommandAccess, ExtensionInvocationContext } from "@trust/extension-sdk";
 import { matchAccessContext } from "@trust/extension-sdk/match";
 import type { AccessService } from "../access/service.js";
 
@@ -7,8 +7,15 @@ export function extensionInvocation(
   authority: AccessService,
   extensionId: string,
   access: AccessContext | undefined,
+  right: ExtensionCommandAccess,
 ): ExtensionInvocationContext {
-  authority.authorizeExtension(access, extensionId);
+  authority.authorizeExtension(access, extensionId, right);
+  let write = true;
+  try {
+    authority.authorizeExtension(access, extensionId, "write");
+  } catch {
+    write = false;
+  }
   if (!authority.shared) return Object.freeze({ mode: "local" });
   if (!access) throw new Error("Verified extension authority is required");
   return matchAccessContext(access, {
@@ -22,6 +29,7 @@ export function extensionInvocation(
         extensionId,
         // Fixed users have no credential expiry; the private IPC delegation remains short-lived.
         expiresAt: context.expiresAt ?? Date.now() / 1000 + 60,
+        write,
       }),
   });
 }
@@ -34,7 +42,7 @@ export function parseExtensionInvocation(value: unknown, extensionId: string): E
   const principal = record.principal as Record<string, unknown> | undefined;
   if (
     record.mode !== "authenticated" ||
-    Object.keys(record).some((key) => !["mode", "principal", "extensionId", "expiresAt"].includes(key)) ||
+    Object.keys(record).some((key) => !["mode", "principal", "extensionId", "expiresAt", "write"].includes(key)) ||
     !principal ||
     typeof principal !== "object" ||
     Array.isArray(principal) ||
@@ -46,7 +54,8 @@ export function parseExtensionInvocation(value: unknown, extensionId: string): E
     record.extensionId !== extensionId ||
     typeof record.expiresAt !== "number" ||
     !Number.isFinite(record.expiresAt) ||
-    record.expiresAt <= Date.now() / 1000
+    record.expiresAt <= Date.now() / 1000 ||
+    typeof record.write !== "boolean"
   ) {
     throw new Error("Invalid extension authority");
   }
@@ -55,5 +64,6 @@ export function parseExtensionInvocation(value: unknown, extensionId: string): E
     principal: Object.freeze({ issuer: principal.issuer, subject: principal.subject }),
     extensionId,
     expiresAt: record.expiresAt,
+    write: record.write,
   });
 }

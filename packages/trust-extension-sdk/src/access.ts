@@ -96,11 +96,22 @@ export const RESOURCE_ACCESS_ACTIONS = [
 export type PlanAccessAction = (typeof PLAN_ACCESS_ACTIONS)[number];
 export type ResourceAccessAction = (typeof RESOURCE_ACCESS_ACTIONS)[number];
 export type ExtensionUseAction = `extension.${string}.use`;
-export type AccessAction = PlanAccessAction | ResourceAccessAction | ExtensionUseAction;
+/** The read or write character a command declares through `readOnly`. */
+export type ExtensionCommandAccess = "read" | "write";
+export type ExtensionCommandAction = `extension.${string}.${ExtensionCommandAccess}`;
+export type AccessAction = PlanAccessAction | ResourceAccessAction | ExtensionUseAction | ExtensionCommandAction;
 export type PlanAccessScope = "own" | "all";
 
 /** The exact installed extension identity owns this permission; no wildcard or lifecycle grant. */
 export function extensionUseScope(extensionId: string): string {
+  return extensionScope(extensionId, "use");
+}
+
+/**
+ * The scope of one extension right. `use` opens every command; `read` opens the commands declared `readOnly`,
+ * `write` the others.
+ */
+export function extensionScope(extensionId: string, right: "use" | ExtensionCommandAccess): string {
   if (!/^[a-z][a-z0-9-]*$/.test(extensionId)) throw new TypeError("Invalid extension identity");
-  return `trust.extension.${extensionId}.use`;
+  return `trust.extension.${extensionId}.${right}`;
 }

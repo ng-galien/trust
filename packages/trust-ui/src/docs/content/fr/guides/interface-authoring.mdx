@@ -1,0 +1,262 @@
+---
+title: "Écrire une interface"
+summary: "Écrire un écran de TRUST ou d’une extension sur les jetons de thème et les deux catalogues, selon les règles d’interface que la porte mesure et que le relecteur vérifie."
+order: 6
+---
+
+Ce guide est aussi donné aux agents sous l’identifiant `agents/author-interface`.
+
+## Prérequis et résultat
+
+Lire le fil Corpus approuvé de l’écran et chaque page de sa maquette avant d’écrire du
+code. Pour une page d’extension, lire d’abord le guide des agents
+`docs/agents/author-extension.md`. Le résultat est un écran de TRUST ou d’une extension
+TRUST qui suit les règles d’interface de la Procédure `delegation-interface@3.0.0`,
+passe la porte d’interface, et se montre dans les thèmes clair et sombre, en anglais et
+en français.
+
+## Où se trouvent les choses
+
+| Besoin | Hôte (`packages/trust-ui/src`) | Extension Corpus (`trust-extension/extensions/corpus/ui`) |
+| --- | --- | --- |
+| Fichier des jetons de thème | `packages/trust-ui/src/tokens.css` : valeurs claires sur `:root`, valeurs sombres sur `html.dark` | Aucun fichier de jetons : les jetons de l’hôte ; `shell.module.css` les renomme seulement en `--corpus-*` |
+| Convention des feuilles de style | Utilitaires Tailwind reliés aux jetons par `@theme inline` dans `styles.css` (`bg-surface`, `text-muted`, `border-border`) ; feuilles partagées à côté de leur domaine (`shell/plan-mobile.css`) | Un module CSS par composant, à côté de lui : `trail.tsx` avec `trail.module.css`, valeurs par `var(--color-…)` ou `var(--corpus-…)` |
+| Catalogue anglais | `packages/trust-ui/src/i18n/en/<area>.ts`, clés `area.section.name` | Le texte anglais donné à `t()` est la clé |
+| Catalogue français | `packages/trust-ui/src/i18n/fr/<area>.ts`, typé `Translation<typeof en>` | La table `fr` de `trust-extension/extensions/corpus/ui/i18n.tsx` |
+| Traduire | `const { t } = useTranslation()`, `t("common.actions.save")` | `const { t } = useI18n()`, `t("Save revision")`, `rich()` pour une phrase avec des liens, `context\|Text` pour un texte anglais qui a deux traductions françaises |
+
+Composants à réutiliser avant d’en écrire un nouveau :
+
+- Hôte, `packages/trust-ui/src/ui/` : `Button`, `IconButton`, `ButtonLink` (`button.tsx`) ;
+  `Breadcrumb`, `PageHeader` (`breadcrumb.tsx`) ; `ConfirmDialog` (`confirm.tsx`) ;
+  `Badge`, `StatusBadge`, `Count` (`badge.tsx`) ; `Menu`, `Popover` (`menu.tsx`, rendus
+  dans un portail au-dessus des tableaux) ; `Overlay` (`overlay.tsx`) ; `EmptyState`,
+  `LoadingState`, `ErrorBox` (`states.tsx`) ; `Field`, `TextInput`, `SearchInput`,
+  `SegmentedControl`, `Tooltip` (`controls.tsx`) ; `Select` (`select.tsx`) ; `FilterBox`
+  (`filter-box.tsx`) ; `InfoBadge` (`info-popover.tsx`) ; `Markdown`, `JsonViewer`, `SchemaForm`.
+- Corpus, `trust-extension/extensions/corpus/ui/` : `RouteAnchor` (`route-link.tsx`) pour
+  chaque lien routé ; `Trail` (`trail.tsx`) ; `ReadingLayout` (`side-panel.tsx`) pour un
+  document et son panneau latéral ; `ConfirmDialog` (`confirm-dialog.tsx`) ; `Badge`
+  (`badge.tsx`) ; `StatePill` (`state-pill.tsx`) ; `ReadFailure` (`read-failure.tsx`)
+  pour une lecture en échec et sa relance ; `RichText` (`rich-text.tsx`) ; les styles de
+  formulaire de `form-controls.module.css`.
+
+Une page d’extension reçoit `language` et la navigation de l’hôte dans `ExtensionPageProps`
+de `@trust/extension-sdk`. Elle n’importe jamais un fichier de composant de l’hôte : elle
+réutilise ses propres composants et les jetons de l’hôte.
+
+## Ce que mesure la porte d’interface
+
+`node scripts/workspace-gate.mjs interface` lance la vérification de types de `@trust/ui`
+et de `@trust/web`, Biome, et les règles d’interface mesurées.
+`node scripts/workspace-gate.mjs interface-rules` lance seulement les règles mesurées, en
+moins d’une seconde ; chaque constat est aussi écrit sur sa propre ligne dans la sortie
+d’erreur.
+
+- **Clés de traduction.** Chaque module `i18n/en` a les mêmes clés que son module
+  `i18n/fr`. Dans un catalogue d’extension dont les clés sont le texte anglais, chaque
+  texte littéral donné à `t()` a une entrée française, et chaque entrée française est un
+  texte que l’extension écrit encore. Un constat nomme la clé et la langue qui la porte seule.
+- **Couleurs en dur.** Sous `packages/*/src`, `apps/*/src` et
+  `trust-extension/extensions/*/ui`, une feuille de style autre que
+  `packages/trust-ui/src/tokens.css` n’écrit aucune couleur : pas de valeur
+  hexadécimale, pas de `rgb()`, `rgba()`, `hsl()`, `hsla()`, `hwb()`, `lab()`, `lch()`,
+  `oklab()`, `oklch()`, `color()` ni de couleur nommée comme `white`, y compris comme
+  valeur de repli de `var()`. `var(...)`, `transparent`, `currentColor`, `inherit`,
+  `initial`, `unset`, `revert` et `color-mix()` sur des jetons sont admis. Un constat
+  nomme le fichier et la ligne.
+
+Le relecteur garde les règles que la porte ne mesure pas.
+
+## Les règles d’interface et leurs exemples
+
+Chaque règle de la Procédure a un exemple conforme et un exemple refusé.
+
+### `wireframe-navigation`
+
+Lire chaque page de la maquette du fil et construire chaque entrée de navigation, fil d’Ariane et page qu’elle montre.
+
+Conforme : la maquette montre un parcours au-dessus du document, donc l’écran l’affiche.
+
+```tsx id="wireframe-navigation-conforming"
+<ReadingLayout label={t("Thread")} main={<ThreadDocument thread={thread} />} panel={<Neighbourhood thread={thread} />} />
+<Trail steps={trail} navigate={navigate} />
+```
+
+Refusé : une entrée de la maquette est omise, avec une note à la place de l’écran.
+
+```tsx id="wireframe-navigation-refused"
+{/* The neighbourhood map of wireframe page 7 comes later. */}
+<ThreadDocument thread={thread} />
+```
+
+### `translations`
+
+Mettre chaque texte visible dans les catalogues anglais et français, avec des clés identiques.
+
+Conforme : le texte passe par `t()` et les deux catalogues portent la clé.
+
+```tsx id="translations-conforming"
+// i18n/en/plans.ts: detail: { abandon: "Abandon the Plan" }
+// i18n/fr/plans.ts: detail: { abandon: "Abandonner le Plan" }
+<Button variant="danger">{t("plans.detail.abandon")}</Button>
+```
+
+Refusé : un texte écrit en dur, et une clé qu’un seul catalogue porte.
+
+```tsx id="translations-refused"
+// i18n/en/plans.ts: detail: { abandon: "Abandon the Plan" }
+// i18n/fr/plans.ts: detail: {}
+<Button variant="danger">Abandon the Plan</Button>
+```
+
+### `theme-tokens`
+
+Styler seulement par les jetons de thème et vérifier les thèmes clair et sombre.
+
+Conforme : chaque couleur est un jeton, donc le thème sombre suit.
+
+```css id="theme-tokens-conforming"
+.panel {
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text);
+  box-shadow: var(--shadow-2);
+}
+.panel:hover {
+  background: color-mix(in srgb, var(--color-accent) 10%, transparent);
+}
+```
+
+Refusé : des couleurs en dur, y compris une valeur de repli dans `var()` ; la porte nomme chaque ligne.
+
+```css id="theme-tokens-refused"
+.panel {
+  border: 1px solid #dde2e8;
+  background: var(--color-surface, #ffffff);
+  color: rgb(29 36 48);
+  box-shadow: 0 16px 60px #11182730;
+}
+```
+
+### `routed-pages`
+
+Ouvrir chaque détail, formulaire et création comme une page routée avec son URL et son fil d’Ariane ; une boîte de dialogue ne fait que confirmer une action irréversible.
+
+Conforme : le formulaire de création est une page qui a sa propre URL.
+
+```tsx id="routed-pages-conforming"
+<RouteAnchor href={`/corpus/views/new`}>{t("New view")}</RouteAnchor>
+<ConfirmDialog open={confirming} title={t("Delete the view {name}?", { name })} confirmLabel={t("Delete view")} pending={pending} onConfirm={remove} onCancel={close} />
+```
+
+Refusé : un formulaire ouvert dans une boîte de dialogue, sans URL à partager ni à recharger.
+
+```tsx id="routed-pages-refused"
+<Overlay open={creating} onClose={close}>
+  <NewViewForm onSaved={close} />
+</Overlay>
+```
+
+### `action-feedback`
+
+Montrer l’attente, le succès et l’échec de chaque action, et garder le résultat visible après le rechargement des données.
+
+Conforme : le bouton montre l’attente, et le résultat reste après le rechargement.
+
+```tsx id="action-feedback-conforming"
+<Button disabled={pending} onClick={save}>{t(pending ? "Saving…" : "Save revision")}</Button>
+{outcome?.ok === false && <ErrorBox message={t("The revision was not saved")} details={outcome.error} />}
+{outcome?.ok === true && <p role="status">{t("Revision {revision} saved", { revision: outcome.revision })}</p>}
+```
+
+Refusé : l’action ne donne aucun signe pendant qu’elle s’exécute, et un échec est seulement journalisé.
+
+```tsx id="action-feedback-refused"
+<Button onClick={() => save().catch((error) => console.error(error))}>{t("Save revision")}</Button>
+```
+
+### `unclipped-menus`
+
+Afficher les menus et les fenêtres contextuelles au-dessus des tableaux et des zones défilantes, en ne listant que les actions applicables avec leur explication.
+
+Conforme : le `Menu` partagé s’affiche dans un portail et ne liste que les actions qui s’appliquent.
+
+```tsx id="unclipped-menus-conforming"
+<Menu
+  label={t("plans.actions.menu")}
+  trigger={(props) => <IconButton {...props} label={t("plans.actions.menu")}><MoreHorizontal aria-hidden /></IconButton>}
+  items={[
+    ...(plan.state === "IN_PROGRESS" ? [{ label: t("plans.actions.abandon"), description: t("plans.actions.abandonHint"), onSelect: abandon }] : []),
+  ]}
+/>
+```
+
+Refusé : un menu en position absolue dans une cellule de tableau défilante, avec des actions désactivées qui ne s’appliquent jamais.
+
+```tsx id="unclipped-menus-refused"
+<td style={{ position: "relative", overflow: "auto" }}>
+  <div style={{ position: "absolute" }}>
+    <button disabled>{t("plans.actions.abandon")}</button>
+  </div>
+</td>
+```
+
+### `accessible-names`
+
+Donner à chaque contrôle un nom accessible qui a un sens, jamais un identifiant technique.
+
+Conforme : le bouton à icône est nommé par son action.
+
+```tsx id="accessible-names-conforming"
+<IconButton label={t("Hide the side panel")} onClick={collapse}>
+  <PanelRightClose aria-hidden />
+</IconButton>
+```
+
+Refusé : aucun nom, ou un identifiant technique comme nom.
+
+```tsx id="accessible-names-refused"
+<IconButton label="" onClick={collapse}><PanelRightClose /></IconButton>
+<button aria-label="btn-side-panel-collapse-7f3a">×</button>
+```
+
+### `responsive-layout`
+
+Garder chaque page utilisable à 390 pixels et sans défilement horizontal à 1280 pixels.
+
+Conforme : le panneau passe sous le document sur un écran étroit, et les valeurs longues vont à la ligne.
+
+```css id="responsive-layout-conforming"
+.reading {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) var(--panel-width);
+}
+.value {
+  overflow-wrap: anywhere;
+}
+@media (max-width: 899px) {
+  .reading {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+```
+
+Refusé : des largeurs fixes qui débordent d’un écran étroit.
+
+```css id="responsive-layout-refused"
+.reading {
+  display: grid;
+  grid-template-columns: 900px 420px;
+}
+.value {
+  white-space: nowrap;
+}
+```
+
+## Vérifier
+
+1. Lancer `node scripts/workspace-gate.mjs interface-rules`, puis la porte d’interface complète.
+2. Ouvrir chaque écran dans un onglet de navigateur que vous avez créé, dans les thèmes
+   clair et sombre, en anglais et en français, à 390 et à 1280 pixels de large.
+3. Lancer les tests d’acceptation nommés de la mission, un à la fois pendant la correction.

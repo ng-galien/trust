@@ -20,6 +20,14 @@ export async function fault(path: string, fail: boolean) {
   });
   if (!response.ok) throw new Error(`The proxy refused the fault on ${path}`);
 }
+/** Makes the browser a caller with the read right only, or restores every right, at the harness proxy. */
+export async function readOnlyCaller(readOnly: boolean) {
+  const response = await fetch(`http://127.0.0.1:${CORPUS_PROXY_PORT}/__caller`, {
+    method: "POST",
+    body: JSON.stringify({ write: !readOnly }),
+  });
+  if (!response.ok) throw new Error("The proxy refused to change the caller");
+}
 /** Counts the change streams the page opens to the Corpus extension. */
 export function countEventStreams(page: Page) {
   let opened = 0;

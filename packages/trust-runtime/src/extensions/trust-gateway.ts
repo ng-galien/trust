@@ -57,7 +57,9 @@ export class ExtensionTrustGateway {
 
   async call(installation: Installation, method: unknown, input: unknown, access: AccessContext | undefined) {
     try {
-      this.dependencies.accessService.authorizeExtension(access, installation.id);
+      // A declaration replacement writes in TRUST; every other surface reads.
+      const right = method === "plans.declarations.replace" ? "write" : "read";
+      this.dependencies.accessService.authorizeExtension(access, installation.id, right);
       return await this.#dispatch(installation, method, input, access);
     } catch (error) {
       if (error instanceof ExtensionTrustError) throw error;

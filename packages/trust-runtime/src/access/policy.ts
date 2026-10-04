@@ -15,7 +15,11 @@ export const samePrincipal = (left: ExternalPrincipal | null, right: ExternalPri
   left !== null && right !== null && left.issuer === right.issuer && left.subject === right.subject;
 
 export function assertKnownAction(action: string): void {
-  if (!planActions.has(action) && !resourceActions.has(action) && !/^extension\.[a-z][a-z0-9-]*\.use$/.test(action))
+  if (
+    !planActions.has(action) &&
+    !resourceActions.has(action) &&
+    !/^extension\.[a-z][a-z0-9-]*\.(use|read|write)$/.test(action)
+  )
     throw new AccessError("forbidden", "Unknown access action");
 }
 

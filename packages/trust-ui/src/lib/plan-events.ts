@@ -29,19 +29,33 @@ export function usePlanEventsBridge(): void {
     const invalidateRuntime = () => {
       void queryClient.invalidateQueries();
     };
-    const invalidatePlan = (plan: string | undefined) => {
+    // Events arrive in bursts: one flush per burst reads each list once, however many events it holds.
+    const pending = new Set<string>();
+    let every = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const flush = () => {
+      timer = undefined;
       void queryClient.invalidateQueries({ queryKey: ["plans"] });
       void queryClient.invalidateQueries({ queryKey: ["history"] });
-      if (plan === undefined) {
+      if (every) {
         void queryClient.invalidateQueries({ queryKey: ["plan"] });
         void queryClient.invalidateQueries({ queryKey: ["check"] });
-        return;
+      } else {
+        for (const plan of pending) {
+          void queryClient.invalidateQueries({ queryKey: ["plan", plan] });
+          void queryClient.invalidateQueries({
+            queryKey: ["check"],
+            predicate: (query) => String(query.queryKey[1] ?? "").includes(`/${plan}/`),
+          });
+        }
       }
-      void queryClient.invalidateQueries({ queryKey: ["plan", plan] });
-      void queryClient.invalidateQueries({
-        queryKey: ["check"],
-        predicate: (query) => String(query.queryKey[1] ?? "").includes(`/${plan}/`),
-      });
+      pending.clear();
+      every = false;
+    };
+    const invalidatePlan = (plan: string | undefined) => {
+      if (plan === undefined) every = true;
+      else pending.add(plan);
+      timer ??= setTimeout(flush, 150);
     };
     const onEvent = (raw: MessageEvent<string>) => {
       let event: PlanEvent;
@@ -70,6 +84,7 @@ export function usePlanEventsBridge(): void {
     };
     source.onerror = () => setConnected(false);
     return () => {
+      if (timer !== undefined) clearTimeout(timer);
       source.close();
       setConnected(false);
     };

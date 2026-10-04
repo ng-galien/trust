@@ -58,6 +58,7 @@ development process for every project.
 | Prove behavior | [Verification](verify-and-test.md) | Compilation, simulation, dry-run or live evidence, labelled accurately |
 | Reuse an authoring pattern | [Templates](templates.md) | Editable rendered source; publication stays separate |
 | Add an extension | [Extension authoring](author-extension.md) | Extension using the public SDK |
+| Write or change a screen of TRUST or of an extension | [Interface authoring](author-interface.md) | Screen on the theme tokens and both catalogues that passes the interface gate |
 
 For a **design or comprehension exercise**, assume or draft a missing Operation's
 interface and example response, label that assumption, and continue designing the

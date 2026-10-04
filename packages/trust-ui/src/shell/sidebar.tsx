@@ -80,7 +80,7 @@ function NavRow({ to, icon, label }: { to: string; icon: ReactNode; label: strin
 function extensionArea(pathname: string): string | null {
   if (pathname === "/extensions" || /^\/extensions\/(packages|settings)\//.test(pathname)) return "installed";
   if (pathname === "/extensions/sources" || pathname.startsWith("/extensions/sources/")) return "sources";
-  const workspace = /^\/extensions\/([^/]+)$/.exec(pathname);
+  const workspace = /^\/extensions\/([^/]+)(?:\/.*)?$/.exec(pathname);
   return workspace ? `workspace:${decodeURIComponent(workspace[1] ?? "")}` : null;
 }
 

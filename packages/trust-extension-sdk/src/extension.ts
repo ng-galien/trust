@@ -17,6 +17,8 @@ export type ExtensionInvocationContext =
       readonly principal: ExternalPrincipal;
       readonly extensionId: string;
       readonly expiresAt: number;
+      /** True when the caller holds the write right of the extension; a read surface tells its page with it. */
+      readonly write: boolean;
     };
 
 /** Hooks supplied by an integration; no TRUST storage or implementation access. */
