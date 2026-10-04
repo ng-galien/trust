@@ -27,8 +27,10 @@ import type {
 } from "@trust/extension-sdk";
 import { OperationCompilationError, projectOperationCredentials, projectOperationEnvironment } from "@trust/operation";
 import {
+  type AgentDeclaration,
   CatalogProcedureCompilationError,
   type CompiledProcedure,
+  type ControlledLanguageFinding,
   validateDeclaredInvocationResults,
 } from "@trust/procedure";
 import { AccessError } from "../access/error.js";
@@ -45,6 +47,7 @@ import type { Procedures } from "../procedure/procedures.js";
 import type { SessionStore } from "../session/store.js";
 import type { SnapshotStore } from "../snapshot/store.js";
 import type { Clock } from "../time.js";
+import { ControlledLanguageUnavailableError, type Vocabularies } from "../vocabulary/vocabularies.js";
 import { buildPlanRevision, validateAgentDeclarations, validateRootInputs } from "./build.js";
 import { ancestorBlocker, invocationDependencyDigest, readComposition, synchronizeChildren } from "./children.js";
 import type { EscalationStore } from "./escalation-store.js";
@@ -67,13 +70,17 @@ export type PlanRuntimeErrorCode =
   | "attempt-not-found"
   | "facts-present"
   | "facts-missing"
-  | "check-not-escalatable";
+  | "check-not-escalatable"
+  | "controlled-language"
+  | "controlled-language-unavailable";
 
 export class PlanRuntimeError extends Error {
   constructor(
     readonly code: PlanRuntimeErrorCode,
     message: string,
     options?: ErrorOptions,
+    /** Controlled language findings; present only for the `controlled-language` code. */
+    readonly findings: readonly ControlledLanguageFinding[] = [],
   ) {
     super(message, options);
     this.name = "PlanRuntimeError";
@@ -107,6 +114,7 @@ export interface PlanRuntimeDependencies {
   readonly escalationStore: EscalationStore;
   readonly planEvents: PlanEvents;
   readonly sessionDurationMs: number;
+  readonly vocabularies: Vocabularies;
 }
 
 export class PlanRuntime {
@@ -125,6 +133,7 @@ export class PlanRuntime {
   readonly #escalations: EscalationStore;
   readonly #events: PlanEvents;
   readonly #sessionDurationMs: number;
+  readonly #vocabularies: Vocabularies;
 
   constructor(dependencies: PlanRuntimeDependencies) {
     if (!Number.isSafeInteger(dependencies.sessionDurationMs) || dependencies.sessionDurationMs <= 0) {
@@ -145,6 +154,24 @@ export class PlanRuntime {
     this.#escalations = dependencies.escalationStore;
     this.#events = dependencies.planEvents;
     this.#sessionDurationMs = dependencies.sessionDurationMs;
+    this.#vocabularies = dependencies.vocabularies;
+  }
+
+  /**
+   * Controlled language findings on prose that an agent declares on a Plan, before the call changes anything.
+   * When the control cannot run, it throws {@link ControlledLanguageUnavailableError}: no text passes without control.
+   */
+  async #controlDeclarations(
+    planSlug: string,
+    revision: number,
+    declarations: readonly AgentDeclaration[],
+  ): Promise<readonly ControlledLanguageFinding[]> {
+    const planRevision = await this.#plans.readRevision(planSlug, revision);
+    if (!planRevision)
+      throw new ControlledLanguageUnavailableError(
+        `Revision ${revision} of Plan ${planSlug} cannot be read, so its controlled language cannot be applied.`,
+      );
+    return this.#vocabularies.controlDeclarations(planRevision.resolvedProcedure, declarations);
   }
 
   async #authorizePlan(
@@ -422,6 +449,26 @@ export class PlanRuntime {
         "check-not-escalatable",
         "Escalation must reference its finalized NOT_VALIDATED Attempt",
       );
+    let languageFindings: readonly ControlledLanguageFinding[];
+    try {
+      languageFindings = await this.#controlDeclarations(requested.planSlug, requested.planRevision, [
+        { field: "blocking-reason", text: input.blockingReason },
+        { field: "forbidden-further-action", text: input.forbiddenFurtherAction },
+      ]);
+    } catch (error) {
+      if (!(error instanceof ControlledLanguageUnavailableError)) throw error;
+      throw new PlanRuntimeError("controlled-language-unavailable", controlledLanguageUnavailable(error), {
+        cause: error,
+      });
+    }
+    if (languageFindings.length > 0) {
+      throw new PlanRuntimeError(
+        "controlled-language",
+        controlledLanguageRefusal("The escalation declarations", languageFindings),
+        undefined,
+        languageFindings,
+      );
+    }
     const requestedPlan = requested.planSlug;
     let escalation: PlanEscalation | undefined;
     let escalationCreated = false;
@@ -1612,6 +1659,26 @@ export class PlanRuntime {
     }
     const intentFailure = await this.#validateIntentAdmission(plan, check, checks, active, admittedIntent, nextIntent);
     if (intentFailure) return { refusal: refusal(attemptKey, intentFailure.reasonCode, intentFailure.reason) };
+    if (nextIntent !== undefined) {
+      let findings: readonly ControlledLanguageFinding[];
+      try {
+        findings = await this.#controlDeclarations(plan.slug, plan.currentRevision, [
+          { field: "next-intent", text: nextIntent },
+        ]);
+      } catch (error) {
+        if (!(error instanceof ControlledLanguageUnavailableError)) throw error;
+        return {
+          refusal: refusal(attemptKey, "controlled-language-unavailable", controlledLanguageUnavailable(error)),
+        };
+      }
+      if (findings.length > 0)
+        return {
+          refusal: {
+            ...refusal(attemptKey, "controlled-language", controlledLanguageRefusal("The nextIntent", findings)),
+            findings,
+          },
+        };
+    }
     const admissionCredentials = this.#admissionCredentials(attemptKey, plan, check);
     if ("refusal" in admissionCredentials) return admissionCredentials;
     return {
@@ -2012,6 +2079,19 @@ function refuse(contract: Refusal["contract"], attemptKey: string, reasonCode: s
 
 function refusal(attemptKey: string, reasonCode: string, reason: string): Omit<Refusal, "contract"> {
   return { status: "REFUSED", attemptKey, reasonCode, reason, next: { action: "READ_PLAN" } };
+}
+
+/** Refusal text that names each finding with its field and rule, for surfaces that show only the text. */
+function controlledLanguageRefusal(subject: string, findings: readonly ControlledLanguageFinding[]): string {
+  return [
+    `${subject} breaks the controlled language of the Plan's Procedure. Rewrite and call again.`,
+    ...findings.map(({ field, rule, message }) => `[${field} ${rule}] ${message}`),
+  ].join("\n");
+}
+
+/** Refusal text when the controlled language of a Plan cannot run. */
+function controlledLanguageUnavailable(error: ControlledLanguageUnavailableError): string {
+  return `The controlled language of the Plan's Procedure cannot be applied. Nothing changed. ${error.message}`;
 }
 
 function digest(value: unknown): string {

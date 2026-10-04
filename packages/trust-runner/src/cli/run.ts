@@ -75,6 +75,12 @@ function report(result: CheckResult): string {
       `Check: ${result.checkUri}`,
       `Code: ${result.result.reasonCode}`,
       `Reason: ${result.result.reason}`,
+      ...(result.result.findings === undefined
+        ? []
+        : [
+            "Findings:",
+            ...result.result.findings.map(({ field, rule, message }) => `- field ${field}, rule ${rule}: ${message}`),
+          ]),
       "Next: READ_PLAN",
       "",
     ].join("\n");

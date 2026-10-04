@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 
 /** One PostgreSQL schema for the embedded and server adapters. */
-export const POSTGRES_SCHEMA_VERSION = 3;
+export const POSTGRES_SCHEMA_VERSION = 4;
 export const POSTGRES_SCHEMA = `
   CREATE TABLE source_templates (
     id TEXT COLLATE "C" PRIMARY KEY,
@@ -92,6 +92,18 @@ export const POSTGRES_SCHEMA = `
     published_at TIMESTAMPTZ(3) NOT NULL,
     PRIMARY KEY (procedure_name, procedure_version),
     UNIQUE (definition_digest)
+  );
+
+  CREATE TABLE published_vocabularies (
+    vocabulary_name TEXT COLLATE "C" NOT NULL,
+    vocabulary_version TEXT COLLATE "C" NOT NULL,
+    definition_digest TEXT COLLATE "C" NOT NULL,
+    source_name TEXT COLLATE "C" NOT NULL,
+    source TEXT COLLATE "C" NOT NULL,
+    compiled_vocabulary_json JSONB NOT NULL CHECK (jsonb_typeof(compiled_vocabulary_json) IN ('object')),
+    published_by TEXT COLLATE "C" NOT NULL,
+    published_at TIMESTAMPTZ(3) NOT NULL,
+    PRIMARY KEY (vocabulary_name, vocabulary_version)
   );
 
   CREATE TABLE catalog_metadata_revisions (
@@ -359,6 +371,8 @@ export const POSTGRES_SCHEMA = `
     FOR EACH ROW EXECUTE FUNCTION trust_require_child_creator();
   CREATE INDEX plans_creator_created ON plans(creator_issuer, creator_subject, created_at DESC, plan_slug ASC);
   CREATE TRIGGER published_procedures_cannot_change BEFORE UPDATE OR DELETE ON published_procedures
+    FOR EACH ROW EXECUTE FUNCTION trust_refuse_immutable_update();
+  CREATE TRIGGER published_vocabularies_cannot_change BEFORE UPDATE OR DELETE ON published_vocabularies
     FOR EACH ROW EXECUTE FUNCTION trust_refuse_immutable_update();
   CREATE TRIGGER plan_revisions_cannot_change BEFORE UPDATE ON plan_revisions
     FOR EACH ROW EXECUTE FUNCTION trust_refuse_immutable_update();

@@ -49,6 +49,8 @@ import { TemplateService } from "./template/service.js";
 import { type Clock, SystemClock } from "./time.js";
 import { TrialRegistry } from "./trial/registry.js";
 import { DEFAULT_TRIAL_TIMEOUT_MS, defaultRunnerTrialScript, TrialService } from "./trial/service.js";
+import { VocabularyStore } from "./vocabulary/store.js";
+import { Vocabularies } from "./vocabulary/vocabularies.js";
 
 export interface RuntimeComponents {
   readonly accessConfiguration: AccessConfiguration;
@@ -87,6 +89,8 @@ export interface RuntimeComponents {
   readonly planStore: PlanStore;
   readonly procedureStore: ProcedureStore;
   readonly procedures: Procedures;
+  readonly vocabularyStore: VocabularyStore;
+  readonly vocabularies: Vocabularies;
   readonly templateService: TemplateService;
   readonly sessionStore: SessionStore;
   readonly attemptStore: AttemptStore;
@@ -204,6 +208,8 @@ export const createRuntimeContainer = async (
     planStore: asClass(PlanStore).singleton(),
     procedureStore: asClass(ProcedureStore).singleton(),
     procedures: asClass(Procedures).singleton(),
+    vocabularyStore: asClass(VocabularyStore).singleton(),
+    vocabularies: asClass(Vocabularies).singleton(),
     templateService: asClass(TemplateService).singleton(),
     sessionStore: asClass(SessionStore).singleton(),
     attemptStore: asClass(AttemptStore).singleton(),
@@ -236,6 +242,7 @@ export const createRuntimeContainer = async (
     // Resolve the owned singleton before other startup hooks so disposal also covers their failures.
     container.resolve("database");
     await container.resolve("operationCatalog").initialize();
+    await container.resolve("vocabularies").initialize();
     await container.resolve("credentialService").initialize();
     await container.resolve("environmentService").initialize();
     await container.resolve("extensionHost").initialize();

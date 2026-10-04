@@ -229,7 +229,7 @@ export interface CommandDeclaration {
   readOnly: boolean;
 }
 
-import type { CompiledProcedure } from "@trust/procedure";
+import type { CompiledProcedure, CompiledVocabulary } from "@trust/procedure";
 
 export interface PlanParentView {
   plan: string;
@@ -296,6 +296,8 @@ export interface PlanView {
   readonly procedure: string;
   readonly procedureVersion: string;
   readonly procedureTitle: string;
+  /** Controlled language of the Plan's Procedure; present only when the Procedure carries the tag. */
+  readonly controlledLanguage?: import("@trust/procedure").CompiledControlledLanguage;
   readonly environment: string;
   readonly mode: PlanMode;
   readonly intentChaining: boolean;
@@ -714,6 +716,8 @@ export interface Refusal {
   readonly attemptKey: string;
   readonly reasonCode: string;
   readonly reason: string;
+  /** Controlled language findings on the declared `nextIntent`; present only for the `controlled-language` reason. */
+  readonly findings?: readonly import("@trust/procedure").ControlledLanguageFinding[];
   readonly next: { readonly action: "READ_PLAN" };
 }
 
@@ -862,6 +866,14 @@ export interface CredentialReference {
 
 export interface PublishedProcedure {
   readonly procedure: CompiledProcedure;
+  readonly sourceName: string;
+  readonly publishedBy: string;
+  readonly publishedAt: string;
+}
+
+/** One immutable catalog version of a controlled language vocabulary. */
+export interface PublishedVocabulary {
+  readonly vocabulary: CompiledVocabulary;
   readonly sourceName: string;
   readonly publishedBy: string;
   readonly publishedAt: string;

@@ -110,12 +110,12 @@ export const docs: Translation<typeof en> = {
     agent: {
       term: "Agent",
       definition:
-        "Un système d'intelligence artificielle qui reçoit un objectif, raisonne sur le travail et choisit des actions. Il interagit avec des systèmes externes au moyen d'outils ; son propre récit du résultat n'est pas une preuve.",
+        "Un système d'intelligence artificielle qui reçoit un objectif, raisonne sur le travail et choisit des actions, et dont le propre récit du résultat n'est pas une preuve.",
     },
     tool: {
       term: "Outil",
       definition:
-        "Un moyen pour un agent d'interagir avec quelque chose en dehors de son modèle, comme un fichier, une commande, une application ou un service distant. TRUST décrit une action bornée au moyen d'un outil comme une Opération.",
+        "Un moyen pour un agent d'interagir avec quelque chose en dehors de son modèle, comme un fichier, une commande, une application ou un service distant.",
     },
     operator: {
       term: "Opérateur",
@@ -125,17 +125,17 @@ export const docs: Translation<typeof en> = {
     operation: {
       term: "Opération",
       definition:
-        "Une action définie à l'avance sur un système externe. Sa définition technique précise les informations nécessaires, les étapes ordonnées et les observations à rapporter. Elle ne décide jamais si un Check est réussi.",
+        "Une action définie à l'avance sur un système externe, qui précise ses Inputs, ses étapes ordonnées et ses champs produits, et ne décide jamais si un Check est réussi.",
     },
     check: {
       term: "Check",
       definition:
-        "Une question à laquelle le travail doit répondre. Il nomme une Opération, l'objet concerné et la règle qui décide si le résultat attendu est établi.",
+        "Une question à laquelle le travail doit répondre, qui nomme une Opération, l'objet concerné et la règle qui décide si le résultat attendu est établi.",
     },
     scenario: {
       term: "Scénario",
       definition:
-        "Un groupe de Checks satisfait quand chaque Check est validé. Un Scénario peut exiger d'autres Scénarios avant lui.",
+        "Un groupe de Checks satisfait quand chaque Check est validé, et qui peut exiger d'autres Scénarios avant lui.",
     },
     procedure: {
       term: "Procédure",
@@ -145,21 +145,20 @@ export const docs: Translation<typeof en> = {
     plan: {
       term: "Plan",
       definition:
-        "L'utilisation concrète d'une Procédure. Il conserve les entrées, l'état courant de chaque Check et l'historique du travail.",
+        "Une utilisation concrète d'une Procédure, qui conserve les entrées, l'état courant de chaque Check et l'historique du travail.",
     },
     session: {
       term: "Session",
-      definition: "Le travail ouvert sur un Plan. La fermer conserve le Plan et son historique.",
+      definition: "Le travail ouvert sur un Plan, dont la fermeture conserve le Plan et son historique.",
     },
     attempt: {
       term: "Tentative",
       definition:
-        "Une exécution autorisée de l'Opération d'un Check — par le système d'exécution de l'agent sur un Plan live, à partir des observations fournies par l'opérateur sur un dry-run.",
+        "Une exécution autorisée de l'Opération d'un Check, par l'agent sur un Plan live ou à partir des observations de l'opérateur sur un dry-run.",
     },
     fact: {
       term: "Fact",
-      definition:
-        "Le compte rendu d'observation produit par une exécution. Ses valeurs contiennent tous les champs promis par l'Opération ; TRUST rejette le compte rendu entier si un champ requis manque.",
+      definition: "La valeur acceptée d'un champ produit d'une Opération.",
     },
     verdict: {
       term: "Verdict",
@@ -169,82 +168,88 @@ export const docs: Translation<typeof en> = {
     qualification: {
       term: "Qualification",
       definition:
-        "L'évaluation des gardes typées d'un Check sur les Facts acceptés pour calculer son verdict et sa raison. Seul TRUST qualifie ; ni l'agent ni le système qui réalise l'action.",
+        "L'évaluation des gardes typées d'un Check sur les Facts acceptés pour calculer son verdict et sa raison, effectuée uniquement par TRUST.",
     },
     cascade: {
       term: "Cascade",
       definition:
-        "De nouveaux Facts sur un Check le recalculent et rouvrent tous les Checks qui en dépendent, via les prérequis de Scénario et les références de champs.",
+        "Le recalcul d'un Check après de nouveaux Facts, qui rouvre chaque Check qui en dépend via les prérequis de Scénario et les références de champs.",
     },
     environment: {
       term: "Environnement",
       definition:
-        "Le lieu et le contexte d'accès nommés dans lesquels une action s'exécute. Il peut fournir des répertoires, des URL, des valeurs ordinaires et des références à des credentials.",
+        "Le lieu et le contexte d'accès nommés dans lesquels une action s'exécute, qui peut fournir des répertoires, des URL, des valeurs ordinaires et des références à des credentials.",
     },
     credential: {
       term: "Credential",
       definition:
-        "Un secret stocké en écriture seule par le runtime et référencé par un Environnement. Il n'est jamais affiché ni injecté pendant un dry-run.",
+        "Un secret que le runtime stocke en écriture seule, qu'un Environnement référence et qui n'est jamais affiché ni injecté pendant un dry-run.",
     },
     runner: {
       term: "Runner",
       definition:
-        "Le composant qui réalise une action définie et rapporte ce qu'il a observé. Il reçoit de TRUST le Check et l'Opération exacts, mais ne décide jamais de leur réussite.",
+        "Le composant qui réalise une action définie à l'avance pour le Check et l'Opération exacts fournis par TRUST, et rapporte ce qu'il a observé sans décider de la réussite.",
     },
     skill: {
       term: "Skill",
       definition:
-        "L'intégration qu'un agent installe pour travailler avec TRUST. Elle contient les instructions pour suivre les Plans et le Runner qui exécute les Checks.",
+        "L'intégration qu'un agent installe pour travailler avec TRUST, avec les instructions pour suivre les Plans et le Runner qui exécute les Checks.",
     },
     delegation: {
       term: "Délégation",
-      definition:
-        "Autoriser une action externe bornée : TRUST a vérifié le Check, sa Session, ses dépendances, le contrat de l'Opération et l'Environnement avant toute exécution.",
+      definition: "Le fait de confier un travail à un Plan enfant.",
     },
     dryRun: {
       term: "Dry-run",
       definition:
-        "Un Plan répété par l'opérateur : mêmes Checks, mêmes règles, Facts saisis à la main, aucune valeur d'Environnement déléguée.",
+        "Un Plan répété par l'opérateur avec les mêmes Checks et les mêmes règles, des Facts saisis à la main et aucune valeur d'Environnement transmise à un Runner.",
     },
     snapshot: {
       term: "Snapshot",
       definition:
-        "L'enregistrement immuable d'une qualification : Facts acceptés, verdict, raison et delta de checklist provoqué.",
+        "L'enregistrement immuable d'une qualification, avec ses Facts acceptés, son verdict, sa raison et le delta de checklist qu'elle a provoqué.",
     },
     revision: {
       term: "Révision",
       definition:
-        "L'état d'un Plan après un lot de Facts accepté. Chaque acceptation produit une nouvelle révision ; l'agent lit toujours la courante.",
+        "L'état d'un Plan après un lot de Facts accepté, de sorte que chaque acceptation produit une nouvelle révision.",
     },
     intent: {
       term: "Intention",
       definition:
-        "La courte déclaration par laquelle l'agent annonce le travail qu'il prévoit ensuite. Elle aide à préserver la continuité entre les Checks, mais ne sert jamais de preuve et n'influence pas la qualification.",
+        "La courte déclaration de l'agent sur le travail qu'il prévoit ensuite, qui ne sert jamais de preuve et n'influence pas la qualification.",
     },
     escalation: {
       term: "Escalade",
       definition:
-        "Un arrêt enregistré lorsque l'agent ne peut pas continuer dans les limites de son autorité. Le Check non résolu reste ouvert et la décision revient à un opérateur ; l'escalade n'est pas un verdict.",
+        "Un arrêt enregistré lorsque l'agent ne peut pas continuer dans les limites de son autorité, qui laisse le Check ouvert et rend la décision à un opérateur.",
     },
     otlp: {
       term: "OTLP",
       definition:
-        "Le protocole OpenTelemetry — le canal par lequel le Runner rapporte les Facts d'un Plan live (sous forme de spans).",
+        "Le protocole OpenTelemetry par lequel le Runner rapporte les Facts d'un Plan live sous forme de spans de trace.",
     },
     mcp: {
       term: "MCP",
       definition:
-        "Le Model Context Protocol : la façon dont un agent lit Plans et Checks (trust_plan_read, trust_check_read). MCP et RPC appellent les mêmes fonctions du runtime.",
+        "Le Model Context Protocol par lequel un agent lit les Plans et les Checks, en appelant les mêmes fonctions du runtime que RPC.",
     },
     jsonata: {
       term: "JSONata",
       definition:
-        "Le langage d'expression de l'étape Produce : une expression fermée qui transforme Input, Environnement et résultats d'étapes en champs produits.",
+        "Le langage d'expression de l'étape Produce, avec une expression fermée qui transforme Input, Environnement et résultats d'étapes en champs produits.",
     },
     grant: {
       term: "Autorisation",
-      definition:
-        "L'admission d'une Tentative : elle corrèle Check, Opération, contexte et clé de tentative. Ce n'est pas la preuve que l'action externe a eu lieu.",
+      definition: "Un droit que TRUST accorde à une extension.",
+    },
+    vocabulary: {
+      term: "Vocabulaire",
+      definition: "Un objet du catalogue qui déclare des termes, leur catégorie, leur définition et des mots rejetés.",
+    },
+    term: {
+      term: "Terme",
+      definition: "Un mot ou une expression qu'un vocabulaire déclare avec sa catégorie et une seule définition.",
     },
   },
 };

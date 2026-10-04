@@ -5,7 +5,7 @@ order: 2
 ---
 
 ```gherkin fragment
-@trust-dsl:1 @procedure:<slug> @version:<x.y.z> [@intent-chaining]
+@trust-dsl:1 @procedure:<slug> @version:<x.y.z> [@intent-chaining] [@controlled-language[:<vocabulary>]]
 Feature: <title>
   [description]
 
@@ -47,6 +47,7 @@ A Scenario can contain Checks, Invocations, or both; an Invocation-only Scenario
 | **Injected roots** | `fact` · `context` · `checks` |
 | **Expressions** | strict comparisons, arithmetic, boolean logic, arrays, strings, typed instants, closed `Math` and collection methods |
 | **Failure** | `condition || fail(reason)`; guards may be joined with `&&` |
+| **Controlled language** | optional `@controlled-language` tag: structure rules on the prose fields. `@controlled-language:<vocabulary>` adds the lexical rule with the base vocabulary and one domain vocabulary. |
 | **Procedure scope** | mandatory table; at least one `all` row; named rows reference exact Checks; every row has non-empty `authorized` and `forbidden` cells |
 | **Built-in bindings** | `using plan as Input "<input>"` — the Plan identifier, for one `string` or `reference` Input; compiles to a synthesised role `"plan"` with source `plan-identifier` |
 
@@ -57,4 +58,5 @@ A Scenario can contain Checks, Invocations, or both; an Invocation-only Scenario
 | Scenarios, prerequisites, Check sentence, `each` / `all`, materialization | [Scenarios and Checks](/docs/procedures/scenarios-and-checks) |
 | Typed expressions, qualification and reasons | [Qualifications](/docs/procedures/expectations) |
 | Errors | [Diagnostics](/docs/procedures/diagnostics) |
+| Controlled language tag, rules and vocabularies | [Controlled language](/docs/language/procedures/controlled-language) |
 | Dynamic missions, published and inline definitions | [Delegation](/docs/procedures/delegation) |

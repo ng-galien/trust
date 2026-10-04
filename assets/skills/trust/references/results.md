@@ -41,6 +41,21 @@ selected a different Check after the current intent was bound. Read the
 Plan again, preserve its exact current intent, and use the actionable Check and its continuing or
 final invocation template as instructed. A refusal never advances the intent chain.
 
+When the Procedure carries the controlled language tag, admission also controls the `nextIntent`
+text. A text that breaks a structure rule or uses a rejected word is refused with the reason code
+`controlled-language`. The `result.findings` field then lists each finding, in addition to the
+refusal text:
+
+- `field`: the controlled prose field, such as `next-intent`;
+- `rule`: the stable rule identifier, such as `structure.sentence-length` or `lexical.rejected-word`;
+- `message`: what to change, including the term to use in place of a rejected word.
+
+The text report prints the same findings under `Findings:`. The `findings` field is present only
+when TRUST returned findings. Rewrite the `nextIntent` to address every finding and invoke the same
+Check again; the current intent does not change. The reason code `controlled-language-unavailable`
+means that TRUST could not run the control, for example because a pinned vocabulary is missing. The
+text is never accepted without the control; report this refusal instead of retrying it unchanged.
+
 ## Runner error
 
 An admission, execution, OTLP, or finalization interruption is not a checklist verdict. Do not emit

@@ -18,6 +18,7 @@ export const procedureLanguage = {
     version: "@version:",
     dsl: "@trust-dsl:",
     intentChaining: "@intent-chaining",
+    controlledLanguage: "@controlled-language",
     scenario: "@scenario:",
   },
   dslVersion: "1",
@@ -307,6 +308,55 @@ export const procedureStepGrammar: StepGrammar = {
         procedureLiteral("and must establish", "Success reason"),
         procedureQuoted("reason", "Success reason"),
       ),
+    },
+  ],
+};
+
+/** Closed language of a vocabulary source: identity tags, one Background and its two tables. */
+export const vocabularyLanguage = {
+  tags: {
+    vocabulary: "@vocabulary:",
+    version: "@version:",
+    dsl: "@trust-dsl:",
+  },
+  dslVersion: "1",
+  phrases: {
+    terms: "Terms",
+    rejectedWords: "Rejected words",
+  },
+  tables: {
+    terms: ["term", "kind", "definition"],
+    rejectedWords: ["word", "use"],
+  },
+  kinds: ["noun", "verb"],
+  template: `# language: en
+@trust-dsl:1 @vocabulary:domain-terms @version:1.0.0
+Feature: Name the domain terms of this vocabulary
+
+  Background: Vocabulary
+    Given Terms
+      | term       | kind | definition                                   |
+      | repository | noun | A store of files with their version history. |
+    And Rejected words
+      | word | use        |
+      | repo | repository |
+`,
+} as const;
+
+export type VocabularyTermKind = (typeof vocabularyLanguage.kinds)[number];
+
+/** Canonical grammar of the sentences carried by vocabulary Steps. */
+export const vocabularyStepGrammar: StepGrammar = {
+  productions: [
+    {
+      name: "terms",
+      context: "background",
+      expression: stepLiteral(vocabularyLanguage.phrases.terms, "Vocabulary terms table"),
+    },
+    {
+      name: "rejected-words",
+      context: "background",
+      expression: stepLiteral(vocabularyLanguage.phrases.rejectedWords, "Rejected words table"),
     },
   ],
 };

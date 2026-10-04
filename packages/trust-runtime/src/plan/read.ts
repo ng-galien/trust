@@ -442,6 +442,7 @@ export class PlanReader {
       procedure: plan.procedure,
       procedureVersion: plan.procedureVersion,
       procedureTitle: procedure.title,
+      ...(procedure.controlledLanguage === undefined ? {} : { controlledLanguage: procedure.controlledLanguage }),
       environment: plan.environment,
       mode: plan.mode,
       intentChaining: plan.intentChaining,

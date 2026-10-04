@@ -49,7 +49,7 @@ Feature: <title>
 A Procedure defines what those observations must establish, in what order and within which scope:
 
 ```gherkin fragment
-@trust-dsl:1 @procedure:<slug> @version:<x.y.z> [@intent-chaining]
+@trust-dsl:1 @procedure:<slug> @version:<x.y.z> [@intent-chaining] [@controlled-language[:<vocabulary>]]
 Feature: <title>
   Background: Plan context
     Given Procedure scope ...
@@ -61,6 +61,6 @@ Feature: <title>
         and must establish "<success reason>"
 ```
 
-The two pages below list every accepted sentence and link back to the detailed explanations.
+The two pages below list every accepted sentence and link back to the detailed explanations. The optional `@controlled-language` tag controls the prose of a Procedure. Its rules and the vocabulary grammar are on the [Controlled language](/docs/language/procedures/controlled-language) page.
 
 <PageCards />

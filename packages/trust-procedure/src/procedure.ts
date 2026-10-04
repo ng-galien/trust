@@ -1,4 +1,6 @@
 import type { CompiledOperation, OperationValueType } from "@trust/operation";
+import type { ControlledLanguageLevel, ControlledLanguageRule, ControlledProseField } from "./controlled-language.js";
+import type { CompiledVocabulary, VocabularyPin } from "./vocabulary.js";
 
 export type ProcedureValueType = OperationValueType;
 
@@ -18,7 +20,17 @@ export type ProcedureCompilationErrorCode =
   | "incompatible-type"
   | "incompatible-cardinality"
   | "invalid-dependency"
-  | "dependency-cycle";
+  | "dependency-cycle"
+  | "unknown-vocabulary"
+  | "controlled-language";
+
+/** One controlled language finding located in the Procedure source. */
+export interface ProcedureLanguageDiagnostic {
+  readonly rule: ControlledLanguageRule;
+  readonly field: ControlledProseField;
+  readonly message: string;
+  readonly location: { readonly line: number; readonly column: number };
+}
 
 export class CatalogProcedureCompilationError extends Error {
   constructor(
@@ -26,6 +38,8 @@ export class CatalogProcedureCompilationError extends Error {
     message: string,
     readonly sourceName?: string,
     readonly location?: { readonly line: number; readonly column: number },
+    /** Every controlled language finding when `code` is `controlled-language`. */
+    readonly languageDiagnostics: readonly ProcedureLanguageDiagnostic[] = [],
   ) {
     super(message);
     this.name = "CatalogProcedureCompilationError";
@@ -39,6 +53,15 @@ export interface ProcedureCompilationInput {
   readonly sourceName?: string;
   readonly operations: readonly CompiledOperation[];
   readonly procedures?: readonly CompiledProcedure[];
+  /** Published vocabularies; a controlled language tag that names a vocabulary selects its highest version. */
+  readonly vocabularies?: readonly CompiledVocabulary[];
+}
+
+/** Controlled language of a tagged Procedure. */
+export interface CompiledControlledLanguage {
+  readonly level: ControlledLanguageLevel;
+  /** Pinned vocabularies; present only at the lexical level. */
+  readonly vocabularies?: readonly VocabularyPin[];
 }
 
 export interface ProcedureDiagnostic {
@@ -46,6 +69,10 @@ export interface ProcedureDiagnostic {
   readonly message: string;
   readonly sourceName: string;
   readonly location?: { readonly line: number; readonly column: number };
+  /** Controlled language rule identifier, present on `controlled-language` diagnostics. */
+  readonly rule?: ControlledLanguageRule;
+  /** Controlled prose field, present on `controlled-language` diagnostics. */
+  readonly field?: ControlledProseField;
 }
 
 export interface ProcedureAnalysis {
@@ -203,6 +230,8 @@ export interface CompiledProcedure {
   readonly title: string;
   /** When enabled, every Plan engaged from this Procedure carries one rotating agent intent. */
   readonly intentChaining: boolean;
+  /** Present only when the source carries the controlled language tag. */
+  readonly controlledLanguage?: CompiledControlledLanguage;
   /** Free-text description written under `Feature:`; absent when the source has none. Not part of the digest. */
   readonly description?: string;
   readonly source: string;

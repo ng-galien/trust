@@ -2,6 +2,7 @@ import type {
   CatalogMetadata,
   CatalogMetadataUpdate,
   PublishedProcedure,
+  PublishedVocabulary,
   RuntimeJsonObject,
   TrialRecord,
   TrialSummary,
@@ -14,7 +15,13 @@ import {
   operationCredentialNames,
   simulateOperation,
 } from "@trust/operation";
-import { CatalogProcedureCompilationError, type CompiledProcedure } from "@trust/procedure";
+import {
+  CatalogProcedureCompilationError,
+  type CompiledProcedure,
+  type CompiledVocabulary,
+  VocabularyCompilationError,
+  type VocabularyLookup,
+} from "@trust/procedure";
 import {
   type CatalogClassification,
   type CatalogKind,
@@ -29,6 +36,8 @@ import type { Procedures } from "../procedure/procedures.js";
 import { ProcedureConflictError } from "../procedure/store.js";
 import { TemplateError, type TemplateService } from "../template/service.js";
 import { TrialError, type TrialService } from "../trial/service.js";
+import { VocabularyConflictError } from "../vocabulary/store.js";
+import { type Vocabularies, VocabularyNotFoundError } from "../vocabulary/vocabularies.js";
 import { templateTools } from "./mcp-templates.js";
 
 export const AUTHORING_TOOL_NAMES = [
@@ -55,6 +64,11 @@ export const AUTHORING_TOOL_NAMES = [
   "trust_published_procedure_read",
   "trust_procedure_compile",
   "trust_procedure_publish",
+  "trust_vocabulary_list",
+  "trust_published_vocabulary_read",
+  "trust_vocabulary_compile",
+  "trust_vocabulary_publish",
+  "trust_vocabulary_lookup",
   "trust_catalog_metadata_update",
 ] as const;
 
@@ -65,6 +79,7 @@ export interface McpAuthoringDependencies {
   readonly environmentService: EnvironmentService;
   readonly operationCatalog: OperationCatalog;
   readonly procedures: Procedures;
+  readonly vocabularies: Vocabularies;
   readonly templateService: TemplateService;
   readonly trialService: TrialService;
 }
@@ -252,6 +267,30 @@ export async function callAuthoringTool(
         const published = await dependencies.procedures.publish(input, "mcp-agent");
         return { text: renderProcedure("PROCEDURE PUBLISHED", published.procedure, published) };
       }
+      case "trust_vocabulary_list": {
+        exactEmpty(args, tool);
+        return { text: renderVocabularyList(await dependencies.vocabularies.list()) };
+      }
+      case "trust_published_vocabulary_read": {
+        const { operation: vocabulary, version } = exactIdentity(args, "vocabulary", tool);
+        const published = await dependencies.vocabularies.find(vocabulary, version);
+        return published === undefined
+          ? rejected(`Vocabulary ${vocabulary}@${version} is not published.`)
+          : { text: renderVocabulary("PUBLISHED VOCABULARY", published.vocabulary, published) };
+      }
+      case "trust_vocabulary_compile": {
+        const input = exactSource(args, tool, false);
+        return { text: renderVocabulary("VOCABULARY COMPILED", dependencies.vocabularies.compile(input)) };
+      }
+      case "trust_vocabulary_publish": {
+        const input = exactSource(args, tool, false);
+        const published = await dependencies.vocabularies.publish(input, "mcp-agent");
+        return { text: renderVocabulary("VOCABULARY PUBLISHED", published.vocabulary, published) };
+      }
+      case "trust_vocabulary_lookup": {
+        const { word, vocabulary } = exactLookup(args, tool);
+        return { text: renderVocabularyLookup(await dependencies.vocabularies.lookup(word, vocabulary)) };
+      }
       case "trust_catalog_metadata_update": {
         const input = exactCatalogMetadataUpdate(args, tool);
         const metadata = await dependencies.catalogMetadata.update(input);
@@ -263,6 +302,9 @@ export async function callAuthoringTool(
     if (error instanceof InvalidMcpAuthoringArguments) throw error;
     if (
       error instanceof CatalogProcedureCompilationError ||
+      error instanceof VocabularyCompilationError ||
+      error instanceof VocabularyConflictError ||
+      error instanceof VocabularyNotFoundError ||
       error instanceof OperationCompilationError ||
       error instanceof OperationValidationError ||
       error instanceof OperationCatalogError ||
@@ -293,7 +335,17 @@ function renderAuthoringError(tool: AuthoringToolName, error: Error): string {
       : "reason" in error && typeof error.reason === "string"
         ? error.reason
         : undefined;
-  return `${tool} rejected the request.${reason ? `\nReason: ${reason}` : ""}\nMessage: ${error.message}${location}`;
+  const languageDiagnostics =
+    (error instanceof CatalogProcedureCompilationError || error instanceof VocabularyCompilationError) &&
+    error.languageDiagnostics.length > 0
+      ? `\nLanguage diagnostics:\n${error.languageDiagnostics
+          .map(
+            (diagnostic) =>
+              `- line ${diagnostic.location.line}, field ${diagnostic.field}, rule ${diagnostic.rule}: ${diagnostic.message}`,
+          )
+          .join("\n")}`
+      : "";
+  return `${tool} rejected the request.${reason ? `\nReason: ${reason}` : ""}\nMessage: ${error.message}${location}${languageDiagnostics}`;
 }
 
 async function renderOperationList(
@@ -407,6 +459,7 @@ function renderProcedure(
       : []),
     `Definition digest: ${procedure.definitionDigest}`,
     `Intent chaining: ${procedure.intentChaining ? "enabled" : "disabled"}`,
+    ...(procedure.controlledLanguage ? [`Controlled language: ${procedure.controlledLanguage.level}`] : []),
     `Operations: ${procedure.operations.map((operation) => `${operation.operation}@${operation.version}`).join(", ") || "none"}`,
     `Roles: ${procedure.roles.map((role) => role.name).join(", ") || "none"}`,
     "Scenarios:",
@@ -424,6 +477,71 @@ function renderProcedure(
     "",
     "SOURCE",
     procedure.source,
+    "",
+  ].join("\n");
+}
+
+function renderVocabularyList(vocabularies: readonly PublishedVocabulary[]): string {
+  return [
+    "VOCABULARY CATALOG",
+    `Count: ${vocabularies.length}`,
+    ...vocabularies.map(({ vocabulary, sourceName }) =>
+      [
+        `- ${vocabulary.vocabulary}@${vocabulary.version}: ${vocabulary.title} [${sourceName}]`,
+        `  Terms: ${vocabulary.terms.length}`,
+        `  Rejected words: ${vocabulary.rejectedWords.length}`,
+        `  Definition digest: ${vocabulary.definitionDigest}`,
+      ].join("\n"),
+    ),
+    "",
+  ].join("\n");
+}
+
+function renderVocabulary(heading: string, vocabulary: CompiledVocabulary, published?: PublishedVocabulary): string {
+  return [
+    heading,
+    `Vocabulary: ${vocabulary.vocabulary}@${vocabulary.version}`,
+    `Title: ${vocabulary.title}`,
+    ...(vocabulary.description ? [`Description: ${vocabulary.description}`] : []),
+    `Definition digest: ${vocabulary.definitionDigest}`,
+    "Terms:",
+    ...vocabulary.terms.map(({ term, kind, definition }) => `- ${term} (${kind}): ${definition}`),
+    "Rejected words:",
+    ...(vocabulary.rejectedWords.length === 0
+      ? ["none"]
+      : vocabulary.rejectedWords.map(({ word, use }) => `- ${word}: use "${use}"`)),
+    ...(published
+      ? [
+          `Source name: ${published.sourceName}`,
+          `Published by: ${published.publishedBy}`,
+          `Published at: ${published.publishedAt}`,
+        ]
+      : []),
+    "",
+    "SOURCE",
+    vocabulary.source,
+    "",
+  ].join("\n");
+}
+
+function renderVocabularyLookup(lookup: VocabularyLookup): string {
+  const found = lookup.terms.length > 0 || lookup.rejectedWords.length > 0;
+  return [
+    "VOCABULARY LOOKUP",
+    `Word: ${lookup.word}`,
+    `Searched: ${lookup.vocabularies.map(({ vocabulary, version }) => `${vocabulary}@${version}`).join(", ")}`,
+    `Result: ${found ? "found" : "absent"}`,
+    ...lookup.terms.map(
+      ({ vocabulary, version, term, kind, definition }) =>
+        `- term "${term}" (${kind}) in ${vocabulary}@${version}: ${definition}`,
+    ),
+    ...lookup.rejectedWords.map(
+      ({ vocabulary, version, word, use, term }) =>
+        `- rejected word "${word}" in ${vocabulary}@${version}: use the term "${use}"${
+          term ? ` (${term.kind}) from ${term.vocabulary}@${term.version}: ${term.definition}` : ""
+        }`,
+    ),
+    ...(found ? [] : [`No searched vocabulary declares "${lookup.word}".`]),
     "",
   ].join("\n");
 }
@@ -485,6 +603,22 @@ function renderTrial(trial: TrialRecord, after: number): string {
   ].join("\n");
 }
 
+function exactLookup(
+  args: Record<string, unknown>,
+  tool: AuthoringToolName,
+): { readonly word: string; readonly vocabulary?: string } {
+  if (
+    !hasOnlyKeys(args, ["word", "vocabulary"]) ||
+    !bounded(args.word, 256) ||
+    (args.vocabulary !== undefined && !bounded(args.vocabulary, 256))
+  )
+    invalid(tool);
+  return {
+    word: args.word as string,
+    ...(args.vocabulary === undefined ? {} : { vocabulary: args.vocabulary as string }),
+  };
+}
+
 function exactEmpty(args: Record<string, unknown>, tool: AuthoringToolName): void {
   if (Object.keys(args).length !== 0) invalid(tool);
 }
@@ -524,7 +658,7 @@ function exactCatalogMetadataUpdate(args: Record<string, unknown>, tool: Authori
 
 function exactIdentity(
   args: Record<string, unknown>,
-  name: "operation" | "procedure",
+  name: "operation" | "procedure" | "vocabulary",
   tool: AuthoringToolName,
 ): { operation: string; version: string } {
   if (!hasOnlyKeys(args, [name, "version"]) || !bounded(args[name], 256) || !bounded(args.version, 64)) invalid(tool);
@@ -666,6 +800,12 @@ const procedureProperty = {
   minLength: 1,
   maxLength: 256,
   description: "Canonical Procedure name",
+} as const;
+const vocabularyProperty = {
+  type: "string",
+  minLength: 1,
+  maxLength: 256,
+  description: "Canonical vocabulary name",
 } as const;
 const versionProperty = { type: "string", minLength: 1, maxLength: 64, description: "Exact version" } as const;
 const trialProperty = { type: "string", minLength: 1, maxLength: 256, description: "Trial identifier" } as const;
@@ -866,6 +1006,48 @@ export function authoringTools(): readonly unknown[] {
       false,
     ),
     {
+      name: "trust_vocabulary_list",
+      title: "List vocabularies",
+      description:
+        "List every published controlled language vocabulary version with its term count, rejected word count and definition digest.",
+      inputSchema: { type: "object", properties: {}, additionalProperties: false },
+      annotations: { readOnlyHint: true, openWorldHint: false },
+    },
+    identityTool(
+      "trust_published_vocabulary_read",
+      "Read a published vocabulary",
+      "Read one published vocabulary version with its terms, rejected words and original complete Gherkin source.",
+      "vocabulary",
+    ),
+    sourceTool(
+      "trust_vocabulary_compile",
+      "Compile a vocabulary",
+      "Compile vocabulary Gherkin without publishing it. Each definition must obey the controlled language structure rules.",
+      false,
+    ),
+    sourceTool(
+      "trust_vocabulary_publish",
+      "Publish a vocabulary",
+      "Compile and immutably publish vocabulary Gherkin. A published identity and version is never replaced or removed.",
+      false,
+    ),
+    {
+      name: "trust_vocabulary_lookup",
+      title: "Look up a word",
+      description:
+        "Look one word up in the base vocabulary and, when named, in the highest published version of a domain vocabulary. Returns the definition of a term, the term to use for a rejected word, or the absence of the word.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          word: { type: "string", minLength: 1, maxLength: 256, description: "Word or term, compared without case" },
+          vocabulary: { ...vocabularyProperty, description: "Optional domain vocabulary name" },
+        },
+        required: ["word"],
+        additionalProperties: false,
+      },
+      annotations: { readOnlyHint: true, openWorldHint: false },
+    },
+    {
       name: "trust_catalog_metadata_update",
       title: "Update catalog metadata",
       description:
@@ -920,7 +1102,7 @@ function identityTool(
   name: AuthoringToolName,
   title: string,
   description: string,
-  identity: "operation" | "procedure",
+  identity: "operation" | "procedure" | "vocabulary",
 ): unknown {
   return {
     name,
@@ -929,7 +1111,12 @@ function identityTool(
     inputSchema: {
       type: "object",
       properties: {
-        [identity]: identity === "operation" ? operationProperty : procedureProperty,
+        [identity]:
+          identity === "operation"
+            ? operationProperty
+            : identity === "procedure"
+              ? procedureProperty
+              : vocabularyProperty,
         version: versionProperty,
       },
       required: [identity, "version"],

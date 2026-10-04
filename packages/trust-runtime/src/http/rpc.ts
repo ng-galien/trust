@@ -5,7 +5,13 @@ import {
   OperationValidationError,
   simulateOperation,
 } from "@trust/operation";
-import { CatalogProcedureCompilationError, type ProcedureCompilationErrorCode } from "@trust/procedure";
+import {
+  CatalogProcedureCompilationError,
+  type ProcedureCompilationErrorCode,
+  type ProcedureLanguageDiagnostic,
+  VocabularyCompilationError,
+  type VocabularyCompilationErrorCode,
+} from "@trust/procedure";
 import express, { type ErrorRequestHandler, type RequestHandler, type Router } from "express";
 import { AccessError } from "../access/error.js";
 import type { AccessService } from "../access/service.js";
@@ -23,6 +29,8 @@ import type { RegistryPackages } from "../registry/packages.js";
 import type { RegistryService } from "../registry/service.js";
 import { TemplateError, type TemplateService } from "../template/service.js";
 import { TrialError, type TrialService } from "../trial/service.js";
+import { VocabularyConflictError } from "../vocabulary/store.js";
+import { type Vocabularies, VocabularyNotFoundError } from "../vocabulary/vocabularies.js";
 import { requestAccess } from "./access.js";
 import { executeConfigurationRpc, InvalidConfigurationRpcParams, isConfigurationRpcMethod } from "./configuration.js";
 import {
@@ -52,11 +60,19 @@ const OPERATION_READ_METHOD = "operation.read" as const;
 const OPERATION_SIMULATE_METHOD = "operation.simulate" as const;
 const OPERATION_SAVE_METHOD = "operation.save" as const;
 const OPERATION_REMOVE_METHOD = "operation.remove" as const;
+const VOCABULARY_COMPILE_METHOD = "vocabulary.compile" as const;
+const VOCABULARY_PUBLISH_METHOD = "vocabulary.publish" as const;
+const VOCABULARY_READ_METHOD = "vocabulary.read" as const;
+const VOCABULARY_LIST_METHOD = "vocabulary.list" as const;
+const VOCABULARY_LOOKUP_METHOD = "vocabulary.lookup" as const;
+/** RPC methods whose access action differs from their name. */
+const METHOD_ACCESS_ACTIONS: Readonly<Record<string, string>> = { [VOCABULARY_LOOKUP_METHOD]: "vocabulary.read" };
 const CATALOG_METADATA_READ_METHOD = "catalog.metadata.read" as const;
 const CATALOG_METADATA_HISTORY_METHOD = "catalog.metadata.history" as const;
 const CATALOG_METADATA_UPDATE_METHOD = "catalog.metadata.update" as const;
 const PROCEDURE_COMPILATION_ERROR_CONTRACT = "trust.procedure-compilation-error@1" as const;
 const OPERATION_COMPILATION_ERROR_CONTRACT = "trust.operation-compilation-error@1" as const;
+const VOCABULARY_COMPILATION_ERROR_CONTRACT = "trust.vocabulary-compilation-error@1" as const;
 
 type JsonRpcId = string | number | null;
 
@@ -105,6 +121,18 @@ interface ProcedureCompilationFailureData {
   readonly message: string;
   readonly sourceName: string;
   readonly location: { readonly line: number; readonly column: number } | null;
+  /** Controlled language findings; present only for the `controlled-language` reason. */
+  readonly diagnostics?: readonly ProcedureLanguageDiagnostic[];
+}
+
+interface VocabularyCompilationFailureData {
+  readonly contract: typeof VOCABULARY_COMPILATION_ERROR_CONTRACT;
+  readonly reason: VocabularyCompilationErrorCode;
+  readonly message: string;
+  readonly sourceName: string;
+  readonly location: { readonly line: number; readonly column: number } | null;
+  /** Controlled language findings on definitions; present only for the `controlled-language` reason. */
+  readonly diagnostics?: readonly ProcedureLanguageDiagnostic[];
 }
 
 interface OperationCompilationFailureData {
@@ -141,6 +169,7 @@ interface RpcHttpDependencies {
   readonly credentialService: CredentialService;
   readonly planReader: PlanReader;
   readonly procedures: Procedures;
+  readonly vocabularies: Vocabularies;
   readonly templateService: TemplateService;
   readonly operationCatalog: OperationCatalog;
   readonly catalogMetadata: CatalogMetadataStore;
@@ -153,6 +182,7 @@ type RpcErrorData =
   | OperationCompilationFailureData
   | EnvironmentConfigurationFailureData
   | ProcedureCompilationFailureData
+  | VocabularyCompilationFailureData
   | PlanRuntimeFailureData
   | TrialFailureData
   | RegistryFailure;
@@ -204,6 +234,43 @@ const readParams = (value: unknown): ProcedureReadParams | undefined => {
     return undefined;
   return { procedure: value.procedure, version: value.version };
 };
+
+const vocabularyReadParams = (
+  value: unknown,
+): { readonly vocabulary: string; readonly version: string } | undefined => {
+  if (!isRecord(value) || !hasOnlyKeys(value, ["vocabulary", "version"])) return undefined;
+  if (
+    typeof value.vocabulary !== "string" ||
+    value.vocabulary.length === 0 ||
+    typeof value.version !== "string" ||
+    value.version.length === 0
+  )
+    return undefined;
+  return { vocabulary: value.vocabulary, version: value.version };
+};
+
+const vocabularyLookupParams = (
+  value: unknown,
+): { readonly word: string; readonly vocabulary?: string } | undefined => {
+  if (!isRecord(value) || !hasOnlyKeys(value, ["word", "vocabulary"])) return undefined;
+  if (typeof value.word !== "string" || value.word.length === 0 || value.word.length > 256) return undefined;
+  if (
+    value.vocabulary !== undefined &&
+    (typeof value.vocabulary !== "string" || value.vocabulary.length === 0 || value.vocabulary.length > 256)
+  )
+    return undefined;
+  return { word: value.word, ...(typeof value.vocabulary === "string" ? { vocabulary: value.vocabulary } : {}) };
+};
+
+const vocabularyFailure = (error: VocabularyCompilationError, params: ProcedureCompileParams) =>
+  ({
+    contract: VOCABULARY_COMPILATION_ERROR_CONTRACT,
+    reason: error.code,
+    message: error.message,
+    sourceName: error.sourceName ?? params.sourceName ?? "<vocabulary>",
+    location: error.location ?? null,
+    ...(error.languageDiagnostics.length > 0 ? { diagnostics: error.languageDiagnostics } : {}),
+  }) satisfies VocabularyCompilationFailureData;
 
 const listParams = (value: unknown): { readonly summary: boolean; readonly query: string } | undefined => {
   if (!isRecord(value) || !hasOnlyKeys(value, ["summary", "query"])) return undefined;
@@ -309,7 +376,7 @@ const processMessage = async (message: unknown, dependencies: RpcHttpDependencie
     hasId ? response : undefined;
 
   try {
-    dependencies.accessService.authorize(dependencies.access, message.method);
+    dependencies.accessService.authorize(dependencies.access, METHOD_ACCESS_ACTIONS[message.method] ?? message.method);
   } catch {
     return respond(failure(id, -32001, "Access denied"));
   }
@@ -319,6 +386,11 @@ const processMessage = async (message: unknown, dependencies: RpcHttpDependencie
     message.method !== PROCEDURE_PUBLISH_METHOD &&
     message.method !== PROCEDURE_READ_METHOD &&
     message.method !== PROCEDURE_LIST_METHOD &&
+    message.method !== VOCABULARY_COMPILE_METHOD &&
+    message.method !== VOCABULARY_PUBLISH_METHOD &&
+    message.method !== VOCABULARY_READ_METHOD &&
+    message.method !== VOCABULARY_LIST_METHOD &&
+    message.method !== VOCABULARY_LOOKUP_METHOD &&
     message.method !== OPERATION_COMPILE_METHOD &&
     message.method !== OPERATION_LIST_METHOD &&
     message.method !== OPERATION_READ_METHOD &&
@@ -650,6 +722,7 @@ const processMessage = async (message: unknown, dependencies: RpcHttpDependencie
           message: error.message,
           sourceName: error.sourceName ?? sourceNameFrom(params),
           location: error.location ?? null,
+          ...(error.languageDiagnostics.length > 0 ? { diagnostics: error.languageDiagnostics } : {}),
         };
         return respond(failure(id, PROCEDURE_COMPILATION_ERROR, "Procedure rejected", data));
       }
@@ -682,6 +755,7 @@ const processMessage = async (message: unknown, dependencies: RpcHttpDependencie
           message: error.message,
           sourceName: error.sourceName ?? sourceNameFrom(params),
           location: error.location ?? null,
+          ...(error.languageDiagnostics.length > 0 ? { diagnostics: error.languageDiagnostics } : {}),
         };
         return respond(failure(id, PROCEDURE_COMPILATION_ERROR, "Procedure definition rejected", data));
       }
@@ -722,6 +796,83 @@ const processMessage = async (message: unknown, dependencies: RpcHttpDependencie
     }
   }
 
+  if (message.method === VOCABULARY_COMPILE_METHOD) {
+    const params = compileParams(message.params);
+    if (!params) return respond(failure(id, INVALID_PARAMS, "Invalid params"));
+    try {
+      return respond({ jsonrpc: "2.0", id, result: dependencies.vocabularies.compile(params) });
+    } catch (error) {
+      if (error instanceof VocabularyCompilationError)
+        return respond(
+          failure(id, PROCEDURE_COMPILATION_ERROR, "Vocabulary rejected", vocabularyFailure(error, params)),
+        );
+      return respond(failure(id, INTERNAL_ERROR, "Internal error"));
+    }
+  }
+
+  if (message.method === VOCABULARY_PUBLISH_METHOD) {
+    const params = compileParams(message.params);
+    if (!params) return respond(failure(id, INVALID_PARAMS, "Invalid params"));
+    try {
+      const published = await dependencies.vocabularies.publish(params, "local-operator");
+      return respond({ jsonrpc: "2.0", id, result: { contract: "trust.published-vocabulary@1", ...published } });
+    } catch (error) {
+      if (error instanceof VocabularyCompilationError)
+        return respond(
+          failure(id, PROCEDURE_COMPILATION_ERROR, "Vocabulary definition rejected", vocabularyFailure(error, params)),
+        );
+      if (error instanceof VocabularyConflictError)
+        return respond(
+          failure(id, PROCEDURE_COMPILATION_ERROR, "Vocabulary publication rejected", {
+            contract: VOCABULARY_COMPILATION_ERROR_CONTRACT,
+            reason: "invalid-vocabulary",
+            message: error.message,
+            sourceName: params.sourceName ?? "<vocabulary>",
+            location: null,
+          } satisfies VocabularyCompilationFailureData),
+        );
+      return respond(failure(id, INTERNAL_ERROR, "Internal error"));
+    }
+  }
+
+  if (message.method === VOCABULARY_READ_METHOD) {
+    const params = vocabularyReadParams(message.params);
+    if (!params) return respond(failure(id, INVALID_PARAMS, "Invalid params"));
+    try {
+      const published = await dependencies.vocabularies.find(params.vocabulary, params.version);
+      if (!published) return respond(failure(id, PROCEDURE_COMPILATION_ERROR, "Vocabulary not found"));
+      return respond({ jsonrpc: "2.0", id, result: { contract: "trust.published-vocabulary@1", ...published } });
+    } catch {
+      return respond(failure(id, INTERNAL_ERROR, "Internal error"));
+    }
+  }
+
+  if (message.method === VOCABULARY_LIST_METHOD) {
+    if (message.params !== undefined && (!isRecord(message.params) || Object.keys(message.params).length > 0))
+      return respond(failure(id, INVALID_PARAMS, "Invalid params"));
+    try {
+      return respond({
+        jsonrpc: "2.0",
+        id,
+        result: { contract: "trust.vocabulary-catalog@1", vocabularies: await dependencies.vocabularies.list() },
+      });
+    } catch {
+      return respond(failure(id, INTERNAL_ERROR, "Internal error"));
+    }
+  }
+
+  if (message.method === VOCABULARY_LOOKUP_METHOD) {
+    const params = vocabularyLookupParams(message.params);
+    if (!params) return respond(failure(id, INVALID_PARAMS, "Invalid params"));
+    try {
+      const lookup = await dependencies.vocabularies.lookup(params.word, params.vocabulary);
+      return respond({ jsonrpc: "2.0", id, result: { contract: "trust.vocabulary-lookup@1", ...lookup } });
+    } catch (error) {
+      if (error instanceof VocabularyNotFoundError) return respond(failure(id, INVALID_PARAMS, error.message));
+      return respond(failure(id, INTERNAL_ERROR, "Internal error"));
+    }
+  }
+
   try {
     const result = await executePlanRuntimeRpc(message.method, message.params, dependencies);
     return respond({ jsonrpc: "2.0", id, result });
@@ -735,6 +886,7 @@ const processMessage = async (message: unknown, dependencies: RpcHttpDependencie
         contract: PLAN_RUNTIME_ERROR_CONTRACT,
         reason: error.code,
         message: error.message,
+        ...(error.findings.length > 0 ? { findings: error.findings } : {}),
       };
       return respond(failure(id, PLAN_RUNTIME_ERROR, "Plan runtime rejected", data));
     }

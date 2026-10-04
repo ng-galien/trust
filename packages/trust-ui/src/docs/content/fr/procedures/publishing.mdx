@@ -8,18 +8,19 @@ order: 5
 
 `compileProcedure` reçoit une source et le catalogue des Opérations compilées. Il :
 
-- vérifie la forme du document (les trois tags d'identité obligatoires, au plus un tag facultatif `@intent-chaining`, un `Background: Plan context` commençant par sa table obligatoire de périmètre de Procédure, au moins un Scénario tagué contenant un Check, aucun `Rule`/`Scenario Outline`) ;
+- vérifie la forme du document (les trois tags d'identité obligatoires, au plus un tag facultatif `@intent-chaining`, au plus une étiquette facultative `@controlled-language`, un `Background: Plan context` commençant par sa table obligatoire de périmètre de Procédure, au moins un Scénario tagué contenant un Check, aucun `Rule`/`Scenario Outline`) ;
 - lit les rôles ; valide les rôles fixes (`one string`/`reference`), les scopes parents (déclarés, acycliques), l'unicité des noms ;
 - résout chaque `runs Operation` dans le catalogue ; valide chaque liaison `on` / `using` (Input existant, type, cardinalité, chaque Input lié une fois) et chaque `materializes` (rôle et champ existants, forme concordante, un fournisseur par rôle, aucun rôle fixe ou déclaré) ;
 - analyse le DocString `js` avec JSEP ; valide la surface d'expression fermée, les types statiques, les littéraux enum et les rôles ou Checks référencés atteignables depuis un Scénario prérequis ; émet les gardes JSON Logic canoniques ;
 - vérifie que les prérequis des Scénarios forment un graphe acyclique et que chaque rôle matérialisé n'est utilisé qu'après son Scénario fournisseur ;
 - embarque les Opérations compilées exactes utilisées (triées par nom), calcule les digests.
+- avec `@controlled-language`, contrôle les champs de prose. Avec `@controlled-language:<vocabulary>`, il épingle aussi le vocabulaire de base et la plus haute version publiée du vocabulaire nommé. Un défaut arrête la compilation avec le code `controlled-language`. Voir [Langue contrôlée](/docs/language/procedures/controlled-language).
 
 L'interface compile à chaque frappe (onglet Source) ; la publication compile à nouveau sur le runtime.
 
 ## La révision publiée
 
-Une Procédure publiée est `procedure@version`, immuable, contenant : l'activation éventuelle du chaînage d'intention, son périmètre d'action, ses rôles, ses Scénarios (avec prérequis), ses Checks (cible, liaisons, matérialisations, qualification, raison de succès), les Opérations embarquées avec leurs digests, et un digest de toute la définition.
+Une Procédure publiée est `procedure@version`, immuable, contenant : l'activation éventuelle du chaînage d'intention, son niveau de langue contrôlée et ses vocabulaires épinglés, sa portée, ses rôles, ses Scénarios (avec prérequis), ses Checks (cible, liaisons, matérialisations, qualification, raison de succès), les Opérations embarquées avec leurs digests, et un digest de toute la définition.
 
 - La révision est autonome : elle ne dépend d'aucun état du catalogue après publication.
 - Publier à nouveau le même `procedure@version` avec une source exécutable différente est refusé (`already published with another immutable definition`) ; la même définition est acceptée telle quelle. Montez `@version` pour publier un changement de méthode.
@@ -37,5 +38,5 @@ L'onglet **Catalogue** contient le titre humain courant, la description Feature 
 Une Procédure nomme une Opération sans version ; le compilateur embarque la version courante du catalogue. Un changement ultérieur de l'Opération dans le catalogue n'affecte pas la Procédure publiée ; republier la Procédure (nouvelle version) embarque la nouvelle Opération.
 
 <Details title="Structure compilée" expert>
-La Procédure compilée est `{ procedure, version, title, intentChaining, description?, operations [{ operation, version, digest, definition }], scope [{ check, authorized, forbidden }], roles [{ name, type, cardinality, parents [{ role, each }], source }], scenarios [{ slug, title, dependencies, checks }], checks [...], source, definitionDigest }`. `definitionDigest` est le SHA-256 de la sémantique canonique de `{ procedure, version, title, intentChaining, operations, scope, roles, scenarios, checks }` ; les positions dans la source et la description sont exclues, et chaque Opération embarquée est réduite à sa sémantique. Le runtime refuse un Check dont l'`operationDigest` ne correspond pas à une Opération embarquée.
+La Procédure compilée est `{ procedure, version, title, intentChaining, controlledLanguage?, description?, operations [{ operation, version, digest, definition }], scope [{ check, authorized, forbidden }], roles [{ name, type, cardinality, parents [{ role, each }], source }], scenarios [{ slug, title, dependencies, checks }], checks [...], source, definitionDigest }`. `definitionDigest` est le SHA-256 de la sémantique canonique de `{ procedure, version, title, intentChaining, controlledLanguage?, operations, scope, roles, scenarios, checks }` ; les positions dans la source et la description sont exclues, et chaque Opération embarquée est réduite à sa sémantique. Le runtime refuse un Check dont l'`operationDigest` ne correspond pas à une Opération embarquée. `controlledLanguage` vaut `{ level: "structure" }` ou `{ level: "lexical", vocabularies [{ vocabulary, version, digest }] }`. Il est absent sans l'étiquette.
 </Details>

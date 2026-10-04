@@ -55,6 +55,8 @@ export interface PlanRuntimeFailureData {
   readonly contract: typeof PLAN_RUNTIME_ERROR_CONTRACT;
   readonly reason: import("../plan/runtime.js").PlanRuntimeErrorCode | ReadErrorCode;
   readonly message: string;
+  /** Controlled language findings; present only for the `controlled-language` reason. */
+  readonly findings?: readonly import("@trust/procedure").ControlledLanguageFinding[];
 }
 
 export const PLAN_RUNTIME_RPC_METHODS = [

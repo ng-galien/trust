@@ -35,6 +35,22 @@ authorized immutable publication. No Runner needs to be available to compile.
    (`procedure`, `version`). Do not confuse it with the paged, Check-scoped
    `trust_procedure_read` used during execution.
 
+## Controlled language
+
+Add `@controlled-language` to the `Feature:` tags when the prose must follow the
+structure rules. Use `@controlled-language:<vocabulary>` to add the lexical rule
+with a published domain vocabulary and the base vocabulary `trust-base`.
+`trust_procedure_compile` then lists each finding with its line, field and rule.
+Rewrite the prose until no finding remains. Do not remove the tag to pass.
+
+Look a word up with `trust_vocabulary_lookup` (`word`, optional `vocabulary`).
+List and read vocabularies with `trust_vocabulary_list` and
+`trust_published_vocabulary_read`. Compile a domain vocabulary with
+`trust_vocabulary_compile`. Publish it with `trust_vocabulary_publish` only when
+publication is authorized. Read the
+[controlled language reference](../../packages/trust-ui/src/docs/content/en/language/procedures/controlled-language.mdx)
+for the rules, the fields and the vocabulary grammar.
+
 ## Optional examples
 
 [Runner smoke](../../assets/procedures/09-runner-smoke.feature) has no root inputs:

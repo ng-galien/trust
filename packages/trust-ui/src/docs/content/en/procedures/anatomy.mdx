@@ -83,7 +83,7 @@ Feature: Fix one Jira defect in one Maven project
 ```
 
 <Legend items={{
-  "Procedure tags.": <>**Procedure tags.** Exactly one <code>@procedure:</code> (a lowercase slug), one semantic <code>@version:</code>, and <code>@trust-dsl:1</code>. The optional <code>@intent-chaining</code> tag makes every engaged Plan carry a rotating agent intent.</>,
+  "Procedure tags.": <>**Procedure tags.** Exactly one <code>@procedure:</code> (a lowercase slug), one semantic <code>@version:</code>, and <code>@trust-dsl:1</code>. The optional <code>@intent-chaining</code> tag makes every engaged Plan carry a rotating agent intent. The optional <code>@controlled-language</code> tag controls the prose fields. See [Controlled language](/docs/language/procedures/controlled-language).</>,
   "Title and description.": <>**Title and description.** The title is copied verbatim; the free text under it is the description shown on the Procedure page and on its Plans.</>,
   "Plan context.": <>**Plan context.** Exactly one <code>Background: Plan context</code>; it starts with the mandatory Procedure scope DataTable, then declares typed roles. See [Plan context](/docs/procedures/context).</>,
   "Procedure scope.": <>**Procedure scope.** Its mandatory first DataTable declares prose boundaries for every Check and may add boundaries for an exact Check name. Both are shown to the agent.</>,
@@ -102,7 +102,7 @@ Feature: Fix one Jira defect in one Maven project
 
 ```gherkin fragment
 # language: en                                          optional (English only)
-@trust-dsl:1 @procedure:<slug> @version:<x.y.z> [@intent-chaining]
+@trust-dsl:1 @procedure:<slug> @version:<x.y.z> [@intent-chaining] [@controlled-language[:<vocabulary>]]
 Feature: <title>
   [free-text description]
 

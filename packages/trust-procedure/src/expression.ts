@@ -94,6 +94,90 @@ export function compileQualificationExpression(input: QualificationExpressionInp
   });
 }
 
+/** One failure reason reduced to its literal text; dynamic parts become white space. */
+export interface FailureReasonText {
+  readonly texts: readonly string[];
+  /** First literal fragment as written in the source, to locate the reason. */
+  readonly anchor?: string;
+}
+
+const MAX_REASON_ALTERNATIVES = 64;
+
+/** Literal text of every `fail(...)` reason; an invalid qualification yields none. */
+export function qualificationFailureReasons(source: string): readonly FailureReasonText[] {
+  let guards: readonly { readonly reason: Expression }[];
+  try {
+    guards = extractGuards(jsep(source));
+  } catch {
+    return [];
+  }
+  return guards.map(({ reason }) => {
+    const texts = [...new Set(reasonTexts(reason).map((text) => text.trim()))].filter((text) => text !== "");
+    const anchor = firstLiteralFragment(reason);
+    return anchor === undefined ? { texts } : { texts, anchor };
+  });
+}
+
+function reasonTexts(expression: Expression): readonly string[] {
+  switch (expression.type) {
+    case "Literal": {
+      const value = (expression as jsep.Literal).value;
+      return [typeof value === "string" ? value : " "];
+    }
+    case "TemplateLiteral": {
+      const template = expression as TemplateLiteral;
+      return template.quasis.reduce<readonly string[]>(
+        (texts, quasi, index) => {
+          const substitution = template.expressions[index];
+          const withQuasi = texts.map((text) => text + quasi.value.cooked);
+          return substitution ? concatenateTexts(withQuasi, reasonTexts(substitution)) : withQuasi;
+        },
+        [""],
+      );
+    }
+    case "BinaryExpression": {
+      const binary = expression as jsep.BinaryExpression;
+      return binary.operator === "+" ? concatenateTexts(reasonTexts(binary.left), reasonTexts(binary.right)) : [" "];
+    }
+    case "ConditionalExpression": {
+      const conditional = expression as jsep.ConditionalExpression;
+      return [...reasonTexts(conditional.consequent), ...reasonTexts(conditional.alternate)].slice(
+        0,
+        MAX_REASON_ALTERNATIVES,
+      );
+    }
+    default:
+      return [" "];
+  }
+}
+
+function concatenateTexts(left: readonly string[], right: readonly string[]): readonly string[] {
+  return left.flatMap((head) => right.map((tail) => head + tail)).slice(0, MAX_REASON_ALTERNATIVES);
+}
+
+function firstLiteralFragment(expression: Expression): string | undefined {
+  switch (expression.type) {
+    case "Literal": {
+      const literal = expression as jsep.Literal;
+      return typeof literal.value === "string" && literal.value !== "" ? literal.raw : undefined;
+    }
+    case "TemplateLiteral": {
+      const template = expression as TemplateLiteral;
+      return template.quasis.find((quasi) => quasi.value.raw.trim() !== "")?.value.raw;
+    }
+    case "BinaryExpression": {
+      const binary = expression as jsep.BinaryExpression;
+      return firstLiteralFragment(binary.left) ?? firstLiteralFragment(binary.right);
+    }
+    case "ConditionalExpression": {
+      const conditional = expression as jsep.ConditionalExpression;
+      return firstLiteralFragment(conditional.consequent) ?? firstLiteralFragment(conditional.alternate);
+    }
+    default:
+      return undefined;
+  }
+}
+
 function extractGuards(
   expression: Expression,
 ): readonly { readonly condition: Expression; readonly reason: Expression }[] {

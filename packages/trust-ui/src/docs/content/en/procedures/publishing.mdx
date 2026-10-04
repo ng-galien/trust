@@ -8,18 +8,19 @@ order: 5
 
 `compileProcedure` receives one source and the catalog of compiled Operations. It:
 
-- checks the document shape (the three required identity tags, at most one optional `@intent-chaining` tag, one `Background: Plan context` starting with its mandatory Procedure scope table, at least one tagged Scenario containing a Check, no `Rule`/`Scenario Outline`);
+- checks the document shape (the three required identity tags, at most one optional `@intent-chaining` tag, at most one optional `@controlled-language` tag, one `Background: Plan context` starting with its mandatory Procedure scope table, at least one tagged Scenario containing a Check, no `Rule`/`Scenario Outline`);
 - reads the roles; validates fixed roles (`one string`/`reference`), parent scopes (declared, acyclic), unique names;
 - resolves every `runs Operation` in the catalog; validates each `on` / `using` binding (existing Input, type, cardinality, every Input bound once) and each `materializes` (existing role and field, matching shape, one provider per role, no fixed or declared role);
 - parses the `js` DocString with JSEP; validates the closed expression surface, static types, enum literals and referenced roles or Checks reachable from a prerequisite Scenario; emits canonical JSON Logic guards;
 - checks the Scenario prerequisites form an acyclic graph and that every materialized role is used only after its provider Scenario;
 - embeds the exact compiled Operations used (sorted by name), computes the digests.
+- with `@controlled-language`, controls the prose fields. With `@controlled-language:<vocabulary>`, it also pins the base vocabulary and the highest published version of the named vocabulary. A finding stops the compilation with the code `controlled-language`. See [Controlled language](/docs/language/procedures/controlled-language).
 
 The interface compiles on every keystroke (Source tab); publication compiles again on the runtime.
 
 ## The published revision
 
-A published Procedure is `procedure@version`, immutable, containing: whether intent chaining is enabled, its action scope, roles, Scenarios (with prerequisites), Checks (target, bindings, materializations, qualification, success reason), the embedded Operations with their digests, and a digest of the whole definition.
+A published Procedure is `procedure@version`, immutable, containing: whether intent chaining is enabled, its controlled language level and pinned vocabularies, its scope, roles, Scenarios (with prerequisites), Checks (target, bindings, materializations, qualification, success reason), the embedded Operations with their digests, and a digest of the whole definition.
 
 - The revision is autonomous: it depends on no catalog state after publication.
 - Publishing again the same `procedure@version` with a different executable source is refused (`already published with another immutable definition`); the same definition is accepted as-is. Raise `@version` to publish a method change.
@@ -37,5 +38,5 @@ The **Catalog** tab holds the current human title, existing Feature description 
 A Procedure names an Operation without version; the compiler embeds the version currently in the catalog. A later change of the Operation in the catalog does not affect the published Procedure; republishing the Procedure (new version) embeds the new Operation.
 
 <Details title="Compiled structure" expert>
-The compiled Procedure is `{ procedure, version, title, intentChaining, description?, operations [{ operation, version, digest, definition }], scope [{ check, authorized, forbidden }], roles [{ name, type, cardinality, parents [{ role, each }], source }], scenarios [{ slug, title, dependencies, checks }], checks [...], source, definitionDigest }`. `definitionDigest` is the SHA-256 of the canonical semantics of `{ procedure, version, title, intentChaining, operations, scope, roles, scenarios, checks }`; source locations and description are excluded, and each embedded Operation is reduced to its semantics. The runtime refuses a Check whose `operationDigest` does not match an embedded Operation.
+The compiled Procedure is `{ procedure, version, title, intentChaining, controlledLanguage?, description?, operations [{ operation, version, digest, definition }], scope [{ check, authorized, forbidden }], roles [{ name, type, cardinality, parents [{ role, each }], source }], scenarios [{ slug, title, dependencies, checks }], checks [...], source, definitionDigest }`. `definitionDigest` is the SHA-256 of the canonical semantics of `{ procedure, version, title, intentChaining, controlledLanguage?, operations, scope, roles, scenarios, checks }`; source locations and description are excluded, and each embedded Operation is reduced to its semantics. The runtime refuses a Check whose `operationDigest` does not match an embedded Operation. `controlledLanguage` is `{ level: "structure" }` or `{ level: "lexical", vocabularies [{ vocabulary, version, digest }] }`. It is absent without the tag.
 </Details>

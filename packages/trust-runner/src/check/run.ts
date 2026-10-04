@@ -1,4 +1,5 @@
 import type { CheckContinuation, CheckFinalizationResult } from "@trust/extension-sdk";
+import type { ControlledLanguageFinding } from "@trust/procedure";
 import { matchCheckExecutionConstraint } from "@trust/procedure/match";
 import { type DiagnosticsSink, now, nullSink } from "../diagnostics/events.js";
 import type { HttpRunnerConfiguration } from "../http/run.js";
@@ -43,6 +44,8 @@ export type CheckResult =
         readonly status: "REFUSED";
         readonly reasonCode: string;
         readonly reason: string;
+        /** Controlled language findings of the refused admission; present only when TRUST returned them. */
+        readonly findings?: readonly ControlledLanguageFinding[];
       };
       readonly next: CheckContinuation;
     };
@@ -95,6 +98,9 @@ export function createCheckRunner(options: CheckRunnerOptions) {
               status: "REFUSED",
               reasonCode: admission.reasonCode,
               reason: admission.reason,
+              ...(admission.findings === undefined || admission.findings.length === 0
+                ? {}
+                : { findings: admission.findings }),
             },
             next: admission.next,
           };

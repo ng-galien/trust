@@ -99,6 +99,18 @@ Read [Dragon Heist](dragon-heist.md) only for a requested game demonstration or
 when its nested Plan example is needed. Do not execute it to validate an unrelated
 assignment.
 
+## Controlled language refusals
+
+When the Plan shows a `CONTROLLED LANGUAGE` block, TRUST controls the
+`nextIntent`, the `blockingReason` and the `forbiddenFurtherAction` at the call.
+A text that breaks a rule is refused with the reason `controlled-language`, and
+nothing changes. Read each finding in the Runner `result.findings` or in the
+escalation refusal. Rewrite the text and call again. The reason
+`controlled-language-unavailable` means that TRUST cannot run the control. Report
+it to the operator or coordinator instead of retrying unchanged. The
+[controlled language reference](../../packages/trust-ui/src/docs/content/en/language/procedures/controlled-language.mdx)
+gives the rules and the fields.
+
 ## Failure handling
 
 Do not modify, patch, reimplement or bypass the supplied Runner to unblock a Check.

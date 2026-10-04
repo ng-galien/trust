@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import type { GherkinDocument, Scenario, Step, Tag } from "@cucumber/messages";
 import {
   GherkinSyntaxError,
@@ -15,10 +14,25 @@ import {
   type ValueSchema,
   validateCompiledOperation,
 } from "@trust/operation";
-import { isExactVersion, parseResourceReference, selectVersion } from "@trust/operation/version";
+import { compareVersions, isExactVersion, parseResourceReference, selectVersion } from "@trust/operation/version";
 import jsonata from "jsonata";
+import { BASE_VOCABULARY } from "./base-vocabulary.js";
+import {
+  type ControlledLexicon,
+  type ControlledProseField,
+  controlledLexicon,
+  controlProse,
+  lexicalRules,
+  structureRules,
+} from "./controlled-language.js";
 import { transitiveScenarioDependencies } from "./dependencies.js";
-import { compileQualificationExpression, QualificationExpressionError } from "./expression.js";
+import { readDescription } from "./description.js";
+import { digest } from "./digest.js";
+import {
+  compileQualificationExpression,
+  QualificationExpressionError,
+  qualificationFailureReasons,
+} from "./expression.js";
 import { procedureLanguage, procedureStepGrammar } from "./language.js";
 import {
   CatalogProcedureCompilationError,
@@ -33,13 +47,16 @@ import {
   type ProcedureAnalysis,
   type ProcedureCompilationErrorCode,
   type ProcedureCompilationInput,
+  type ProcedureLanguageDiagnostic,
   type ProcedureValueType,
 } from "./procedure.js";
+import { baseVocabulary, type CompiledVocabulary, vocabularyPin } from "./vocabulary.js";
 
 const PROCEDURE_TAG = procedureLanguage.tags.procedure;
 const VERSION_TAG = procedureLanguage.tags.version;
 const TRUST_DSL_TAG = procedureLanguage.tags.dsl;
 const INTENT_CHAINING_TAG = procedureLanguage.tags.intentChaining;
+const CONTROLLED_LANGUAGE_TAG = procedureLanguage.tags.controlledLanguage;
 const SCENARIO_TAG = procedureLanguage.tags.scenario;
 const SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 /** Reserved role: the Plan identifier, synthesised when a Check uses `using plan as Input`. */
@@ -145,13 +162,24 @@ export function validateDeclaredInvocationResults(
 export function analyzeProcedure(input: ProcedureCompilationInput): ProcedureAnalysis {
   const diagnostics: ProcedureAnalysis["diagnostics"][number][] = [];
   try {
-    const compiled = compileProcedureInternal(input, (error, qualification) =>
-      diagnostics.push({
-        code: error.code,
-        message: error.message,
-        sourceName: input.sourceName ?? "<procedure>",
-        location: qualification.location,
-      }),
+    const compiled = compileProcedureInternal(
+      input,
+      (error, qualification) =>
+        diagnostics.push({
+          code: error.code,
+          message: error.message,
+          sourceName: input.sourceName ?? "<procedure>",
+          location: qualification.location,
+        }),
+      (finding) =>
+        diagnostics.push({
+          code: "controlled-language",
+          message: finding.message,
+          sourceName: input.sourceName ?? "<procedure>",
+          location: finding.location,
+          rule: finding.rule,
+          field: finding.field,
+        }),
     );
     return { compiled, diagnostics };
   } catch (error) {
@@ -169,6 +197,7 @@ export function analyzeProcedure(input: ProcedureCompilationInput): ProcedureAna
 function compileProcedureInternal(
   input: ProcedureCompilationInput,
   reportQualificationError?: (error: QualificationExpressionError, qualification: QualificationSource) => void,
+  reportLanguageDiagnostic?: (diagnostic: ProcedureLanguageDiagnostic) => void,
 ): CompiledProcedure {
   const sourceName = input.sourceName ?? "<procedure>";
   const source = normalizeGherkinSource(input.source);
@@ -198,13 +227,41 @@ function compileProcedureInternal(
     fail("invalid-procedure", "Intent chaining tag must appear at most once", sourceName, intentChainingTags[1]);
   }
   const intentChaining = intentChainingTags.length === 1;
+  const controlledLanguageTags = feature.tags.filter(
+    (tag) => tag.name === CONTROLLED_LANGUAGE_TAG || tag.name.startsWith(`${CONTROLLED_LANGUAGE_TAG}:`),
+  );
+  if (controlledLanguageTags.length > 1) {
+    fail(
+      "invalid-procedure",
+      "Controlled language tag must appear at most once",
+      sourceName,
+      controlledLanguageTags[1],
+    );
+  }
+  const controlledLanguageTag = controlledLanguageTags[0];
+  const controlledLanguage = controlledLanguageTag !== undefined;
+  const pinnedVocabularies = controlledLanguageTag
+    ? resolveControlledVocabularies(controlledLanguageTag, input.vocabularies ?? [], sourceName)
+    : [];
   if (!SLUG.test(procedure))
     fail("invalid-identifier", `Procedure "${procedure}" must be a lowercase slug`, sourceName, feature);
   if (!isExactVersion(version))
     fail("invalid-identifier", `Version "${version}" must be semantic`, sourceName, feature);
   if (dsl !== procedureLanguage.dslVersion)
     fail("invalid-procedure", `TRUST DSL "${dsl}" is unsupported`, sourceName, feature);
-  assertOnlyTags(feature.tags, [PROCEDURE_TAG, VERSION_TAG, TRUST_DSL_TAG, INTENT_CHAINING_TAG], sourceName, feature);
+  assertOnlyTags(
+    feature.tags,
+    [
+      PROCEDURE_TAG,
+      VERSION_TAG,
+      TRUST_DSL_TAG,
+      INTENT_CHAINING_TAG,
+      CONTROLLED_LANGUAGE_TAG,
+      `${CONTROLLED_LANGUAGE_TAG}:`,
+    ],
+    sourceName,
+    feature,
+  );
 
   const operationByName = new Map<string, CompiledOperation>();
   for (const operation of input.operations) {
@@ -744,6 +801,14 @@ function compileProcedureInternal(
     version,
     title: feature.name,
     intentChaining,
+    ...(controlledLanguage
+      ? {
+          controlledLanguage:
+            pinnedVocabularies.length > 0
+              ? { level: "lexical" as const, vocabularies: pinnedVocabularies.map(vocabularyPin) }
+              : { level: "structure" as const },
+        }
+      : {}),
     operations,
     scope: planContext.scope,
     roles,
@@ -776,6 +841,24 @@ function compileProcedureInternal(
       qualification: { guards: check.qualification.guards },
     })),
   };
+  if (controlledLanguage) {
+    const languageDiagnostics = controlProcedureProse(
+      planContext.scope,
+      roleSources,
+      scenarioSources,
+      pinnedVocabularies.length > 0 ? controlledLexicon(pinnedVocabularies) : undefined,
+    );
+    if (languageDiagnostics.length > 0 && !reportLanguageDiagnostic) {
+      throw new CatalogProcedureCompilationError(
+        "controlled-language",
+        `Procedure prose has ${languageDiagnostics.length} controlled language diagnostic(s)`,
+        sourceName,
+        languageDiagnostics[0]?.location,
+        languageDiagnostics,
+      );
+    }
+    for (const diagnostic of languageDiagnostics) reportLanguageDiagnostic?.(diagnostic);
+  }
   const description = readDescription(feature.description);
   return {
     ...body,
@@ -783,6 +866,75 @@ function compileProcedureInternal(
     source,
     definitionDigest: digest(semanticBody),
   };
+}
+
+/**
+ * Vocabularies included by a controlled language tag. `@controlled-language` includes none;
+ * `@controlled-language:<vocabulary>` includes the base vocabulary, then the highest supplied version of the
+ * named domain vocabulary. The base is the highest supplied `trust-base` version, or the one of this package.
+ */
+function resolveControlledVocabularies(
+  tag: Tag,
+  vocabularies: readonly CompiledVocabulary[],
+  sourceName: string,
+): readonly CompiledVocabulary[] {
+  if (tag.name === CONTROLLED_LANGUAGE_TAG) return [];
+  const name = tag.name.slice(CONTROLLED_LANGUAGE_TAG.length + 1);
+  if (name.split(/[,:;+&|/]/).filter((part) => part !== "").length > 1)
+    fail("invalid-procedure", "Controlled language tag must name at most one vocabulary", sourceName, tag);
+  if (!SLUG.test(name)) fail("invalid-identifier", `Vocabulary "${name}" must be a lowercase slug`, sourceName, tag);
+  if (name === BASE_VOCABULARY)
+    fail(
+      "invalid-procedure",
+      `Vocabulary "${name}" is always included. The tag names a domain vocabulary`,
+      sourceName,
+      tag,
+    );
+  const highest = (identity: string) =>
+    vocabularies
+      .filter((candidate) => candidate.vocabulary === identity)
+      .sort((left, right) => compareVersions(right.version, left.version))[0];
+  const vocabulary = highest(name);
+  if (!vocabulary) fail("unknown-vocabulary", `Vocabulary "${name}" is not published`, sourceName, tag);
+  return [highest(BASE_VOCABULARY) ?? baseVocabulary(), vocabulary];
+}
+
+/** Structure rules, and lexical rules when a lexicon is given, over every prose field of a tagged Procedure, in source order. */
+function controlProcedureProse(
+  scope: readonly CompiledProcedureScope[],
+  roles: readonly RoleSource[],
+  scenarios: readonly ScenarioSource[],
+  lexicon?: ControlledLexicon,
+): readonly ProcedureLanguageDiagnostic[] {
+  const diagnostics: ProcedureLanguageDiagnostic[] = [];
+  const rules = lexicon ? [...structureRules, ...lexicalRules] : structureRules;
+  const control = (text: string, field: ControlledProseField, location: { line: number; column?: number }) => {
+    for (const finding of controlProse(text, field, rules, lexicon))
+      diagnostics.push({ ...finding, location: { line: location.line, column: location.column ?? 1 } });
+  };
+  for (const row of scope) {
+    if (!row.location) continue;
+    control(row.authorized, "authorized", row.location);
+    control(row.forbidden, "forbidden", row.location);
+  }
+  for (const role of roles) if (role.location && !role.planIdentifier) control(role.name, "role-name", role.location);
+  for (const scenario of scenarios) {
+    const named = [...scenario.checks, ...scenario.invocations, ...scenario.declaredInvocations];
+    for (const item of named) {
+      if (!item.location) continue;
+      control(item.name, "check-name", item.location);
+      control(item.successReason, "success-reason", item.location);
+    }
+    for (const check of scenario.checks) {
+      const { source, location } = check.qualification;
+      for (const reason of qualificationFailureReasons(source)) {
+        const offset = reason.anchor === undefined ? -1 : source.indexOf(reason.anchor);
+        const line = location.line + 1 + (offset < 0 ? 0 : source.slice(0, offset).split("\n").length - 1);
+        for (const text of reason.texts) control(text, "failure-reason", { line });
+      }
+    }
+  }
+  return diagnostics.sort((left, right) => left.location.line - right.location.line);
 }
 
 export function isProcedureSource(source: string): boolean {
@@ -793,21 +945,6 @@ export function isProcedureSource(source: string): boolean {
     if (error instanceof GherkinSyntaxError) return hasGherkinTag(source, PROCEDURE_TAG);
     throw error;
   }
-}
-
-/** Free-text block under `Feature:` — the human description. Lines are de-indented, blank runs kept as paragraphs. */
-function readDescription(raw: string | undefined): string | undefined {
-  if (raw === undefined) return undefined;
-  const lines = raw.replace(/\r\n?/g, "\n").split("\n");
-  const indent = Math.min(
-    ...lines.filter((line) => line.trim() !== "").map((line) => line.length - line.trimStart().length),
-  );
-  const text = lines
-    .map((line) => (line.trim() === "" ? "" : line.slice(Number.isFinite(indent) ? indent : 0).trimEnd()))
-    .join("\n")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
-  return text === "" ? undefined : text;
 }
 
 /** Canonical containment and supported boundary for an unpublished scope fragment. */
@@ -1483,25 +1620,6 @@ function removeJsonataPositions(value: unknown): unknown {
     );
   }
   return value;
-}
-
-function digest(value: unknown): string {
-  return createHash("sha256").update(canonicalJson(value)).digest("hex");
-}
-
-function canonicalJson(value: unknown): string {
-  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
-  if (value !== null && typeof value === "object") {
-    return `{${Object.entries(value as Record<string, unknown>)
-      .sort(([a], [b]) => compareText(a, b))
-      .map(([key, item]) => `${JSON.stringify(key)}:${canonicalJson(item)}`)
-      .join(",")}}`;
-  }
-  return JSON.stringify(value);
-}
-
-function compareText(left: string, right: string): number {
-  return left < right ? -1 : left > right ? 1 : 0;
 }
 
 function uniqueTag(tags: readonly Tag[], prefix: string, label: string, sourceName: string, located: Located): string {

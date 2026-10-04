@@ -1,0 +1,264 @@
+---
+title: "Controlled language"
+summary: "The Procedure tag, the structure rules, the lexical rule, the vocabulary grammar and the base vocabulary."
+order: 1
+---
+
+A Procedure can require that its prose follows a **controlled language**. The controlled language makes the texts that agents and operators read less ambiguous. It has structure rules and published <Term id="vocabulary">vocabularies</Term>. TRUST uses its own rules and vocabularies. It does not include a general dictionary.
+
+The controlled language applies to English prose. The same engine controls a Procedure source, a vocabulary source and the texts that an agent declares on a Plan. The same text always gives the same findings.
+
+## The Procedure tag
+
+The tag goes on the `Feature:` line with the identity tags. It has two forms. Each form gives one level.
+
+| Tag | Level | Rules that apply |
+| --- | --- | --- |
+| no tag | none | No rule. The compiled definition and its digest do not change. |
+| `@controlled-language` | `structure` | The four structure rules. |
+| `@controlled-language:<vocabulary>` | `lexical` | The four structure rules and the lexical rule. The rule uses the base vocabulary and the named domain vocabulary. |
+
+The compiler refuses these tags, with the line of the tag:
+
+| Source | Code | Message |
+| --- | --- | --- |
+| the tag two times | `invalid-procedure` | `Controlled language tag must appear at most once` |
+| two vocabulary names, such as `@controlled-language:a,b` | `invalid-procedure` | `Controlled language tag must name at most one vocabulary` |
+| a name that is not a lowercase slug | `invalid-identifier` | `Vocabulary "…" must be a lowercase slug` |
+| `@controlled-language:trust-base` | `invalid-procedure` | `Vocabulary "trust-base" is always included. The tag names a domain vocabulary` |
+| a vocabulary that is not published | `unknown-vocabulary` | `Vocabulary "…" is not published` |
+
+The tag has no version selector. The compiler selects the highest published version of the named vocabulary. It also selects the highest published version of `trust-base`.
+
+The compiled Procedure records the level in `controlledLanguage`. At the lexical level, it also pins each vocabulary with its identity, version and digest. The base vocabulary comes first. This field is part of the definition digest.
+
+```json
+{
+  "controlledLanguage": {
+    "level": "lexical",
+    "vocabularies": [
+      { "vocabulary": "trust-base", "version": "1.0.0", "digest": "<sha-256>" },
+      { "vocabulary": "delivery-terms", "version": "1.0.0", "digest": "<sha-256>" }
+    ]
+  }
+}
+```
+
+A Plan uses the vocabularies that its Procedure pins. It keeps them after the publication of a newer vocabulary version. A new Procedure version selects the newer vocabulary.
+
+## Controlled fields
+
+Each finding names the field that it concerns. These are the field identifiers.
+
+| Field | Where | Text |
+| --- | --- | --- |
+| `authorized` | Procedure | each `authorized` cell of the Procedure scope table, in every row |
+| `forbidden` | Procedure | each `forbidden` cell of the Procedure scope table, in every row |
+| `success-reason` | Procedure | the text after `must establish`, for a Check or an Invocation |
+| `failure-reason` | Procedure | each text of a `fail(…)` reason in a Check qualification |
+| `check-name` | Procedure | the name of a Check or an Invocation |
+| `role-name` | Procedure | the name of a role |
+| `definition` | vocabulary | the definition of a term |
+| `next-intent` | Plan | the `nextIntent` of a Check admission |
+| `blocking-reason` | Plan | the `blockingReason` of an escalation |
+| `forbidden-further-action` | Plan | the `forbiddenFurtherAction` of an escalation |
+
+Some texts stay free. They are the title and the description under `Feature:`, and the Scenario titles. The reserved `plan` role, the values of roles and the `resumeReason` of an operator are also free. The current intent is not controlled again. TRUST creates the first current intent. Each later current intent is a next intent that the control accepted.
+
+## Rules
+
+A word is a run of characters without white space. A sentence ends at `.`, `?` or `!` when white space or the end of the text follows. `structure.sentence-length` gives one finding for each long sentence. `lexical.rejected-word` gives one finding for each rejected word that the text uses.
+
+| Rule | Controlled fields and limit | Refused field | Refused example |
+| --- | --- | --- | --- |
+| `structure.sentence-length` | `authorized` and `forbidden`: 20 words in one sentence. `success-reason`, `failure-reason`, `definition`, `next-intent`, `blocking-reason` and `forbidden-further-action`: 25 words in one sentence. | `authorized` | `Read the repository state and the history of every branch, then compare each branch with the main branch before the review starts.` |
+| `structure.semicolon` | every field: `authorized`, `forbidden`, `success-reason`, `failure-reason`, `check-name`, `role-name`, `definition`, `next-intent`, `blocking-reason` and `forbidden-further-action`. | `forbidden` | `Change a file; push a commit.` |
+| `structure.single-sentence` | `success-reason`, `failure-reason`, `definition`, `next-intent` and `forbidden-further-action` hold one sentence. | `success-reason` | `the working tree is clean. No file is staged.` |
+| `structure.name-length` | `check-name` and `role-name`: three words or less. | `check-name` | `clean working tree check` |
+| `lexical.rejected-word` | every field at the lexical level, except the definitions of a vocabulary: `authorized`, `forbidden`, `success-reason`, `failure-reason`, `check-name`, `role-name`, `next-intent`, `blocking-reason` and `forbidden-further-action`. | `failure-reason` | `the repo has local changes` |
+
+The `blocking-reason` field can hold more than one sentence. Each sentence has 25 words or less.
+
+The lexical rule compares the text with the rejected words of the pinned vocabularies. It finds whole words only. A letter, a digit, an underscore or a hyphen cannot touch the word on either side. The comparison ignores case. A rejected word of two or more words matches with any white space between its words. The rule compares exact forms, so `repos` does not match `repo`.
+
+The lexical rule refuses rejected words only. A word that no vocabulary declares is accepted. The rule does not require the declared terms. It does not apply to the definitions of a vocabulary.
+
+<Details title="Finding messages" expert>
+Each finding has `rule`, `field` and `message`. A finding in a source also has a `location` with `line` and `column`. The messages are:
+
+- `structure.sentence-length`: `A <field> sentence has <count> words. The limit is <limit>.`
+- `structure.semicolon`: `The <field> text contains a semicolon. Write separate sentences.`
+- `structure.single-sentence`: `The <field> text has <count> sentences. Write one sentence.`
+- `structure.name-length`: `The <field> has <count> words. The limit is 3.`
+- `lexical.rejected-word`: `The <field> text uses the rejected word "<word>". Use the term "<term>".`
+</Details>
+
+## Diagnostics of a Procedure
+
+A tagged Procedure that breaks a rule does not compile and is not published. The compiler error has the code `controlled-language`. Its message gives the number of findings. The RPC error data of `procedure.compile` and `procedure.publish` holds `diagnostics`. Each diagnostic has its rule, field, message and location.
+
+The MCP tools `trust_procedure_compile` and `trust_procedure_publish` print each diagnostic on one line. The line gives the source line, the field, the rule and the message. A compiled tagged Procedure shows `Controlled language: structure` or `Controlled language: lexical`.
+
+The language server returns the same diagnostics for a Procedure source and for a vocabulary source. Each language diagnostic carries `rule` and `field` in its `data`. The server also uses the vocabulary sources that are open in the editor.
+
+## Vocabulary grammar
+
+A vocabulary is a catalog object. It declares terms, their kind, their definition and rejected words. Its source is closed Gherkin, like an Operation or a Procedure.
+
+```gherkin fragment
+# language: en
+@trust-dsl:1 @vocabulary:<slug> @version:<x.y.z>
+Feature: <title>
+  [description]
+
+  Background: <name>
+    Given Terms
+      | term | kind | definition |
+      | <term> | noun|verb | <definition> |
+    [And Rejected words
+      | word | use |
+      | <rejected word> | <term> |]
+```
+
+- The `Feature:` carries `@vocabulary:`, `@version:` and `@trust-dsl:1`, each one time. Another tag is refused.
+- The vocabulary identity is a lowercase slug. The version is an exact semantic version. The identity `trust-base` is reserved.
+- The Feature has exactly one `Background`. A `Scenario` or a `Rule` is outside the grammar.
+- The first step is `Given Terms`. Its table has the columns `term`, `kind` and `definition`, and at least one row.
+- The second step is optional. It is `And Rejected words`, with the columns `word` and `use`. No other step is accepted.
+- Each step carries one table and no doc string.
+- A term or a rejected word is one or more words of letters, digits, hyphens or apostrophes. A run of white space becomes one space.
+- The kind is `noun` or `verb`.
+- A definition is not empty. It obeys the structure rules of the `definition` field.
+- The `use` cell names a term of this vocabulary or a term of the base vocabulary. TRUST stores it with the spelling of that term.
+- The comparison of terms and words ignores case.
+- The description under `Feature:` is free text. It is not controlled and it is not part of the digest.
+
+| Code | Cause |
+| --- | --- |
+| `invalid-vocabulary` | the document shape, a tag, a step, a table, a kind or an empty definition breaks the grammar |
+| `invalid-identifier` | the identity is not a lowercase slug, or the version is not semantic |
+| `reserved-vocabulary` | the source declares the identity `trust-base` |
+| `duplicate-term` | the vocabulary declares a term two times |
+| `duplicate-word` | the vocabulary declares a rejected word two times |
+| `conflicting-word` | a word is a term and a rejected word |
+| `unknown-term` | a rejected word names a term that neither this vocabulary nor the base vocabulary declares |
+| `base-vocabulary-conflict` | a term or a rejected word is a term or a rejected word of the base vocabulary |
+| `controlled-language` | a definition breaks a structure rule |
+
+This vocabulary compiles:
+
+```gherkin vocabulary id="delivery-terms"
+# language: en
+@trust-dsl:1 @vocabulary:delivery-terms @version:1.0.0
+Feature: Delivery terms
+  The words of one delivery team. This description is free text.
+
+  Background: Vocabulary
+    Given Terms
+      | term       | kind | definition                                                |
+      | repository | noun | A store of files with their version history.             |
+      | pipeline   | noun | The ordered automatic jobs that build and test a change. |
+      | deploy     | verb | Install one built version in an Environment.              |
+    And Rejected words
+      | word     | use        |
+      | repo     | repository |
+      | workflow | pipeline   |
+      | goal     | intent     |
+```
+
+The rejected word `goal` names `intent`, a term of the base vocabulary.
+
+The digest of a vocabulary covers its identity, version, title, terms and rejected words. A published version never changes. A second publication of the same identity and version is accepted only with the same source. Another source is refused with `already published with another immutable definition`. A published version is never removed.
+
+## Base vocabulary
+
+The base vocabulary `trust-base` holds the concepts of TRUST. Each concept has one definition. The runtime publishes `trust-base@1.0.0` at start when the catalog does not hold it. Version 1.0.0 declares 67 terms, 58 nouns and 9 verbs, and these rejected words:
+
+| Rejected word | Term to use |
+| --- | --- |
+| `intention` | `intent` |
+| `Produced value` | `Fact` |
+| `action scope` | `scope` |
+| `perimeter` | `scope` |
+| `Plan input` | `root input` |
+| `delegated Plan` | `child Plan` |
+
+Read the complete list with `trust_published_vocabulary_read` and `{"vocabulary": "trust-base", "version": "1.0.0"}`. The glossary of this documentation uses the base definition for each common term.
+
+Every lexical control includes the base vocabulary. The structure level uses no vocabulary. A domain vocabulary cannot declare a term or a rejected word of the base vocabulary. The compiler refuses it with `base-vocabulary-conflict`. A rejected word of a domain vocabulary can name a term of the base vocabulary.
+
+## Examples
+
+This Procedure uses the structure level. It compiles without a vocabulary.
+
+```gherkin procedure id="controlled-structure" title="Structure level"
+# language: en
+@trust-dsl:1 @procedure:controlled-head @version:1.0.0 @controlled-language
+Feature: Confirm a clean working tree
+
+  Background: Plan context
+    Given Procedure scope
+      | check | authorized | forbidden |
+      | all | Read the repository state. | Change a file in the repository. |
+    And one reference "project"
+
+  @scenario:inspect
+  Scenario: Inspect the project
+    Then Check "clean tree" runs Operation "git.head-read@*" on "project" as Input "project" and must establish "the working tree of the project is clean"
+      """js
+      fact.workingTree === "clean" ||
+      fail("the working tree has local changes")
+      """
+```
+
+This Procedure uses the lexical level. It compiles after the publication of the `delivery-terms` vocabulary above.
+
+```gherkin lexical id="controlled-lexical" title="Lexical level"
+# language: en
+@trust-dsl:1 @procedure:controlled-head-terms @version:1.0.0 @controlled-language:delivery-terms
+Feature: Confirm a clean repository
+
+  Background: Plan context
+    Given Procedure scope
+      | check | authorized | forbidden |
+      | all | Read the repository state. | Change a file in the repository. |
+    And one reference "project"
+
+  @scenario:inspect
+  Scenario: Inspect the project
+    Then Check "clean tree" runs Operation "git.head-read@*" on "project" as Input "project" and must establish "the working tree of the project is clean"
+      """js
+      fact.workingTree === "clean" ||
+      fail("the working tree has local changes")
+      """
+```
+
+Put a refused example of the rules table in its field, and the compiler refuses the source. For example, `fail("the repo has local changes")` in the lexical Procedure gives this finding: `The failure-reason text uses the rejected word "repo". Use the term "repository".`
+
+## Agent declarations on a Plan
+
+On a Plan whose Procedure carries the tag, the runtime controls three texts of the agent. It uses the same rules and the vocabularies that the Procedure pins. A Plan without the tag accepts these texts as before.
+
+`trust_plan_read` shows a `CONTROLLED LANGUAGE` block. The block gives the level, the pinned vocabularies and the limit of each controlled text. The RPC `plan.read` result holds the `controlledLanguage` field of the Procedure.
+
+The admission of a Check controls `nextIntent`. A text that breaks a rule gives a refusal with the reason code `controlled-language`. The refusal changes nothing. The current intent stays, and the attempt key stays free. The refusal holds `findings`, a list of `field`, `rule` and `message`. The reason text has one line for each finding, in the form `[<field> <rule>] <message>`.
+
+The Runner result keeps the findings in `result.findings`. The text report of the Runner prints them under `Findings:`, one line for each finding. Write the `nextIntent` again and run the same Check again.
+
+The escalation controls `blockingReason` and `forbiddenFurtherAction`. MCP `trust_check_escalate` and RPC `check.escalate` refuse a text that breaks a rule. The RPC error data has the reason `controlled-language` and the `findings`. The MCP text starts with `TRUST Check escalation refused` and gives one line for each finding. The Plan does not change and the Check stays escalatable.
+
+If the control cannot run, the call is refused with the reason `controlled-language-unavailable`. A pinned vocabulary that the catalog does not hold, or holds with another digest, gives this refusal. The runtime never accepts the text without the control.
+
+## Vocabulary tools
+
+The runtime MCP tools and the RPC methods call the same runtime functions. Each call needs an access action, like the Procedure calls.
+
+| MCP tool | RPC method | Access action | Result |
+| --- | --- | --- | --- |
+| `trust_vocabulary_list` | `vocabulary.list` | `vocabulary.list` | each published version with its term count, rejected word count and digest |
+| `trust_published_vocabulary_read` | `vocabulary.read` | `vocabulary.read` | one version with its terms, rejected words and source |
+| `trust_vocabulary_compile` | `vocabulary.compile` | `vocabulary.compile` | the compiled vocabulary, without publication |
+| `trust_vocabulary_publish` | `vocabulary.publish` | `vocabulary.publish` | the published version |
+| `trust_vocabulary_lookup` | `vocabulary.lookup` | `vocabulary.read` | the definition of a term, the term to use for a rejected word, or the absence of the word |
+
+`trust_vocabulary_lookup` takes `word` and an optional `vocabulary`. It always searches the highest published version of `trust-base`. With `vocabulary`, it also searches the highest published version of that vocabulary. An unknown vocabulary name is refused. A caller without the access action receives `Access denied`, and nothing changes.

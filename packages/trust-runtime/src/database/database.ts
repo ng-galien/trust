@@ -4,7 +4,7 @@ import type {
   RegistryPackageIndex,
   TemplateParameter,
 } from "@trust/extension-sdk";
-import type { CompiledProcedure } from "@trust/procedure";
+import type { CompiledProcedure, CompiledVocabulary } from "@trust/procedure";
 import type { ColumnType, Generated, Kysely } from "kysely";
 import type { Attempt, CheckSnapshot, Plan, PlanCheck, PlanRevision, Session } from "../model.js";
 
@@ -64,6 +64,17 @@ export interface PublishedProcedureTable {
   source_name: string;
   source: string;
   compiled_procedure_json: JsonColumn<CompiledProcedure>;
+  published_by: string;
+  published_at: string;
+}
+
+export interface PublishedVocabularyTable {
+  vocabulary_name: string;
+  vocabulary_version: string;
+  definition_digest: string;
+  source_name: string;
+  source: string;
+  compiled_vocabulary_json: JsonColumn<CompiledVocabulary>;
   published_by: string;
   published_at: string;
 }
@@ -278,6 +289,7 @@ export interface TrustDatabase {
   environment_variables: EnvironmentVariableTable;
   environment_credentials: EnvironmentCredentialTable;
   published_procedures: PublishedProcedureTable;
+  published_vocabularies: PublishedVocabularyTable;
   catalog_metadata_revisions: CatalogMetadataRevisionTable;
   plans: PlanTable;
   plan_revisions: PlanRevisionTable;

@@ -2,15 +2,27 @@ import type { MissionDefinition } from "@trust/extension-sdk";
 import { matchMissionDefinition } from "@trust/extension-sdk/match";
 import { type CompiledOperation, compileOperation } from "@trust/operation";
 import { parseResourceReference, selectVersion } from "@trust/operation/version";
-import { CatalogProcedureCompilationError, type CompiledProcedure, compileProcedure } from "@trust/procedure";
+import {
+  CatalogProcedureCompilationError,
+  type CompiledProcedure,
+  type CompiledVocabulary,
+  compileProcedure,
+} from "@trust/procedure";
+import { pinnedVocabularies } from "../vocabulary/vocabularies.js";
 
 /** Compile a mission against catalog snapshots without publishing inline definitions. */
 export function resolveMissionDefinition(
   definition: MissionDefinition,
   publishedOperations: readonly CompiledOperation[],
   procedures: readonly CompiledProcedure[],
+  vocabularyCatalog: readonly CompiledVocabulary[],
 ): CompiledProcedure {
-  const compile = (source: string, operations: readonly CompiledOperation[], sourceName: string): CompiledProcedure => {
+  const compile = (
+    source: string,
+    operations: readonly CompiledOperation[],
+    sourceName: string,
+    vocabularies: readonly CompiledVocabulary[],
+  ): CompiledProcedure => {
     const visiting = new Set<string>();
     const resolve = (selected: CompiledProcedure): CompiledProcedure => {
       const identity = `${selected.procedure}@${selected.version}`;
@@ -26,12 +38,13 @@ export function resolveMissionDefinition(
         sourceName: identity,
         operations,
         procedures,
+        vocabularies: pinnedVocabularies(selected, vocabularyCatalog),
         resolveProcedure: resolve,
       });
       visiting.delete(identity);
       return child;
     };
-    return compileProcedure({ source, sourceName, operations, procedures, resolveProcedure: resolve });
+    return compileProcedure({ source, sourceName, operations, procedures, vocabularies, resolveProcedure: resolve });
   };
   return matchMissionDefinition(definition, {
     published: ({ reference }) => {
@@ -43,7 +56,12 @@ export function resolveMissionDefinition(
       );
       const selected = procedures.find((value) => value.procedure === parsed.name && value.version === version);
       if (!selected) throw new TypeError(`No published Procedure matches "${reference}"`);
-      return compile(selected.source, publishedOperations, `${selected.procedure}@${selected.version}`);
+      return compile(
+        selected.source,
+        publishedOperations,
+        `${selected.procedure}@${selected.version}`,
+        pinnedVocabularies(selected, vocabularyCatalog),
+      );
     },
     inline: ({ procedureSource, operationSources }) => {
       const operations = [...publishedOperations];
@@ -58,7 +76,7 @@ export function resolveMissionDefinition(
         }
         operations.push(operation);
       }
-      const procedure = compile(procedureSource, operations, "procedure.feature");
+      const procedure = compile(procedureSource, operations, "procedure.feature", vocabularyCatalog);
       if (procedures.some((value) => value.procedure === procedure.procedure && value.version === procedure.version)) {
         throw new TypeError(
           `Inline Procedure "${procedure.procedure}@${procedure.version}" conflicts with a published definition`,

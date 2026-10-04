@@ -56,6 +56,7 @@ Le contrat du runtime est plus strict que le parcours conceptuel ci-dessus :
 - L'admission d'une Attempt exige la valeur courante exacte. Tant qu'il reste du travail, elle exige aussi une valeur suivante distincte ; une seule Attempt en cours réserve ce maillon.
 - Une finalisation avec des Facts acceptés et `VALIDATED` fait de la valeur suivante l'intention courante. `NOT_VALIDATED` libère la réservation et conserve la valeur courante. Un refus ne change aucune des deux valeurs.
 - L'escalade n'est acceptée que pour la dernière Attempt finalisée `NOT_VALIDATED` du Check ouvert courant. Elle place le Plan dans l'état `ESCALATED` sans créer de Snapshot, de verdict ni de révision du Plan.
+- Une Procédure avec `@controlled-language` contrôle aussi la valeur suivante et les deux textes d'escalade. Un texte qui enfreint une règle est refusé et ne change rien.
 - `plan.resume` exige l'identifiant de l'escalade active et un `resumeReason` non vide. L'agent doit ensuite relire le Plan et reprendre avec le Check et l'intention préservés.
 
 Voir [Ce que fait l'agent](/docs/plans/agent) pour le parcours d'invocation et de reprise, et la [référence du DSL TRUST](/docs/language) pour la syntaxe du chaînage d'intentions.

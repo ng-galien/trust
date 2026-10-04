@@ -1,0 +1,194 @@
+{
+  "procedure": "language-untagged",
+  "version": "1.0.0",
+  "title": "Keep the compiled definition of a Procedure without the controlled language tag",
+  "intentChaining": false,
+  "operations": [
+    {
+      "operation": "test.language-check",
+      "version": "1.0.0",
+      "digest": "4380f34c1f8782a6ef31c34fee38db9a139f31d8ceed2b96f42096895e42771e",
+      "definition": {
+        "contract": "trust.compiled-operation@1",
+        "operation": "test.language-check",
+        "version": "1.0.0",
+        "title": "Observe one declared request for controlled language acceptance",
+        "source": "# language: en\n@trust-dsl:1 @operation:test.language-check @version:1.0.0\nFeature: Observe one declared request for controlled language acceptance\n\n  Background: Operation interface\n    Given Environment\n      | name          | type      |\n      | workspaceRoot | directory |\n    And Input\n      | input   | type   | cardinality |\n      | request | string | one         |\n    And Produced fields\n      | field     | type   | cardinality | domain |\n      | completed | string | one         | any    |\n\n  Scenario: Run\n    When Shell \"observe\" runs \"node\" with cwd from Environment \"workspaceRoot\"\n      | argument | source  |\n      | --version | literal |\n    Then Produce with JSONata\n      \"\"\"\n      { \"completed\": \"yes\" }\n      \"\"\"\n",
+        "input": {
+          "type": "object",
+          "properties": {
+            "request": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "request"
+          ],
+          "additionalProperties": false
+        },
+        "environment": {
+          "type": "object",
+          "properties": {
+            "workspaceRoot": {
+              "type": "string",
+              "format": "trust-directory"
+            }
+          },
+          "required": [
+            "workspaceRoot"
+          ],
+          "additionalProperties": false
+        },
+        "steps": [
+          {
+            "name": "observe",
+            "type": "shell",
+            "shell": {
+              "executable": "node",
+              "arguments": [
+                {
+                  "kind": "literal",
+                  "value": "--version"
+                }
+              ],
+              "cwd": {
+                "environment": "workspaceRoot"
+              },
+              "acceptedExits": [
+                {
+                  "code": 0
+                }
+              ]
+            }
+          }
+        ],
+        "produce": {
+          "language": "jsonata",
+          "expression": "{ \"completed\": \"yes\" }"
+        },
+        "produced": {
+          "type": "object",
+          "properties": {
+            "completed": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "completed"
+          ],
+          "additionalProperties": false
+        }
+      }
+    }
+  ],
+  "scope": [
+    {
+      "check": "all",
+      "authorized": "Run the declared Operation; observe its result.",
+      "forbidden": "Change the Operation definition.",
+      "location": {
+        "line": 9,
+        "column": 7
+      }
+    },
+    {
+      "check": "confirm the requested run now",
+      "authorized": "Observe the completion of the requested run and compare the produced value with the expected value before you report any result.",
+      "forbidden": "Manufacture a result, edit the produced value, skip the comparison or report a completion that the Operation did not observe in this Plan run.",
+      "location": {
+        "line": 10,
+        "column": 7
+      }
+    }
+  ],
+  "roles": [
+    {
+      "name": "requested run value here",
+      "type": "string",
+      "cardinality": "one",
+      "parents": [],
+      "source": {
+        "kind": "fixed",
+        "value": "run"
+      },
+      "location": {
+        "line": 11,
+        "column": 5
+      }
+    }
+  ],
+  "scenarios": [
+    {
+      "slug": "execute",
+      "title": "Execute the Operation",
+      "dependencies": [],
+      "checks": [
+        "confirm the requested run now"
+      ],
+      "invocations": [],
+      "location": {
+        "line": 14,
+        "column": 3
+      }
+    }
+  ],
+  "checks": [
+    {
+      "name": "confirm the requested run now",
+      "scenario": "execute",
+      "operation": "test.language-check",
+      "operationVersion": "1.0.0",
+      "operationSelector": "*",
+      "operationDigest": "4380f34c1f8782a6ef31c34fee38db9a139f31d8ceed2b96f42096895e42771e",
+      "target": {
+        "role": "requested run value here",
+        "selection": "one"
+      },
+      "inputBindings": [
+        {
+          "input": "request",
+          "role": "requested run value here",
+          "selection": "one"
+        }
+      ],
+      "materializes": [],
+      "qualification": {
+        "source": "fact.completed === \"yes\" || fail(\"the Operation did not complete; retry the run\")",
+        "guards": [
+          {
+            "conditionLogic": {
+              "===": [
+                {
+                  "var": "fact.completed"
+                },
+                "yes"
+              ]
+            },
+            "failureReasonLogic": "the Operation did not complete; retry the run",
+            "references": [
+              {
+                "kind": "fact",
+                "field": "completed",
+                "valueType": "string",
+                "cardinality": "one"
+              }
+            ]
+          }
+        ],
+        "location": {
+          "line": 16,
+          "column": 7
+        }
+      },
+      "successReason": "the Operation completed. The result is recorded",
+      "location": {
+        "line": 15,
+        "column": 5
+      }
+    }
+  ],
+  "invocations": [],
+  "description": "This description stays free text; it may contain a semicolon and long sentences without any language diagnostic.",
+  "source": "# language: en\n@trust-dsl:1 @procedure:language-untagged @version:1.0.0\nFeature: Keep the compiled definition of a Procedure without the controlled language tag\n  This description stays free text; it may contain a semicolon and long sentences without any language diagnostic.\n\n  Background: Plan context\n    Given Procedure scope\n      | check | authorized | forbidden |\n      | all | Run the declared Operation; observe its result. | Change the Operation definition. |\n      | confirm the requested run now | Observe the completion of the requested run and compare the produced value with the expected value before you report any result. | Manufacture a result, edit the produced value, skip the comparison or report a completion that the Operation did not observe in this Plan run. |\n    And one string \"requested run value here\" fixed as \"run\"\n\n  @scenario:execute\n  Scenario: Execute the Operation\n    Then Check \"confirm the requested run now\" runs Operation \"test.language-check@*\" on \"requested run value here\" as Input \"request\" and must establish \"the Operation completed. The result is recorded\"\n      \"\"\"js\n      fact.completed === \"yes\" || fail(\"the Operation did not complete; retry the run\")\n      \"\"\"\n",
+  "definitionDigest": "91d771102705666629954474a9a02cee89b308b85626b29c95986d777594cb5c"
+}

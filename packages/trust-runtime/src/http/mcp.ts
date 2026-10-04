@@ -10,6 +10,7 @@ import type {
   PlanView,
   SessionView,
 } from "@trust/extension-sdk";
+import { type CompiledControlledLanguage, controlledProseFields } from "@trust/procedure";
 import { matchCheckExecutionConstraint } from "@trust/procedure/match";
 import express, { type ErrorRequestHandler, type RequestHandler, type Router } from "express";
 import { AccessError } from "../access/error.js";
@@ -224,6 +225,8 @@ async function callTool(id: JsonRpcId, value: unknown, dependencies: McpHttpDepe
     const aliases: Readonly<Record<string, string>> = {
       trust_extensions_list: "extension.list",
       trust_published_procedure_read: "procedure.read",
+      trust_published_vocabulary_read: "vocabulary.read",
+      trust_vocabulary_lookup: "vocabulary.read",
       trust_operation_environment_list: "operation.environments",
     };
     const action = aliases[value.name] ?? value.name.replace(/^trust_/, "").replaceAll("_", ".");
@@ -548,6 +551,7 @@ function renderPlan(view: PlanView): string {
             : []),
         ]
       : []),
+    ...(view.controlledLanguage === undefined ? [] : ["", ...renderControlledLanguage(view.controlledLanguage)]),
     "",
     "NEXT",
     ...planNext(view, actionable.length),
@@ -1272,3 +1276,28 @@ const bodyParserFailure: ErrorRequestHandler = (error, _request, response, next)
   }
   response.status(500).json(failure(null, INVALID_REQUEST, "Internal error"));
 };
+
+/** Limits that the runtime applies to agent declarations on a Plan whose Procedure carries the controlled language tag. */
+function renderControlledLanguage(language: CompiledControlledLanguage): string[] {
+  const vocabularies = language.vocabularies ?? [];
+  const limit = (parameter: string, field: "next-intent" | "blocking-reason" | "forbidden-further-action") => {
+    const profile: { readonly sentenceWords?: number; readonly singleSentence?: boolean } =
+      controlledProseFields[field];
+    const shape = profile.singleSentence ? "one sentence" : "sentences";
+    return `- ${parameter} (field ${field}): ${shape} of ${profile.sentenceWords} words or less, without a semicolon.`;
+  };
+  return [
+    "CONTROLLED LANGUAGE",
+    `Level: ${language.level}`,
+    ...(vocabularies.length === 0
+      ? []
+      : [`Vocabularies: ${vocabularies.map(({ vocabulary, version }) => `${vocabulary}@${version}`).join(", ")}`]),
+    "The runtime refuses a declaration that breaks a rule, changes nothing, and returns each finding with its field and rule.",
+    limit("nextIntent", "next-intent"),
+    limit("blockingReason", "blocking-reason"),
+    limit("forbiddenFurtherAction", "forbidden-further-action"),
+    ...(vocabularies.length === 0
+      ? []
+      : ["Each text also avoids the rejected words of the pinned vocabularies and uses their terms instead."]),
+  ];
+}

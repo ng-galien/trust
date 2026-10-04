@@ -5,7 +5,7 @@ order: 2
 ---
 
 ```gherkin fragment
-@trust-dsl:1 @procedure:<slug> @version:<x.y.z> [@intent-chaining]
+@trust-dsl:1 @procedure:<slug> @version:<x.y.z> [@intent-chaining] [@controlled-language[:<vocabulary>]]
 Feature: <title>
   [description]
 
@@ -47,6 +47,7 @@ Un Scenario peut contenir des Checks, des Invocations ou les deux ; un Scenario 
 | **Racines injectées** | `fact` · `context` · `checks` |
 | **Expressions** | comparaisons strictes, arithmétique, logique booléenne, tableaux, chaînes, instants typés, méthodes fermées de `Math` et de collections |
 | **Échec** | `condition || fail(reason)` ; plusieurs gardes peuvent être jointes avec `&&` |
+| **Langue contrôlée** | étiquette facultative `@controlled-language` : règles de structure sur les champs de prose. `@controlled-language:<vocabulary>` ajoute la règle lexicale avec le vocabulaire de base et un vocabulaire du domaine. |
 | **Périmètre de la Procedure** | table obligatoire ; au moins une ligne `all` ; les lignes nommées référencent des Checks exacts ; chaque ligne contient des cellules `authorized` et `forbidden` non vides |
 | **Liaisons intégrées** | `using plan as Input "<input>"` — l'identifiant du Plan, pour un Input `string` ou `reference` ; compile en un rôle synthétisé `"plan"` de source `plan-identifier` |
 
@@ -57,4 +58,5 @@ Un Scenario peut contenir des Checks, des Invocations ou les deux ; un Scenario 
 | Scénarios, prérequis, phrase de Check, `each` / `all`, matérialisation | [Scénarios et Checks](/docs/procedures/scenarios-and-checks) |
 | Expressions typées, qualification et raisons | [Qualifications](/docs/procedures/expectations) |
 | Erreurs | [Diagnostics](/docs/procedures/diagnostics) |
+| Étiquette de langue contrôlée, règles et vocabulaires | [Langue contrôlée](/docs/language/procedures/controlled-language) |
 | Missions dynamiques, définitions publiées et inline | [Délégation](/docs/procedures/delegation) |

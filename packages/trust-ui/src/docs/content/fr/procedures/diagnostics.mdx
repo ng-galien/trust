@@ -1,6 +1,6 @@
 ---
 title: "Diagnostics"
-summary: "Ce que le compilateur de Procédures refuse, ses quatorze codes, et les messages par cause."
+summary: "Ce que le compilateur de Procédures refuse, ses codes, et les messages par cause."
 order: 7
 ---
 
@@ -21,6 +21,8 @@ L'analyse pendant la rédaction renvoie une Procédure compilée ou **un ou plus
 | `incompatible-type` · `incompatible-cardinality` | une liaison, une matérialisation ou une expression ne correspond pas aux formes déclarées |
 | `invalid-dependency` | un prérequis, un Check référencé ou un rôle matérialisé est mal placé ou inconnu |
 | `dependency-cycle` | un cycle parmi les Scénarios ou les parents de rôles |
+| `unknown-vocabulary` | l'étiquette de langue contrôlée nomme un vocabulaire non publié |
+| `controlled-language` | un champ de prose d'une Procédure étiquetée enfreint une règle de la langue contrôlée |
 
 ## Messages par cause
 
@@ -63,6 +65,11 @@ L'analyse pendant la rédaction renvoie une Procédure compilée ou **un ou plus
 - `Operation "…" produces no field "…"` · `Plan context has no role "…"` · `Qualification references unknown Check "…"` · `Check "…" produces no field "…"` · `Check "…" is not in a prerequisite Scenario`.
 - `Qualification guard condition requires boolean, received …` · `fail reason requires string, received …` · les diagnostics d'opérateurs et de méthodes indiquent le type, la forme ou l'arité requis.
 - `Value "…" is outside the declared domain` · `Array literals must be homogeneous` · `Both conditional branches must have the same type`.
+
+### Langue contrôlée
+- `Controlled language tag must appear at most once` · `Controlled language tag must name at most one vocabulary` · `Vocabulary "…" must be a lowercase slug`.
+- `Vocabulary "trust-base" is always included. The tag names a domain vocabulary` · `Vocabulary "…" is not published`.
+- `Procedure prose has … controlled language diagnostic(s)`. Chaque diagnostic de langue donne aussi sa `rule` et son `field`. Les règles et leurs messages sont sur [Langue contrôlée](/docs/language/procedures/controlled-language).
 
 <Callout kind="tip">
   Les causes les plus fréquentes : un `Given scenario … is validated` écrit après un Check ; un rôle utilisé dans le même Scénario que celui qui le matérialise ; un rôle `many` lié sans `each` ni `all` ; un littéral hors de l'énumération du champ ; un `|| fail(reason)` manquant ; un nom de Check réutilisé.

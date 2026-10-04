@@ -1,6 +1,6 @@
 ---
 title: "Diagnostics"
-summary: "What the Procedure compiler refuses, its fourteen codes, and the messages by cause."
+summary: "What the Procedure compiler refuses, its codes, and the messages by cause."
 order: 7
 ---
 
@@ -21,6 +21,8 @@ The authoring analysis returns a compiled Procedure or **one or more diagnostics
 | `incompatible-type` · `incompatible-cardinality` | a binding, materialization or expression does not match the declared shapes |
 | `invalid-dependency` | a prerequisite, referenced Check or materialized role is misplaced or unknown |
 | `dependency-cycle` | a cycle among Scenarios or role parents |
+| `unknown-vocabulary` | the controlled language tag names a vocabulary that is not published |
+| `controlled-language` | a prose field of a tagged Procedure breaks a controlled language rule |
 
 ## Messages by cause
 
@@ -63,6 +65,11 @@ The authoring analysis returns a compiled Procedure or **one or more diagnostics
 - `Operation "…" produces no field "…"` · `Plan context has no role "…"` · `Qualification references unknown Check "…"` · `Check "…" produces no field "…"` · `Check "…" is not in a prerequisite Scenario`.
 - `Qualification guard condition requires boolean, received …` · `fail reason requires string, received …` · operator and method diagnostics state their required type, shape or arity.
 - `Value "…" is outside the declared domain` · `Array literals must be homogeneous` · `Both conditional branches must have the same type`.
+
+### Controlled language
+- `Controlled language tag must appear at most once` · `Controlled language tag must name at most one vocabulary` · `Vocabulary "…" must be a lowercase slug`.
+- `Vocabulary "trust-base" is always included. The tag names a domain vocabulary` · `Vocabulary "…" is not published`.
+- `Procedure prose has … controlled language diagnostic(s)`. Each language diagnostic also gives its `rule` and its `field`. The rules and their messages are on [Controlled language](/docs/language/procedures/controlled-language).
 
 <Callout kind="tip">
   The most frequent causes: a `Given scenario … is validated` written after a Check; a role used in the same Scenario that materializes it; a `many` role bound without `each` or `all`; a literal outside a field's enumeration; a missing `|| fail(reason)`; a Check name reused.

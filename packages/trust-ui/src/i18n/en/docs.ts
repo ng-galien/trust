@@ -107,12 +107,12 @@ export const docs = {
     agent: {
       term: "Agent",
       definition:
-        "An AI system that receives an objective, reasons about the work and chooses actions. It interacts with external systems through tools; its own account of the result is not proof.",
+        "An AI system that receives an objective, reasons about the work and chooses actions, and whose own account of the result is not proof.",
     },
     tool: {
       term: "Tool",
       definition:
-        "A means for an agent to interact with something outside its model, such as a file, command, application or remote service. TRUST describes a bounded tool action as an Operation.",
+        "A means for an agent to interact with something outside its model, such as a file, command, application or remote service.",
     },
     operator: {
       term: "Operator",
@@ -122,17 +122,17 @@ export const docs = {
     operation: {
       term: "Operation",
       definition:
-        "One predefined action on an external system. Its technical definition specifies the information it needs, its ordered steps and the observations it must return. It never decides whether a Check passes.",
+        "One predefined action on an external system that specifies its Inputs, ordered steps and Produced fields, and never decides whether a Check passes.",
     },
     check: {
       term: "Check",
       definition:
-        "One question the work must answer. It names an Operation, the object concerned and the rule used to decide whether the expected result is established.",
+        "One question the work must answer, naming an Operation, the object concerned and the rule that decides whether the expected result is established.",
     },
     scenario: {
       term: "Scenario",
       definition:
-        "A group of Checks that is satisfied when every Check is validated. A Scenario can require other Scenarios first.",
+        "A group of Checks that is satisfied when every Check is validated and that can require other Scenarios first.",
     },
     procedure: {
       term: "Procedure",
@@ -141,18 +141,20 @@ export const docs = {
     plan: {
       term: "Plan",
       definition:
-        "One concrete use of a Procedure. It records the inputs, the current state of every Check and the history of the work.",
+        "One concrete use of a Procedure that records the inputs, the current state of every Check and the history of the work.",
     },
-    session: { term: "Session", definition: "The open work on a Plan. Closing it keeps the Plan and its history." },
+    session: {
+      term: "Session",
+      definition: "The open work on a Plan, whose closing keeps the Plan and its history.",
+    },
     attempt: {
       term: "Attempt",
       definition:
-        "One authorized execution of a Check's Operation — by the agent's execution system on a live Plan, from observations supplied by the operator on a dry-run.",
+        "One authorized execution of the Operation of a Check, by the agent on a live Plan or from operator observations on a dry-run.",
     },
     fact: {
       term: "Fact",
-      definition:
-        "The observation report returned by one execution. Its values contain every field promised by the Operation; TRUST rejects the whole report if a required field is missing.",
+      definition: "The accepted value of one Produced field of an Operation.",
     },
     verdict: {
       term: "Verdict",
@@ -161,82 +163,88 @@ export const docs = {
     qualification: {
       term: "Qualification",
       definition:
-        "Evaluating the typed guards of a Check against accepted Facts to compute its verdict and reason. Only TRUST qualifies; neither the agent nor the system performing the action does.",
+        "The evaluation of the typed guards of a Check against accepted Facts to compute its verdict and reason, performed only by TRUST.",
     },
     cascade: {
       term: "Cascade",
       definition:
-        "New Facts on one Check recompute it and reopen every Check that depends on it, through Scenario prerequisites and field references.",
+        "The recomputation of a Check after new Facts, which reopens every Check that depends on it through Scenario prerequisites and field references.",
     },
     environment: {
       term: "Environment",
       definition:
-        "The named place and access context in which an action runs. It can provide directories, URLs, ordinary values and references to credentials.",
+        "The named place and access context in which an action runs, which can provide directories, URLs, ordinary values and credential references.",
     },
     credential: {
       term: "Credential",
       definition:
-        "A secret stored write-only by the runtime and referenced by an Environment. It is never displayed nor injected during a dry-run.",
+        "A secret that the runtime stores write-only, that an Environment references and that is never displayed nor injected during a dry-run.",
     },
     runner: {
       term: "Runner",
       definition:
-        "The component that performs one predefined action and reports what it observed. It receives the exact Check and Operation from TRUST but never decides whether they succeeded.",
+        "The component that performs one predefined action for the exact Check and Operation from TRUST and reports what it observed without deciding success.",
     },
     skill: {
       term: "Skill",
       definition:
-        "The integration an agent installs to work with TRUST. It contains the instructions for following Plans and the Runner that executes Checks.",
+        "The integration an agent installs to work with TRUST, with the instructions for following Plans and the Runner that executes Checks.",
     },
     delegation: {
       term: "Delegation",
-      definition:
-        "Authorizing one bounded external action: TRUST has checked the Check, its Session, its dependencies, the Operation contract and the Environment before anything runs.",
+      definition: "The entrusting of one piece of work to a child Plan.",
     },
     dryRun: {
       term: "Dry-run",
       definition:
-        "A Plan rehearsed by the operator: same Checks, same rules, Facts entered by hand, no Environment value delegated.",
+        "A Plan rehearsed by the operator with the same Checks and rules, Facts entered by hand and no Environment value given to a Runner.",
     },
     snapshot: {
       term: "Snapshot",
       definition:
-        "The immutable record of one qualification: accepted Facts, verdict, reason and the checklist delta it caused.",
+        "The immutable record of one qualification, with its accepted Facts, verdict, reason and the checklist delta it caused.",
     },
     revision: {
       term: "Revision",
       definition:
-        "The state of a Plan after one accepted Fact batch. Every acceptance produces a new revision; the agent always reads the current one.",
+        "The state of a Plan after one accepted Fact batch, so that every acceptance produces a new revision.",
     },
     intent: {
       term: "Intent",
       definition:
-        "The agent's short statement of the work it plans to do next. It helps preserve continuity between Checks but never counts as proof or influences qualification.",
+        "The short statement of the agent about the work it plans to do next, which never counts as proof or influences qualification.",
     },
     escalation: {
       term: "Escalation",
       definition:
-        "A recorded stop when the agent cannot continue within its authority. The unresolved Check remains open and the next decision returns to an operator; escalation is not a verdict.",
+        "A recorded stop when the agent cannot continue within its authority, which leaves the Check open and returns the decision to an operator.",
     },
     otlp: {
       term: "OTLP",
       definition:
-        "The OpenTelemetry protocol — the channel through which the Runner reports Facts of a live Plan (as trace spans).",
+        "The OpenTelemetry protocol through which the Runner reports the Facts of a live Plan as trace spans.",
     },
     mcp: {
       term: "MCP",
       definition:
-        "The Model Context Protocol: how an agent reads Plans and Checks (trust_plan_read, trust_check_read). MCP and RPC call the same runtime functions.",
+        "The Model Context Protocol through which an agent reads Plans and Checks, calling the same runtime functions as RPC.",
     },
     jsonata: {
       term: "JSONata",
       definition:
-        "The expression language of the Produce step: one closed expression that turns Input, Environment and step results into the produced fields.",
+        "The expression language of the Produce step, with one closed expression that turns Input, Environment and step results into the Produced fields.",
     },
     grant: {
       term: "Grant",
-      definition:
-        "The admission of one Attempt: it correlates Check, Operation, context and attempt key. It is not proof that the external action happened.",
+      definition: "A right that TRUST gives to an extension.",
+    },
+    vocabulary: {
+      term: "Vocabulary",
+      definition: "A catalog object that declares terms, their kind, their definition and rejected words.",
+    },
+    term: {
+      term: "Term",
+      definition: "A word or phrase that a vocabulary declares with its kind and one definition.",
     },
   },
 } as const;

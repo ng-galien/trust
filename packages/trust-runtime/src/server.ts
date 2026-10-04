@@ -14,6 +14,7 @@ import type { Logger } from "pino";
 import { type RawData, type WebSocket, WebSocketServer } from "ws";
 import { allowedBrowserOrigin } from "./access/browser-origin.js";
 import type { AccessSecretResolver } from "./access/configuration.js";
+import { AccessError } from "./access/error.js";
 import type { AccessService } from "./access/service.js";
 import { createRuntimeContainer } from "./runtime.js";
 
@@ -239,6 +240,7 @@ export const startRuntime = async ({
   });
   const languageOperations = container.resolve("operationCatalog");
   const languageProcedures = container.resolve("procedures");
+  const languageVocabularies = container.resolve("vocabularies");
   languageServer.on("connection", (webSocket, request) => {
     const authenticated = socketContexts.get(request);
     if (!authenticated) {
@@ -272,6 +274,8 @@ export const startRuntime = async ({
       {
         operations: () => languageOperations.list(),
         procedures: async () => (await languageProcedures.list()).map((published) => published.procedure),
+        vocabularies: () =>
+          mayReadVocabularies(accessService, authenticated.context) ? languageVocabularies.catalog() : [],
       },
     );
   });
@@ -317,6 +321,17 @@ function httpRequestPath(value: string | undefined): string {
 function authorizeLanguageServer(accessService: AccessService, context: AccessContext): void {
   for (const action of ["procedure.read", "procedure.compile", "operation.read", "operation.compile"])
     accessService.authorize(context, action);
+}
+
+/** The language server loads the vocabulary catalog only for a caller with the right to read vocabularies. */
+function mayReadVocabularies(accessService: AccessService, context: AccessContext): boolean {
+  try {
+    accessService.authorize(context, "vocabulary.read");
+    return true;
+  } catch (error) {
+    if (error instanceof AccessError) return false;
+    throw error;
+  }
 }
 
 /** Browser WebSocket has no Authorization-header API. The bearer travels in a non-selected protocol header, never a URL or server-selected protocol. */

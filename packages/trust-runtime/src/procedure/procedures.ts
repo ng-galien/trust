@@ -9,26 +9,33 @@ import {
 } from "@trust/procedure";
 import type { OperationCatalog } from "../operation/catalog.js";
 import type { Clock } from "../time.js";
+import { pinnedVocabularies, type Vocabularies } from "../vocabulary/vocabularies.js";
 import { resolveMissionDefinition } from "./mission-resolution.js";
 import type { ProcedureStore } from "./store.js";
 
-export type ProcedureSource = Omit<ProcedureCompilationInput, "operations" | "procedures" | "resolveProcedure">;
+export type ProcedureSource = Omit<
+  ProcedureCompilationInput,
+  "operations" | "procedures" | "resolveProcedure" | "vocabularies"
+>;
 
 export interface ProceduresDependencies {
   readonly clock: Clock;
   readonly operationCatalog: OperationCatalog;
   readonly procedureStore: ProcedureStore;
+  readonly vocabularies: Vocabularies;
 }
 
 export class Procedures {
   readonly #clock: Clock;
   readonly #operations: OperationCatalog;
   readonly #store: ProcedureStore;
+  readonly #vocabularies: Vocabularies;
 
-  constructor({ clock, operationCatalog, procedureStore }: ProceduresDependencies) {
+  constructor({ clock, operationCatalog, procedureStore, vocabularies }: ProceduresDependencies) {
     this.#clock = clock;
     this.#operations = operationCatalog;
     this.#store = procedureStore;
+    this.#vocabularies = vocabularies;
   }
 
   async compile(
@@ -36,7 +43,8 @@ export class Procedures {
     operations: readonly CompiledOperation[] = this.#operations.list(),
   ): Promise<CompiledProcedure> {
     const procedures = (await this.#store.list()).map((published) => published.procedure);
-    return compileProcedure({ ...input, operations, procedures });
+    const vocabularies = await this.#vocabularies.catalog();
+    return compileProcedure({ ...input, operations, procedures, vocabularies });
   }
 
   async publish(input: ProcedureSource, publisher: string): Promise<PublishedProcedure> {
@@ -64,7 +72,7 @@ export class Procedures {
   async resolveMission(definition: MissionDefinition): Promise<CompiledProcedure> {
     const operations = this.#operations.list();
     const procedures = (await this.#store.list()).map((value) => value.procedure);
-    return resolveMissionDefinition(definition, operations, procedures);
+    return resolveMissionDefinition(definition, operations, procedures, await this.#vocabularies.catalog());
   }
 
   /** Resolve once for a new root engagement. Published definitions are never rewritten. */
@@ -79,6 +87,7 @@ export class Procedures {
       procedures = (await this.#store.list()).map((value) => value.procedure);
       after = this.#operations.list();
     } while (operations.length !== after.length || operations.some((operation, index) => operation !== after[index]));
+    const vocabularies = await this.#vocabularies.catalog();
     const root = procedures.find((value) => value.procedure === procedure && value.version === version);
     if (!root) return undefined;
     const resolved = new Map<string, CompiledProcedure>();
@@ -99,6 +108,7 @@ export class Procedures {
         sourceName: identity,
         operations,
         procedures,
+        vocabularies: pinnedVocabularies(selected, vocabularies),
         resolveProcedure: resolve,
       });
       visiting.delete(identity);

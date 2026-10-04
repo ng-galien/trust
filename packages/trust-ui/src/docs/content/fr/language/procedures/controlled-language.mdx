@@ -1,0 +1,264 @@
+---
+title: "Langue contrôlée"
+summary: "L'étiquette de Procédure, les règles de structure, la règle lexicale, la grammaire des vocabulaires et le vocabulaire de base."
+order: 1
+---
+
+Une Procédure peut exiger que sa prose suive une **langue contrôlée**. La langue contrôlée rend moins ambigus les textes que lisent les agents et les opérateurs. Elle se compose de règles de structure et de <Term id="vocabulary">vocabulaires</Term> publiés. TRUST emploie ses propres règles et ses propres vocabulaires. Il ne reprend aucun dictionnaire général.
+
+La langue contrôlée s'applique à la prose anglaise. Le même moteur contrôle une source de Procédure, une source de vocabulaire et les textes qu'un agent déclare sur un Plan. Le même texte donne toujours les mêmes défauts.
+
+## L'étiquette de Procédure
+
+L'étiquette se place sur la ligne `Feature:`, avec les tags d'identité. Elle a deux formes. Chaque forme donne un niveau.
+
+| Étiquette | Niveau | Règles appliquées |
+| --- | --- | --- |
+| aucune étiquette | aucun | Aucune règle. La définition compilée et son digest ne changent pas. |
+| `@controlled-language` | `structure` | Les quatre règles de structure. |
+| `@controlled-language:<vocabulary>` | `lexical` | Les quatre règles de structure et la règle lexicale. La règle emploie le vocabulaire de base et le vocabulaire du domaine nommé. |
+
+Le compilateur refuse ces étiquettes, avec la ligne de l'étiquette :
+
+| Source | Code | Message |
+| --- | --- | --- |
+| l'étiquette deux fois | `invalid-procedure` | `Controlled language tag must appear at most once` |
+| deux noms de vocabulaire, comme `@controlled-language:a,b` | `invalid-procedure` | `Controlled language tag must name at most one vocabulary` |
+| un nom qui n'est pas un slug en minuscules | `invalid-identifier` | `Vocabulary "…" must be a lowercase slug` |
+| `@controlled-language:trust-base` | `invalid-procedure` | `Vocabulary "trust-base" is always included. The tag names a domain vocabulary` |
+| un vocabulaire non publié | `unknown-vocabulary` | `Vocabulary "…" is not published` |
+
+L'étiquette n'a pas de sélecteur de version. Le compilateur choisit la plus haute version publiée du vocabulaire nommé. Il choisit aussi la plus haute version publiée de `trust-base`.
+
+La Procédure compilée enregistre le niveau dans `controlledLanguage`. Au niveau lexical, elle épingle aussi chaque vocabulaire avec son identité, sa version et son digest. Le vocabulaire de base vient en premier. Ce champ entre dans le digest de la définition.
+
+```json
+{
+  "controlledLanguage": {
+    "level": "lexical",
+    "vocabularies": [
+      { "vocabulary": "trust-base", "version": "1.0.0", "digest": "<sha-256>" },
+      { "vocabulary": "delivery-terms", "version": "1.0.0", "digest": "<sha-256>" }
+    ]
+  }
+}
+```
+
+Un Plan emploie les vocabulaires que sa Procédure épingle. Il les conserve après la publication d'une version plus récente. Une nouvelle version de la Procédure choisit le vocabulaire plus récent.
+
+## Champs contrôlés
+
+Chaque défaut nomme le champ qu'il concerne. Voici les identifiants de champ.
+
+| Champ | Lieu | Texte |
+| --- | --- | --- |
+| `authorized` | Procédure | chaque cellule `authorized` de la table de portée, sur chaque ligne |
+| `forbidden` | Procédure | chaque cellule `forbidden` de la table de portée, sur chaque ligne |
+| `success-reason` | Procédure | le texte après `must establish`, pour un Check ou une Invocation |
+| `failure-reason` | Procédure | chaque texte d'une raison `fail(…)` dans la qualification d'un Check |
+| `check-name` | Procédure | le nom d'un Check ou d'une Invocation |
+| `role-name` | Procédure | le nom d'un rôle |
+| `definition` | vocabulaire | la définition d'un terme |
+| `next-intent` | Plan | le `nextIntent` d'une admission de Check |
+| `blocking-reason` | Plan | le `blockingReason` d'une escalade |
+| `forbidden-further-action` | Plan | le `forbiddenFurtherAction` d'une escalade |
+
+Certains textes restent libres. Ce sont le titre et la description sous `Feature:`, et les titres de Scénario. Le rôle réservé `plan`, les valeurs des rôles et le `resumeReason` d'un opérateur sont aussi libres. L'intention courante n'est pas contrôlée une seconde fois. TRUST crée la première intention courante. Chaque intention courante suivante est une intention suivante que le contrôle a acceptée.
+
+## Règles
+
+Un mot est une suite de caractères sans espace blanc. Une phrase se termine à `.`, `?` ou `!` suivi d'un espace blanc ou de la fin du texte. `structure.sentence-length` donne un défaut pour chaque phrase trop longue. `lexical.rejected-word` donne un défaut pour chaque mot rejeté que le texte emploie.
+
+| Règle | Champs contrôlés et limite | Champ refusé | Exemple refusé |
+| --- | --- | --- | --- |
+| `structure.sentence-length` | `authorized` et `forbidden` : 20 mots par phrase. `success-reason`, `failure-reason`, `definition`, `next-intent`, `blocking-reason` et `forbidden-further-action` : 25 mots par phrase. | `authorized` | `Read the repository state and the history of every branch, then compare each branch with the main branch before the review starts.` |
+| `structure.semicolon` | chaque champ : `authorized`, `forbidden`, `success-reason`, `failure-reason`, `check-name`, `role-name`, `definition`, `next-intent`, `blocking-reason` et `forbidden-further-action`. | `forbidden` | `Change a file; push a commit.` |
+| `structure.single-sentence` | `success-reason`, `failure-reason`, `definition`, `next-intent` et `forbidden-further-action` contiennent une seule phrase. | `success-reason` | `the working tree is clean. No file is staged.` |
+| `structure.name-length` | `check-name` et `role-name` : trois mots au plus. | `check-name` | `clean working tree check` |
+| `lexical.rejected-word` | chaque champ au niveau lexical, sauf les définitions d'un vocabulaire : `authorized`, `forbidden`, `success-reason`, `failure-reason`, `check-name`, `role-name`, `next-intent`, `blocking-reason` et `forbidden-further-action`. | `failure-reason` | `the repo has local changes` |
+
+Le champ `blocking-reason` peut contenir plusieurs phrases. Chaque phrase compte 25 mots au plus.
+
+La règle lexicale compare le texte aux mots rejetés des vocabulaires épinglés. Elle ne trouve que des mots entiers. Une lettre, un chiffre, un tiret bas ou un trait d'union ne peut pas toucher le mot. La comparaison ignore la casse. Un mot rejeté de plusieurs mots correspond avec n'importe quel espace blanc entre ses mots. La règle compare des formes exactes : `repos` ne correspond pas à `repo`.
+
+La règle lexicale refuse seulement les mots rejetés. Un mot qu'aucun vocabulaire ne déclare est accepté. La règle n'exige pas les termes déclarés. Elle ne s'applique pas aux définitions d'un vocabulaire.
+
+<Details title="Messages des défauts" expert>
+Chaque défaut a `rule`, `field` et `message`. Un défaut dans une source a aussi une `location` avec `line` et `column`. Les messages sont :
+
+- `structure.sentence-length` : `A <field> sentence has <count> words. The limit is <limit>.`
+- `structure.semicolon` : `The <field> text contains a semicolon. Write separate sentences.`
+- `structure.single-sentence` : `The <field> text has <count> sentences. Write one sentence.`
+- `structure.name-length` : `The <field> has <count> words. The limit is 3.`
+- `lexical.rejected-word` : `The <field> text uses the rejected word "<word>". Use the term "<term>".`
+</Details>
+
+## Diagnostics d'une Procédure
+
+Une Procédure étiquetée qui enfreint une règle ne compile pas et ne se publie pas. L'erreur du compilateur a le code `controlled-language`. Son message donne le nombre de défauts. Les données d'erreur RPC de `procedure.compile` et `procedure.publish` contiennent `diagnostics`. Chaque diagnostic donne sa règle, son champ, son message et sa position.
+
+Les outils MCP `trust_procedure_compile` et `trust_procedure_publish` écrivent chaque diagnostic sur une ligne. La ligne donne la ligne de source, le champ, la règle et le message. Une Procédure étiquetée compilée affiche `Controlled language: structure` ou `Controlled language: lexical`.
+
+Le serveur de langage renvoie les mêmes diagnostics pour une source de Procédure et pour une source de vocabulaire. Chaque diagnostic de langue porte `rule` et `field` dans ses `data`. Le serveur emploie aussi les sources de vocabulaire ouvertes dans l'éditeur.
+
+## Grammaire des vocabulaires
+
+Un vocabulaire est un objet du catalogue. Il déclare des termes, leur catégorie, leur définition et des mots rejetés. Sa source est en Gherkin fermé, comme une Opération ou une Procédure.
+
+```gherkin fragment
+# language: en
+@trust-dsl:1 @vocabulary:<slug> @version:<x.y.z>
+Feature: <title>
+  [description]
+
+  Background: <name>
+    Given Terms
+      | term | kind | definition |
+      | <term> | noun|verb | <definition> |
+    [And Rejected words
+      | word | use |
+      | <rejected word> | <term> |]
+```
+
+- La ligne `Feature:` porte `@vocabulary:`, `@version:` et `@trust-dsl:1`, chacun une fois. Tout autre tag est refusé.
+- L'identité du vocabulaire est un slug en minuscules. La version est une version sémantique exacte. L'identité `trust-base` est réservée.
+- La Feature a exactement un `Background`. Un `Scenario` ou une `Rule` sort de la grammaire.
+- La première étape est `Given Terms`. Sa table a les colonnes `term`, `kind` et `definition`, et au moins une ligne.
+- La seconde étape est facultative. C'est `And Rejected words`, avec les colonnes `word` et `use`. Aucune autre étape n'est acceptée.
+- Chaque étape porte une table et aucune doc string.
+- Un terme ou un mot rejeté est un ou plusieurs mots de lettres, de chiffres, de traits d'union ou d'apostrophes. Une suite d'espaces blancs devient une seule espace.
+- La catégorie est `noun` ou `verb`.
+- Une définition n'est pas vide. Elle respecte les règles de structure du champ `definition`.
+- La cellule `use` nomme un terme de ce vocabulaire ou un terme du vocabulaire de base. TRUST l'enregistre avec l'orthographe de ce terme.
+- La comparaison des termes et des mots ignore la casse.
+- La description sous `Feature:` est un texte libre. Elle n'est pas contrôlée et n'entre pas dans le digest.
+
+| Code | Cause |
+| --- | --- |
+| `invalid-vocabulary` | la forme du document, un tag, une étape, une table, une catégorie ou une définition vide sort de la grammaire |
+| `invalid-identifier` | l'identité n'est pas un slug en minuscules, ou la version n'est pas sémantique |
+| `reserved-vocabulary` | la source déclare l'identité `trust-base` |
+| `duplicate-term` | le vocabulaire déclare un terme deux fois |
+| `duplicate-word` | le vocabulaire déclare un mot rejeté deux fois |
+| `conflicting-word` | un mot est à la fois un terme et un mot rejeté |
+| `unknown-term` | un mot rejeté nomme un terme que ni ce vocabulaire ni le vocabulaire de base ne déclare |
+| `base-vocabulary-conflict` | un terme ou un mot rejeté est un terme ou un mot rejeté du vocabulaire de base |
+| `controlled-language` | une définition enfreint une règle de structure |
+
+Ce vocabulaire compile :
+
+```gherkin vocabulary id="delivery-terms"
+# language: en
+@trust-dsl:1 @vocabulary:delivery-terms @version:1.0.0
+Feature: Delivery terms
+  The words of one delivery team. This description is free text.
+
+  Background: Vocabulary
+    Given Terms
+      | term       | kind | definition                                                |
+      | repository | noun | A store of files with their version history.             |
+      | pipeline   | noun | The ordered automatic jobs that build and test a change. |
+      | deploy     | verb | Install one built version in an Environment.              |
+    And Rejected words
+      | word     | use        |
+      | repo     | repository |
+      | workflow | pipeline   |
+      | goal     | intent     |
+```
+
+Le mot rejeté `goal` nomme `intent`, un terme du vocabulaire de base.
+
+Le digest d'un vocabulaire couvre son identité, sa version, son titre, ses termes et ses mots rejetés. Une version publiée ne change jamais. Une seconde publication de la même identité et de la même version n'est acceptée qu'avec la même source. Une autre source est refusée avec `already published with another immutable definition`. Une version publiée n'est jamais supprimée.
+
+## Vocabulaire de base
+
+Le vocabulaire de base `trust-base` porte les concepts de TRUST. Chaque concept a une seule définition. Le runtime publie `trust-base@1.0.0` au démarrage quand le catalogue ne le contient pas. La version 1.0.0 déclare 67 termes, 58 noms et 9 verbes, et ces mots rejetés :
+
+| Mot rejeté | Terme à employer |
+| --- | --- |
+| `intention` | `intent` |
+| `Produced value` | `Fact` |
+| `action scope` | `scope` |
+| `perimeter` | `scope` |
+| `Plan input` | `root input` |
+| `delegated Plan` | `child Plan` |
+
+Lisez la liste complète avec `trust_published_vocabulary_read` et `{"vocabulary": "trust-base", "version": "1.0.0"}`. Le glossaire de cette documentation reprend la définition de base pour chaque terme commun.
+
+Chaque contrôle lexical inclut le vocabulaire de base. Le niveau structure n'emploie aucun vocabulaire. Un vocabulaire du domaine ne peut pas déclarer un terme ou un mot rejeté du vocabulaire de base. Le compilateur le refuse avec `base-vocabulary-conflict`. Un mot rejeté d'un vocabulaire du domaine peut nommer un terme du vocabulaire de base.
+
+## Exemples
+
+Cette Procédure emploie le niveau structure. Elle compile sans vocabulaire.
+
+```gherkin procedure id="controlled-structure" title="Structure level"
+# language: en
+@trust-dsl:1 @procedure:controlled-head @version:1.0.0 @controlled-language
+Feature: Confirm a clean working tree
+
+  Background: Plan context
+    Given Procedure scope
+      | check | authorized | forbidden |
+      | all | Read the repository state. | Change a file in the repository. |
+    And one reference "project"
+
+  @scenario:inspect
+  Scenario: Inspect the project
+    Then Check "clean tree" runs Operation "git.head-read@*" on "project" as Input "project" and must establish "the working tree of the project is clean"
+      """js
+      fact.workingTree === "clean" ||
+      fail("the working tree has local changes")
+      """
+```
+
+Cette Procédure emploie le niveau lexical. Elle compile après la publication du vocabulaire `delivery-terms` ci-dessus.
+
+```gherkin lexical id="controlled-lexical" title="Lexical level"
+# language: en
+@trust-dsl:1 @procedure:controlled-head-terms @version:1.0.0 @controlled-language:delivery-terms
+Feature: Confirm a clean repository
+
+  Background: Plan context
+    Given Procedure scope
+      | check | authorized | forbidden |
+      | all | Read the repository state. | Change a file in the repository. |
+    And one reference "project"
+
+  @scenario:inspect
+  Scenario: Inspect the project
+    Then Check "clean tree" runs Operation "git.head-read@*" on "project" as Input "project" and must establish "the working tree of the project is clean"
+      """js
+      fact.workingTree === "clean" ||
+      fail("the working tree has local changes")
+      """
+```
+
+Placez un exemple refusé de la table des règles dans son champ, et le compilateur refuse la source. Par exemple, `fail("the repo has local changes")` dans la Procédure lexicale donne ce défaut : `The failure-reason text uses the rejected word "repo". Use the term "repository".`
+
+## Déclarations de l'agent sur un Plan
+
+Sur un Plan dont la Procédure porte l'étiquette, le runtime contrôle trois textes de l'agent. Il emploie les mêmes règles et les vocabulaires que la Procédure épingle. Un Plan sans étiquette accepte ces textes comme avant.
+
+`trust_plan_read` affiche un bloc `CONTROLLED LANGUAGE`. Le bloc donne le niveau, les vocabulaires épinglés et la limite de chaque texte contrôlé. Le résultat RPC de `plan.read` contient le champ `controlledLanguage` de la Procédure.
+
+L'admission d'un Check contrôle `nextIntent`. Un texte qui enfreint une règle donne un refus avec le code de raison `controlled-language`. Le refus ne change rien. L'intention courante reste, et la clé de tentative reste libre. Le refus contient `findings`, une liste de `field`, `rule` et `message`. Le texte de la raison a une ligne par défaut, sous la forme `[<field> <rule>] <message>`.
+
+Le résultat du Runner conserve les défauts dans `result.findings`. Le rapport texte du Runner les écrit sous `Findings:`, une ligne par défaut. Réécrivez le `nextIntent` et exécutez de nouveau le même Check.
+
+L'escalade contrôle `blockingReason` et `forbiddenFurtherAction`. MCP `trust_check_escalate` et RPC `check.escalate` refusent un texte qui enfreint une règle. Les données d'erreur RPC ont la raison `controlled-language` et les `findings`. Le texte MCP commence par `TRUST Check escalation refused` et donne une ligne par défaut. Le Plan ne change pas et le Check reste escaladable.
+
+Si le contrôle ne peut pas s'exécuter, l'appel est refusé avec la raison `controlled-language-unavailable`. Un vocabulaire épinglé absent du catalogue, ou présent avec un autre digest, donne ce refus. Le runtime n'accepte jamais le texte sans le contrôle.
+
+## Outils de vocabulaire
+
+Les outils MCP du runtime et les méthodes RPC appellent les mêmes fonctions du runtime. Chaque appel demande une action d'accès, comme les appels de Procédure.
+
+| Outil MCP | Méthode RPC | Action d'accès | Résultat |
+| --- | --- | --- | --- |
+| `trust_vocabulary_list` | `vocabulary.list` | `vocabulary.list` | chaque version publiée avec son nombre de termes, son nombre de mots rejetés et son digest |
+| `trust_published_vocabulary_read` | `vocabulary.read` | `vocabulary.read` | une version avec ses termes, ses mots rejetés et sa source |
+| `trust_vocabulary_compile` | `vocabulary.compile` | `vocabulary.compile` | le vocabulaire compilé, sans publication |
+| `trust_vocabulary_publish` | `vocabulary.publish` | `vocabulary.publish` | la version publiée |
+| `trust_vocabulary_lookup` | `vocabulary.lookup` | `vocabulary.read` | la définition d'un terme, le terme à employer pour un mot rejeté, ou l'absence du mot |
+
+`trust_vocabulary_lookup` prend `word` et un `vocabulary` facultatif. Il cherche toujours dans la plus haute version publiée de `trust-base`. Avec `vocabulary`, il cherche aussi dans la plus haute version publiée de ce vocabulaire. Un nom de vocabulaire inconnu est refusé. Un appelant sans l'action d'accès reçoit `Access denied`, et rien ne change.

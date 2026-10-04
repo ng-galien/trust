@@ -6,6 +6,9 @@ procedure_plan_context_parser = "name = 'parsePlanContext'"
 procedure_canonical_step_parser_target = "target ~ '**/function:parseProcedureStep'"
 procedure_compiler_module = "moniker ~ '**/dir:packages/dir:trust-procedure/dir:src/module:compile'"
 procedure_step_grammar_target = "target ~ '**/dir:packages/dir:trust-procedure/dir:src/module:language/path:procedureStepGrammar'"
+vocabulary_step_parser = "moniker ~ '**/dir:packages/dir:trust-procedure/dir:src/module:vocabulary/**'"
+vocabulary_compiler_module = "moniker ~ '**/dir:packages/dir:trust-procedure/dir:src/module:vocabulary'"
+vocabulary_step_grammar_target = "target ~ '**/dir:packages/dir:trust-procedure/dir:src/module:language/path:vocabularyStepGrammar'"
 
 [[ts.function.where]]
 id = "procedure-step-parser-call-flow-enters-gherkin"
@@ -27,3 +30,17 @@ severity = "error"
 expr = "$procedure_plan_context_parser => any(out_refs, $procedure_canonical_step_parser_target)"
 message = "Plan context parsing bypasses the canonical Procedure Step parser."
 rationale = "Every sentence in Plan context, including the mandatory Procedure scope sentence, is recognized through procedureStepGrammar. DataTable lowering may validate the scope columns and rows only after the canonical Step parser selected the scope production; directly comparing Step text would create a second language authority and leave LSP completions behind."
+
+[[ts.function.where]]
+id = "vocabulary-step-parser-call-flow-enters-gherkin"
+severity = "error"
+expr = "$vocabulary_step_parser => (name != 'parseVocabularyStep' OR any(out_refs, $gherkin_parse_step_grammar_target))"
+message = "Vocabulary Step parsing must enter the canonical Gherkin Step Grammar engine."
+rationale = "A vocabulary source belongs to the closed TRUST grammar. Its Background sentences are recognized by the shared Gherkin engine with the vocabulary Step Grammar, never by comparing Step words independently."
+
+[[ts.module.where]]
+id = "vocabulary-compiler-dependency-on-vocabulary-step-grammar-is-explicit"
+severity = "error"
+expr = "$vocabulary_compiler_module => any(out_refs, $vocabulary_step_grammar_target)"
+message = "The vocabulary compiler must import the canonical vocabulary Step Grammar."
+rationale = "Vocabulary parsing is parameterized by the grammar descriptor owned by the Procedure language module, next to the Procedure Step Grammar."

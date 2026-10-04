@@ -32,8 +32,11 @@ import {
 import {
   analyzeProcedure,
   analyzeProcedureScopeFragment,
+  analyzeVocabulary,
   type CompiledProcedure,
+  type CompiledVocabulary,
   isProcedureSource,
+  isVocabularySource,
   transitiveScenarioDependencies,
 } from "@trust/procedure";
 import {
@@ -74,6 +77,7 @@ const semanticTokenIndexes = new Map(semanticTokenTypes.map((kind, index) => [ki
 export interface TrustLanguageServerOptions {
   readonly operations?: () => readonly CompiledOperation[];
   readonly procedures?: () => readonly CompiledProcedure[] | Promise<readonly CompiledProcedure[]>;
+  readonly vocabularies?: () => readonly CompiledVocabulary[] | Promise<readonly CompiledVocabulary[]>;
   readonly connectionActive?: () => boolean;
 }
 
@@ -118,6 +122,17 @@ export function startTrustLanguageServer(connection: Connection, options: TrustL
       byName.set(`${operation.operation}@${operation.version}`, operation);
     return [...byName.values()];
   };
+  const vocabularyCatalog = async (): Promise<readonly CompiledVocabulary[]> => {
+    const byIdentity = new Map<string, CompiledVocabulary>();
+    for (const vocabulary of (await options.vocabularies?.()) ?? [])
+      byIdentity.set(`${vocabulary.vocabulary}@${vocabulary.version}`, vocabulary);
+    for (const document of documents.all()) {
+      if (templateContexts.has(document.uri) || !isVocabularySource(document.getText())) continue;
+      const compiled = analyzeVocabulary({ source: document.getText(), sourceName: document.uri }).compiled;
+      if (compiled) byIdentity.set(`${compiled.vocabulary}@${compiled.version}`, compiled);
+    }
+    return [...byIdentity.values()];
+  };
   const procedureCatalog = async (): Promise<readonly CompiledProcedure[]> => {
     const byIdentity = new Map<string, CompiledProcedure>();
     for (const procedure of (await options.procedures?.()) ?? [])
@@ -134,6 +149,7 @@ export function startTrustLanguageServer(connection: Connection, options: TrustL
           sourceName: document.uri,
           operations: catalog(),
           procedures: [...byIdentity.values()],
+          vocabularies: await vocabularyCatalog(),
         });
         if (!analysis.compiled) continue;
         const identity = `${analysis.compiled.procedure}@${analysis.compiled.version}`;
@@ -254,6 +270,7 @@ export function startTrustLanguageServer(connection: Connection, options: TrustL
       kind,
       catalog(),
       await procedureCatalog(),
+      await vocabularyCatalog(),
     );
     if (!view) return items;
     return items.flatMap((item) => {
@@ -302,7 +319,8 @@ export function startTrustLanguageServer(connection: Connection, options: TrustL
     if (kind === "operation") {
       const analysis = analyzeOperation({ source: effective.getText(), sourceName: document.uri });
       if (analysis.document) symbols = operationSymbols(analysis.document);
-    } else if (kind === "procedure") symbols = procedureSymbols(effective, catalog(), await procedureCatalog());
+    } else if (kind === "procedure")
+      symbols = procedureSymbols(effective, catalog(), await procedureCatalog(), await vocabularyCatalog());
     if (!view) return symbols;
     const mapSymbol = (symbol: DocumentSymbol): DocumentSymbol => ({
       ...symbol,
@@ -321,7 +339,16 @@ export function startTrustLanguageServer(connection: Connection, options: TrustL
     const source = effective.getText();
     const kind = kindOf(document);
     let diagnostics: Diagnostic[] = [];
-    if (kind === "operation") {
+    if (!view && isVocabularySource(source)) {
+      diagnostics = analyzeVocabulary({ source, sourceName: document.uri }).diagnostics.map((diagnostic) => ({
+        severity: DiagnosticSeverity.Error,
+        range: diagnosticRange(effective, diagnostic.location),
+        message: diagnostic.message,
+        code: diagnostic.code,
+        source: "trust-vocabulary",
+        ...(diagnostic.rule ? { data: { rule: diagnostic.rule, field: diagnostic.field } } : {}),
+      }));
+    } else if (kind === "operation") {
       diagnostics = analyzeOperation({ source, sourceName: document.uri }).diagnostics.map((diagnostic) => ({
         severity: DiagnosticSeverity.Error,
         range: lspRange(diagnostic.range),
@@ -336,12 +363,14 @@ export function startTrustLanguageServer(connection: Connection, options: TrustL
           sourceName: document.uri,
           operations: catalog(),
           procedures: await procedureCatalog(),
+          vocabularies: await vocabularyCatalog(),
         }).diagnostics.map((diagnostic) => ({
           severity: DiagnosticSeverity.Error,
           range: diagnosticRange(effective, diagnostic.location),
           message: diagnostic.message,
           code: diagnostic.code,
           source: "trust-procedure",
+          ...(diagnostic.rule ? { data: { rule: diagnostic.rule, field: diagnostic.field } } : {}),
         }));
       } catch {
         diagnostics = [
@@ -444,10 +473,11 @@ function completionItems(
   kind: LanguageKind,
   operations: readonly CompiledOperation[],
   procedures: readonly CompiledProcedure[],
+  vocabularies: readonly CompiledVocabulary[],
 ): CompletionItem[] {
   const parsed = parseSource(document.getText());
   const embedded = embeddedLanguageAt(parsed, position.line + 1);
-  if (embedded === "js") return jsCompletions(document, position, operations, procedures);
+  if (embedded === "js") return jsCompletions(document, position, operations, procedures, vocabularies);
   if (embedded === "jsonata") return jsonataCompletions(document, position);
   return sentenceCompletions(document, parsed, position, kind, operations, procedures);
 }
@@ -897,10 +927,11 @@ function jsCompletions(
   position: Position,
   operations: readonly CompiledOperation[],
   procedures: readonly CompiledProcedure[],
+  vocabularies: readonly CompiledVocabulary[],
 ): CompletionItem[] {
   const source = document.getText();
   const path = qualificationCompletionPath(source, document.offsetAt(position));
-  const model = compileProcedureModel(source, operations, procedures);
+  const model = compileProcedureModel(source, operations, procedures, vocabularies);
   const currentCheck = checkAt(source, position.line + 1, model);
   const operation = operations.find((candidate) => candidate.operation === currentCheck?.operation);
   const roots = procedureLanguage.qualification.roots;
@@ -1009,8 +1040,9 @@ function compileProcedureModel(
   source: string,
   operations: readonly CompiledOperation[],
   procedures: readonly CompiledProcedure[],
+  vocabularies: readonly CompiledVocabulary[],
 ): CompiledProcedure | undefined {
-  return analyzeProcedure({ source, operations, procedures }).compiled;
+  return analyzeProcedure({ source, operations, procedures, vocabularies }).compiled;
 }
 
 function operationForCheck(
@@ -1106,9 +1138,10 @@ function procedureSymbols(
   document: TextDocument,
   operations: readonly CompiledOperation[],
   procedures: readonly CompiledProcedure[],
+  vocabularies: readonly CompiledVocabulary[],
 ): DocumentSymbol[] {
   const source = document.getText();
-  const model = compileProcedureModel(source, operations, procedures);
+  const model = compileProcedureModel(source, operations, procedures, vocabularies);
   const parsed = parseSource(source);
   if (!model || !parsed?.feature) return [];
   const rootRange = { start: { line: 0, character: 0 }, end: document.positionAt(source.length) };

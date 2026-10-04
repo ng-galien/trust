@@ -56,6 +56,7 @@ The runtime contract is stricter than the conceptual flow above:
 - Attempt admission requires the exact current value. While work remains, it also requires a distinct next value; one pending Attempt reserves that link.
 - Finalization with accepted Facts and `VALIDATED` rotates the next value into the current intent. `NOT_VALIDATED` releases the reservation and preserves the current value. Refusal changes neither value.
 - Escalation is accepted only for the latest finalized `NOT_VALIDATED` Attempt of the current open Check. It moves the Plan to `ESCALATED` without creating a Snapshot, verdict or Plan revision.
+- A Procedure with `@controlled-language` also controls the next value and the two escalation texts. A text that breaks a rule is refused and changes nothing.
 - `plan.resume` requires the active escalation identifier and a non-empty `resumeReason`. The agent must then read the Plan again and continue from its preserved Check and intent.
 
 See [What the agent does](/docs/plans/agent) for the invocation and recovery flow, and the [TRUST DSL reference](/docs/language) for authored intent-chaining syntax.

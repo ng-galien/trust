@@ -49,7 +49,7 @@ Feature: <title>
 Une Procédure définit ce que ces observations doivent établir, dans quel ordre et dans quel périmètre :
 
 ```gherkin fragment
-@trust-dsl:1 @procedure:<slug> @version:<x.y.z> [@intent-chaining]
+@trust-dsl:1 @procedure:<slug> @version:<x.y.z> [@intent-chaining] [@controlled-language[:<vocabulary>]]
 Feature: <title>
   Background: Plan context
     Given Procedure scope ...
@@ -61,6 +61,6 @@ Feature: <title>
         and must establish "<success reason>"
 ```
 
-Les deux pages ci-dessous énumèrent chaque phrase acceptée et renvoient vers les explications détaillées.
+Les deux pages ci-dessous énumèrent chaque phrase acceptée et renvoient vers les explications détaillées. L'étiquette facultative `@controlled-language` contrôle la prose d'une Procédure. Ses règles et la grammaire des vocabulaires sont sur la page [Langue contrôlée](/docs/language/procedures/controlled-language).
 
 <PageCards />
