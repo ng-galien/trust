@@ -35,6 +35,13 @@ import {
   isDocumentationToolName,
 } from "./mcp-documentation.js";
 import { callExtensionTool, extensionTools, isExtensionToolName } from "./mcp-extensions.js";
+import {
+  callPlanTool,
+  InvalidMcpPlanArguments,
+  isPlanToolName,
+  planTools,
+  renderCancellationRecord,
+} from "./mcp-plans.js";
 import { callRegistryTool, isRegistryToolName, registryTools } from "./mcp-registry.js";
 import type { RegistryRpcDependencies } from "./registry.js";
 
@@ -194,6 +201,7 @@ async function dispatch(
       return success(id, {
         tools: [
           ...tools(),
+          ...planTools(),
           ...extensionTools(),
           ...registryTools(),
           ...documentationTools(),
@@ -240,6 +248,17 @@ async function callTool(id: JsonRpcId, value: unknown, dependencies: McpHttpDepe
     if (!isRecord(value.arguments)) return failure(id, INVALID_PARAMS, "Invalid registry arguments");
     const result = await callRegistryTool(value.name, value.arguments, dependencies);
     return result.isError ? toolError(id, result.text) : textResult(id, result.text);
+  }
+  if (isRecord(value) && isPlanToolName(value.name)) {
+    if (!isRecord(value.arguments)) return failure(id, INVALID_PARAMS, "Invalid Plan arguments");
+    try {
+      const result = await callPlanTool(value.name, value.arguments, dependencies);
+      return result.isError ? toolError(id, result.text) : textResult(id, result.text);
+    } catch (error) {
+      if (error instanceof InvalidMcpPlanArguments) return failure(id, INVALID_PARAMS, error.message);
+      if (error instanceof AccessError) return toolError(id, "Access denied");
+      throw error;
+    }
   }
   if (isRecord(value) && isExtensionToolName(value.name)) {
     if (!isRecord(value.arguments)) return failure(id, INVALID_PARAMS, "Invalid extension arguments");
@@ -471,6 +490,9 @@ function renderPlan(view: PlanView): string {
     `State: ${view.workState}`,
     `Session: ${view.sessionState}`,
     `Progress: ${view.satisfiedChecks}/${view.checks.length} current Checks satisfied`,
+    ...(view.cancellation === null
+      ? []
+      : ["", "CANCELLATION", ...renderCancellationRecord(view.plan, view.cancellation)]),
     ...(view.descendantEscalations.length
       ? [
           "",
@@ -662,11 +684,13 @@ function renderSession(view: SessionView): string {
     `Progress: ${view.satisfiedChecks}/${view.satisfiedChecks + view.openChecks} current Checks satisfied`,
     "",
     "NEXT",
-    view.checklistComplete
-      ? "The Plan is complete. No further Check is required."
-      : view.state === "OPEN"
-        ? "Use trust_plan_read with the same Check URI to see the next work."
-        : "The Session is unavailable. Do not run a Check until it is open.",
+    view.workState === "CANCELLED"
+      ? "The Plan is cancelled. Do not run a Check."
+      : view.checklistComplete
+        ? "The Plan is complete. No further Check is required."
+        : view.state === "OPEN"
+          ? "Use trust_plan_read with the same Check URI to see the next work."
+          : "The Session is unavailable. Do not run a Check until it is open.",
     "",
   ].join("\n");
 }
@@ -732,6 +756,10 @@ function renderCheck(view: CheckView): string {
 }
 
 function planNext(view: PlanView, actionableChecks: number): readonly string[] {
+  if (view.workState === "CANCELLED")
+    return [
+      "The Plan is CANCELLED. Do not run a Check, replace declarations, resume or relaunch it. Its history stays readable.",
+    ];
   if (view.checklistComplete) return ["The Plan is complete. Do not run another Check."];
   if (view.workState === "ESCALATED")
     return ["The Procedure is stopped. Do not run another Check. Only an operator can resume the Plan."];

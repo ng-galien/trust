@@ -146,7 +146,7 @@ export interface PlanEvent {
   readonly resync?: true;
   readonly revision?: number;
   readonly cause?: "declarations" | "verdict";
-  readonly workState?: "IN_PROGRESS" | "ESCALATED" | "COMPLETE";
+  readonly workState?: PlanWorkState;
   readonly checklistDelta?: {
     readonly newlySatisfied: readonly string[];
     readonly newlyOpened: readonly string[];
@@ -259,8 +259,12 @@ export interface PlanMetadata {
 export type PlanMode = "live" | "dry-run";
 export type IntentChainState = "DISABLED" | "NOT_STARTED" | "ACTIVE" | "COMPLETE";
 
+/** Work state of a Plan. `COMPLETE` and `CANCELLED` are final; `CANCELLED` is never a completion. */
+export const PLAN_WORK_STATES = ["IN_PROGRESS", "ESCALATED", "COMPLETE", "CANCELLED"] as const;
+export type PlanWorkState = (typeof PLAN_WORK_STATES)[number];
+
 export interface PlanListInput {
-  readonly filter?: { readonly procedure?: string; readonly mode?: PlanMode };
+  readonly filter?: { readonly procedure?: string; readonly mode?: PlanMode; readonly workState?: PlanWorkState };
   readonly cursor?: string;
   readonly limit?: number;
 }
@@ -313,7 +317,7 @@ export interface PlanView {
   readonly createdAt: string;
   readonly state: "ENGAGED";
   readonly sessionState: "OPEN" | "UNAVAILABLE";
-  readonly workState: "IN_PROGRESS" | "ESCALATED" | "COMPLETE";
+  readonly workState: PlanWorkState;
   readonly revision: number;
   readonly declarations: Readonly<Record<string, unknown>>;
   readonly missionDeclarations?: MissionDeclarations;
@@ -356,6 +360,8 @@ export interface PlanView {
   } | null;
   readonly activeEscalation: PlanEscalationView | null;
   readonly escalations: readonly PlanEscalationView[];
+  /** The cancellation that ended this Plan, or of the root Plan that cancelled it with its composition. */
+  readonly cancellation: PlanCancellationView | null;
   readonly revisions: readonly PlanRevisionView[];
   readonly sessions: readonly SessionRecordView[];
 }
@@ -395,7 +401,8 @@ export interface PlanSummaryView {
   readonly revision: number;
   readonly createdAt: string;
   readonly sessionState: "OPEN" | "UNAVAILABLE";
-  readonly workState: "IN_PROGRESS" | "ESCALATED" | "COMPLETE";
+  readonly workState: PlanWorkState;
+  readonly cancellation: PlanCancellationView | null;
   readonly satisfiedChecks: number;
   readonly checkCount: number;
 }
@@ -440,6 +447,16 @@ export interface PlanImportedResult {
   readonly invocationId: string;
   readonly childPlan: string;
   readonly childRevision: number;
+}
+
+/** Operator decision that ends a root Plan and its current child Plans; recorded once and never changed. */
+export interface PlanCancellationView {
+  /** The root Plan whose cancellation ended this Plan; equal to the Plan itself for the root. */
+  readonly rootPlan: string;
+  readonly cancelledAt: string;
+  /** Authenticated principal that cancelled the root Plan; null for unauthenticated local access. */
+  readonly cancelledBy: import("./access.js").ExternalPrincipal | null;
+  readonly reason: string;
 }
 
 export interface PlanEscalationView {
@@ -494,7 +511,7 @@ export interface SessionView {
   readonly plan: string;
   readonly state: "OPEN" | "UNAVAILABLE";
   readonly activeRevision: number;
-  readonly workState: "IN_PROGRESS" | "ESCALATED" | "COMPLETE";
+  readonly workState: PlanWorkState;
   readonly checklistComplete: boolean;
   readonly satisfiedChecks: number;
   readonly openChecks: number;
@@ -658,6 +675,25 @@ export interface PlanResumptionInput {
   readonly plan: string;
   readonly escalationId: string;
   readonly resumeReason: string;
+}
+
+/** Operator decision to end a root Plan with a reason. */
+export interface PlanCancellationInput {
+  readonly plan: string;
+  readonly reason: string;
+}
+
+export interface PlanCancellationResult {
+  readonly contract: "trust.plan-cancellation@1";
+  readonly status: "CANCELLED";
+  readonly plan: string;
+  readonly cancelledAt: string;
+  readonly cancelledBy: import("./access.js").ExternalPrincipal | null;
+  readonly reason: string;
+  /** The root Plan followed by every current child Plan and descendant cancelled with it. */
+  readonly cancelledPlans: readonly string[];
+  /** Pending Attempts interrupted by the cancellation. */
+  readonly interruptedAttempts: readonly string[];
 }
 
 /** Operator resolution of an escalated child Plan: abandon its generation and start the next one. */

@@ -242,6 +242,15 @@ export interface PlanEscalationTable {
   resume_reason: string | null;
 }
 
+export interface PlanCancellationTable {
+  plan_slug: string;
+  root_plan: string;
+  cancelled_at: string;
+  actor_issuer: string | null;
+  actor_subject: string | null;
+  reason: string;
+}
+
 export interface ExtensionInstallationTable {
   installation_id: string;
   manifest: string;
@@ -302,6 +311,7 @@ export interface TrustDatabase {
   check_snapshots: CheckSnapshotTable;
   active_check_qualifications: ActiveCheckQualificationTable;
   plan_escalations: PlanEscalationTable;
+  plan_cancellations: PlanCancellationTable;
 }
 
 export type Database = Kysely<TrustDatabase>;

@@ -1,7 +1,7 @@
 import type { ExternalPrincipal, IntentChainState, PlanMode } from "@trust/extension-sdk";
 import type { Selectable } from "kysely";
 import type { Database, PlanRevisionTable, PlanTable } from "../database/database.js";
-import type { Plan, PlanCheck, PlanRevision } from "../model.js";
+import type { Plan, PlanCancellation, PlanCheck, PlanRevision } from "../model.js";
 import { readOnce } from "./transaction.js";
 
 type PlanRow = Selectable<PlanTable>;
@@ -16,6 +16,7 @@ export interface PlanListQuery {
   readonly filter?: {
     readonly procedure?: string;
     readonly mode?: PlanMode;
+    readonly cancelled?: boolean;
   };
   readonly after?: { readonly createdAt: string; readonly plan: string };
   readonly limit: number;
@@ -167,6 +168,43 @@ export class PlanStore {
       .where("plan_slug", "=", planSlug)
       .executeTakeFirst();
     return row ? toPlan(row) : undefined;
+  }
+
+  findCancellation(planSlug: string): Promise<PlanCancellation | undefined> {
+    return readOnce(this.dependencies.database, `cancellation:${planSlug}`, () => this.#findCancellation(planSlug));
+  }
+
+  async #findCancellation(planSlug: string): Promise<PlanCancellation | undefined> {
+    const row = await this.dependencies.database
+      .selectFrom("plan_cancellations")
+      .selectAll()
+      .where("plan_slug", "=", planSlug)
+      .executeTakeFirst();
+    if (!row) return undefined;
+    return {
+      planSlug: row.plan_slug,
+      rootPlan: row.root_plan,
+      cancelledAt: row.cancelled_at,
+      cancelledBy:
+        row.actor_issuer === null || row.actor_subject === null
+          ? null
+          : { issuer: row.actor_issuer, subject: row.actor_subject },
+      reason: row.reason,
+    };
+  }
+
+  async saveCancellation(cancellation: PlanCancellation): Promise<void> {
+    await this.dependencies.database
+      .insertInto("plan_cancellations")
+      .values({
+        plan_slug: cancellation.planSlug,
+        root_plan: cancellation.rootPlan,
+        cancelled_at: cancellation.cancelledAt,
+        actor_issuer: cancellation.cancelledBy?.issuer ?? null,
+        actor_subject: cancellation.cancelledBy?.subject ?? null,
+        reason: cancellation.reason,
+      })
+      .execute();
   }
 
   /** Lock the expected current Plan row without producing a new tuple. */
@@ -329,6 +367,17 @@ export class PlanStore {
     }
     if (query.filter?.mode !== undefined) {
       selection = selection.where("mode", "=", query.filter.mode);
+    }
+    if (query.filter?.cancelled !== undefined) {
+      const cancelled = query.filter.cancelled;
+      selection = selection.where(({ exists, not, selectFrom }) => {
+        const cancellation = exists(
+          selectFrom("plan_cancellations")
+            .select("plan_cancellations.plan_slug")
+            .whereRef("plan_cancellations.plan_slug", "=", "plans.plan_slug"),
+        );
+        return cancelled ? cancellation : not(cancellation);
+      });
     }
     if (query.after !== undefined) {
       selection = selection.where((expression) =>

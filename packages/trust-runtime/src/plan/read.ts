@@ -6,6 +6,7 @@ import type {
   DelegationEpisodeView,
   HistoryListInput,
   HistoryView,
+  PlanCancellationView,
   PlanCheckView,
   PlanEscalationView,
   PlanListInput,
@@ -22,7 +23,15 @@ import type { AttemptStore } from "../attempt/store.js";
 import { checkIsActionable } from "../check/actionability.js";
 import type { Database } from "../database/database.js";
 import type { FactStore } from "../fact/store.js";
-import type { Attempt, CheckSnapshot, Plan, PlanCheck, PlanEscalation, PlanRevision } from "../model.js";
+import type {
+  Attempt,
+  CheckSnapshot,
+  Plan,
+  PlanCancellation,
+  PlanCheck,
+  PlanEscalation,
+  PlanRevision,
+} from "../model.js";
 import type { Procedures } from "../procedure/procedures.js";
 import type { SessionStore } from "../session/store.js";
 import type { SnapshotStore } from "../snapshot/store.js";
@@ -207,58 +216,59 @@ export class PlanReader {
     const creator = accessScope === "own" ? this.#access.principal(access) : null;
     const limit = listLimit(input.limit);
     const scope = cursorScope({ filter: input.filter, accessScope, creator });
-    const after =
+    let after =
       input.cursor === undefined
         ? undefined
         : (this.#decodeListCursor(input.cursor, "plans", scope) as { createdAt: string; plan: string });
-    const page = await this.#plans.listPlans({
-      ...(creator === null ? {} : { creator }),
-      ...(input.filter === undefined ? {} : { filter: input.filter }),
-      ...(after === undefined ? {} : { after }),
-      limit: limit + 1,
-    });
-    const plans = page.slice(0, limit);
-    // One read transaction for the page: parents and children share their lookups, readers never block readers.
-    const summaries = await readTransaction(this.#database, async (database) => {
-      const reader = this.#using(database);
-      const read = [];
-      for (const plan of plans) {
-        await shareComposition(database, plan.slug);
-        await reader.#authorizePlan(access, "plan.list", plan.slug);
-        read.push(await reader.#readPlanBySlug(plan.slug, false, false));
-      }
-      return read;
-    });
-    const views = [];
-    for (const view of summaries) {
-      views.push({
-        creator: view.creator,
-        descendantEscalations: view.descendantEscalations,
-        parent: view.parent,
-        plan: view.plan,
-        procedure: view.procedure,
-        procedureVersion: view.procedureVersion,
-        environment: view.environment,
-        mode: view.mode,
-        intentChaining: view.intentChaining,
-        intentChainState: view.intentChainState,
-        currentIntent: view.currentIntent,
-        nextIntent: view.nextIntent,
-        currentIntentCheckUri: view.currentIntentCheckUri,
-        metadata: view.metadata,
-        revision: view.revision,
-        createdAt: view.createdAt,
-        sessionState: view.sessionState,
-        workState: view.workState,
-        satisfiedChecks: view.satisfiedChecks,
-        checkCount: view.checks.length,
+    const workState = input.filter?.workState;
+    // Cancellation is stored: the store selects it exactly. The other work states are derived from each Plan read.
+    const filter = {
+      ...(input.filter?.procedure === undefined ? {} : { procedure: input.filter.procedure }),
+      ...(input.filter?.mode === undefined ? {} : { mode: input.filter.mode }),
+      ...(workState === undefined ? {} : { cancelled: workState === "CANCELLED" }),
+    };
+    const derived = workState !== undefined && workState !== "CANCELLED";
+    const matches: PlanSummaryView[] = [];
+    let more = false;
+    while (true) {
+      const page = await this.#plans.listPlans({
+        ...(creator === null ? {} : { creator }),
+        filter,
+        ...(after === undefined ? {} : { after }),
+        limit: limit + 1,
       });
+      const plans = derived ? page : page.slice(0, limit);
+      // One read transaction for the page: parents and children share their lookups, readers never block readers.
+      const summaries = await readTransaction(this.#database, async (database) => {
+        const reader = this.#using(database);
+        const read = [];
+        for (const plan of plans) {
+          await shareComposition(database, plan.slug);
+          await reader.#authorizePlan(access, "plan.list", plan.slug);
+          read.push(await reader.#readPlanBySlug(plan.slug, false, false));
+        }
+        return read;
+      });
+      for (const view of summaries) {
+        if (workState === undefined || view.workState === workState) matches.push(planSummary(view));
+      }
+      const last = page.at(-1);
+      if (!derived) {
+        more = page.length > limit;
+        break;
+      }
+      if (matches.length > limit || page.length <= limit || last === undefined) {
+        more = matches.length > limit;
+        break;
+      }
+      after = { createdAt: last.createdAt, plan: last.slug };
     }
-    const last = plans.at(-1);
+    const views = matches.slice(0, limit);
+    const last = views.at(-1);
     return {
       plans: views,
-      ...(page.length > limit && last !== undefined
-        ? { nextCursor: this.#encodeListCursor("plans", scope, { createdAt: last.createdAt, plan: last.slug }) }
+      ...(more && last !== undefined
+        ? { nextCursor: this.#encodeListCursor("plans", scope, { createdAt: last.createdAt, plan: last.plan }) }
         : {}),
     };
   }
@@ -350,17 +360,21 @@ export class PlanReader {
         optional: role.source.kind === "agent-declaration" && role.source.optional === true,
         parents: role.parents,
       }));
-    const [checks, availableSession, activeQualifications, activeEscalation, escalationHistory] = await Promise.all([
-      this.#plans.listCurrentChecks(plan.slug),
-      this.#sessions.findAvailable(plan.slug, this.#now()),
-      this.#snapshots.listActive(plan.slug, plan.currentRevision),
-      this.#escalations.findActive(plan.slug),
-      this.#escalations.listForPlan(plan.slug),
-    ]);
+    const [checks, availableSession, activeQualifications, activeEscalation, escalationHistory, cancellation] =
+      await Promise.all([
+        this.#plans.listCurrentChecks(plan.slug),
+        this.#sessions.findAvailable(plan.slug, this.#now()),
+        this.#snapshots.listActive(plan.slug, plan.currentRevision),
+        this.#escalations.findActive(plan.slug),
+        this.#escalations.listForPlan(plan.slug),
+        this.#plans.findCancellation(plan.slug),
+      ]);
     const sessionAvailable = availableSession !== undefined;
     const composition = await readComposition(this.#database, plan.slug);
     const planAvailable =
-      activeEscalation === undefined && (await ancestorBlocker(this.#database, plan.slug)) === undefined;
+      cancellation === undefined &&
+      activeEscalation === undefined &&
+      (await ancestorBlocker(this.#database, plan.slug)) === undefined;
     const active = new Set(activeQualifications.map((qualification) => qualification.checkUri));
     const uris = checks.map((check) => check.uri);
     const [latestSnapshotByUri, latestAttemptByUri] = await Promise.all([
@@ -456,7 +470,13 @@ export class PlanReader {
       createdAt: plan.createdAt,
       state: "ENGAGED",
       sessionState: sessionAvailable ? "OPEN" : "UNAVAILABLE",
-      workState: activeEscalation ? "ESCALATED" : checklistComplete ? "COMPLETE" : "IN_PROGRESS",
+      workState: cancellation
+        ? "CANCELLED"
+        : activeEscalation
+          ? "ESCALATED"
+          : checklistComplete
+            ? "COMPLETE"
+            : "IN_PROGRESS",
       revision: plan.currentRevision,
       declarations: revision.agentDeclarations,
       missionCollections: procedure.missionCollections,
@@ -487,6 +507,7 @@ export class PlanReader {
             },
       activeEscalation: activeEscalation ? escalationView(activeEscalation) : null,
       escalations: escalationHistory.map(escalationView),
+      cancellation: cancellation ? cancellationView(cancellation) : null,
       revisions: (history ? await this.#plans.listRevisions(plan.slug) : []).map((item) => ({
         revision: item.revision,
         definitionDigest: item.definitionDigest,
@@ -554,16 +575,25 @@ export class PlanReader {
     const { check, plan } = await this.#resolve(checkUri);
     if (!this.#scoped)
       return planReadTransaction(this.#database, plan.slug, (database) => this.#using(database).#readCheck(checkUri));
-    const [history, activeQualifications, checks, availableSession, storedAttempts, activeEscalation, revision] =
-      await Promise.all([
-        this.#snapshots.listHistory(checkUri),
-        this.#snapshots.listActive(plan.slug, plan.currentRevision),
-        this.#plans.listCurrentChecks(plan.slug),
-        this.#sessions.findAvailable(plan.slug, this.#now()),
-        this.#attempts.listByCheck(checkUri),
-        this.#escalations.findActive(plan.slug),
-        this.#plans.readRevision(plan.slug, plan.currentRevision),
-      ]);
+    const [
+      history,
+      activeQualifications,
+      checks,
+      availableSession,
+      storedAttempts,
+      activeEscalation,
+      revision,
+      cancellation,
+    ] = await Promise.all([
+      this.#snapshots.listHistory(checkUri),
+      this.#snapshots.listActive(plan.slug, plan.currentRevision),
+      this.#plans.listCurrentChecks(plan.slug),
+      this.#sessions.findAvailable(plan.slug, this.#now()),
+      this.#attempts.listByCheck(checkUri),
+      this.#escalations.findActive(plan.slug),
+      this.#plans.readRevision(plan.slug, plan.currentRevision),
+      this.#plans.findCancellation(plan.slug),
+    ]);
     if (!revision)
       throw new ReadError("revision-not-found", `The pinned Procedure for Plan ${plan.slug} is unavailable`);
     const latest = history.at(-1);
@@ -578,7 +608,9 @@ export class PlanReader {
       latest,
       storedAttempts[0],
       sessionAvailable,
-      activeEscalation === undefined && (await ancestorBlocker(this.#database, plan.slug)) === undefined,
+      cancellation === undefined &&
+        activeEscalation === undefined &&
+        (await ancestorBlocker(this.#database, plan.slug)) === undefined,
       actionScope(revision.resolvedProcedure.scope, check.check.name),
       false,
       plan.currentIntentCheckUri,
@@ -933,6 +965,41 @@ function checkBlockers(
     blockers.add("Plan Session is unavailable");
   }
   return Object.freeze([...blockers].sort());
+}
+
+function planSummary(view: PlanView): PlanSummaryView {
+  return {
+    creator: view.creator,
+    descendantEscalations: view.descendantEscalations,
+    parent: view.parent,
+    plan: view.plan,
+    procedure: view.procedure,
+    procedureVersion: view.procedureVersion,
+    environment: view.environment,
+    mode: view.mode,
+    intentChaining: view.intentChaining,
+    intentChainState: view.intentChainState,
+    currentIntent: view.currentIntent,
+    nextIntent: view.nextIntent,
+    currentIntentCheckUri: view.currentIntentCheckUri,
+    metadata: view.metadata,
+    revision: view.revision,
+    createdAt: view.createdAt,
+    sessionState: view.sessionState,
+    workState: view.workState,
+    cancellation: view.cancellation,
+    satisfiedChecks: view.satisfiedChecks,
+    checkCount: view.checks.length,
+  };
+}
+
+function cancellationView(cancellation: PlanCancellation): PlanCancellationView {
+  return {
+    rootPlan: cancellation.rootPlan,
+    cancelledAt: cancellation.cancelledAt,
+    cancelledBy: cancellation.cancelledBy,
+    reason: cancellation.reason,
+  };
 }
 
 function escalationView(escalation: PlanEscalation): PlanEscalationView {

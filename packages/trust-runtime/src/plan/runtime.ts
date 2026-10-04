@@ -12,6 +12,8 @@ import type {
   FactBatchInput,
   FactBatchResult,
   MissionDeclarations,
+  PlanCancellationInput,
+  PlanCancellationResult,
   PlanDeclarationReplacementInput,
   PlanDeclarationReplacementResult,
   PlanEngagementInput,
@@ -42,7 +44,14 @@ import type { CredentialService } from "../credential/service.js";
 import type { Database } from "../database/database.js";
 import type { EnvironmentService } from "../environment/service.js";
 import type { FactStore } from "../fact/store.js";
-import type { ActiveCheckQualification, Attempt, CheckSnapshot, PlanEscalation, PlanRevision } from "../model.js";
+import type {
+  ActiveCheckQualification,
+  Attempt,
+  CheckSnapshot,
+  PlanCancellation,
+  PlanEscalation,
+  PlanRevision,
+} from "../model.js";
 import type { Procedures } from "../procedure/procedures.js";
 import type { SessionStore } from "../session/store.js";
 import type { SnapshotStore } from "../snapshot/store.js";
@@ -78,7 +87,9 @@ export type PlanRuntimeErrorCode =
   | "facts-missing"
   | "check-not-escalatable"
   | "controlled-language"
-  | "controlled-language-unavailable";
+  | "controlled-language-unavailable"
+  | "invalid-plan-cancellation"
+  | "plan-cancelled";
 
 export class PlanRuntimeError extends Error {
   constructor(
@@ -95,12 +106,17 @@ export class PlanRuntimeError extends Error {
 
 class IntentInUseError extends Error {}
 class PlanEscalatedDuringAdmissionError extends Error {}
+class PlanCancelledDuringAdmissionError extends Error {
+  constructor(readonly refusalReason: string) {
+    super(refusalReason);
+  }
+}
 class AdmissionPlanChangedError extends Error {}
 
 interface SessionChange {
   readonly id: string;
   readonly plan: string;
-  readonly state: "open" | "expired";
+  readonly state: "open" | "closed" | "expired";
   readonly at: string;
 }
 
@@ -203,6 +219,12 @@ export class PlanRuntime {
     }
   }
 
+  /** Refuse any change that would continue a cancelled Plan; the refusal names the cancellation. */
+  async #refuseCancelled(database: Database, plan: string): Promise<void> {
+    const cancellation = await this.#plans.using(database).findCancellation(plan);
+    if (cancellation) throw new PlanRuntimeError("plan-cancelled", cancellationRefusal(plan, cancellation));
+  }
+
   async #initialRevision(input: PlanEngagementInput, pinned?: CompiledProcedure): Promise<PlanRevision> {
     if (input.contract !== "trust.plan-engagement-request@1") {
       throw new PlanRuntimeError("invalid-plan-engagement", "Unsupported Plan engagement contract");
@@ -298,6 +320,7 @@ export class PlanRuntime {
       pinned?.resolvedProcedure,
     );
     if (existing) {
+      await this.#refuseCancelled(this.#database, input.plan);
       const current = await this.#plans.readRevision(input.plan, existing.currentRevision);
       if (
         !current ||
@@ -314,6 +337,7 @@ export class PlanRuntime {
       }
       const changes = await planTransaction(this.#database, input.plan, async (transaction) => {
         await this.#authorizePlan(access, "plan.engage", input.plan, transaction);
+        await this.#refuseCancelled(transaction, input.plan);
         const changes = await this.#ensureSessionIn(transaction, input.plan, this.#now());
         await this.#synchronizeChildren(transaction, input.plan);
         return changes;
@@ -328,6 +352,7 @@ export class PlanRuntime {
       const concurrent = await plans.findPlan(input.plan);
       if (concurrent) {
         this.#access.authorize(access, "plan.engage", concurrent.creator);
+        await this.#refuseCancelled(transaction, input.plan);
         const current = await plans.readRevision(input.plan, concurrent.currentRevision);
         if (
           !current ||
@@ -361,6 +386,7 @@ export class PlanRuntime {
     if (!plan) throw new PlanRuntimeError("plan-conflict", `Plan ${planSlug} is unknown`);
     if (plan.mode !== "dry-run")
       throw new PlanRuntimeError("plan-conflict", `Plan ${planSlug} is a live Plan and cannot be reset`);
+    await this.#refuseCancelled(this.#database, planSlug);
     const pinned = await this.#plans.readRevision(planSlug, plan.currentRevision);
     if (!pinned) throw new PlanRuntimeError("plan-conflict", `Plan ${planSlug} has no pinned composition`);
     const revision = await this.#initialRevision(
@@ -380,6 +406,7 @@ export class PlanRuntime {
     const sessionId = randomUUID();
     await planTransaction(this.#database, planSlug, async (transaction) => {
       await this.#authorizePlan(access, "plan.reset", planSlug, transaction);
+      await this.#refuseCancelled(transaction, planSlug);
       await this.#requireIndependentHistory(transaction, planSlug);
       await this.#plans.using(transaction).remove(planSlug);
       await this.#saveInitialRevision(transaction, revision, now, sessionId, plan.creator);
@@ -432,6 +459,114 @@ export class PlanRuntime {
     });
     if (session) this.#sessionEvent(session.id, planSlug, "closed", closedAt);
     return { plan: planSlug, closed: session !== undefined };
+  }
+
+  /**
+   * Ends a root Plan with an operator reason. In one transaction the root and its current child Plans and their
+   * descendants receive the same cancellation record, their open Sessions close and their pending Attempts are
+   * interrupted. Nothing is deleted: Checks, Attempts, Facts, declarations and revisions stay readable.
+   */
+  async cancelPlan(input: PlanCancellationInput, access?: AccessContext): Promise<PlanCancellationResult> {
+    await this.#authorizePlan(access, "plan.cancel", input.plan);
+    if (!isEscalationDeclaration(input.reason)) {
+      throw new PlanRuntimeError(
+        "invalid-plan-cancellation",
+        "Plan cancellation requires a non-empty reason of at most 4096 characters without surrounding whitespace",
+      );
+    }
+    const planSlug = input.plan;
+    const cancelledAt = this.#now().toISOString();
+    const cancelledBy = this.#access.principal(access);
+    const sessionChanges: SessionChange[] = [];
+    const cancelled = await planTransaction(this.#database, planSlug, async (transaction) => {
+      await this.#authorizePlan(access, "plan.cancel", planSlug, transaction);
+      const plans = this.#plans.using(transaction);
+      const plan = await plans.findPlan(planSlug);
+      if (!plan) throw new PlanRuntimeError("plan-conflict", `Plan ${planSlug} is unknown`);
+      await this.#refuseCancelled(transaction, planSlug);
+      const parent = await transaction
+        .selectFrom("child_generations")
+        .select("parent_plan")
+        .where("child_plan", "=", planSlug)
+        .executeTakeFirst();
+      if (parent) {
+        throw new PlanRuntimeError(
+          "plan-conflict",
+          `Plan ${planSlug} is a child Plan of ${parent.parent_plan}; cancel its root Plan or withdraw its mission from the parent`,
+        );
+      }
+      if ((await readComposition(transaction, planSlug)).complete) {
+        throw new PlanRuntimeError("plan-conflict", `Plan ${planSlug} is COMPLETE and cannot be cancelled`);
+      }
+      const cancelledPlans = [planSlug];
+      let frontier = [planSlug];
+      while (frontier.length > 0) {
+        const children = await transaction
+          .selectFrom("child_generations")
+          .select("child_plan")
+          .where("parent_plan", "in", frontier)
+          .where("superseded_at", "is", null)
+          .orderBy("parent_plan")
+          .orderBy("invocation_id")
+          .execute();
+        frontier = children.map((value) => value.child_plan).filter((value) => !cancelledPlans.includes(value));
+        cancelledPlans.push(...frontier);
+      }
+      const sessions = this.#sessions.using(transaction);
+      const attempts = this.#attempts.using(transaction);
+      const interruptedAttempts: string[] = [];
+      for (const slug of cancelledPlans) {
+        const cancellation: PlanCancellation = {
+          planSlug: slug,
+          rootPlan: planSlug,
+          cancelledAt,
+          cancelledBy,
+          reason: input.reason,
+        };
+        await plans.saveCancellation(cancellation);
+        const pending = await transaction
+          .selectFrom("attempts")
+          .select("attempt_handle")
+          .where("plan_slug", "=", slug)
+          .where("state", "=", "pending")
+          .orderBy("attempt_order")
+          .execute();
+        const current = await plans.findPlan(slug);
+        for (const { attempt_handle } of pending) {
+          const attempt = await attempts.lockPending(attempt_handle);
+          if (!attempt) continue;
+          if (
+            attempt.intent !== undefined &&
+            current?.currentIntent === attempt.intent &&
+            current.currentIntentAttemptKey === attempt.attemptKey
+          ) {
+            await plans.releaseIntentAttempt(slug, attempt.intent, attempt.attemptKey);
+          }
+          await attempts.interrupt(attempt.handle, cancelledAt);
+          interruptedAttempts.push(attempt.handle);
+        }
+        const session = await sessions.findOpen(slug);
+        if (session) {
+          await sessions.changeState(session.id, "closed", cancelledAt);
+          sessionChanges.push({ id: session.id, plan: slug, state: "closed", at: cancelledAt });
+        }
+      }
+      return { cancelledPlans, interruptedAttempts };
+    });
+    this.#publishSessionChanges(sessionChanges);
+    for (const plan of cancelled.cancelledPlans) {
+      this.#events.publish({ type: "plan.state", at: cancelledAt, plan, workState: "CANCELLED" });
+    }
+    return {
+      contract: "trust.plan-cancellation@1",
+      status: "CANCELLED",
+      plan: planSlug,
+      cancelledAt,
+      cancelledBy,
+      reason: input.reason,
+      cancelledPlans: cancelled.cancelledPlans,
+      interruptedAttempts: cancelled.interruptedAttempts,
+    };
   }
 
   async escalateCheck(input: CheckEscalationInput, access?: AccessContext): Promise<CheckEscalationResult> {
@@ -487,6 +622,7 @@ export class PlanRuntime {
       const facts = this.#facts.using(transaction);
       const requestedAttempt = await attempts.find(input.attemptHandle);
       const plan = requestedAttempt ? await plans.findPlan(requestedAttempt.planSlug) : undefined;
+      if (plan) await this.#refuseCancelled(transaction, plan.slug);
       if (
         !requestedAttempt ||
         !plan ||
@@ -600,6 +736,7 @@ export class PlanRuntime {
 
   async resumePlan(input: PlanResumptionInput, access?: AccessContext): Promise<PlanResumptionResult> {
     await this.#authorizePlan(access, "plan.resume", input.plan);
+    await this.#refuseCancelled(this.#database, input.plan);
     if (!isEscalationDeclaration(input.resumeReason)) {
       throw new PlanRuntimeError(
         "plan-conflict",
@@ -614,6 +751,7 @@ export class PlanRuntime {
     let sessionEvents: readonly SessionChange[] = [];
     await planTransaction(this.#database, planSlug, async (transaction) => {
       await this.#authorizePlan(access, "plan.resume", planSlug, transaction);
+      await this.#refuseCancelled(transaction, planSlug);
       const plans = this.#plans.using(transaction);
       const plan = await plans.findPlan(planSlug);
       if (!plan) throw new PlanRuntimeError("plan-conflict", `Plan ${planSlug} is unknown`);
@@ -681,6 +819,7 @@ export class PlanRuntime {
    */
   async relaunchPlan(input: PlanRelaunchInput, access?: AccessContext): Promise<PlanRelaunchResult> {
     await this.#authorizePlan(access, "plan.relaunch", input.plan);
+    await this.#refuseCancelled(this.#database, input.plan);
     if (!isEscalationDeclaration(input.relaunchReason)) {
       throw new PlanRuntimeError(
         "plan-conflict",
@@ -694,6 +833,7 @@ export class PlanRuntime {
     let relaunched = false;
     await planTransaction(this.#database, planSlug, async (transaction) => {
       await this.#authorizePlan(access, "plan.relaunch", planSlug, transaction);
+      await this.#refuseCancelled(transaction, planSlug);
       const relation = await transaction
         .selectFrom("child_generations")
         .selectAll()
@@ -777,6 +917,7 @@ export class PlanRuntime {
     access?: AccessContext,
   ): Promise<PlanDeclarationReplacementResult> {
     await this.#authorizePlan(access, "plan.declarations.replace", input.plan);
+    await this.#refuseCancelled(this.#database, input.plan);
     const plan = await this.#plans.findPlan(input.plan);
     const current = plan ? await this.#plans.readRevision(plan.slug, plan.currentRevision) : undefined;
     if (!plan || !current || plan.currentRevision !== input.expectedRevision) {
@@ -869,6 +1010,7 @@ export class PlanRuntime {
     ) {
       await planTransaction(this.#database, plan.slug, async (transaction) => {
         await this.#authorizePlan(access, "plan.declarations.replace", plan.slug, transaction);
+        await this.#refuseCancelled(transaction, plan.slug);
         const plans = this.#plans.using(transaction);
         const transactionalPlan = await plans.findPlan(plan.slug);
         if (
@@ -952,6 +1094,7 @@ export class PlanRuntime {
     try {
       await planTransaction(this.#database, plan.slug, async (transaction) => {
         await this.#authorizePlan(access, "plan.declarations.replace", plan.slug, transaction);
+        await this.#refuseCancelled(transaction, plan.slug);
         const plans = this.#plans.using(transaction);
         const chainedPlan = await plans.findPlan(plan.slug);
         if (
@@ -1015,6 +1158,7 @@ export class PlanRuntime {
           `Plan ${plan.slug} is escalated and must be resumed by an operator`,
         );
       }
+      if (isCancelledPersistenceError(error)) await this.#refuseCancelled(this.#database, plan.slug);
       throw error;
     }
     await this.#ensureSession(plan.slug);
@@ -1078,6 +1222,19 @@ export class PlanRuntime {
     try {
       creation = await this.#createAttempt(resolved, access);
     } catch (error) {
+      if (error instanceof PlanCancelledDuringAdmissionError) {
+        return refuse("trust.check-admission@1", input.attemptKey, "plan-cancelled", error.refusalReason);
+      }
+      if (isCancelledPersistenceError(error)) {
+        const cancellation = await this.#plans.findCancellation(resolved.plan.slug);
+        if (cancellation)
+          return refuse(
+            "trust.check-admission@1",
+            input.attemptKey,
+            "plan-cancelled",
+            cancellationRefusal(resolved.plan.slug, cancellation),
+          );
+      }
       if (error instanceof PlanEscalatedDuringAdmissionError || isEscalatedPersistenceError(error)) {
         return refuse(
           "trust.check-admission@1",
@@ -1561,6 +1718,12 @@ export class PlanRuntime {
   ): Promise<AdmissionResolution | AdmissionFailure> {
     const existing = await this.#attempts.findByKey(attemptKey);
     if (existing) {
+      const cancellation = await this.#plans.findCancellation(existing.planSlug);
+      if (cancellation) {
+        return {
+          refusal: refusal(attemptKey, "plan-cancelled", cancellationRefusal(existing.planSlug, cancellation)),
+        };
+      }
       if (existing.checkUri !== checkUri) {
         return {
           refusal: refusal(attemptKey, "attempt-key-conflict", "Attempt key is already bound to another Check"),
@@ -1628,6 +1791,10 @@ export class PlanRuntime {
     let plan = check ? await this.#plans.findPlan(check.planSlug) : undefined;
     if (!check || !plan)
       return { refusal: refusal(attemptKey, "check-not-found", "The semantic Check URI is unknown") };
+    const cancellation = await this.#plans.findCancellation(plan.slug);
+    if (cancellation) {
+      return { refusal: refusal(attemptKey, "plan-cancelled", cancellationRefusal(plan.slug, cancellation)) };
+    }
     if (await this.#escalations.findActive(plan.slug)) {
       return {
         refusal: refusal(
@@ -1846,6 +2013,10 @@ export class PlanRuntime {
       const session = await this.#sessions.using(transaction).findById(resolved.session.id);
       if (!session || session.state !== "open" || Date.parse(session.expiresAt) <= this.#now().getTime())
         throw new AdmissionPlanChangedError();
+      const cancellation = await plans.findCancellation(resolved.plan.slug);
+      if (cancellation) {
+        throw new PlanCancelledDuringAdmissionError(cancellationRefusal(resolved.plan.slug, cancellation));
+      }
       if (await this.#escalations.using(transaction).findActive(resolved.plan.slug)) {
         throw new PlanEscalatedDuringAdmissionError();
       }
@@ -1998,6 +2169,20 @@ function isEscalationDeclaration(value: unknown): value is string {
 
 function isEscalatedPersistenceError(error: unknown): boolean {
   return error instanceof Error && error.message.includes("Plan is escalated");
+}
+
+function isCancelledPersistenceError(error: unknown): boolean {
+  return error instanceof Error && error.message.includes("Plan is cancelled");
+}
+
+/** Refusal text that names the cancellation: when, by whom, why, and which root Plan was cancelled. */
+export function cancellationRefusal(plan: string, cancellation: PlanCancellation): string {
+  const origin = cancellation.rootPlan === plan ? "" : ` with its root Plan ${cancellation.rootPlan}`;
+  const author =
+    cancellation.cancelledBy === null
+      ? "unauthenticated local access"
+      : `${cancellation.cancelledBy.subject} (${cancellation.cancelledBy.issuer})`;
+  return `Plan ${plan} is CANCELLED: it was cancelled${origin} at ${cancellation.cancelledAt} by ${author} with the reason "${cancellation.reason}". A cancelled Plan admits no Attempt, declaration replacement, resumption or relaunch.`;
 }
 
 interface AdmissionResolution {

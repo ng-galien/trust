@@ -4,6 +4,7 @@ import type {
   CheckEscalationInput,
   FactBatchInput,
   HistoryListInput,
+  PlanCancellationInput,
   PlanDeclarationReplacementInput,
   PlanEngagementInput as PlanEngagementParams,
   PlanListInput,
@@ -11,6 +12,7 @@ import type {
   PlanResumptionInput,
   RuntimeJsonObject,
 } from "@trust/extension-sdk";
+import { PLAN_WORK_STATES } from "@trust/extension-sdk";
 import { AccessError } from "../access/error.js";
 import { checkContinuation } from "../plan/continuation.js";
 import { parseMissionDeclarations } from "../plan/mission-declarations.js";
@@ -29,6 +31,7 @@ export const PLAN_RESET_METHOD = "plan.reset" as const;
 export const PLAN_CLOSE_METHOD = "plan.close" as const;
 export const PLAN_RESUME_METHOD = "plan.resume" as const;
 export const PLAN_RELAUNCH_METHOD = "plan.relaunch" as const;
+export const PLAN_CANCEL_METHOD = "plan.cancel" as const;
 export const CHECK_ATTEMPT_ADMIT_METHOD = "check.attempt.admit" as const;
 export const CHECK_ATTEMPT_FACTS_METHOD = "check.attempt.facts" as const;
 export const CHECK_ATTEMPT_FINALIZE_METHOD = "check.attempt.finalize" as const;
@@ -70,6 +73,7 @@ export const PLAN_RUNTIME_RPC_METHODS = [
   PLAN_CLOSE_METHOD,
   PLAN_RESUME_METHOD,
   PLAN_RELAUNCH_METHOD,
+  PLAN_CANCEL_METHOD,
   SESSION_READ_METHOD,
   CHECK_READ_METHOD,
   CHECK_ATTEMPT_ADMIT_METHOD,
@@ -152,6 +156,10 @@ export async function executePlanRuntimeRpc(
       const input = parsePlanRelaunch(params);
       return dependencies.planRuntime.relaunchPlan(input, dependencies.access);
     }
+    case PLAN_CANCEL_METHOD: {
+      const input = parsePlanCancellation(params);
+      return dependencies.planRuntime.cancelPlan(input, dependencies.access);
+    }
     case PLAN_DECLARATIONS_REPLACE_METHOD: {
       const input = parsePlanDeclarationReplacement(params);
       return dependencies.planRuntime.replaceDeclarations(input, dependencies.access);
@@ -205,6 +213,15 @@ export async function executePlanRuntimeRpc(
   }
 }
 
+/** The reason is validated by the runtime, so a missing or blank reason is refused with an explicit message. */
+export function parsePlanCancellation(value: unknown): PlanCancellationInput {
+  const record = exactRecord(value, ["plan"], ["reason"]);
+  if (!boundedString(record.plan) || (record.reason !== undefined && typeof record.reason !== "string")) {
+    throw new InvalidPlanRuntimeRpcParams();
+  }
+  return { plan: record.plan, reason: record.reason ?? "" };
+}
+
 function parsePlanRelaunch(value: unknown): PlanRelaunchInput {
   const record = exactRecord(value, ["plan", "escalationId", "relaunchReason"]);
   if (
@@ -231,7 +248,8 @@ function parsePlanResumption(value: unknown): PlanResumptionInput {
 
 function parsePlanList(value: unknown): PlanListInput {
   const record = exactRecord(value, [], ["filter", "cursor", "limit"]);
-  const filter = record.filter === undefined ? undefined : parseListFilter(record.filter, ["procedure", "mode"]);
+  const filter =
+    record.filter === undefined ? undefined : parseListFilter(record.filter, ["procedure", "mode", "workState"]);
   if (
     (record.cursor !== undefined && !boundedString(record.cursor, 2_048)) ||
     (record.limit !== undefined && !Number.isSafeInteger(record.limit))
@@ -239,6 +257,9 @@ function parsePlanList(value: unknown): PlanListInput {
     throw new InvalidPlanRuntimeRpcParams();
   }
   if (filter?.mode !== undefined && filter.mode !== "live" && filter.mode !== "dry-run") {
+    throw new InvalidPlanRuntimeRpcParams();
+  }
+  if (filter?.workState !== undefined && !(PLAN_WORK_STATES as readonly string[]).includes(filter.workState)) {
     throw new InvalidPlanRuntimeRpcParams();
   }
   return {

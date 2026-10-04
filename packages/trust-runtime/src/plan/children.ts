@@ -288,6 +288,8 @@ export async function synchronizeChildren(input: {
   const changed = new Set<string>();
   const visit = async (slug: string): Promise<void> => {
     if (await ancestorBlocker(database, slug)) return;
+    // A cancelled Plan is final: it never starts, supersedes or requalifies a child generation again.
+    if (await plans.findCancellation(slug)) return;
     const plan = (await plans.findPlan(slug))!;
     const revision = (await plans.readRevision(slug, plan.currentRevision))!;
     const procedure = revision.resolvedProcedure;

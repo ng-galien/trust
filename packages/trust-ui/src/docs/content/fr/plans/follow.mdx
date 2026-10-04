@@ -19,7 +19,7 @@ La page du Plan montre la **révision courante** : ce qui est satisfait, ce qui 
 
 | Sur | Valeurs | Signification |
 | --- | --- | --- |
-| Plan | **En cours** · **Escaladé** · **Terminé** · **Indisponible** | Escaladé est une sortie prévue de la Procedure : aucun Check n'est admis avant la reprise par un opérateur ; Terminé signifie que chaque Check est satisfait ; Indisponible que la Session est fermée ou expirée |
+| Plan | **En cours** · **Escaladé** · **Terminé** · **Annulé** · **Indisponible** | Escaladé est une sortie prévue de la Procedure : aucun Check n'est admis avant la reprise par un opérateur ; Terminé signifie que chaque Check est satisfait ; Annulé qu'un opérateur a mis fin au Plan, un état final qui n'est pas un achèvement ; Indisponible que la Session est fermée ou expirée |
 | Check | **Ouvert** · **Actionnable** · **Satisfait** | Actionnable = ouvert, prérequis validés, contexte complet, Session ouverte |
 | Verdict | **Validé** · **Non validé** | la dernière qualification du Check, avec sa raison |
 
@@ -41,6 +41,20 @@ n'exige pas que la Session ayant admis l'Attempt terminé soit encore ouverte.
 - Les Sessions expirées sont renouvelées au ré-engagement ou quand des déclarations sont appliquées.
 - La reprise d'un Plan escaladé exige un `resumeReason` ; la reprise et l'éventuel renouvellement de sa Session forment une seule action opérateur atomique, et la raison reste dans l'historique du Plan.
 - Un Plan en direct n'est jamais supprimé — c'est de l'historique d'audit. Un dry-run peut être réinitialisé (effacé et engagé à nouveau avec les mêmes entrées, à partir de la révision 1) ou supprimé.
+
+## Annuler un Plan
+
+Un Plan que personne ne terminera peut être annulé au lieu de rester en cours pour toujours. L'annulation est une décision d'opérateur, avec son propre droit, et elle porte toujours une raison.
+
+- Seul un **Plan racine** s'annule. Ses Plans enfants courants, et leurs descendants, sont annulés avec lui. Pour arrêter une mission d'un Plan qui continue, retirer la mission de sa collection.
+- Le Plan, ses Plans enfants et leurs descendants passent à **Annulé** : un état final, distinct de Terminé. Leurs Sessions se ferment et une tentative en cours est interrompue.
+- L'annulation enregistre la date, l'auteur et la raison. Rien n'est supprimé : Checks, tentatives, Facts, déclarations et révisions restent lisibles.
+- Un Plan annulé refuse toute nouvelle tentative, tout remplacement de déclarations, toute reprise, relance, ré-engagement et réinitialisation. Le refus nomme l'annulation.
+- L'annulation est refusée sans raison, pour un Plan enfant, pour un Plan Terminé et pour un Plan déjà annulé.
+
+<Details title="Contrats de l'annulation" expert>
+RPC `plan.cancel { plan, reason }` et MCP `trust_plan_cancel { plan, reason }` appellent la même fonction runtime. Le résultat `trust.plan-cancellation@1` donne `cancelledAt`, `cancelledBy` (le principal authentifié, `null` pour un accès local non authentifié), `reason`, `cancelledPlans` (la racine d'abord) et `interruptedAttempts`. Le droit est `trust.plan.cancel.own` ou `trust.plan.cancel.all`. `plan.read` et chaque résumé de `plan.list` portent `workState: "CANCELLED"` et `cancellation { rootPlan, cancelledAt, cancelledBy, reason }`, `null` sur un Plan non annulé. `plan.list { filter: { workState } }` et MCP `trust_plan_list { workState }` acceptent `IN_PROGRESS`, `ESCALATED`, `COMPLETE` et `CANCELLED`. Un changement refusé a la raison d'erreur `plan-cancelled` ; une admission de tentative est `REFUSED` avec le code de raison `plan-cancelled`. L'annulation publie `plan.state` avec `workState: "CANCELLED"` pour chaque Plan annulé et `session.changed` pour chaque Session fermée.
+</Details>
 
 <Callout kind="note" title="Pas sur l'environnement courant">
   L'en-tête affiche **sur `<environnement>`** quand le Plan s'exécute sur un autre Environnement que l'environnement courant de l'interface. C'est un rappel, pas un blocage : un Plan en direct utilise toujours son propre Environnement.

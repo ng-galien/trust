@@ -26,6 +26,7 @@ export const PLAN_ACCESS_ACTIONS = [
   "plan.close",
   "plan.resume",
   "plan.relaunch",
+  "plan.cancel",
   "plan.reset",
   "plan.remove",
   "check.read",

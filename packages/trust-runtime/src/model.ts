@@ -34,6 +34,15 @@ export interface Plan {
   createdAt: string;
 }
 
+/** Operator decision that ends a Plan; one record per cancelled Plan of the root's composition, never changed. */
+export interface PlanCancellation {
+  readonly planSlug: string;
+  readonly rootPlan: string;
+  readonly cancelledAt: string;
+  readonly cancelledBy: ExternalPrincipal | null;
+  readonly reason: string;
+}
+
 /** A declared, planned exit from a Procedure. It stops Check admission without qualifying anything. */
 export interface PlanEscalation {
   id: string;

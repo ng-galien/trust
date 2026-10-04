@@ -19,7 +19,7 @@ The Plan page shows the **current revision**: what is satisfied, what is actiona
 
 | On | Values | Meaning |
 | --- | --- | --- |
-| Plan | **In progress** · **Escalated** · **Complete** · **Unavailable** | Escalated is a planned Procedure exit: no Check is admitted until an operator resumes it; Complete means every Check is satisfied; Unavailable means the Session is closed or expired |
+| Plan | **In progress** · **Escalated** · **Complete** · **Cancelled** · **Unavailable** | Escalated is a planned Procedure exit: no Check is admitted until an operator resumes it; Complete means every Check is satisfied; Cancelled means an operator ended the Plan, a final state that is not a completion; Unavailable means the Session is closed or expired |
 | Check | **Open** · **Actionable** · **Satisfied** | Actionable = open, prerequisites validated, context complete, Session open |
 | Verdict | **Validated** · **Not validated** | the latest qualification of the Check, with its reason |
 
@@ -41,6 +41,20 @@ Session that admitted the completed Attempt to remain open.
 - Expired Sessions are renewed at re-engagement or when declarations are applied.
 - Resuming an escalated Plan requires a `resumeReason`; the resumption and any Session renewal are one atomic operator action, and the reason remains in Plan history.
 - A live Plan is never deleted — it is audit history. A dry-run can be reset (erased and engaged again with the same inputs, from revision 1) or deleted.
+
+## Cancelling a Plan
+
+A Plan that nobody will finish can be cancelled instead of staying in progress forever. Cancellation is an operator decision with its own permission, and it always carries a reason.
+
+- Only a **root Plan** is cancelled. Its current child Plans, and their descendants, are cancelled with it. To stop one mission of a Plan that continues, withdraw the mission from its collection.
+- The Plan, its child Plans and their descendants become **Cancelled**: a final state, distinct from Complete. Their Sessions close and a pending Attempt is interrupted.
+- The cancellation records the date, the author and the reason. Nothing is deleted: Checks, Attempts, Facts, declarations and revisions stay readable.
+- A cancelled Plan refuses any new Attempt, declaration replacement, resumption, relaunch, re-engagement and reset. The refusal names the cancellation.
+- The cancellation is refused without a reason, for a child Plan, for a Complete Plan and for a Plan already cancelled.
+
+<Details title="Cancellation contracts" expert>
+RPC `plan.cancel { plan, reason }` and MCP `trust_plan_cancel { plan, reason }` call the same runtime function. The result `trust.plan-cancellation@1` gives `cancelledAt`, `cancelledBy` (the authenticated principal, `null` for unauthenticated local access), `reason`, `cancelledPlans` (the root first) and `interruptedAttempts`. The permission is `trust.plan.cancel.own` or `trust.plan.cancel.all`. `plan.read` and each `plan.list` summary carry `workState: "CANCELLED"` and `cancellation { rootPlan, cancelledAt, cancelledBy, reason }`, `null` on a Plan that is not cancelled. `plan.list { filter: { workState } }` and MCP `trust_plan_list { workState }` accept `IN_PROGRESS`, `ESCALATED`, `COMPLETE` and `CANCELLED`. A refused change has the error reason `plan-cancelled`; an Attempt admission is `REFUSED` with the reason code `plan-cancelled`. The cancellation publishes `plan.state` with `workState: "CANCELLED"` for each cancelled Plan and `session.changed` for each closed Session.
+</Details>
 
 <Callout kind="note" title="Not on the current Environment">
   The header shows **on `<environment>`** when the Plan runs on another Environment than the current one of the interface. It is a reminder, not a blocker: a live Plan always uses its own Environment.

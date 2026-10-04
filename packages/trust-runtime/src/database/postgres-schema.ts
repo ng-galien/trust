@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 
 /** One PostgreSQL schema for the embedded and server adapters. */
-export const POSTGRES_SCHEMA_VERSION = 4;
+export const POSTGRES_SCHEMA_VERSION = 5;
 export const POSTGRES_SCHEMA = `
   CREATE TABLE source_templates (
     id TEXT COLLATE "C" PRIMARY KEY,
@@ -344,6 +344,16 @@ export const POSTGRES_SCHEMA = `
   CREATE UNIQUE INDEX one_escalation_per_attempt
     ON plan_escalations(attempt_handle);
 
+  CREATE TABLE plan_cancellations (
+    plan_slug TEXT COLLATE "C" PRIMARY KEY REFERENCES plans(plan_slug) ON DELETE CASCADE,
+    root_plan TEXT COLLATE "C" NOT NULL,
+    cancelled_at TIMESTAMPTZ(3) NOT NULL,
+    actor_issuer TEXT COLLATE "C",
+    actor_subject TEXT COLLATE "C",
+    CHECK ((actor_issuer IS NULL AND actor_subject IS NULL) OR (actor_issuer IS NOT NULL AND actor_subject IS NOT NULL AND length(actor_issuer) > 0 AND length(actor_subject) > 0)),
+    reason TEXT COLLATE "C" NOT NULL CHECK (length(reason) BETWEEN 1 AND 4096)
+  );
+
 
 
   CREATE FUNCTION trust_refuse_immutable_update() RETURNS trigger LANGUAGE plpgsql AS $$
@@ -386,6 +396,8 @@ export const POSTGRES_SCHEMA = `
     FOR EACH ROW EXECUTE FUNCTION trust_refuse_immutable_update();
   CREATE TRIGGER catalog_metadata_revisions_cannot_change BEFORE UPDATE OR DELETE ON catalog_metadata_revisions
     FOR EACH ROW EXECUTE FUNCTION trust_refuse_immutable_update();
+  CREATE TRIGGER plan_cancellations_cannot_change BEFORE UPDATE ON plan_cancellations
+    FOR EACH ROW EXECUTE FUNCTION trust_refuse_immutable_update();
 
   CREATE FUNCTION trust_require_pinned_composition() RETURNS trigger LANGUAGE plpgsql AS $$
   BEGIN
@@ -403,6 +415,9 @@ export const POSTGRES_SCHEMA = `
   BEGIN
     IF EXISTS (SELECT 1 FROM plan_escalations WHERE plan_slug = NEW.plan_slug AND resumed_at IS NULL) THEN
       RAISE EXCEPTION 'Plan is escalated' USING ERRCODE = '23514';
+    END IF;
+    IF EXISTS (SELECT 1 FROM plan_cancellations WHERE plan_slug = NEW.plan_slug) THEN
+      RAISE EXCEPTION 'Plan is cancelled' USING ERRCODE = '23514';
     END IF;
     RETURN NEW;
   END;

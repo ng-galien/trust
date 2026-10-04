@@ -42,6 +42,11 @@ Read ancestors only when needed to understand a reported blocker.
 7. If assigned to resume after operator intervention, read that Plan again and
    continue from its preserved intention. On `COMPLETE`, stop and report the
    assigned Plan's result. A worker does not continue into its parent's Checks.
+8. If the Plan reads `State: CANCELLED`, stop. An operator ended it, or ended its
+   root Plan; the `CANCELLATION` block gives the date, the author and the reason.
+   TRUST refuses every Attempt, declaration replacement, resumption and relaunch
+   on it with the reason `plan-cancelled`. Report the cancellation; do not engage
+   a replacement Plan unless the assignment says so.
 
 ## Coordinate within the assignment
 
@@ -90,6 +95,23 @@ Only a mission whose child Plan, in any generation, has no Attempt that gave a
 verdict and none running before its expiry can be removed, by omitting it from
 its collection on an explicit decision; the parent's revision history keeps it.
 Inline sources and their resolved definitions remain in persistent Plan history.
+
+## List and cancel Plans
+
+`trust_plan_list` (RPC `plan.list`) lists Plans newest first. It filters by
+`procedure`, `mode` and `workState`: `IN_PROGRESS`, `ESCALATED`, `COMPLETE` or
+`CANCELLED` (RPC: `filter.workState`). Continue a page only with the returned
+cursor and the same filter.
+
+Cancellation is an operator decision. Call `trust_plan_cancel` (RPC `plan.cancel`)
+with `plan` and `reason` only when the assignment explicitly asks to abandon a root
+Plan. The permission is `trust.plan.cancel.own` or `trust.plan.cancel.all`. The
+cancellation records the date, the author and the reason. The Plan and its current
+child Plans and their descendants become `CANCELLED`, a final state that is not
+`COMPLETE`: their Sessions close and their pending Attempts are interrupted. Nothing
+is deleted. TRUST refuses a cancellation without a reason, of a child Plan, of a
+`COMPLETE` Plan and of a Plan already cancelled. To stop one mission of a running
+Plan, withdraw the mission from its collection instead.
 
 ## Select extension-specific instructions
 

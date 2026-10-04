@@ -43,7 +43,7 @@ export function PlanStateBadges({
   workState,
   sessionState,
 }: {
-  workState: "IN_PROGRESS" | "ESCALATED" | "COMPLETE";
+  workState: "IN_PROGRESS" | "ESCALATED" | "COMPLETE" | "CANCELLED";
   sessionState: "OPEN" | "UNAVAILABLE";
 }) {
   const { t } = useTranslation();
