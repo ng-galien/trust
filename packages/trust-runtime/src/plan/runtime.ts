@@ -51,7 +51,7 @@ import { ControlledLanguageUnavailableError, type Vocabularies } from "../vocabu
 import { buildPlanRevision, validateAgentDeclarations, validateRootInputs } from "./build.js";
 import {
   ancestorBlocker,
-  invocationAdmittedAttempt,
+  invocationBlockingAttempt,
   invocationDependencyDigest,
   readComposition,
   synchronizeChildren,
@@ -819,7 +819,7 @@ export class PlanRuntime {
             throw new TypeError(`Accepted mission "${mission.id}" cannot be modified`);
           }
           if (!submitted) {
-            const refusal = await executedMissionRefusal(this.#database, current, collection, mission.id);
+            const refusal = await executedMissionRefusal(this.#database, current, collection, mission.id, this.#now());
             if (refusal) throw new TypeError(refusal);
             withdrawn.add(mission.id);
           }
@@ -968,7 +968,7 @@ export class PlanRuntime {
           );
         }
         for (const { collection, id } of removedMissions) {
-          const refusal = await executedMissionRefusal(transaction, current, collection, id);
+          const refusal = await executedMissionRefusal(transaction, current, collection, id, now);
           if (refusal) throw new PlanRuntimeError("invalid-plan-declarations", `${refusal}. No changes accepted.`);
         }
         if (chainedPlan.intentChaining && chainedPlan.currentIntentAttemptKey !== undefined) {
@@ -1971,20 +1971,25 @@ export class PlanRuntime {
 }
 
 /**
- * An accepted mission leaves its collection only while no generation of its child Plan admitted an Attempt; the
- * refusal reason otherwise.
+ * An accepted mission leaves its collection unless an Attempt of its child Plans or their descendants gave a verdict
+ * or is pending before its expiry; the refusal reason otherwise.
  */
 async function executedMissionRefusal(
   database: Database,
   revision: PlanRevision,
   collection: string,
   mission: string,
+  at: Date,
 ): Promise<string | undefined> {
   const invocation = revision.invocations.find(
     (value) => value.mission?.collection === collection && value.mission.id === mission,
   );
-  if (!invocation || !(await invocationAdmittedAttempt(database, revision.planSlug, invocation.id))) return undefined;
-  return `Accepted mission "${mission}" cannot be removed: its child Plan admitted an Attempt`;
+  if (!invocation) return undefined;
+  const blocking = await invocationBlockingAttempt(database, revision.planSlug, invocation.id, at.toISOString());
+  if (blocking === undefined) return undefined;
+  return blocking === "verdict"
+    ? `Accepted mission "${mission}" cannot be removed: an Attempt of its child Plan gave a verdict`
+    : `Accepted mission "${mission}" cannot be removed: an Attempt of its child Plan is running and not expired`;
 }
 
 function isEscalationDeclaration(value: unknown): value is string {

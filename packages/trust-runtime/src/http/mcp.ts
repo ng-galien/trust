@@ -1008,7 +1008,7 @@ function tools(): readonly unknown[] {
       name: "trust_plan_declarations_replace",
       title: "Replace TRUST Plan declarations",
       description:
-        "Replace scalar agent declarations and optionally submit declared mission collections. Read the Plan first. Missions use a published Procedure reference or inline canonical sources. Accepted missions cannot be changed; preserve them when adding work. Omitting an accepted mission from its submitted collection removes it only while its child Plan admitted no Attempt in any generation; the parent no longer requires that child and its revision history keeps the mission. Omit missionDeclarations to retain them. Compilation does not execute the work; agents read child Plans and use the Runner.",
+        "Replace scalar agent declarations and optionally submit declared mission collections. Read the Plan first. Missions use a published Procedure reference or inline canonical sources. Accepted missions cannot be changed; preserve them when adding work. Omitting an accepted mission from its submitted collection removes it unless an Attempt of its child Plan, in any generation, gave a verdict or is pending and not expired; the parent no longer requires that child and its revision history keeps the mission. Omit missionDeclarations to retain them. Compilation does not execute the work; agents read child Plans and use the Runner.",
       inputSchema: {
         type: "object",
         properties: {

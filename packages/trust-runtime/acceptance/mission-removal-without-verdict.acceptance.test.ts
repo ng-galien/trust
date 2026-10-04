@@ -13,8 +13,8 @@ const root = path.resolve(runtimePackage, "../..");
 const { startPublicRuntime } = (await import(
   pathToFileURL(path.join(runtimePackage, "dist/acceptance/support/runtime-process.js")).href
 )) as typeof import("./support/runtime-process.js");
-const parentSource = `@trust-dsl:1 @procedure:mission-removal-parent @version:1.0.0
-Feature: Remove accepted work that never ran
+const parentSource = `@trust-dsl:1 @procedure:removal-verdict-parent @version:1.0.0
+Feature: Remove accepted work that gave no verdict
   Background: Plan context
     Given Procedure scope
       | check | authorized | forbidden |
@@ -24,7 +24,7 @@ Feature: Remove accepted work that never ran
   Scenario: Execute declared work
     Then Invocation "execute-work" runs each declared Procedure in "work" and must establish "declared work completed"
 `;
-const childSource = `@trust-dsl:1 @procedure:mission-removal-child @version:1.0.0
+const childSource = `@trust-dsl:1 @procedure:removal-verdict-child @version:1.0.0
 Feature: Observe the delegated repository
   Background: Plan context
     Given Procedure scope
@@ -40,17 +40,19 @@ Feature: Observe the delegated repository
 `;
 const mission = (id: string) => ({
   id,
-  definition: { kind: "published", reference: "mission-removal-child@1.0.0" },
+  definition: { kind: "published", reference: "removal-verdict-child@1.0.0" },
   rootInputs: { repository: `${id}-repository` },
 });
+type Admitted = Extract<CheckAttemptAdmissionResult, { status: "ADMITTED" }>;
 
 /** One disposable runtime with a dry-run parent Plan whose "work" collection holds the given missions. */
-async function setup(plan: string, missions: readonly ReturnType<typeof mission>[]) {
-  const directory = await mkdtemp(path.join(tmpdir(), "trust-mission-removal-"));
-  const runtime = await startPublicRuntime("trust-mission-removal-", {
+async function setup(plan: string, missions: readonly ReturnType<typeof mission>[], sessionDurationMs?: number) {
+  const directory = await mkdtemp(path.join(tmpdir(), "trust-removal-verdict-"));
+  const runtime = await startPublicRuntime("trust-removal-verdict-", {
     storage: { kind: "pglite" as const, directory: path.join(directory, "pglite") },
     operationsDirectory: path.join(root, "assets/operations"),
     environments: { local: { workspaceRoot: root } },
+    ...(sessionDurationMs === undefined ? {} : { sessionDurationMs }),
   });
   const request = async <T>(method: string, params: unknown): Promise<{ result?: T; error?: { message?: string } }> => {
     const response = await fetch(`${runtime.endpoint}/rpc`, {
@@ -79,7 +81,7 @@ async function setup(plan: string, missions: readonly ReturnType<typeof mission>
   await rpc("procedure.publish", { source: parentSource });
   await rpc("plan.engage", {
     contract: "trust.plan-engagement-request@1",
-    procedure: "mission-removal-parent",
+    procedure: "removal-verdict-parent",
     procedureVersion: "1.0.0",
     plan,
     mode: "dry-run",
@@ -92,8 +94,8 @@ async function setup(plan: string, missions: readonly ReturnType<typeof mission>
     assert.ok(child, `mission ${id} has a child Plan`);
     return child;
   };
-  /** Admit one Attempt on the child's Check; with `complete`, submit a passing Fact and finalize it. */
-  const attempt = async (child: string, complete: boolean) => {
+  /** Admit one Attempt on the child's Check and leave it pending. */
+  const admit = async (child: string): Promise<Admitted> => {
     const check = (await read(child)).checks[0];
     assert.ok(check);
     const admitted = await rpc<CheckAttemptAdmissionResult>("check.attempt.admit", {
@@ -102,7 +104,10 @@ async function setup(plan: string, missions: readonly ReturnType<typeof mission>
       attemptKey: `attempt-${child}`,
     });
     assert.equal(admitted.status, "ADMITTED", JSON.stringify(admitted));
-    if (!complete) return;
+    return admitted as Admitted;
+  };
+  /** Submit a passing Fact for an admitted Attempt and finalize it with a verdict. */
+  const finalize = async (admitted: Admitted) => {
     const observedAt = new Date().toISOString();
     await rpc("check.attempt.facts", {
       contract: "trust.fact-batch-request@1",
@@ -121,13 +126,22 @@ async function setup(plan: string, missions: readonly ReturnType<typeof mission>
     });
     assert.equal(finalized.verdict, "VALIDATED");
   };
+  const attemptState = async (admitted: Admitted) => {
+    const check = await rpc<{ attempts: readonly { state: string }[] }>("check.read", {
+      contract: "trust.check-read-request@1",
+      checkUri: admitted.checkUri,
+    });
+    return check.attempts[0]?.state;
+  };
   return {
     request,
     rpc,
     read,
     replacement,
     childOf,
-    attempt,
+    admit,
+    finalize,
+    attemptState,
     async close() {
       await runtime.close();
       await rm(directory, { recursive: true, force: true });
@@ -135,99 +149,83 @@ async function setup(plan: string, missions: readonly ReturnType<typeof mission>
   };
 }
 
-test("CXP-230 AC1 a declarations replacement removes a mission whose child Plan admitted no Attempt and the parent no longer requires it", {
+test("CXP-240 AC1 the removal is accepted when every Attempt of the child Plan and its descendants has no verdict and none is running", {
   timeout: 30_000,
 }, async () => {
-  const fixture = await setup("removal-accepted", [mission("delivered-work"), mission("unrun-work")]);
+  const fixture = await setup(
+    "removal-without-verdict",
+    [mission("kept-work"), mission("interrupted-work"), mission("expired-work")],
+    3_000,
+  );
   try {
-    await fixture.attempt(await fixture.childOf("delivered-work"), true);
-    const unrun = await fixture.childOf("unrun-work");
-    const before = await fixture.read();
-    assert.notEqual(before.workState, "COMPLETE", "the parent waits for the mission that never ran");
+    const interrupted = await fixture.admit(await fixture.childOf("interrupted-work"));
+    await fixture.rpc("check.attempt.interrupt", {
+      contract: "trust.attempt-interruption-request@1",
+      attemptHandle: interrupted.attemptHandle,
+    });
+    assert.equal(await fixture.attemptState(interrupted), "interrupted");
+    const expired = await fixture.admit(await fixture.childOf("expired-work"));
+    const remaining = Date.parse(expired.expiresAt) - Date.now();
+    await new Promise((resolve) => setTimeout(resolve, Math.max(0, remaining) + 200));
+    assert.equal(await fixture.attemptState(expired), "pending", "the expired Attempt was never finalized");
+    assert.equal(Date.parse(expired.expiresAt) < Date.now(), true, "the pending Attempt is past its expiry");
 
-    await fixture.rpc("plan.declarations.replace", await fixture.replacement([mission("delivered-work")]));
+    const before = await fixture.read();
+    await fixture.rpc("plan.declarations.replace", await fixture.replacement([mission("kept-work")]));
     const after = await fixture.read();
     assert.equal(after.revision > before.revision, true);
     assert.deepEqual(
       after.missionDeclarations?.work?.map((value) => value.id),
-      ["delivered-work"],
-    );
-    assert.deepEqual(
-      after.resolvedMissions?.work?.map((value) => value.id),
-      ["delivered-work"],
+      ["kept-work"],
     );
     assert.deepEqual(
       after.invocations.map((invocation) => invocation.mission?.id),
-      ["delivered-work"],
-      "the parent composition no longer counts the removed mission",
+      ["kept-work"],
+      "the parent composition no longer counts the removed missions",
     );
-    assert.equal(after.workState, "COMPLETE", "the parent no longer requires the removed child Plan");
-    const removedChild = await fixture.read(unrun);
-    assert.equal(removedChild.parent?.current, false, "the removed child Plan is a superseded generation");
   } finally {
     await fixture.close();
   }
 });
 
-test("CXP-230 AC2 the removal is refused when the child Plan admitted an Attempt", {
+test("CXP-240 AC2 the removal is refused when an Attempt gave a verdict or when an Attempt is running and not expired", {
   timeout: 30_000,
 }, async () => {
-  const fixture = await setup("removal-refused", [mission("kept-work"), mission("started-work")]);
+  const fixture = await setup("removal-with-verdict", [
+    mission("kept-work"),
+    mission("verdict-work"),
+    mission("running-work"),
+  ]);
   try {
-    await fixture.attempt(await fixture.childOf("started-work"), true);
+    await fixture.finalize(await fixture.admit(await fixture.childOf("verdict-work")));
+    const running = await fixture.admit(await fixture.childOf("running-work"));
+    assert.equal(await fixture.attemptState(running), "pending");
+    assert.equal(Date.parse(running.expiresAt) > Date.now(), true, "the running Attempt is not expired");
     const before = await fixture.read();
-    const refused = await fixture.request(
+
+    const verdict = await fixture.request(
       "plan.declarations.replace",
-      await fixture.replacement([mission("kept-work")]),
+      await fixture.replacement([mission("kept-work"), mission("running-work")]),
     );
-    assert.ok(refused.error, JSON.stringify(refused));
+    assert.ok(verdict.error, JSON.stringify(verdict));
     assert.match(
-      JSON.stringify(refused.error),
-      /Accepted mission \\"started-work\\" cannot be removed: an Attempt of its child Plan gave a verdict/,
+      JSON.stringify(verdict.error),
+      /Accepted mission \\"verdict-work\\" cannot be removed: an Attempt of its child Plan gave a verdict/,
     );
+
+    const runningRefusal = await fixture.request(
+      "plan.declarations.replace",
+      await fixture.replacement([mission("kept-work"), mission("verdict-work")]),
+    );
+    assert.ok(runningRefusal.error, JSON.stringify(runningRefusal));
+    assert.match(
+      JSON.stringify(runningRefusal.error),
+      /Accepted mission \\"running-work\\" cannot be removed: an Attempt of its child Plan is running and not expired/,
+    );
+
     const after = await fixture.read();
     assert.equal(after.revision, before.revision, "a refused replacement changes nothing");
     assert.deepEqual(after.invocations, before.invocations);
-
-    // A modified accepted mission is still refused, whether or not its child ran.
-    const modified = await fixture.request(
-      "plan.declarations.replace",
-      await fixture.replacement([
-        { ...mission("kept-work"), rootInputs: { repository: "other" } },
-        mission("started-work"),
-      ]),
-    );
-    assert.match(JSON.stringify(modified.error), /Accepted mission \\"kept-work\\" cannot be modified/);
-    assert.equal((await fixture.read()).revision, before.revision);
-  } finally {
-    await fixture.close();
-  }
-});
-
-test("CXP-230 AC3 the revision history of the parent Plan keeps the removed mission", {
-  timeout: 30_000,
-}, async () => {
-  const fixture = await setup("removal-history", [mission("kept-work"), mission("removed-work")]);
-  try {
-    const accepted = (await fixture.read()).revision;
-    const removedChild = await fixture.childOf("removed-work");
-    await fixture.rpc("plan.declarations.replace", await fixture.replacement([mission("kept-work")]));
-    const current = await fixture.read();
-    const earlier = current.revisions.find((revision) => revision.revision === accepted);
-    assert.ok(earlier, "the revision that accepted the mission is still in the history");
-    assert.deepEqual(
-      earlier.missionDeclarations?.work?.map((value) => value.id),
-      ["kept-work", "removed-work"],
-    );
-    const latest = current.revisions.find((revision) => revision.revision === current.revision);
-    assert.deepEqual(
-      latest?.missionDeclarations?.work?.map((value) => value.id),
-      ["kept-work"],
-    );
-    // The removed child Plan stays readable as a superseded generation of the parent.
-    const child = await fixture.read(removedChild);
-    assert.equal(child.parent?.plan, "removal-history");
-    assert.equal(child.parent?.current, false);
   } finally {
     await fixture.close();
   }

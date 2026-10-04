@@ -118,11 +118,13 @@ and rootInputs unchanged; carry forward other collections too. A changed
 accepted mission is refused. Identical resubmission reuses its child.
 Omit `missionDeclarations` when only replacing scalar declarations.
 
-To remove an accepted mission that was never executed, submit its collection
-without it. TRUST accepts the removal only when no generation of its child Plan
-(or of a descendant) ever admitted an Attempt; otherwise the whole replacement is
-refused with `Accepted mission "<id>" cannot be removed: its child Plan admitted
-an Attempt`. After the removal the parent no longer counts that child: its
+To remove an accepted mission that gave no verdict, submit its collection
+without it. TRUST refuses the removal when an Attempt of any generation of its
+child Plan (or of a descendant) is finalized, or is pending and its expiry is
+still in the future; an interrupted Attempt or an expired pending Attempt does not
+block it. A refusal rejects the whole replacement with `Accepted mission "<id>"
+cannot be removed: an Attempt of its child Plan gave a verdict` or `... is
+running and not expired`. After the removal the parent no longer counts that child: its
 generation is superseded and stays readable. The earlier parent revision in
 `plan.read` `revisions` still lists the removed mission. Remove a mission only on
 an explicit decision, for example a contract that can never run.

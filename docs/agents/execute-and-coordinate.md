@@ -86,9 +86,9 @@ coordination instructions above to observe its progress.
 
 Do not remove or replace accepted missions to bypass a blocker. Use the existing
 escalation path when admissible; otherwise report the blocker to the coordinator.
-Only a mission whose child Plan never admitted an Attempt, in any generation, can
-be removed, by omitting it from its collection on an explicit decision; the
-parent's revision history keeps it.
+Only a mission whose child Plan, in any generation, has no Attempt that gave a
+verdict and none running before its expiry can be removed, by omitting it from
+its collection on an explicit decision; the parent's revision history keeps it.
 Inline sources and their resolved definitions remain in persistent Plan history.
 
 ## Select extension-specific instructions

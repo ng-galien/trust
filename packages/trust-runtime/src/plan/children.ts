@@ -74,12 +74,16 @@ export async function invocationDependencyDigest(database: Database, check: Plan
   return hash(signature);
 }
 
-/** Whether a child Plan of any generation of this invocation, or one of their descendants, admitted an Attempt. */
-export async function invocationAdmittedAttempt(
+/**
+ * The Attempt of a child Plan of any generation of this invocation, or of one of their descendants, that blocks the
+ * removal of its mission: a finalized Attempt gave a verdict, a pending Attempt before its expiry may be running.
+ */
+export async function invocationBlockingAttempt(
   database: Database,
   parentPlan: string,
   invocationId: string,
-): Promise<boolean> {
+  at: string,
+): Promise<"verdict" | "running" | undefined> {
   const generations = await database
     .selectFrom("child_generations")
     .select("child_plan")
@@ -97,14 +101,22 @@ export async function invocationAdmittedAttempt(
     frontier = descendants.map((value) => value.child_plan).filter((value) => !plans.has(value));
     for (const value of frontier) plans.add(value);
   }
-  if (!plans.size) return false;
-  const attempt = await database
+  if (!plans.size) return undefined;
+  const blocking = await database
     .selectFrom("attempts")
-    .select("attempt_handle")
+    .select("state")
     .where("plan_slug", "in", [...plans])
+    .where((attempt) =>
+      attempt.or([
+        attempt("state", "=", "finalized"),
+        attempt.and([attempt("state", "=", "pending"), attempt("expires_at", ">", at)]),
+      ]),
+    )
+    .orderBy("state")
     .limit(1)
     .executeTakeFirst();
-  return attempt !== undefined;
+  if (!blocking) return undefined;
+  return blocking.state === "finalized" ? "verdict" : "running";
 }
 
 export function readComposition(database: Database, slug: string): Promise<CompositionState> {
