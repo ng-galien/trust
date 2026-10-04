@@ -74,6 +74,39 @@ export async function invocationDependencyDigest(database: Database, check: Plan
   return hash(signature);
 }
 
+/** Whether a child Plan of any generation of this invocation, or one of their descendants, admitted an Attempt. */
+export async function invocationAdmittedAttempt(
+  database: Database,
+  parentPlan: string,
+  invocationId: string,
+): Promise<boolean> {
+  const generations = await database
+    .selectFrom("child_generations")
+    .select("child_plan")
+    .where("parent_plan", "=", parentPlan)
+    .where("invocation_id", "=", invocationId)
+    .execute();
+  const plans = new Set(generations.map((value) => value.child_plan));
+  let frontier = [...plans];
+  while (frontier.length) {
+    const descendants = await database
+      .selectFrom("child_generations")
+      .select("child_plan")
+      .where("parent_plan", "in", frontier)
+      .execute();
+    frontier = descendants.map((value) => value.child_plan).filter((value) => !plans.has(value));
+    for (const value of frontier) plans.add(value);
+  }
+  if (!plans.size) return false;
+  const attempt = await database
+    .selectFrom("attempts")
+    .select("attempt_handle")
+    .where("plan_slug", "in", [...plans])
+    .limit(1)
+    .executeTakeFirst();
+  return attempt !== undefined;
+}
+
 export function readComposition(database: Database, slug: string): Promise<CompositionState> {
   return readOnce(database, `composition:${slug}`, () => composition(database, slug));
 }

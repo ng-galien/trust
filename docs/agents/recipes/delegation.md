@@ -114,9 +114,25 @@ give a genuinely new inline draft an unused identity. An inline Procedure cannot
 conflict with a published identity, even with identical text.
 
 On subsequent additions, preserve every accepted mission's id, definition
-and rootInputs unchanged; carry forward other collections too. A changed or
-removed accepted mission is refused. Identical resubmission reuses its child.
+and rootInputs unchanged; carry forward other collections too. A changed
+accepted mission is refused. Identical resubmission reuses its child.
 Omit `missionDeclarations` when only replacing scalar declarations.
+
+To remove an accepted mission that was never executed, submit its collection
+without it. TRUST accepts the removal only when no generation of its child Plan
+(or of a descendant) ever admitted an Attempt; otherwise the whole replacement is
+refused with `Accepted mission "<id>" cannot be removed: its child Plan admitted
+an Attempt`. After the removal the parent no longer counts that child: its
+generation is superseded and stays readable. The earlier parent revision in
+`plan.read` `revisions` still lists the removed mission. Remove a mission only on
+an explicit decision, for example a contract that can never run.
+
+When a Corpus thread drives the work, an approved requirement is never edited:
+a later decision withdraws its criteria with a top-level block in the thread
+document, `::::withdrawal{#TRUST-FR-CXP-180 criteria=AC1,AC2}`, then the reason,
+then `::::` (without `criteria`, the whole requirement). Once an approved revision
+holds it, coverage no longer requires those criteria. The Corpus extension
+README describes the refusals and the thread read.
 
 To use an installed child instead, change only its definition:
 

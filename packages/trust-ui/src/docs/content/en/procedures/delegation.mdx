@@ -117,7 +117,7 @@ A published mission instead uses `definition: { kind: "published", reference: "d
 
 Read the resulting child Plan and, when dispatch is authorized, give its identifier to the assigned worker. Declaring a mission does not launch an agent: host dispatch remains outside TRUST. The worker reads its child and gives only its supplied Check URI to the Runner. The coordinator reads current child and parent states; a worker response alone cannot satisfy an Invocation. A child escalation blocks dependent work and uses the existing operator resume path.
 
-Accepted missions are append-only. Preserve accepted IDs, definitions and root inputs unchanged when adding work. Identical resubmission retains the same resolution and child; removal or modification is refused. Omit `missionDeclarations` to preserve existing missions. Invalid batches are rejected atomically before child creation. Appending work withdraws dependent parent qualification until the required work is complete.
+Accepted missions are append-only. Preserve accepted IDs, definitions and root inputs unchanged when adding work. Identical resubmission retains the same resolution and child; modification is refused. Removal is accepted only while the child Plan and its descendants have admitted no Attempt; the earlier revision of the parent Plan keeps the removed mission. Omit `missionDeclarations` to preserve existing missions. Invalid batches are rejected atomically before child creation. Appending work withdraws dependent parent qualification until the required work is complete.
 
 <Details title="How a child returns a verified Result">
 

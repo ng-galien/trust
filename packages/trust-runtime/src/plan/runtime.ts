@@ -49,7 +49,13 @@ import type { SnapshotStore } from "../snapshot/store.js";
 import type { Clock } from "../time.js";
 import { ControlledLanguageUnavailableError, type Vocabularies } from "../vocabulary/vocabularies.js";
 import { buildPlanRevision, validateAgentDeclarations, validateRootInputs } from "./build.js";
-import { ancestorBlocker, invocationDependencyDigest, readComposition, synchronizeChildren } from "./children.js";
+import {
+  ancestorBlocker,
+  invocationAdmittedAttempt,
+  invocationDependencyDigest,
+  readComposition,
+  synchronizeChildren,
+} from "./children.js";
 import type { EscalationStore } from "./escalation-store.js";
 import type { PlanEvents } from "./events.js";
 import { completesPlanOnValidation, dependentCheckUris, isIntentValue, MAX_INTENT_LENGTH } from "./intent.js";
@@ -782,6 +788,7 @@ export class PlanRuntime {
     let declarations: RuntimeJsonObject;
     let missionDeclarations: MissionDeclarations;
     let resolvedMissions: ResolvedMissions;
+    const removedMissions: { readonly collection: string; readonly id: string }[] = [];
     try {
       declarations = validateAgentDeclarations(
         current.resolvedProcedure.roles,
@@ -804,14 +811,22 @@ export class PlanRuntime {
         if (!current.resolvedProcedure.missionCollections?.some((value) => value.name === collection)) {
           throw new TypeError(`Mission collection "${collection}" is not declared by the Procedure`);
         }
-        const previous = current.missionDeclarations[collection] ?? [];
-        for (const mission of previous) {
+        const acceptedMissions = current.missionDeclarations[collection] ?? [];
+        const withdrawn = new Set<string>();
+        for (const mission of acceptedMissions) {
           const submitted = missions.find((value) => value.id === mission.id);
-          if (!submitted || canonicalJson(submitted) !== canonicalJson(mission)) {
-            throw new TypeError(`Accepted mission "${mission.id}" cannot be removed or modified`);
+          if (submitted && canonicalJson(submitted) !== canonicalJson(mission)) {
+            throw new TypeError(`Accepted mission "${mission.id}" cannot be modified`);
+          }
+          if (!submitted) {
+            const refusal = await executedMissionRefusal(this.#database, current, collection, mission.id);
+            if (refusal) throw new TypeError(refusal);
+            withdrawn.add(mission.id);
           }
         }
-        const compiled = [...(current.resolvedMissions[collection] ?? [])];
+        removedMissions.push(...[...withdrawn].map((id) => ({ collection, id })));
+        const previous = acceptedMissions.filter((value) => !withdrawn.has(value.id));
+        const compiled = (current.resolvedMissions[collection] ?? []).filter((value) => !withdrawn.has(value.id));
         for (const mission of missions) {
           if (previous.some((value) => value.id === mission.id)) continue;
           let phase = "resolution";
@@ -951,6 +966,10 @@ export class PlanRuntime {
             "plan-conflict",
             `Plan ${plan.slug} is escalated and must be resumed by an operator`,
           );
+        }
+        for (const { collection, id } of removedMissions) {
+          const refusal = await executedMissionRefusal(transaction, current, collection, id);
+          if (refusal) throw new PlanRuntimeError("invalid-plan-declarations", `${refusal}. No changes accepted.`);
         }
         if (chainedPlan.intentChaining && chainedPlan.currentIntentAttemptKey !== undefined) {
           const attempts = this.#attempts.using(transaction);
@@ -1949,6 +1968,23 @@ export class PlanRuntime {
     if (Number.isNaN(now.getTime())) throw new Error("Clock returned an invalid instant");
     return now;
   }
+}
+
+/**
+ * An accepted mission leaves its collection only while no generation of its child Plan admitted an Attempt; the
+ * refusal reason otherwise.
+ */
+async function executedMissionRefusal(
+  database: Database,
+  revision: PlanRevision,
+  collection: string,
+  mission: string,
+): Promise<string | undefined> {
+  const invocation = revision.invocations.find(
+    (value) => value.mission?.collection === collection && value.mission.id === mission,
+  );
+  if (!invocation || !(await invocationAdmittedAttempt(database, revision.planSlug, invocation.id))) return undefined;
+  return `Accepted mission "${mission}" cannot be removed: its child Plan admitted an Attempt`;
 }
 
 function isEscalationDeclaration(value: unknown): value is string {

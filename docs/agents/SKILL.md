@@ -113,7 +113,9 @@ read it from an available checkout; report missing access when it blocks the tas
   publication is authorized; publish a new version. Use exact SemVer or standard
   ranges in `name@selector` references. Existing Plans retain their pinned composition.
 - Keep accepted missions immutable too. Inline sources remain in Plan history;
-  consolidate them into reusable catalog versions only when authorized.
+  consolidate them into reusable catalog versions only when authorized. A mission
+  whose child Plan never admitted an Attempt can be removed on an explicit decision
+  (see the delegation recipe); history keeps it.
 - Use approved disposable resources for validation. Do not reset a shared preview
   or run an unrelated demonstration as part of an ordinary task.
 

@@ -252,7 +252,6 @@ test("mission declaration boundaries reject malformed, uncompilable and destruct
     await fixture.rpc("plan.declarations.replace", await fixture.declaration([publishedMission]));
     const accepted = await fixture.read();
     const invalidBatches = [
-      [],
       [{ ...publishedMission, rootInputs: { repository: "changed" } }],
       [publishedMission, { ...publishedMission }],
       [

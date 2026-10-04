@@ -137,7 +137,8 @@ Keep installation addresses, inventories and backup records outside Git. See
   when the mission is accepted, before creating its child Plan. Inline definitions are persistent Plan
   history, not reusable catalog publications. Static composition retains engagement-time pinning.
   Accepted missions are append-only: identical resubmission preserves their resolution and child;
-  changing or removing an accepted mission is refused. Empty collections remain waiting for work.
+  changing an accepted mission is refused. Removing one is accepted only while no Attempt was ever
+  admitted in its child Plan or a descendant. Empty collections remain waiting for work.
   Agents read child Plans and use the existing Runner and escalation paths. Host dispatch remains
   outside TRUST; this capability adds no cancellation or post-escalation policy.
 - Registry sources are named configuration stored by the runtime. An HTTP source points directly to a
