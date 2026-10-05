@@ -8,6 +8,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll } from "vitest";
 import { test } from "./support/fixtures.js";
+import { startPublicRuntime } from "./support/runtime-process.js";
 
 const LISTEN_TIMEOUT_MS = 60_000;
 
@@ -355,65 +356,12 @@ async function startRuntime(): Promise<Runtime> {
   const operationsDirectory = path.join(dataDirectory, "operations");
   await mkdir(operationsDirectory);
   await cp(operationSource, path.join(operationsDirectory, path.basename(operationSource)));
-  const environment: Record<string, string | undefined> = { ...process.env };
-  delete environment.TRUST_DATABASE_PATH;
-  delete environment.TRUST_DATABASE_URL;
-  delete environment.TRUST_PGLITE_DIRECTORY;
-  const child = spawn(process.execPath, [runtimeEntry], {
-    env: {
-      ...environment,
-      TRUST_HOST: "127.0.0.1",
-      TRUST_PORT: "0",
-      TRUST_STORAGE: "pglite",
-      TRUST_PGLITE_DIRECTORY: path.join(dataDirectory, "pglite"),
-      TRUST_OPERATIONS_DIRECTORY: operationsDirectory,
-      TRUST_CREDENTIAL_KEY_FILE: path.join(dataDirectory, "credential.key"),
+  const started = await startPublicRuntime("trust-controlled-documentation-", { operationsDirectory });
+  return {
+    endpoint: started.endpoint,
+    close: async () => {
+      await started.close();
+      await rm(dataDirectory, { recursive: true, force: true, maxRetries: 5 });
     },
-    stdio: "pipe",
-  });
-  let stderr = "";
-  child.stderr.on("data", (chunk: Buffer) => {
-    stderr += chunk.toString();
-  });
-  const close = async (): Promise<void> => {
-    if (child.exitCode === null && child.signalCode === null) {
-      child.kill("SIGTERM");
-      await once(child, "exit");
-    }
-    await rm(dataDirectory, { recursive: true, force: true, maxRetries: 5 });
   };
-  try {
-    return { endpoint: await listeningEndpoint(child, () => stderr), close };
-  } catch (error) {
-    await close();
-    throw error;
-  }
-}
-
-function listeningEndpoint(child: ChildProcessWithoutNullStreams, stderr: () => string): Promise<string> {
-  return new Promise((resolve, reject) => {
-    let stdout = "";
-    const timeout = setTimeout(() => {
-      cleanup();
-      reject(new Error(`TRUST runtime did not listen within ${LISTEN_TIMEOUT_MS} ms. stderr=${stderr()}`));
-    }, LISTEN_TIMEOUT_MS);
-    const onStdout = (chunk: Buffer): void => {
-      stdout += chunk.toString();
-      const match = /TRUST runtime listening on (127\.0\.0\.1):(\d+)/.exec(stdout);
-      if (!match) return;
-      cleanup();
-      resolve(`http://${match[1]}:${match[2]}`);
-    };
-    const onExit = (code: number | null): void => {
-      cleanup();
-      reject(new Error(`TRUST runtime stopped before listening (code=${String(code)}). stderr=${stderr()}`));
-    };
-    const cleanup = (): void => {
-      clearTimeout(timeout);
-      child.stdout.off("data", onStdout);
-      child.off("exit", onExit);
-    };
-    child.stdout.on("data", onStdout);
-    child.once("exit", onExit);
-  });
 }
