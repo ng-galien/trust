@@ -404,6 +404,8 @@ test("CXP-100 AC3 under 900 pixels the panel shows below the document without ho
     const [documentBox, panelBox] = [await documentOf(page).boundingBox(), await threadPanel(page).boundingBox()];
     expect(documentBox && panelBox && panelBox.y >= documentBox.y + documentBox.height, `at ${viewport} px`).toBe(true);
     await expect(edge(page)).toBeHidden();
+    // Below the document the panel has no fold button.
+    await expect(app(page).getByRole("button", { name: /^(Hide|Show) the side panel$/ })).toBeHidden();
     await expect(threadPanel(page).getByRole("heading", { name: "Neighbourhood" })).toBeVisible();
     expect(await noPageOverflow(page), `at ${viewport} px`).toBe(true);
   }
@@ -414,6 +416,7 @@ test("CXP-100 AC3 under 900 pixels the panel shows below the document without ho
     await facetPanel(page).boundingBox(),
   ];
   expect(facetBox && panelBox && panelBox.y >= facetBox.y + facetBox.height).toBe(true);
+  await expect(app(page).getByRole("button", { name: /^(Hide|Show) the side panel$/ })).toBeHidden();
   expect(await noPageOverflow(page)).toBe(true);
   // At 900 pixels and wider the panel stands beside the document again.
   await page.setViewportSize({ width: 1280, height: 900 });

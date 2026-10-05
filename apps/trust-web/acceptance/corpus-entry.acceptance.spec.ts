@@ -1,5 +1,5 @@
 import { expect, type Page, test } from "@playwright/test";
-import { corpusApi, noPageOverflow, openCorpus, visit } from "./support/corpus-browser.js";
+import { corpusApi, noPageOverflow, openCorpus, rpc, visit } from "./support/corpus-browser.js";
 import { ENTRY_CORPUS, ENTRY_FACETS, ENTRY_THREADS, REGISTRY_THREAD } from "./support/corpus-fixture.js";
 
 /* The Corpus entry screen: one thread list with filters, groups, views and search, on routed addresses. It runs on
@@ -158,12 +158,18 @@ test("CXP-030 AC1 each active filter shows as a chip and removing a chip restore
   expect(errors).toEqual([]);
 });
 
-test("CXP-030 AC4 the state filter offers In progress and lists the threads whose framework Plan is at work", async ({
+test("CXP-330 AC2 the state filter offers In progress, Open, Paused and Completed and the grouping by state follows that order", async ({
   page,
 }) => {
   const errors = await openEntry(page);
   await addFilter(page, "State").click();
   await expect(app(page).getByRole("checkbox")).toHaveCount(4);
+  // The four states are offered in this order.
+  const stateChoices = await filters(page)
+    .getByRole("group", { name: "Filter on State" })
+    .getByRole("checkbox")
+    .evaluateAll((boxes) => boxes.map((box) => box.closest("label")?.textContent?.trim()));
+  expect(stateChoices).toEqual(["In progress", "Open", "Paused", "Completed"]);
   await option(page, "In progress").check();
   await page.keyboard.press("Escape");
   await expect(chip(page, "State: In progress")).toBeVisible();
@@ -178,6 +184,18 @@ test("CXP-030 AC4 the state filter offers In progress and lists the threads whos
   await page.keyboard.press("Escape");
   await expect(rows(page).first()).toBeVisible();
   for (const item of await rows(page).all()) await expect(item.locator(".corpus-thread-status")).toHaveText("Open");
+  // Without a state filter, the grouping by state follows the same order.
+  await chip(page, "State: Open").click();
+  await option(page, "Open").uncheck();
+  await page.keyboard.press("Escape");
+  await expect(filters(page).getByRole("button", { name: /^Remove filter / })).toHaveCount(0);
+  await groupBy(page).selectOption("state");
+  await expect(groupTitles(page)).toHaveText([
+    /^In progress\s*\d+$/,
+    /^Open\s*\d+$/,
+    /^Paused\s*\d+$/,
+    /^Completed\s*\d+$/,
+  ]);
   expect(errors).toEqual([]);
 });
 
@@ -259,7 +277,7 @@ test("CXP-040 AC1 the list groups by corpus, facet or state and a thread appears
   expect(errors).toEqual([]);
 });
 
-test("CXP-040 AC2 the supplied views exist: in progress, all threads, recently completed and one view per corpus", async ({
+test("CXP-040 AC2 the supplied views exist: all threads, open threads, recently completed and one view per corpus, and the list opens on all threads", async ({
   page,
 }) => {
   const errors = await openEntry(page);
@@ -437,4 +455,112 @@ test("CXP-090 AC3 an old address with corpus, thread, section or facet parameter
   await page.goBack();
   await expect(page).toHaveURL(ENTRY);
   expect(errors).toEqual([]);
+});
+
+type WorkspaceRead = {
+  corpora: { id: string; title: string }[];
+  threads: { id: string; title: string; state: string; corpus: string | null; framework_plan: string | null }[];
+};
+const workspace = async () => (await (await fetch(`${corpusApi}/api/workspace`)).json()) as WorkspaceRead;
+const openDialog = (page: Page) => page.getByRole("dialog", { name: "Open a thread", exact: true });
+const corpusChoice = (page: Page) => openDialog(page).getByRole("combobox", { name: "Corpus", exact: true });
+
+test("CXP-330 AC1 an open thread whose framework Plan is at work shows In progress and an open thread with no Plan at work shows Open", async ({
+  page,
+}) => {
+  const errors = await openEntry(page);
+  await view(page, "All threads").click();
+  // The facts come from Corpus and TRUST: the thread state and the work state of its framework Plan.
+  const { threads } = await workspace();
+  const atWork = new Set<string>();
+  for (const plan of new Set(threads.flatMap((thread) => (thread.framework_plan ? [thread.framework_plan] : [])))) {
+    const read = await rpc<{ procedure: string; workState: string }>("plan.read", { plan });
+    if (read.procedure === "corpus-thread-framework" && ["IN_PROGRESS", "ESCALATED"].includes(read.workState))
+      atWork.add(plan);
+  }
+  const open = threads.filter((thread) => thread.state === "ACTIVE");
+  const inProgress = open.filter((thread) => thread.framework_plan && atWork.has(thread.framework_plan));
+  // The fixture holds both kinds of open thread.
+  expect(inProgress.length).toBeGreaterThan(0);
+  expect(open.length).toBeGreaterThan(inProgress.length);
+  await expect(rows(page)).toHaveCount(threads.length);
+  for (const thread of open) {
+    const pill = app(page).locator(`li[data-thread-id="${thread.id}"]`).locator(".corpus-thread-status");
+    await expect(pill).toHaveText(inProgress.includes(thread) ? "In progress" : "Open");
+  }
+  expect(errors).toEqual([]);
+});
+
+test("CXP-340 AC1 the Open a thread dialog offers each corpus and No corpus", async ({ page }) => {
+  const errors = await openEntry(page);
+  const { corpora } = await workspace();
+  await app(page).getByRole("button", { name: "Open a thread", exact: true }).click();
+  await expect(openDialog(page)).toBeVisible();
+  // From the thread list the dialog opens without corpus, and offers every corpus.
+  await expect(corpusChoice(page)).toHaveValue("");
+  await expect(corpusChoice(page).getByRole("option")).toHaveText(["No corpus", ...corpora.map((c) => c.title)]);
+  await openDialog(page).getByRole("button", { name: "Cancel", exact: true }).click();
+  await expect(openDialog(page)).not.toBeVisible();
+  // From a corpus screen the dialog proposes that corpus.
+  await views(page).getByRole("link", { name: "TRUST", exact: true }).click();
+  await expect(page).toHaveURL(`${ENTRY}/corpora/trust`);
+  await app(page).getByRole("button", { name: "Open a thread", exact: true }).click();
+  await expect(corpusChoice(page)).toHaveValue("trust");
+  await expect(corpusChoice(page).getByRole("option")).toHaveText(["No corpus", ...corpora.map((c) => c.title)]);
+  expect(await noPageOverflow(page)).toBe(true);
+  await page.keyboard.press("Escape");
+  await expect(openDialog(page)).not.toBeVisible();
+  expect(errors).toEqual([]);
+});
+
+test("CXP-340 AC2 a thread opened with a chosen corpus is attached to it and listed under it", async ({ page }) => {
+  const errors = await openEntry(page);
+  const commands: string[] = [];
+  page.on("request", (request) => {
+    if (request.url().endsWith("/extensions/corpus/commands")) commands.push(request.postDataJSON().command);
+  });
+  const title = "Thread opened in the TRUST corpus";
+  await app(page).getByRole("button", { name: "Open a thread", exact: true }).click();
+  await openDialog(page).getByLabel("Title", { exact: true }).fill(title);
+  await openDialog(page).getByLabel("Intention", { exact: true }).fill("Open a thread with its corpus.");
+  await corpusChoice(page).selectOption({ label: "TRUST" });
+  await openDialog(page).getByRole("button", { name: "Open thread", exact: true }).click();
+  await expect(page.getByRole("heading", { name: title, level: 1 })).toBeVisible();
+  // The thread is opened, then attached to the chosen corpus.
+  expect(commands).toEqual(["threads.open", "threads.resolve"]);
+  const created = (await workspace()).threads.find((thread) => thread.title === title);
+  expect(created?.corpus).toBe("trust");
+  await visit(page, ENTRY, "Corpus");
+  await view(page, "All threads").click();
+  await expect(row(page, title)).toContainText("TRUST");
+  await expect(
+    app(page).getByRole("region", { name: "TRUST", exact: true }).getByRole("link", { name: title }),
+  ).toBeVisible();
+  await views(page).getByRole("link", { name: "TRUST", exact: true }).click();
+  await expect(page).toHaveURL(`${ENTRY}/corpora/trust`);
+  expect(await listed(page)).toContain(title);
+  expect(errors).toEqual([]);
+  // A refused attachment leaves the thread opened without corpus, and the dialog gives the cause.
+  await page.route("**/extensions/corpus/commands", async (route) => {
+    if (route.request().postDataJSON().command !== "threads.resolve") return route.continue();
+    return route.fulfill({
+      status: 409,
+      contentType: "application/json",
+      body: JSON.stringify({ message: "Thread changed; reread before editing." }),
+    });
+  });
+  const loose = "Thread whose attachment is refused";
+  await app(page).getByRole("button", { name: "Open a thread", exact: true }).click();
+  await openDialog(page).getByLabel("Title", { exact: true }).fill(loose);
+  await openDialog(page).getByLabel("Intention", { exact: true }).fill("Open a thread whose attachment fails.");
+  await expect(corpusChoice(page)).toHaveValue("trust");
+  await openDialog(page).getByRole("button", { name: "Open thread", exact: true }).click();
+  await expect(openDialog(page).getByRole("alert")).toHaveText(
+    "The thread is opened without corpus: Thread changed; reread before editing.",
+  );
+  expect((await workspace()).threads.find((thread) => thread.title === loose)?.corpus).toBeNull();
+  await openDialog(page).getByRole("button", { name: "Go to the thread", exact: true }).click();
+  await expect(page.getByRole("heading", { name: loose, level: 1 })).toBeVisible();
+  // The only console error is the refusal answered by the route above.
+  expect(errors).toEqual(["Failed to load resource: the server responded with a status of 409 (Conflict)"]);
 });

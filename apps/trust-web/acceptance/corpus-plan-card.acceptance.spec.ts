@@ -327,52 +327,126 @@ test("CXP-260 AC3 choosing a Plan of the history shows its state and its mission
   await expect(missions.filter({ hasText: INHERITED_MISSIONS.running })).toContainText("In progress");
 });
 
-test("CXP-270 AC1 the panel of views and corpora and the thread list each keep their zone at every width", async ({
+test("CXP-270 AC1 above 1180 pixels the panel of views and corpora is beside the list, and below it is folded and the list keeps the whole width", async ({
   page,
 }) => {
   await openCorpus(page, ENTRY, "Corpus");
+  const show = app(page).getByRole("button", { name: "Show views and corpora" });
   // With room beside the list, the panel and the rows are side by side, also once the list scrolled.
-  await page.setViewportSize({ width: 1280, height: 800 });
-  await expect(views(page)).toBeVisible();
-  for (const scroll of [0, 600]) {
-    await page.mouse.wheel(0, scroll);
-    await scrollSettled(page);
-    for (const index of [0, 1, 2, 3])
-      expect(await overlap(views(page), rows(page).nth(index)), `1280 px, row ${index}`).toBe(false);
+  for (const width of [1280, 1181]) {
+    await page.setViewportSize({ width, height: 800 });
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await expect(views(page)).toBeVisible();
+    await expect(show).toBeHidden();
+    for (const scroll of [0, 600]) {
+      await page.mouse.wheel(0, scroll);
+      await scrollSettled(page);
+      for (const index of [0, 1, 2, 3])
+        expect(await overlap(views(page), rows(page).nth(index)), `${width} px, row ${index}`).toBe(false);
+    }
+    expect(await noPageOverflow(page)).toBe(true);
   }
-  expect(await noPageOverflow(page)).toBe(true);
-  // Without that room the panel is folded: the list starts under the filter bar and keeps the whole width.
-  for (const width of [1000, 800, 390]) {
+  // Without that room the panel is folded behind its button and the rows take the whole width of the list.
+  for (const width of [1180, 1000, 800, 390]) {
     await page.setViewportSize({ width, height: 800 });
     await page.evaluate(() => window.scrollTo(0, 0));
     await expect(views(page)).toBeHidden();
-    const before = await rows(page).first().boundingBox();
-    const show = app(page).getByRole("button", { name: "Show views and corpora" });
-    await show.click();
-    // Open, the panel lies over the list: the rows do not move.
-    await expect(views(page)).toBeVisible();
-    expect(await rows(page).first().boundingBox(), `${width} px`).toEqual(before);
+    await expect(show).toBeVisible();
+    await expect(show).toHaveAttribute("aria-expanded", "false");
+    // No column is kept for the panel: the rows stand at the same distance from both edges of the screen.
+    const workspace = await app(page).boundingBox();
+    const first = await rows(page).first().boundingBox();
+    if (!workspace || !first) throw new Error(`No row at ${width} px`);
+    const left = first.x - workspace.x;
+    const right = workspace.x + workspace.width - (first.x + first.width);
+    expect(Math.abs(left - right), `${width} px`).toBeLessThanOrEqual(2);
     expect(await noPageOverflow(page)).toBe(true);
-    await page.keyboard.press("Escape");
-    await expect(views(page)).toBeHidden();
   }
 });
 
-test("CXP-270 AC2 below 900 pixels the panel of views and corpora folds behind a button that opens and closes it", async ({
+test("CXP-270 AC2 folded, the panel opens over the list from its button, and the button, a chosen view or corpus, or Escape closes it", async ({
   page,
 }) => {
-  await page.setViewportSize({ width: 800, height: 800 });
+  await page.setViewportSize({ width: 1000, height: 800 });
   await openCorpus(page, ENTRY, "Corpus");
-  const show = app(page).getByRole("button", { name: "Show views and corpora" });
-  await expect(show).toHaveAttribute("aria-expanded", "false");
-  await expect(views(page)).toBeHidden();
-  await show.click();
-  await expect(views(page)).toBeVisible();
-  const hide = app(page).getByRole("button", { name: "Hide views and corpora" });
-  await expect(hide).toHaveAttribute("aria-expanded", "true");
-  await hide.click();
-  await expect(views(page)).toBeHidden();
+  const toggle = app(page).getByRole("button", { name: /^(Show|Hide) views and corpora$/ });
+  const open = async () => {
+    await expect(toggle).toHaveAttribute("aria-expanded", "false");
+    await expect(views(page)).toBeHidden();
+    await toggle.click();
+    await expect(views(page)).toBeVisible();
+    await expect(toggle).toHaveAttribute("aria-expanded", "true");
+    await expect(toggle).toHaveText("Hide views and corpora");
+  };
+  const closed = async () => {
+    await expect(views(page)).toBeHidden();
+    await expect(toggle).toHaveAttribute("aria-expanded", "false");
+    await expect(toggle).toHaveText("Show views and corpora");
+  };
+  // Opened, the panel lies over the list: the rows keep their position.
+  for (const width of [1000, 390]) {
+    await page.setViewportSize({ width, height: 800 });
+    await page.evaluate(() => window.scrollTo(0, 0));
+    const before = await rows(page).first().boundingBox();
+    await open();
+    expect(await rows(page).first().boundingBox(), `${width} px`).toEqual(before);
+    expect(await noPageOverflow(page)).toBe(true);
+    // The button closes it.
+    await toggle.click();
+    await closed();
+  }
+  await page.setViewportSize({ width: 1000, height: 800 });
+  // A chosen view closes it.
+  await open();
+  await views(page).getByRole("button", { name: "Open threads", exact: true }).click();
+  await closed();
+  // A chosen corpus closes it.
+  await open();
+  await views(page).getByRole("link", { name: "TRUST", exact: true }).click();
+  await expect(page).toHaveURL(`${ENTRY}/corpora/trust`);
+  await closed();
+  // Escape closes it.
+  await open();
+  await page.keyboard.press("Escape");
+  await closed();
   await expect(rows(page).first()).toBeVisible();
+});
+
+const STEP_TRACK = "Checks of the Plan";
+const ICON = "a > :first-child, li > span > :first-child";
+const CURRENT_STEP = '[data-step-state="current"]';
+const STEP_NAME = "a > span:nth-child(2), li > span > span:nth-child(2)";
+
+test("CXP-250 AC8 in a narrow card the step track fits its width and the current step keeps its name", async ({
+  page,
+}) => {
+  await openCorpus(page, threadUrl(DIAGRAM_THREAD), "Document diagrams");
+  const track = card(page).getByRole("list", { name: STEP_TRACK }).first();
+  for (const width of [600, 390]) {
+    await page.setViewportSize({ width, height: 844 });
+    await expect(track).toBeVisible();
+    // The track has no horizontal scroll.
+    expect(await track.evaluate((list) => list.scrollWidth <= list.clientWidth), `${width} px`).toBe(true);
+    // Every step shows its icon inside the track.
+    const box = await track.boundingBox();
+    const steps = track.getByRole("listitem");
+    expect(await steps.count()).toBeGreaterThan(1);
+    for (const step of await steps.all()) {
+      const icon = step.locator(ICON).first();
+      await expect(icon).toBeVisible();
+      const place = await icon.boundingBox();
+      expect(box && place && place.x >= box.x - 1 && place.x + place.width <= box.x + box.width + 1).toBe(true);
+    }
+    // The current step keeps its name.
+    const current = track.locator(CURRENT_STEP);
+    await expect(current).toHaveCount(1);
+    const name = current.locator(STEP_NAME);
+    await expect(name).toBeVisible();
+    await expect(name).not.toHaveText("");
+    // The name is laid out in full, not reduced to the hidden text of a folded step.
+    expect(await name.evaluate((text) => text.getBoundingClientRect().width)).toBeGreaterThan(20);
+    expect(await noPageOverflow(page)).toBe(true);
+  }
 });
 
 const approval = (revision: number) => `Approve revision ${revision}`;
