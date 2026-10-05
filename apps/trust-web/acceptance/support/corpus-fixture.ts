@@ -54,6 +54,13 @@ Feature: Deliver one mission of a Corpus thread in three Checks
       """
 `;
 
+/** The same Checks with the assignee of the mission, for the missions of the framework Plan of the diagram thread. */
+export const MISSION_ASSIGNEE = "agent-diagrams";
+export const ASSIGNED_MISSION_PROCEDURE = MISSION_PROCEDURE.replace("@version:0.1.0", "@version:0.2.0").replace(
+  `    And one string "verdict"\n`,
+  `    And one string "verdict"\n    And one string "assignee"\n`,
+);
+
 const wideChain = Array.from({ length: 16 }, (_, index) => `  S${index}[Stage ${index + 1} of the delivery]`).join(
   "\n",
 );

@@ -12,6 +12,7 @@ import {
   ADDED_MISSION,
   ADDITION,
   ARCHIVED_PLANS,
+  ASSIGNED_MISSION_PROCEDURE,
   CONFLICT_BODY,
   CONFLICT_THREAD,
   CORPUS_PROXY_PORT,
@@ -27,6 +28,7 @@ import {
   ENTRY_THREADS,
   FRAMEWORK_PLAN,
   INHERITED_MISSIONS,
+  MISSION_ASSIGNEE,
   MISSION_PROCEDURE,
   MISSIONS,
   READING_THREADS,
@@ -276,6 +278,7 @@ await rpc("procedure.publish", {
   source: await readFile(path.join(procedures, "thread-framework-0.4.0.procedure.feature"), "utf8"),
 });
 await rpc("procedure.publish", { source: MISSION_PROCEDURE });
+await rpc("procedure.publish", { source: ASSIGNED_MISSION_PROCEDURE });
 await rpc("environment.save", {
   environment: "local",
   values: {
@@ -297,8 +300,8 @@ await declare(
   {
     work: MISSIONS.map((mission) => ({
       id: mission.id,
-      rootInputs: { thread: DIAGRAM_THREAD, mission: mission.id, verdict: mission.verdict },
-      definition: { kind: "published", reference: "corpus-ui-mission@0.1.0" },
+      rootInputs: { thread: DIAGRAM_THREAD, mission: mission.id, verdict: mission.verdict, assignee: MISSION_ASSIGNEE },
+      definition: { kind: "published", reference: "corpus-ui-mission@0.2.0" },
     })),
   },
 );

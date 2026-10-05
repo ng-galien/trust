@@ -15,6 +15,7 @@ import {
   DIAGRAM_THREAD,
   FRAMEWORK_PLAN,
   INHERITED_MISSIONS,
+  MISSION_ASSIGNEE,
   MISSIONS,
   REFRAMED_OLD_PLAN,
   REFRAMED_PLAN,
@@ -69,58 +70,130 @@ const overlap = (a: Locator, b: Locator) =>
       !!x && !!y && x.x < y.x + y.width && y.x < x.x + x.width && x.y < y.y + y.height && y.y < x.y + x.height,
   );
 
-test("CXP-250 AC1 the thread screen shows at its top a card of the current Plan with its identifier, the revision it carries, its state and the progress of its Checks", async ({
+test("CXP-250 AC1 the card at the top of the thread screen shows the title of the current Plan, its state and its progress, with the identifier as secondary text", async ({
   page,
 }) => {
-  const { revision } = await command<{ revision: number }>("threads.read", { id: DIAGRAM_THREAD });
-  const plan = await readPlan(FRAMEWORK_PLAN);
+  // The Plan of the decisions carries a metadata title.
+  const plan = await readPlan(DECISION_PLAN);
   const validated = plan.checks.filter((check) => check.state === "SATISFIED").length;
-  const errors = await openCorpus(page, threadUrl(DIAGRAM_THREAD), "Document diagrams");
+  const errors = await openCorpus(page, threadUrl(DECISION_THREAD.id), DECISION_THREAD.title);
   const current = card(page);
-  await expect(current).toContainText(FRAMEWORK_PLAN);
-  await expect(current).toContainText(`Carries revision ${revision}`);
+  await expect(current).toHaveAttribute("data-card-form", "full");
+  const title = current.getByText(DECISION_THREAD.title, { exact: true });
+  await expect(title).toBeVisible();
   await expect(current).toContainText("In progress");
-  await expect(current).toContainText(`${validated} of ${plan.checks.length} Checks validated`);
+  await expect(current).toContainText(`${validated} of ${plan.checks.length} Checks · next: `);
+  // The identifier is secondary: in the footer, under the title.
+  const footer = current.locator("footer");
+  await expect(footer).toContainText(DECISION_PLAN);
+  const [titleBox, footerBox] = [await title.boundingBox(), await footer.boundingBox()];
+  expect(titleBox && footerBox && titleBox.y < footerBox.y).toBe(true);
   // The card opens the thread screen, above the document.
   const [cardBox, documentBox] = [await current.boundingBox(), await documentOf(page).boundingBox()];
   expect(cardBox && documentBox && cardBox.y + cardBox.height <= documentBox.y).toBe(true);
   expect(errors).toEqual([]);
 });
 
-test("CXP-250 AC2 the card of the current Plan stays visible while the document scrolls", async ({ page }) => {
+test("CXP-250 AC2 while the document scrolls the card stays on one line with the state, the title, the progress and the decision count", async ({
+  page,
+}) => {
   await page.setViewportSize({ width: 1280, height: 700 });
-  await openCorpus(page, threadUrl(DIAGRAM_THREAD), "Document diagrams");
-  const title = documentOf(page).getByRole("heading", { name: "Document diagrams", level: 1 });
-  await expect(card(page)).toBeInViewport();
+  await openCorpus(page, threadUrl(DECISION_THREAD.id), DECISION_THREAD.title);
+  const title = documentOf(page).getByRole("heading", { name: DECISION_THREAD.title, level: 1 });
+  await expect(card(page)).toHaveAttribute("data-card-form", "full");
   await documentOf(page).locator(".corpus-markdown > *").last().scrollIntoViewIfNeeded();
   await expect(title).not.toBeInViewport();
-  await expect(card(page)).toBeInViewport();
-  const box = await card(page).boundingBox();
-  expect(box && box.y >= 0 && box.y < 120).toBe(true);
+  const current = card(page);
+  await expect(current).toHaveAttribute("data-card-form", "compact");
+  await expect(current).toBeInViewport();
+  await expect(current).toContainText("In progress");
+  await expect(current).toContainText(DECISION_THREAD.title);
+  await expect(current).toContainText(/\d+ of \d+ Checks/);
+  await expect(current).toContainText("2 decisions");
+  const box = await current.boundingBox();
+  expect(box && box.y >= 0 && box.y < 120 && box.height < 64).toBe(true);
+  // Back at the top, the card opens again.
+  await app(page).getByRole("navigation", { name: "Trail" }).scrollIntoViewIfNeeded();
+  await expect(current).toHaveAttribute("data-card-form", "full");
+  await expect(current.getByRole("list", { name: "Your decisions" })).toBeVisible();
 });
 
-test("CXP-250 AC3 the card shows the missions of the Plan with their state and leads to the detailed follow-up", async ({
+test("CXP-250 AC3 the card shows the Checks of the Plan in Procedure order as named steps with their state", async ({
+  page,
+}) => {
+  const plan = await readPlan(FRAMEWORK_PLAN);
+  await openCorpus(page, threadUrl(DIAGRAM_THREAD), "Document diagrams");
+  const steps = card(page).getByRole("list", { name: "Checks of the Plan" }).getByRole("listitem");
+  await expect(steps).toHaveCount(plan.checks.length + 1);
+  const names = await steps.evaluateAll((items) =>
+    items.map((item) => item.querySelector("a > span:nth-child(2), span > span:nth-child(2)")?.textContent ?? ""),
+  );
+  expect([...names].sort()).toEqual([...plan.checks.map((check) => check.name), "missions"].sort());
+  // Procedure order: a Check comes after the Checks it waits for.
+  expect(names.indexOf("check requirements")).toBeGreaterThan(names.indexOf("attach thread"));
+  expect(names.indexOf("approve framing")).toBeGreaterThan(names.indexOf("check requirements"));
+  for (const check of plan.checks)
+    await expect(steps.nth(names.indexOf(check.name))).toHaveAttribute(
+      "data-step-state",
+      check.state === "SATISFIED" ? "validated" : /current|waiting|owner|refused/,
+    );
+  // The missions are a step of their own with their count; the first step not validated is the current one.
+  const missions = steps.nth(names.indexOf("missions"));
+  await expect(missions).toContainText(`1 of ${MISSIONS.length}`);
+  await expect(card(page).locator('[data-step-state="current"]')).toHaveCount(1);
+});
+
+test("CXP-250 AC4 the card lists the missions as rows with state, identifier, assignee and validated Checks, and a row opens the mission page", async ({
   page,
 }) => {
   await openCorpus(page, threadUrl(DIAGRAM_THREAD), "Document diagrams");
   const missions = card(page).getByRole("list", { name: "Missions of the Plan" }).getByRole("listitem");
-  await expect(missions).toHaveCount(MISSIONS.length);
-  const complete = missions.filter({ has: page.getByRole("link", { name: "mission-complete", exact: true }) });
-  await expect(complete).toContainText("Complete");
-  const escalated = missions.filter({ has: page.getByRole("link", { name: "mission-escalated", exact: true }) });
-  await expect(escalated).toContainText("Escalated");
   const running = missions.filter({ has: page.getByRole("link", { name: "mission-running", exact: true }) });
   await expect(running).toContainText("In progress");
-  // A mission leads to its follow-up page, the card to the detailed follow-up of the Plan.
-  await complete.getByRole("link", { name: "mission-complete", exact: true }).click();
-  await expect(page.getByRole("heading", { name: "mission-complete", level: 1 })).toBeVisible();
-  await page.goBack();
-  await card(page).getByRole("link", { name: "Plan details", exact: true }).click();
+  await expect(running).toContainText(`${MISSION_ASSIGNEE} · at: verify work`);
+  await expect(running).toContainText("1 of 3 Checks");
+  const escalated = missions.filter({ has: page.getByRole("link", { name: "mission-escalated", exact: true }) });
+  await expect(escalated).toContainText("Escalated");
+  // The whole row opens the mission page.
+  const box = await running.boundingBox();
+  if (box) await page.mouse.click(box.x + box.width - 20, box.y + box.height / 2);
+  await expect(page).toHaveURL(/view=mission&mission=/);
+  await expect(page.getByRole("heading", { name: "mission-running", level: 1 })).toBeVisible();
+});
+
+test("CXP-250 AC5 beyond four missions the card shows four rows and Show all n missions", async ({ page }) => {
+  await openCorpus(page, threadUrl(DIAGRAM_THREAD), "Document diagrams");
+  const missions = card(page).getByRole("list", { name: "Missions of the Plan" }).getByRole("listitem");
+  await expect(missions).toHaveCount(4);
+  // The complete mission comes after the missions still at work.
+  await expect(card(page)).toContainText("1 more mission, complete");
+  await card(page)
+    .getByRole("button", { name: `Show all ${MISSIONS.length} missions` })
+    .click();
+  await expect(missions).toHaveCount(MISSIONS.length);
+  await expect(missions.last()).toContainText("mission-complete");
+  await expect(missions.last()).toContainText("Complete");
+});
+
+test("CXP-250 AC6 the card footer holds the revision, the Plan identifier and the links Plan details, Plan history and Open in TRUST", async ({
+  page,
+}) => {
+  const { framework } = await command<{ framework: { revision: number | null } | null }>("threads.read", {
+    id: DIAGRAM_THREAD,
+  });
+  const plan = await readPlan(FRAMEWORK_PLAN);
+  const carried = framework?.revision ?? plan.declarations["approved revision"];
+  await openCorpus(page, threadUrl(DIAGRAM_THREAD), "Document diagrams");
+  const footer = card(page).locator("footer");
+  await expect(footer).toContainText(`Carries revision ${carried}`);
+  await expect(footer).toContainText(FRAMEWORK_PLAN);
+  await expect(footer.getByRole("link")).toHaveText(["Plan details", "Plan history", "Open in TRUST ↗"]);
+  await footer.getByRole("link", { name: "Plan details", exact: true }).click();
   await expect(page).toHaveURL(/[?&]view=plan/);
   await expect(app(page).getByRole("heading", { level: 1 })).toContainText(FRAMEWORK_PLAN);
 });
 
-test("CXP-250 AC4 a thread with no Plan in progress shows its last Plan and its state in the card", async ({
+test("CXP-250 AC7 a thread with no Plan in progress shows its last Plan on one line with a control that opens the full card", async ({
   page,
 }) => {
   // A thread whose framework Plan was linked, then cancelled.
@@ -142,8 +215,19 @@ test("CXP-250 AC4 a thread with no Plan in progress shows its last Plan and its 
   await rpc("plan.cancel", { plan, reason: "The framework stops here." });
   await openCorpus(page, threadUrl(id), "Cancelled framework");
   const last = card(page, "Last Plan");
+  await expect(last).toHaveAttribute("data-card-form", "last");
   await expect(last).toContainText(plan);
   await expect(last).toContainText("Cancelled");
+  await expect(last).toContainText(/2 of \d+/);
+  await expect(last.getByRole("link", { name: "Plan history", exact: true })).toBeVisible();
+  const box = await last.boundingBox();
+  expect(box && box.height < 64).toBe(true);
+  const open = last.getByRole("button", { name: "Open the full Plan card" });
+  await expect(open).toHaveAttribute("aria-expanded", "false");
+  await open.click();
+  await expect(last).toHaveAttribute("data-card-form", "full");
+  await expect(last.getByRole("list", { name: "Checks of the Plan" })).toBeVisible();
+  await expect(last.locator("footer")).toContainText(plan);
 });
 
 test("CXP-260 AC1 an action of the card opens the Plan history, newest first, with each Plan, the revision it carries, its requirements and its opening date", async ({
@@ -242,8 +326,8 @@ test("CXP-270 AC2 below 900 pixels the panel of views and corpora folds behind a
   await expect(rows(page).first()).toBeVisible();
 });
 
-const approval = (revision: number) => `Revision ${revision} waits for your approval.`;
-const visual = `The screens of ${VISUAL_MISSION} wait for your visual validation.`;
+const approval = (revision: number) => `Approve revision ${revision}`;
+const visual = `Validate the screens of ${VISUAL_MISSION}`;
 
 test("CXP-280 AC1 a Plan that waits for the approval of a revision shows the revision and an action that records the approval in the Plan", async ({
   page,
@@ -273,9 +357,10 @@ test("CXP-280 AC4 a caller with the read right only sees the expected decisions 
   try {
     await openCorpus(page, threadUrl(DECISION_THREAD.id), DECISION_THREAD.title);
     const current = card(page);
-    await expect(current).toContainText(approval(revision));
-    await expect(current).toContainText(visual);
-    await expect(current.getByRole("button")).toHaveCount(0);
+    await expect(current).toContainText(`Revision ${revision} waits for the owner's approval`);
+    await expect(current).toContainText(`The screens of ${VISUAL_MISSION} wait for the owner's visual validation`);
+    await expect(current).toContainText("Read-only access: no action.");
+    await expect(current.getByRole("list", { name: "Your decisions" }).getByRole("button")).toHaveCount(0);
   } finally {
     await readOnlyCaller(false);
   }
@@ -298,15 +383,48 @@ test("CXP-280 AC3 the card shows the recorded decision and a refusal of the serv
   // The refusal offers to try the decision again.
   await current.getByRole("button", { name: "Try again" }).click();
   await expect(current.getByRole("status").filter({ hasText: `Approval of revision ${revision}` })).toContainText(
-    "recorded in the Plan. The Check “approve revision” waits to be run.",
+    `Approval of revision ${revision} recordedThe Check “approve revision” waits to be run.`,
   );
   const framework = await readPlan(DECISION_PLAN);
   expect(framework.declarations).toMatchObject({ "approval choice": "continue", "approved revision": revision });
   // The visual validation is recorded in the Plan of the mission.
   await current.getByRole("button", { name: `Validate the screens of ${VISUAL_MISSION}` }).click();
   await expect(current.getByRole("status").filter({ hasText: "Visual validation" })).toContainText(
-    `Visual validation of ${VISUAL_MISSION} recorded in its Plan.`,
+    `Visual validation of ${VISUAL_MISSION} recorded`,
+  );
+  await expect(current.getByRole("status").filter({ hasText: "Visual validation" })).toContainText(
+    "The Check “observe visual validation” waits to be run.",
   );
   const child = framework.invocations.find((invocation) => invocation.mission?.id === VISUAL_MISSION)?.childPlan ?? "";
   expect((await readPlan(child)).declarations).toMatchObject({ "visual validation": "approved" });
+});
+
+test("CXP-280 AC5 a pending decision is the first element of the card under its title line", async ({ page }) => {
+  await openCorpus(page, threadUrl(DECISION_THREAD.id), DECISION_THREAD.title);
+  const current = card(page);
+  const decisions = current.getByRole("list", { name: "Your decisions" });
+  await expect(decisions).toBeVisible();
+  // Under the title line, before the steps and the missions.
+  const order = await current.evaluate((section) =>
+    [...section.children].map((child) =>
+      child.matches('[aria-label="Your decisions"]')
+        ? "decisions"
+        : child.matches('[aria-label="Checks of the Plan"]')
+          ? "steps"
+          : child.querySelector('[aria-label="Missions of the Plan"]')
+            ? "missions"
+            : child.tagName === "FOOTER"
+              ? "footer"
+              : "head",
+    ),
+  );
+  expect(order.slice(order.indexOf("decisions"))).toEqual(["decisions", "steps", "missions", "footer"]);
+  expect(order.slice(0, order.indexOf("decisions")).every((part) => part === "head")).toBe(true);
+  const [title, first] = [
+    await current.getByText(DECISION_THREAD.title, { exact: true }).boundingBox(),
+    await decisions.locator("li").first().boundingBox(),
+  ];
+  expect(title && first && title.y + title.height <= first.y).toBe(true);
+  // The approval of the revision leads, waiting or already recorded by an earlier decision.
+  await expect(decisions.locator("li").first()).toContainText(/Approve revision|Approval of revision/);
 });

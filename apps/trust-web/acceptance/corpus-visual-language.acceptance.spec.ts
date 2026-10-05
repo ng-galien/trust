@@ -116,20 +116,22 @@ test("CXP-300 AC2 a thread, Plan, mission or Check state shows one pill with the
 test("CXP-300 AC3 a step track shows each Check by its name with an icon for its state", async ({ page }) => {
   const plan = await rpc<{ checks: { name: string; state: string }[] }>("plan.read", { plan: FRAMEWORK_PLAN });
   await openCorpus(page, threadUrl(DIAGRAM_THREAD), "Document diagrams");
+  // The missions of the Plan are a step of their own beside its Checks.
   const steps = track(page).getByRole("listitem");
-  await expect(steps).toHaveCount(plan.checks.length);
+  await expect(steps).toHaveCount(plan.checks.length + 1);
   const icons: Record<string, string> = { validated: "✓", owner: "!", refused: "✕", current: "", waiting: "" };
   for (const step of await steps.all()) {
     const state = (await step.getAttribute("data-step-state")) ?? "";
     expect(Object.keys(icons)).toContain(state);
     const name = (await step.locator("[class*='stepName']").textContent()) ?? "";
+    await expect(step.locator("[class*='icon']").first()).toHaveText(icons[state] ?? "");
+    if (name === "missions") continue;
     const check = plan.checks.find((entry) => entry.name === name);
     expect(check, `the step "${name}" is a Check of the Plan`).toBeTruthy();
     expect(state === "validated").toBe(check?.state === "SATISFIED");
-    await expect(step.locator("[class*='icon']").first()).toHaveText(icons[state] ?? "");
   }
   const names = await track(page).locator("[class*='stepName']").allTextContents();
-  expect([...names].sort()).toEqual(plan.checks.map((check) => check.name).sort());
+  expect([...names].sort()).toEqual([...plan.checks.map((check) => check.name), "missions"].sort());
   await expect(track(page).locator("[data-step-state='validated']").first()).toBeVisible();
 });
 

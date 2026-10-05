@@ -66,14 +66,9 @@ test("CXP-060 AC1 the document fills the main area and the side panel shows neig
   const [documentBox, panelBox] = [await document.boundingBox(), await panel.boundingBox()];
   expect(documentBox && panelBox && documentBox.x + documentBox.width <= panelBox.x).toBe(true);
   expect((documentBox?.width ?? 0) > (panelBox?.width ?? 0)).toBe(true);
-  // The neighbourhood, the links to the thread, then the Plan and the references.
-  await expect(panel.getByRole("heading", { level: 2 })).toContainText([
-    "Neighbourhood",
-    "Links to this thread",
-    "Plans and references",
-  ]);
+  // The neighbourhood, the links to the thread, then the references; the Plan is the card above the document.
   const titles = await panel.getByRole("heading", { level: 2 }).allTextContents();
-  expect(titles.slice(0, 3)).toEqual(["Neighbourhood", "Links to this thread", "Plans and references"]);
+  expect(titles.slice(0, 3)).toEqual(["Neighbourhood", "Links to this thread", "References"]);
   await expect(map(panel)).toBeVisible();
   const links = panel.getByRole("region", { name: "Links to this thread" });
   await expect(links.getByRole("listitem")).toHaveText([
@@ -81,25 +76,26 @@ test("CXP-060 AC1 the document fills the main area and the side panel shows neig
     `${examples.title}Child thread`,
     `Facet InterfaceIntention: ${notation.intention}`,
   ]);
-  const plans = panel.getByRole("region", { name: "Plans and references" });
-  await expect(plans.getByRole("link", { name: "Link a framework Plan" })).toBeVisible();
+  const references = panel.getByRole("region", { name: "References" });
+  await expect(references).toBeVisible();
+  await expect(panel.getByRole("region", { name: "Framework Plan" })).toHaveCount(0);
+  await expect(app(page).getByRole("region", { name: "Framework Plan" })).toContainText("No framework Plan yet.");
   expect(errors).toEqual([]);
 });
 
 test("CXP-060 AC2 the side panel opens the monitoring of the framework Plan and its missions", async ({ page }) => {
   const errors = await openCorpus(page, threadUrl(DIAGRAM_THREAD), "Document diagrams");
-  const panel = threadPanel(page);
-  const monitor = panel.getByRole("region", { name: "Framework Plan" });
-  await expect(missionCards(page)).toHaveCount(MISSIONS.length, { timeout: 30000 });
-  await expect(monitor.getByRole("region", { name: "Missions", exact: true })).toBeVisible();
-  // The framework Plan opens its monitoring page.
-  await monitor.getByRole("heading", { level: 2 }).getByRole("link").click();
+  // The side panel no longer holds the Plan: its follow-up opens from the card of the Plan.
+  await expect(threadPanel(page).getByRole("region", { name: "Framework Plan" })).toHaveCount(0);
+  const card = app(page).getByRole("region", { name: "Current Plan", exact: true });
+  await card.getByRole("link", { name: "Plan details", exact: true }).click();
   await expect(page).toHaveURL(new RegExp(`/threads/${DIAGRAM_THREAD}\\?view=plan$`));
   await expect(page.getByRole("heading", { level: 1 })).toContainText(FRAMEWORK_PLAN);
+  await expect(missionCards(page)).toHaveCount(MISSIONS.length, { timeout: 30000 });
   await page.goBack();
-  // A mission opens its page.
+  // A mission of the card opens its page.
   const mission = MISSIONS[1]?.id ?? "";
-  await threadPanel(page).getByRole("link", { name: mission, exact: true }).click();
+  await card.getByRole("link", { name: mission, exact: true }).click();
   await expect(page).toHaveURL(/view=mission&mission=/);
   await expect(heading(page, mission)).toBeVisible();
   await expect(trail(page)).toContainText(mission);
