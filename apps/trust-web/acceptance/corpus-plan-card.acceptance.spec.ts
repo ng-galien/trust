@@ -64,10 +64,23 @@ async function declare(plan: string, values: Record<string, unknown>) {
   });
 }
 /** Whether two boxes share any area. */
-const overlap = (a: Locator, b: Locator) =>
-  Promise.all([a.boundingBox(), b.boundingBox()]).then(
-    ([x, y]) =>
-      !!x && !!y && x.x < y.x + y.width && y.x < x.x + x.width && x.y < y.y + y.height && y.y < x.y + x.height,
+/** Whether two shown elements overlap, both measured in the same frame so that a scroll in progress cannot shift one. */
+const overlap = async (a: Locator, b: Locator) => {
+  const other = await b.elementHandle();
+  return a.evaluate((first, second) => {
+    const [x, y] = [first.getBoundingClientRect(), (second as Element).getBoundingClientRect()];
+    const shown = x.width > 0 && x.height > 0 && y.width > 0 && y.height > 0;
+    return shown && x.x < y.x + y.width && y.x < x.x + x.width && x.y < y.y + y.height && y.y < x.y + x.height;
+  }, other);
+};
+/** Waits until the page scroll position holds still over two animation frames. */
+const scrollSettled = (page: Page) =>
+  page.waitForFunction(
+    () =>
+      new Promise<boolean>((resolve) => {
+        const before = window.scrollY;
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve(window.scrollY === before)));
+      }),
   );
 
 test("CXP-250 AC1 the card at the top of the thread screen shows the title of the current Plan, its state and its progress, with the identifier as secondary text", async ({
@@ -230,22 +243,39 @@ test("CXP-250 AC7 a thread with no Plan in progress shows its last Plan on one l
   await expect(last.locator("footer")).toContainText(plan);
 });
 
-test("CXP-260 AC1 an action of the card opens the Plan history, newest first, with each Plan, the revision it carries, its requirements and its opening date", async ({
+test("CXP-260 AC1 an action of the card opens the Plan history, newest first, with each Plan's state, title, identifier, revision, requirement count and opening date", async ({
   page,
 }) => {
   const errors = await openCorpus(page, threadUrl(REFRAMED_THREAD), "Reframed delivery");
+  // The Plans as TRUST lists them, to compare the title of the earlier Plan with its row.
+  const listed = page.waitForResponse((response) => {
+    const path = new URL(response.url()).pathname;
+    return path.endsWith("/plans") && !path.includes("/threads/") && response.ok();
+  });
   await card(page).getByRole("link", { name: "Plan history", exact: true }).click();
   await expect(page).toHaveURL(new RegExp(`/threads/${REFRAMED_THREAD}/plans$`));
   await expect(app(page).getByRole("heading", { name: "Plan history", level: 1 })).toBeVisible();
   const entries = historyEntries(page);
-  await expect(entries.nth(0)).toContainText(REFRAMED_PLAN);
-  await expect(entries.nth(0)).toContainText("Current");
-  await expect(entries.nth(1)).toContainText(REFRAMED_OLD_PLAN);
-  // An archived Plan carries its revision, its requirements and its opening date.
+  const pill = (index: number) => entries.nth(index).locator(".corpus-state-pill");
+  // Newest first: the current Plan, the Plan it replaced, then the archived ones.
+  await expect(entries.nth(0).getByRole("link", { name: REFRAMED_PLAN, exact: true })).toBeVisible();
+  await expect(pill(0)).toHaveText("Current");
+  await expect(entries.nth(1).getByRole("link", { name: REFRAMED_OLD_PLAN, exact: true })).toBeVisible();
+  await expect(pill(1)).toHaveText("In progress");
+  const body = (await (await listed).json()) as
+    | { plan: string; metadata?: { title?: string } }[]
+    | { plans: { plan: string; metadata?: { title?: string } }[] };
+  const plans = Array.isArray(body) ? body : body.plans;
+  const title = plans.find((plan) => plan.plan === REFRAMED_OLD_PLAN)?.metadata?.title ?? "";
+  await expect(entries.nth(1).locator("strong")).toHaveText(title);
+  // An archived Plan: its state, its identifier, the revision it carries, its requirement count and its opening date.
   const archived = entries.nth(2);
-  await expect(archived).toContainText(`${REFRAMED_THREAD}-archive-${ARCHIVED_PLANS}`);
-  await expect(archived).toContainText(/Revision\s*1/);
-  await expect(archived).toContainText("TRUST-FR-ARC-010");
+  await expect(
+    archived.getByRole("link", { name: `${REFRAMED_THREAD}-archive-${ARCHIVED_PLANS}`, exact: true }),
+  ).toBeVisible();
+  // The fixture's archived Plans are not Plans of TRUST: their state is unknown.
+  await expect(pill(2)).toHaveText("Unknown");
+  await expect(archived).toContainText("revision 1 · 1 requirement");
   const opened = new Date(Date.now() - 86400000).toLocaleDateString("en", {
     day: "numeric",
     month: "short",
@@ -302,6 +332,7 @@ test("CXP-270 AC1 the panel of views and corpora and the thread list each keep t
     // Side by side or one under the other, also once the list scrolled under the panel's place.
     for (const scroll of [0, 600]) {
       await page.mouse.wheel(0, scroll);
+      await scrollSettled(page);
       for (const index of [0, 1, 2, 3])
         expect(await overlap(views(page), rows(page).nth(index)), `${width} px, row ${index}`).toBe(false);
     }

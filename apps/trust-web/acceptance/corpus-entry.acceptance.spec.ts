@@ -260,7 +260,7 @@ test("CXP-040 AC2 the supplied views exist: in progress, all threads, recently c
   await openEntry(french, "fr");
   await expect(views(french, "Vues").getByRole("button")).toContainText([
     "En cours",
-    "Tous les fils",
+    "Tous les threads",
     "Terminés récemment",
   ]);
   await french.close();

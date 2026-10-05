@@ -4,6 +4,7 @@ import {
   CROWD,
   DECISION_THREAD,
   DIAGRAM_THREAD,
+  ENTRY_CORPUS,
   ENTRY_THREADS,
   FRAMEWORK_PLAN,
   MISSIONS,
@@ -23,8 +24,18 @@ const app = (page: Page) => page.locator(".corpus-app");
 const threadPanel = (page: Page) => page.getByRole("complementary", { name: "Thread summary" });
 const facetPanel = (page: Page) => page.getByRole("complementary", { name: "Facet summary" });
 const documentOf = (page: Page) => page.getByRole("article", { name: "Thread document" });
-const map = (panel: Locator) => panel.getByRole("list", { name: "Neighbourhood map" });
+const neighbourhood = (panel: Locator) => panel.getByRole("region", { name: "Neighbourhood", exact: true });
 const neighbour = (panel: Locator, name: string) => panel.getByRole("link", { name, exact: true });
+const group = (panel: Locator, name: string) => neighbourhood(panel).getByRole("region", { name, exact: true });
+/** Chooses the neighbour of that accessible name, opening the folded groups of the shown screen until it shows. */
+async function choose(panel: Locator, name: string) {
+  const link = neighbour(panel, name);
+  const more = neighbourhood(panel).getByRole("button", { name: /^Show \d+ more$/ });
+  await expect(async () => {
+    if (!(await link.isVisible()) && (await more.count()) > 0) await more.first().click({ timeout: 1000 });
+    await link.click({ timeout: 1000 });
+  }).toPass({ timeout: 30000 });
+}
 const trail = (page: Page) => app(page).getByRole("navigation", { name: "Trail" });
 /** The names of the trail steps as shown, the current one last. */
 const steps = (page: Page) => trail(page).locator(":scope > ol > li").locator("a, [aria-current='page']");
@@ -32,7 +43,7 @@ const steps = (page: Page) => trail(page).locator(":scope > ol > li").locator("a
 const numbered = (title: string) => new RegExp(`^#\\d+ ${title}$`);
 const edge = (page: Page) => page.getByRole("separator", { name: "Resize the side panel" });
 const heading = (page: Page, name: string) => page.getByRole("heading", { name, level: 1, exact: true });
-/** The accessible names of the links of a neighbourhood map. */
+/** The accessible names of the neighbour links of a panel. */
 const labels = (list: Locator) =>
   list.getByRole("link").evaluateAll((links) => links.map((link) => link.getAttribute("aria-label") ?? ""));
 const width = async (locator: Locator) => Math.round((await locator.boundingBox())?.width ?? 0);
@@ -69,7 +80,7 @@ test("CXP-060 AC1 the document fills the main area and the side panel shows neig
   // The neighbourhood, the links to the thread, then the references; the Plan is the card above the document.
   const titles = await panel.getByRole("heading", { level: 2 }).allTextContents();
   expect(titles.slice(0, 3)).toEqual(["Neighbourhood", "Links to this thread", "References"]);
-  await expect(map(panel)).toBeVisible();
+  await expect(neighbourhood(panel).getByRole("link").first()).toBeVisible();
   const links = panel.getByRole("region", { name: "Links to this thread" });
   await expect(links.getByRole("listitem")).toHaveText([
     `${topology.title}Parent thread`,
@@ -102,18 +113,25 @@ test("CXP-060 AC2 the side panel opens the monitoring of the framework Plan and 
   expect(errors).toEqual([]);
 });
 
-test("CXP-070 AC1 the neighbourhood of a thread shows its facets, the threads on the same facets, its parent and its children with distinct styles", async ({
-  page,
-}) => {
+test("CXP-070 AC1 the neighbours are grouped in order with the count of each group", async ({ page }) => {
   const errors = await openCorpus(page, threadUrl(notation.id), notation.title);
   const panel = threadPanel(page);
-  await expect(map(panel).getByRole("link").first()).toBeVisible();
-  const around = await labels(map(panel));
-  expect(around.sort()).toEqual(
+  // Corpus, parent, children, facets, then the threads on the same facets, each group with its count.
+  await expect(neighbourhood(panel).getByRole("heading", { level: 3 })).toHaveText([
+    /^Corpus\s*1$/,
+    /^Parent thread\s*1$/,
+    /^Child threads\s*1$/,
+    /^Facets\s*1$/,
+    /^Threads on the same facets\s*5$/,
+  ]);
+  await expect(group(panel, "Corpus").getByRole("link")).toHaveText(/^TRUST/);
+  await expect(neighbour(group(panel, "Parent thread"), `Parent thread: ${topology.title}`)).toBeVisible();
+  await expect(neighbour(group(panel, "Child threads"), `Child thread: ${examples.title}`)).toBeVisible();
+  await expect(neighbour(group(panel, "Facets"), "Facet: Interface")).toBeVisible();
+  const others = group(panel, "Threads on the same facets");
+  await others.getByRole("button", { name: "Show 2 more" }).click();
+  expect((await labels(others)).sort()).toEqual(
     [
-      `Parent thread: ${topology.title}`,
-      `Child thread: ${examples.title}`,
-      "Facet: Interface",
       "Thread: Document diagrams",
       "Thread: Interface registry",
       "Thread: Theme rule",
@@ -121,23 +139,18 @@ test("CXP-070 AC1 the neighbourhood of a thread shows its facets, the threads on
       `Thread: ${DECISION_THREAD.title}`,
     ].sort(),
   );
-  await expect(neighbour(panel, `Parent thread: ${topology.title}`)).toBeVisible();
-  await expect(neighbour(panel, `Child thread: ${examples.title}`)).toBeVisible();
-  await expect(neighbour(panel, "Facet: Interface")).toBeVisible();
-  await expect(neighbour(panel, "Thread: Interface registry")).toBeVisible();
-  // Threads and facets have distinct styles: a solid border for a thread, a dashed border for a facet.
-  const border = (name: string) =>
-    neighbour(panel, name).evaluate((element) => getComputedStyle(element).borderTopStyle);
-  expect(await border("Facet: Interface")).toBe("dashed");
-  expect(await border("Thread: Interface registry")).toBe("solid");
-  expect(await border(`Parent thread: ${topology.title}`)).toBe("solid");
-  expect(await border(`Child thread: ${examples.title}`)).toBe("solid");
-  // A thread of another corpus: its three facets and the threads that touch them.
-  await neighbour(panel, `Parent thread: ${topology.title}`).click();
+  // A thread of another corpus: its corpus, its child, its three facets and the threads that touch them.
+  await neighbour(threadPanel(page), `Parent thread: ${topology.title}`).click();
   await expect(heading(page, topology.title)).toBeVisible();
-  await expect(map(threadPanel(page)).getByRole("link").first()).toBeVisible();
-  expect((await labels(map(threadPanel(page)))).sort()).toEqual(
+  await expect(neighbourhood(threadPanel(page)).getByRole("heading", { level: 3 })).toHaveText([
+    /^Corpus\s*1$/,
+    /^Child threads\s*1$/,
+    /^Facets\s*3$/,
+    /^Threads on the same facets\s*2$/,
+  ]);
+  expect((await labels(neighbourhood(threadPanel(page)))).sort()).toEqual(
     [
+      "Corpus: Delegation exploration",
       `Child thread: ${notation.title}`,
       "Facet: Concepts",
       "Facet: Sources",
@@ -149,35 +162,81 @@ test("CXP-070 AC1 the neighbourhood of a thread shows its facets, the threads on
   expect(errors).toEqual([]);
 });
 
-test("CXP-070 AC2 a chosen neighbour opens its screen", async ({ page }) => {
-  const errors = await openCorpus(page, threadUrl(notation.id), notation.title);
-  await neighbour(threadPanel(page), "Facet: Interface").click();
-  await expect(page).toHaveURL(`${ENTRY}/facets/interface`);
-  await expect(heading(page, "Interface")).toBeVisible();
-  await neighbour(facetPanel(page), `Thread: ${notation.title}`).click();
-  await expect(page).toHaveURL(threadUrl(notation.id));
-  await neighbour(threadPanel(page), `Child thread: ${examples.title}`).click();
-  await expect(page).toHaveURL(threadUrl(examples.id));
-  await expect(heading(page, examples.title)).toBeVisible();
-  await neighbour(threadPanel(page), `Parent thread: ${notation.title}`).click();
-  await expect(heading(page, notation.title)).toBeVisible();
+test("CXP-070 AC2 a neighbour thread shows its number, title and state pill, and a facet or corpus its thread count", async ({
+  page,
+}) => {
+  const errors = await openCorpus(page, threadUrl(topology.id), topology.title);
+  const panel = threadPanel(page);
+  const thread = (name: string) => neighbour(panel, `Thread: ${name}`);
+  // A thread row: its number, its title, then its state pill.
+  for (const [name, state] of [
+    [ENTRY_THREADS.vocabulary.title, "Completed"],
+    [ENTRY_THREADS.survey.title, "Paused"],
+  ] as const) {
+    await expect(thread(name).locator(".corpus-thread-number")).toHaveText(/^#\d+$/);
+    await expect(thread(name).locator(".corpus-state-pill")).toHaveText(state);
+    await expect(thread(name)).toHaveText(new RegExp(`^#\\d+\\s*${name}\\s*${state}`));
+  }
+  const child = neighbour(panel, `Child thread: ${notation.title}`);
+  await expect(child).toHaveText(new RegExp(`^#\\d+\\s*${notation.title}\\s*Active`));
+  // A facet or a corpus row: its title and its thread count, without number or state.
+  const sources = neighbour(panel, "Facet: Sources");
+  await expect(sources).toHaveText(/^Sources\s*2 threads/);
+  await expect(sources.locator(".corpus-state-pill, .corpus-thread-number")).toHaveCount(0);
+  const owner = neighbour(panel, `Corpus: ${ENTRY_CORPUS.title}`);
+  await expect(owner).toHaveText(new RegExp(`^${ENTRY_CORPUS.title}\\s*\\d+ threads?`));
+  await expect(owner.locator(".corpus-state-pill, .corpus-thread-number")).toHaveCount(0);
+  expect(await noPageOverflow(page)).toBe(true);
   expect(errors).toEqual([]);
 });
 
-test("CXP-070 AC3 beyond twelve neighbours the map gives way to a list grouped by kind with counts", async ({
-  page,
-}) => {
+test("CXP-070 AC3 beyond three neighbours in a group, Show n more shows the others", async ({ page }) => {
   const errors = await openCorpus(page, threadUrl(crowded.id), crowded.title);
-  const panel = threadPanel(page);
-  await expect(panel.getByRole("heading", { name: "Neighbourhood", level: 2 })).toBeVisible();
-  await expect(map(panel)).toHaveCount(0);
-  const children = panel.getByRole("region", { name: "Child threads" });
+  const children = group(threadPanel(page), "Child threads");
   await expect(children.getByRole("heading", { level: 3 })).toHaveText(/^Child threads\s*13$/);
+  await expect(children.getByRole("link")).toHaveCount(3);
+  await children.getByRole("button", { name: "Show 10 more", exact: true }).click();
   await expect(children.getByRole("link")).toHaveCount(CROWD.length);
-  await neighbour(panel, `Child thread: ${CROWD[0]?.title}`).click();
-  await expect(heading(page, CROWD[0]?.title ?? "")).toBeVisible();
-  // One neighbour only: the map comes back.
-  await expect(map(threadPanel(page)).getByRole("link")).toHaveCount(1);
+  expect((await labels(children)).sort()).toEqual(CROWD.map((member) => `Child thread: ${member.title}`).sort());
+  await expect(children.getByRole("button", { name: /^Show \d+ more$/ })).toHaveCount(0);
+  // Three rows or fewer: no Show n more.
+  await page.goto(threadUrl(topology.id));
+  await expect(heading(page, topology.title)).toBeVisible();
+  const facets = group(threadPanel(page), "Facets");
+  await expect(facets.getByRole("link")).toHaveCount(3);
+  await expect(facets.getByRole("button")).toHaveCount(0);
+  expect(errors).toEqual([]);
+});
+
+test("CXP-070 AC4 choosing a neighbour opens its screen", async ({ page }) => {
+  const errors = await openCorpus(page, threadUrl(notation.id), notation.title);
+  await choose(threadPanel(page), "Facet: Interface");
+  await expect(page).toHaveURL(`${ENTRY}/facets/interface`);
+  await expect(heading(page, "Interface")).toBeVisible();
+  await choose(facetPanel(page), `Thread: ${notation.title}`);
+  await expect(page).toHaveURL(threadUrl(notation.id));
+  await choose(threadPanel(page), `Child thread: ${examples.title}`);
+  await expect(page).toHaveURL(threadUrl(examples.id));
+  await expect(heading(page, examples.title)).toBeVisible();
+  await choose(threadPanel(page), `Parent thread: ${notation.title}`);
+  await expect(heading(page, notation.title)).toBeVisible();
+  await choose(threadPanel(page), "Corpus: TRUST");
+  await expect(page).toHaveURL(`${ENTRY}/corpora/trust`);
+  await expect(heading(page, "TRUST")).toBeVisible();
+  // A row shown by Show n more opens its screen too.
+  await page.goto(threadUrl(crowded.id));
+  await choose(threadPanel(page), `Child thread: ${CROWD[12]?.title}`);
+  await expect(page).toHaveURL(threadUrl(CROWD[12]?.id ?? ""));
+  await expect(heading(page, CROWD[12]?.title ?? "")).toBeVisible();
+  expect(errors).toEqual([]);
+});
+
+test("CXP-070 AC5 without neighbour the panel says No direct neighbour", async ({ page }) => {
+  const errors = await openCorpus(page, threadUrl(ENTRY_THREADS.loose.id), ENTRY_THREADS.loose.title);
+  const panel = neighbourhood(threadPanel(page));
+  await expect(panel).toContainText("No direct neighbour.");
+  await expect(panel.getByRole("link")).toHaveCount(0);
+  await expect(panel.getByRole("heading", { level: 3 })).toHaveCount(0);
   expect(errors).toEqual([]);
 });
 
@@ -226,25 +285,30 @@ test("CXP-080 AC3 the facet screen shows the same neighbourhood panel as a threa
   const errors = await openCorpus(page, `${ENTRY}/facets/sources`, "Sources");
   const panel = facetPanel(page);
   await expect(panel.getByRole("heading", { level: 2 }).first()).toHaveText("Neighbourhood");
-  await expect(map(panel)).toBeVisible();
-  await expect(map(panel).getByRole("link").first()).toBeVisible();
-  expect((await labels(map(panel))).sort()).toEqual(
+  // The facet's corpus and the corpus it represents, then the threads on this facet, as grouped rows.
+  await expect(neighbourhood(panel).getByRole("heading", { level: 3 })).toHaveText([
+    /^Corpus\s*2$/,
+    /^Threads on this facet\s*2$/,
+  ]);
+  expect((await labels(neighbourhood(panel))).sort()).toEqual(
     ["Corpus: Delegation exploration", "Corpus: TRUST", `Thread: ${topology.title}`, "Thread: Source survey"].sort(),
   );
+  await expect(neighbour(panel, "Thread: Source survey").locator(".corpus-state-pill")).toHaveText("Paused");
   await expect(edge(page)).toBeVisible();
   await expect(app(page).getByRole("button", { name: "Hide the side panel" })).toBeVisible();
   await expect(panel.getByRole("region", { name: "Links to this facet" })).toContainText(
     `${topology.title}Intention: Explore sources for ${topology.title}.`,
   );
-  // The same map and the same panel controls on a thread screen.
-  const facetMap = await map(panel).evaluate((element) => element.parentElement?.className);
+  // The same panel, rows and controls on a thread screen.
+  const rowClass = await neighbour(panel, "Thread: Source survey").getAttribute("class");
+  const facetPanelClass = await neighbourhood(panel).getAttribute("class");
   await neighbour(panel, `Thread: ${topology.title}`).click();
   const thread = threadPanel(page);
   await expect(thread.getByRole("heading", { level: 2 }).first()).toHaveText("Neighbourhood");
-  await expect(map(thread)).toBeVisible();
   await expect(app(page).getByRole("button", { name: "Hide the side panel" })).toBeVisible();
   await expect(neighbour(thread, "Facet: Sources")).toBeVisible();
-  expect(await map(thread).evaluate((element) => element.parentElement?.className)).toBe(facetMap);
+  expect(await neighbourhood(thread).getAttribute("class")).toBe(facetPanelClass);
+  expect(await neighbour(thread, "Thread: Source survey").getAttribute("class")).toBe(rowClass);
   expect(errors).toEqual([]);
 });
 
@@ -256,7 +320,7 @@ test("CXP-090 AC1 each screen shows one trail of the screens followed and each s
   await row(page, topology.title).getByRole("link", { name: topology.title, exact: true }).click();
   await expect(heading(page, topology.title)).toBeVisible();
   await expect(steps(page)).toHaveText(["Corpus", numbered(topology.title)]);
-  await neighbour(threadPanel(page), "Facet: Concepts").click();
+  await choose(threadPanel(page), "Facet: Concepts");
   await expect(heading(page, "Concepts")).toBeVisible();
   await expect(steps(page)).toHaveText(["Corpus", numbered(topology.title), "Concepts"]);
   await expect(trail(page).locator("[aria-current='page']")).toHaveText("Concepts");
@@ -399,7 +463,7 @@ test("CXP-120 AC1 the trail shows six steps at most and folds older steps in a m
     "Thread: Interface registry",
     "Thread: Theme rule",
   ];
-  for (const name of path) await neighbour(app(page).getByRole("complementary"), name).click();
+  for (const name of path) await choose(app(page).getByRole("complementary"), name);
   await expect(heading(page, "Theme rule")).toBeVisible();
   const visible = [
     numbered(topology.title),
@@ -435,12 +499,12 @@ test("CXP-120 AC1 the trail shows six steps at most and folds older steps in a m
 test("CXP-120 AC2 a return to a screen of the trail shortens the trail to that screen", async ({ page }) => {
   const errors = await openCorpus(page, ENTRY, "Corpus");
   await row(page, topology.title).getByRole("link", { name: topology.title, exact: true }).click();
-  await neighbour(threadPanel(page), `Child thread: ${notation.title}`).click();
-  await neighbour(threadPanel(page), "Facet: Interface").click();
+  await choose(threadPanel(page), `Child thread: ${notation.title}`);
+  await choose(threadPanel(page), "Facet: Interface");
   await expect(heading(page, "Interface")).toBeVisible();
   await expect(steps(page)).toHaveText(["Corpus", numbered(topology.title), numbered(notation.title), "Interface"]);
   // Back to a thread already followed through the facet's neighbourhood: the trail ends on it, once.
-  await neighbour(facetPanel(page), `Thread: ${notation.title}`).click();
+  await choose(facetPanel(page), `Thread: ${notation.title}`);
   await expect(heading(page, notation.title)).toBeVisible();
   await expect(steps(page)).toHaveText(["Corpus", numbered(topology.title), numbered(notation.title)]);
   // And through the trail itself.
