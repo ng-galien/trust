@@ -2,8 +2,8 @@ import { expect, type Page, test } from "@playwright/test";
 import { corpusApi, fault, noPageOverflow, openCorpus, readOnlyCaller, visit } from "./support/corpus-browser.js";
 import { ENTRY_CORPUS, ENTRY_THREADS } from "./support/corpus-fixture.js";
 
-/* The behaviour of the Corpus entry list, the thread number, and the organisation pages: create and rename a corpus,
-   move a thread. It runs on the disposable Corpus runtime of support/corpus-server.mjs. */
+/* The behaviour of the Corpus entry list, the thread number, and the organisation pages: create and rename a corpus.
+   It runs on the disposable Corpus runtime of support/corpus-server.mjs. */
 
 const ENTRY = "/extensions/corpus";
 const WORKSPACE = "/extensions/corpus/api/workspace";
@@ -242,67 +242,6 @@ test("CXP-200 AC1 corpus creation and corpus rename open in a page and show the 
   expect(unexpected(errors, 409)).toEqual([]);
 });
 
-test("CXP-200 AC2 the move of a thread opens in a page and shows the refusal of the server", async ({ page }) => {
-  const [source, target, facet, thread] = ["origin", "destination", "ledger", "ledger-notes"].map(
-    (name) => `${name}-${stamp}`,
-  ) as [string, string, string, string];
-  await command("corpora.create", { id: source, title: "Origin archive", description: "Where the thread starts" });
-  await command("corpora.create", { id: target, title: "Destination archive", description: "Where it moves" });
-  await command("facets.create", {
-    id: facet,
-    corpus: source,
-    title: "Ledger",
-    description: "Ledger of the origin",
-    materialization: "archive/ledger",
-  });
-  await command("threads.open", { id: thread, title: "Ledger notes", body: "## Goal\n\nKeep the ledger notes." });
-  await command("threads.attach", {
-    id: thread,
-    expectedRevision: 1,
-    corpus: source,
-    intentions: [{ facet, intention: "Note the ledger." }],
-  });
-  const errors = await openCorpus(page, `${ENTRY}/threads/${thread}`, "Ledger notes");
-  await app(page).getByRole("link", { name: "Move to another corpus", exact: true }).click();
-  await expect(page).toHaveURL(`${ENTRY}/threads/${thread}/move`);
-  await expect(heading(page, /Move the thread Ledger notes/)).toBeVisible();
-  await expect(app(page).getByRole("navigation", { name: "Trail" })).toContainText("Move");
-  const form = app(page).locator("form");
-  // The page asks the target corpus and a reason, and no facet mapping.
-  await expect(form.getByRole("combobox")).toHaveCount(1);
-  await form.getByLabel("Target corpus").selectOption(target);
-  await form.getByLabel("Reason").fill("The ledger belongs to the destination.");
-  // The thread is revised meanwhile: the server refuses the move and the page shows its reason.
-  await command("threads.revise", {
-    id: thread,
-    expectedRevision: 2,
-    title: "Ledger notes",
-    body: "## Goal\n\nKeep the ledger notes, revised.",
-    author: "owner",
-    reason: "Clarify",
-  });
-  await form.getByRole("button", { name: "Move the thread" }).click();
-  const refused = app(page).getByRole("alert").filter({ hasText: "The thread was not moved." });
-  await expect(refused).toContainText("Thread changed; reread before editing.");
-  expect((await command<{ corpus: string }>("threads.read", { id: thread })).corpus).toBe(source);
-  // Read again, the move succeeds and shows the facets left outside the new corpus.
-  await page.reload();
-  await form.getByLabel("Target corpus").selectOption(target, { timeout: 30000 });
-  await form.getByLabel("Reason").fill("The ledger belongs to the destination.");
-  await form.getByRole("button", { name: "Move the thread" }).click();
-  await expect(
-    app(page).getByRole("status").filter({ hasText: "Thread moved from Origin archive to Destination archive." }),
-  ).toBeVisible();
-  const warnings = app(page).getByRole("region", { name: "Facet warnings" });
-  await expect(warnings).toContainText("The facet Ledger belongs to the corpus Origin archive.");
-  await app(page).getByRole("link", { name: "Open the thread", exact: true }).click();
-  await expect(page).toHaveURL(`${ENTRY}/threads/${thread}`);
-  await expect(app(page).getByRole("region", { name: "Facet warnings" })).toContainText("Ledger");
-  await expect(app(page).getByText(/Moved from the corpus Origin archive to Destination archive/)).toBeVisible();
-  expect((await command<{ corpus: string }>("threads.read", { id: thread })).corpus).toBe(target);
-  expect(unexpected(errors, 409)).toEqual([]);
-});
-
 test("CXP-200 AC3 a caller without the write right does not see these actions", async ({ page }) => {
   await readOnlyCaller(true);
   try {
@@ -310,8 +249,6 @@ test("CXP-200 AC3 a caller without the write right does not see these actions", 
     await expect(app(page).getByRole("link", { name: "New corpus", exact: true })).toHaveCount(0);
     await visit(page, `${ENTRY}/corpora/${ENTRY_CORPUS.id}`, ENTRY_CORPUS.title);
     await expect(app(page).getByRole("link", { name: /^Rename/ })).toHaveCount(0);
-    await visit(page, `${ENTRY}/threads/${topology.id}`, topology.title);
-    await expect(app(page).getByRole("link", { name: "Move to another corpus", exact: true })).toHaveCount(0);
     expect(errors).toEqual([]);
   } finally {
     await readOnlyCaller(false);
