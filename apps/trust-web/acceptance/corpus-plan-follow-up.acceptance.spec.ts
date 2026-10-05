@@ -1,5 +1,5 @@
 import { expect, type Locator, type Page, test } from "@playwright/test";
-import { corpusApi, noPageOverflow, openCorpus } from "./support/corpus-browser.js";
+import { corpusApi, noPageOverflow, openCorpus, rpc } from "./support/corpus-browser.js";
 import { DECISION_PLAN, DECISION_THREAD, VISUAL_INSTRUCTIONS, VISUAL_MISSION } from "./support/corpus-fixture.js";
 
 /* The Plan follow-up page and the mission page of a thread, on the disposable Corpus runtime of
@@ -162,6 +162,24 @@ test("CXP-320 AC1 the Plan follow-up lists every Check in order with its icon, n
 test("CXP-320 AC2 the mission page shows the mission identifier as title, its scope sentence, its pending decision, then its Checks as a named step track", async ({
   page,
 }) => {
+  // The decision waits for the owner whatever a test before this one recorded in the Plan of the mission.
+  type PlanRead = {
+    revision: number;
+    declarations: Record<string, unknown>;
+    invocations: { mission?: { id: string }; childPlan: string }[];
+  };
+  const framework = await rpc<PlanRead>("plan.read", { plan: DECISION_PLAN });
+  const child = framework.invocations.find((invocation) => invocation.mission?.id === VISUAL_MISSION)?.childPlan ?? "";
+  const mission = await rpc<PlanRead>("plan.read", { plan: child });
+  if ("visual validation" in mission.declarations) {
+    const { "visual validation": _recorded, ...declarations } = mission.declarations;
+    await rpc("plan.declarations.replace", {
+      contract: "trust.plan-declaration-replacement-request@1",
+      plan: child,
+      expectedRevision: mission.revision,
+      declarations,
+    });
+  }
   const errors = await openCorpus(page, `${threadUrl(DECISION_THREAD.id)}?view=plan`, DECISION_THREAD.title);
   await app(page)
     .getByRole("region", { name: "Missions", exact: true })
