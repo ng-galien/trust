@@ -11,6 +11,7 @@ import { promisify } from "node:util";
 import {
   ADDED_MISSION,
   ADDITION,
+  ARCHIVED_PLANS,
   CONFLICT_BODY,
   CONFLICT_THREAD,
   CORPUS_PROXY_PORT,
@@ -18,6 +19,8 @@ import {
   CORPUS_WEB_PORT,
   CROWD,
   CURRENT_MISSION,
+  DECISION_PLAN,
+  DECISION_THREAD,
   DIAGRAM_THREAD,
   ENTRY_CORPUS,
   ENTRY_FACETS,
@@ -35,6 +38,8 @@ import {
   REGISTRY_THREAD,
   ROUTED_BLOCK,
   THREAD_BODY,
+  VISUAL_MISSION,
+  VISUAL_PROCEDURE,
 } from "./corpus-fixture.ts";
 
 // The isolated runtime, its Runner and its Corpus store never inherit an installation's configuration.
@@ -381,6 +386,11 @@ await editCorpusStore("UPDATE trust_corpus.threads SET framework_plan=$2 WHERE i
   REFRAMED_THREAD,
   REFRAMED_OLD_PLAN,
 ]);
+// Archived Plans of the history, older than the two real ones: the history reads by pages.
+await editCorpusStore(
+  "INSERT INTO trust_corpus.thread_plans(thread,position,plan,revision,requirements,opened_at) SELECT $1,n,$1 || '-archive-' || lpad(n::text,2,'0'),1,ARRAY['TRUST-FR-ARC-010'],now() - (($2::integer + 1 - n) * interval '1 day') FROM generate_series(1,$2::integer) AS n",
+  [REFRAMED_THREAD, ARCHIVED_PLANS],
+);
 await approvedFraming(REFRAMED_THREAD, REFRAMED_PLAN);
 await declare(REFRAMED_PLAN, {}, { work: [mission(REFRAMED_THREAD, CURRENT_MISSION)] });
 await expectVerdict(await childOf(CURRENT_MISSION, REFRAMED_PLAN), "claim work", "VALIDATED");
@@ -450,7 +460,56 @@ await readingThread(examples, notation.id);
 await readingThread(crowded);
 for (const member of CROWD) await readingThread(member, crowded.id);
 
-// 9. A proxy between the web host and the runtime. A spec makes a chosen read fail with
+// 9. The owner's decisions: a framework 0.7.0 Plan, engaged and not linked yet, waits for the approval of a revision,
+// and its mission waits for the owner's visual validation after its review checklist.
+for (const file of [
+  "thread-revision-read-0.2.0.operation.feature",
+  "thread-link-0.2.0.operation.feature",
+  "coverage-check-0.4.0.operation.feature",
+])
+  await rpc("operation.save", { source: await readFile(path.join(procedures, file), "utf8"), sourceName: file });
+await rpc("operation.save", {
+  source: await readFile(path.join(root, "assets/operations/workspace.gate-run.feature"), "utf8"),
+  sourceName: "workspace.gate-run.feature",
+});
+await rpc("vocabulary.publish", {
+  source: await readFile(path.join(procedures, "corpus-terms.vocabulary.feature"), "utf8"),
+  sourceName: "corpus-terms.vocabulary.feature",
+});
+await rpc("procedure.publish", {
+  source: await readFile(path.join(procedures, "thread-framework-0.7.0.procedure.feature"), "utf8"),
+  sourceName: "thread-framework-0.7.0.procedure.feature",
+});
+await rpc("procedure.publish", { source: VISUAL_PROCEDURE });
+await command("threads.open", { ...DECISION_THREAD, body: THREAD_BODY });
+await rpc("plan.engage", {
+  contract: "trust.plan-engagement-request@1",
+  procedure: "corpus-thread-framework",
+  procedureVersion: "0.7.0",
+  plan: DECISION_PLAN,
+  environment: "local",
+  metadata: { title: DECISION_THREAD.title, labels: ["corpus"], annotations: { "corpus.thread": DECISION_THREAD.id } },
+  rootInputs: { thread: DECISION_THREAD.id },
+});
+const { revision: decided } = await command("threads.read", { id: DECISION_THREAD.id });
+await declare(DECISION_PLAN, { "target corpus": "trust", "thread revision": decided });
+for (const name of ["attach thread", "check requirements"]) await expectVerdict(DECISION_PLAN, name, "VALIDATED");
+await declare(
+  DECISION_PLAN,
+  {},
+  {
+    work: [
+      {
+        id: VISUAL_MISSION,
+        rootInputs: { thread: DECISION_THREAD.id, mission: VISUAL_MISSION },
+        definition: { kind: "published", reference: "corpus-ui-visual-mission@0.1.0" },
+      },
+    ],
+  },
+);
+await expectVerdict(await childOf(VISUAL_MISSION, DECISION_PLAN), "review checklist", "VALIDATED");
+
+// 10. A proxy between the web host and the runtime. A spec makes a chosen read fail with
 // POST /__faults {"path": "/extensions/corpus/…", "fail": true}, and heals it with "fail": false.
 // POST /__caller {"write": false} makes the browser a caller with the read right only: the proxy refuses each write
 // command exactly as the host refuses it to such a caller; {"write": true} restores every right.
@@ -499,6 +558,12 @@ const proxy = createServer((incoming, outgoing) => {
     });
     return;
   }
+  if (!writer && /^\/extensions\/corpus\/trust\/plans\/[^/]+\/declarations$/.test(pathname)) {
+    outgoing
+      .writeHead(403, { "content-type": "application/json" })
+      .end(JSON.stringify({ error: { code: "access-denied", message: "Access denied" } }));
+    return;
+  }
   if (!writer && pathname === "/extensions/corpus/api/workspace" && incoming.method === "GET") {
     // The workspace read of a caller with the read right only says so, as the Corpus server does for that caller.
     void fetch(`${runtimeUrl}${incoming.url}`)
@@ -544,7 +609,7 @@ function relay(incoming, outgoing, body) {
 }
 await new Promise((resolve) => proxy.listen(CORPUS_PROXY_PORT, "127.0.0.1", resolve));
 
-// 10. The web host built from the current sources, reaching the runtime through the proxy.
+// 11. The web host built from the current sources, reaching the runtime through the proxy.
 const webEnvironment = {
   TRUST_RUNTIME_URL: `http://127.0.0.1:${CORPUS_PROXY_PORT}`,
   TRUST_WEB_PORT: String(CORPUS_WEB_PORT),

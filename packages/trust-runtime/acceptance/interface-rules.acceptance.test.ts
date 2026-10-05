@@ -5,10 +5,9 @@ import { existsSync } from "node:fs";
 import { cp, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { after, test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
-import { afterAll } from "vitest";
-import { test } from "./support/fixtures.js";
 
 const LISTEN_TIMEOUT_MS = 30_000;
 const GATE_TIMEOUT_MS = 20_000;
@@ -51,7 +50,7 @@ interface Guide {
 }
 
 const temporaryDirectories: string[] = [];
-afterAll(async () => {
+after(async () => {
   for (const directory of temporaryDirectories) await rm(directory, { recursive: true, force: true, maxRetries: 5 });
 });
 

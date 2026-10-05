@@ -192,3 +192,41 @@ export const CROWD = Array.from({ length: 13 }, (_, index) => ({
   id: `crowd-member-${index + 1}`,
   title: `Crowd member ${index + 1}`,
 }));
+
+/** The Plan history of the reframed thread holds archived Plans before its two real ones: more than one page. */
+export const ARCHIVED_PLANS = 22;
+/**
+ * A thread whose framework 0.7.0 Plan, engaged but not linked yet, waits for the owner's approval of a revision, and
+ * whose mission waits for the owner's visual validation.
+ */
+export const DECISION_THREAD = { id: "owner-decisions", title: "Owner decisions" };
+export const DECISION_PLAN = "owner-decisions-framework";
+export const VISUAL_MISSION = "visual-screens";
+export const VISUAL_PROCEDURE = `@trust-dsl:1 @procedure:corpus-ui-visual-mission @version:0.1.0
+Feature: Deliver screens of a Corpus thread, reviewed then validated by the owner
+  Background: Plan context
+    Given Procedure scope
+      | check | authorized | forbidden |
+      | all | Read the delegated thread. | Mutate it. |
+    And one reference "thread"
+    And one string "mission"
+    And one string "visual validation" declared by agent
+  @scenario:review
+  Scenario: Record the independent review checklist
+    Then Check "review checklist" runs Operation "corpus.requirements-check@0.1.0"
+      on "thread" as Input "thread"
+      and must establish "the reviewer read the delivered screens"
+      """js
+      fact.thread === context["thread"] || fail("another thread was read")
+      """
+  @scenario:validation
+  Scenario: Obtain the owner's visual validation
+    Given scenario "review" is validated
+    Then Check "observe visual validation" runs Operation "corpus.requirements-check@0.1.0"
+      on "thread" as Input "thread"
+      and must establish "the owner approved the delivered screens"
+      """js
+      (fact.thread === context["thread"] || fail("another thread was read")) &&
+      (context["visual validation"] === "approved" || fail("the owner has not approved the delivered screens"))
+      """
+`;

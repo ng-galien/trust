@@ -2,6 +2,7 @@ import { expect, type Locator, type Page, test } from "@playwright/test";
 import { missionCards, noPageOverflow, openCorpus } from "./support/corpus-browser.js";
 import {
   CROWD,
+  DECISION_THREAD,
   DIAGRAM_THREAD,
   ENTRY_THREADS,
   FRAMEWORK_PLAN,
@@ -121,6 +122,7 @@ test("CXP-070 AC1 the neighbourhood of a thread shows its facets, the threads on
       "Thread: Interface registry",
       "Thread: Theme rule",
       "Thread: Reframed delivery",
+      `Thread: ${DECISION_THREAD.title}`,
     ].sort(),
   );
   await expect(neighbour(panel, `Parent thread: ${topology.title}`)).toBeVisible();
