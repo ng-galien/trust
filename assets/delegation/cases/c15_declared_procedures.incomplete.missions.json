@@ -1,0 +1,7 @@
+{
+  "model": {
+    "facet": "code",
+    "instructions": "Model the thread states.",
+    "acceptance verification": "{\"id\":\"model-acceptance\",\"requirements\":[\"TOPO-T.AC1\"]}"
+  }
+}

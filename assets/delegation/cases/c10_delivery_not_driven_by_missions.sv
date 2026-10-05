@@ -1,0 +1,13 @@
+// Case 10: the delivery is tied to 1 while its mission never starts.
+module topology (input wire clk, input wire start, output wire delivered, output wire escalation_seen, output wire decision_seen, output wire validation_request_seen, output wire validation_seen);
+  uwire escalation, arbitration, decision, vr, validation;
+  assign escalation_seen = escalation; assign decision_seen = decision; assign validation_request_seen = vr; assign validation_seen = validation;
+  assign vr = 0; assign validation = 0;
+  uwire req_a, end_a, o_a, k_a;
+  mission #(.ID("thread-states"), .ASSIGNEE("agent-1"), .REVIEWER("agent-2"), .CRITERIA("CXP-330.AC1"))
+    a (.clk(clk), .start(1'b0), .decision(decision), .request(req_a), .complete(end_a), .busy(o_a), .covers(k_a));
+  coverage #(.N(1), .NAMES("CXP-330.AC1")) k (.criteria(k_a));
+  coordinator c (.clk(clk), .request(req_a), .arbitration(arbitration), .escalation(escalation), .decision(decision));
+  owner p (.clk(clk), .escalation(escalation), .validation_request(1'b0), .arbitration(arbitration), .validation());
+  delivery #(.INPUT("project=trust")) l (.clk(clk), .all_complete(1'b1), .delivered(delivered));
+endmodule

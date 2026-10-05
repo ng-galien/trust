@@ -1,0 +1,12 @@
+{
+  "model": {
+    "facet": "code",
+    "instructions": "Model the thread states.",
+    "acceptance verification": "{\"id\":\"model-acceptance\",\"requirements\":[\"TOPO-T.AC1\"]}"
+  },
+  "screen": {
+    "facet": "interface",
+    "instructions": "Show the thread states.",
+    "acceptance verification": "screen-acceptance"
+  }
+}
