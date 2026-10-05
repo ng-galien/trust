@@ -21,7 +21,7 @@ const USAGE = [
 const STRUCTURAL = ["mission", "assignee", "reviewer"];
 /** The line protocol of the library: each kind with the keys its elements print. */
 const PROTOCOL = {
-  MISSION: ["id", "procedure", "assignee", "reviewer", "criteria", "batch"],
+  MISSION: ["id", "procedure", "assignee", "reviewer", "criteria", "batch", "kind"],
   DECISION: ["owner"],
   DELIVERY: ["id", "procedure", "input"],
   COVERAGE: ["count", "names"],
@@ -31,7 +31,31 @@ const PROTOCOL = {
   EVENT: ["escalation", "arbitration", "validation_request", "validation"],
 };
 const LINE = /^([A-Z]+) (\S+) (\w+) (.*)$/u;
-const ELEMENTS = ["mission", "mission_interface", "batch", "resource", "coverage", "coordinator", "owner", "delivery"];
+const ELEMENTS = [
+  "mission",
+  "mission_interface",
+  "analysis",
+  "consolidation",
+  "batch",
+  "resource",
+  "coverage",
+  "coordinator",
+  "owner",
+  "delivery",
+];
+/** The output ports of each element: a net connected to one of them is driven by that instance. */
+const OUTPUTS = {
+  mission: ["request", "complete", "busy", "covers"],
+  mission_interface: ["validation_request", "complete", "busy", "covers"],
+  analysis: ["request", "complete", "covers"],
+  consolidation: ["complete"],
+  batch: ["request", "complete", "busy", "covers"],
+  resource: [],
+  coverage: [],
+  coordinator: ["escalation", "decision"],
+  owner: ["arbitration", "validation"],
+  delivery: ["delivered"],
+};
 /** Constructs a topology file never holds: it only assembles library elements with wires and assignments. */
 const FORBIDDEN = [
   "initial",
@@ -270,6 +294,7 @@ const declarations = (elements, dataFile) => {
     })),
     structure: sorted.map((mission) => ({
       mission: mission.id,
+      kind: mission.kind,
       criteria: words(mission.criteria),
       batch: mission.batch || null,
       start: mission.start,
@@ -360,6 +385,8 @@ const topologyGrammar = (code, line) => {
   const outputs = new Set();
   const nets = new Set();
   const uses = [];
+  const instances = [];
+  const assigns = [];
   /** Reads an expression up to `stop` at depth zero. */
   const expression = (stop) => {
     let depth = 0;
@@ -415,11 +442,14 @@ const topologyGrammar = (code, line) => {
       const target = name();
       if (at().text === ".") fail(at(), "a dotted name is not allowed");
       uses.push({ ...target, target: true });
+      assigns.push(target);
       take("=");
       expression(";");
       take(";");
     } else if (ELEMENTS.includes(first.text)) {
       take();
+      const instance = { type: first.text, index: first.index, ports: {} };
+      instances.push(instance);
       if (at().text === "#") {
         take("#");
         take("(");
@@ -433,13 +463,18 @@ const topologyGrammar = (code, line) => {
         } while (at().text === "," && take(","));
         take(")");
       }
-      name();
+      instance.name = name().text;
       take("(");
       do {
         take(".");
-        name();
+        const port = name();
         take("(");
+        const from = position;
         if (at().text !== ")") expression(")");
+        instance.ports[port.text] = {
+          index: port.index,
+          tokens: tokens.slice(from, position).map((token) => token.text),
+        };
         take(")");
       } while (at().text === "," && take(","));
       take(")");
@@ -454,6 +489,61 @@ const topologyGrammar = (code, line) => {
       fail(use, `${use.text} is not a net or an output port of the topology`);
     if (!nets.has(use.text) && !inputs.has(use.text) && !outputs.has(use.text))
       fail(use, `${use.text} is not declared in the topology`);
+  }
+  return { instances, assigns, inputs };
+};
+
+/**
+ * The wiring guarantees, checked on the parsed topology once the tool has wired it. An input that must come from a given
+ * output is a plain net whose only driver is that output: no assignment, no other output, no topology input port.
+ */
+const guarantees = ({ instances, assigns, inputs }, line) => {
+  const drivers = new Map();
+  const drive = (net, driver) => drivers.set(net, [...(drivers.get(net) ?? []), driver]);
+  for (const input of inputs) drive(input, { what: `the topology input ${input}` });
+  for (const target of assigns) drive(target.text, { what: `an assignment on line ${line(target.index)}` });
+  for (const instance of instances)
+    for (const port of OUTPUTS[instance.type]) {
+      const tokens = instance.ports[port]?.tokens ?? [];
+      if (tokens.length === 1)
+        drive(tokens[0], {
+          type: instance.type,
+          port,
+          what: `the ${port} output of ${instance.type} ${instance.name}`,
+        });
+    }
+  /** Refuses unless the port is a plain net driven only by one of the allowed outputs. */
+  const from = (instance, port, allowed, expected) => {
+    const connection = instance.ports[port];
+    const where = `line ${line(connection?.index ?? instance.index)}: the ${port} input of ${instance.type} ${instance.name}`;
+    if (connection?.tokens.length !== 1 || !/^[A-Za-z_]\w*$/u.test(connection.tokens[0]))
+      refuse(`${where} is not a plain net driven by ${expected}`);
+    const sources = drivers.get(connection.tokens[0]) ?? [];
+    if (
+      sources.length !== 1 ||
+      !allowed.some(([type, output]) => sources[0].type === type && sources[0].port === output)
+    )
+      refuse(
+        `${where} must be driven only by ${expected}; ${connection.tokens[0]} is driven by ${sources.map((source) => source.what).join(", ") || "nothing"}`,
+      );
+  };
+  for (const instance of instances) {
+    if (instance.type === "mission_interface")
+      from(instance, "validation", [["owner", "validation"]], "the validation output of an owner");
+    if (["mission", "analysis", "batch"].includes(instance.type))
+      from(instance, "decision", [["coordinator", "decision"]], "the decision output of a coordinator");
+    if (instance.type === "resource")
+      for (const port of ["busy_1", "busy_2"])
+        from(
+          instance,
+          port,
+          [
+            ["mission", "busy"],
+            ["mission_interface", "busy"],
+            ["batch", "busy"],
+          ],
+          "the busy output of a mission",
+        );
   }
 };
 
@@ -487,14 +577,15 @@ const assembleOnly = (source) => {
     );
   const modules = [...code.matchAll(/\bmodule\b/gu)];
   if (modules.length !== 1) refuse("a topology file defines exactly one module, topology");
-  topologyGrammar(code, line);
-  return canonical;
+  return { canonical, topology: topologyGrammar(code, line), line };
 };
 
 const check = ({ topology, missions }) => {
   let canonical;
+  let parsed;
+  let line;
   try {
-    canonical = assembleOnly(readFileSync(topology, "utf8"));
+    ({ canonical, topology: parsed, line } = assembleOnly(readFileSync(topology, "utf8")));
   } catch (error) {
     if (error instanceof Refusal) return refused("wiring", error.message);
     throw error;
@@ -509,6 +600,12 @@ const check = ({ topology, missions }) => {
     const wiring = run(directory, "iverilog", args);
     const message = wiring.output.split("\n").find((line) => /error|warning/iu.test(line));
     if (wiring.failed || message) return refused("wiring", message ?? (wiring.output || "iverilog failed"));
+    try {
+      guarantees(parsed, line);
+    } catch (error) {
+      if (error instanceof Refusal) return refused("wiring", error.message);
+      throw error;
+    }
     const simulation = run(directory, "vvp", ["-n", "topology.vvp"]);
     const refusal = /^REFUSED \S+ reason (.*)$/mu.exec(simulation.output);
     if (refusal) return refused("run", refusal[1]);

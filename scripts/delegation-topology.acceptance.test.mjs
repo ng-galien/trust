@@ -12,7 +12,19 @@ const exec = promisify(execFile);
 const trust = fileURLToPath(new URL("../", import.meta.url));
 const SCRIPT = path.join(trust, "scripts/delegation-topology.mjs");
 const CASES = "assets/delegation/cases";
-const ELEMENTS = ["mission", "mission_interface", "batch", "resource", "coverage", "coordinator", "owner", "delivery"];
+const ELEMENTS = [
+  "mission",
+  "mission_interface",
+  "analysis",
+  "consolidation",
+  "batch",
+  "resource",
+  "coverage",
+  "coordinator",
+  "owner",
+  "delivery",
+];
+const ANALYSES = ["survey-runtime", "survey-store", "survey-ui"];
 
 /** Runs the check as a process from the repository root and returns its stdout and parsed result. */
 const check = async (name, missions) => {
@@ -57,13 +69,22 @@ const ACCEPTED_C1 = {
   structure: [
     {
       mission: "declared-delivery",
+      kind: "mission",
       criteria: ["ORG-130.AC1", "ORG-130.AC2"],
       batch: null,
       start: 1,
       complete: 15,
       after: [],
     },
-    { mission: "plan-card", criteria: ["CXP-250.AC1"], batch: null, start: 1, complete: 13, after: [] },
+    {
+      mission: "plan-card",
+      kind: "interface",
+      criteria: ["CXP-250.AC1"],
+      batch: null,
+      start: 1,
+      complete: 13,
+      after: [],
+    },
   ],
 };
 
@@ -152,18 +173,167 @@ before(async () => {
 });
 after(() => workspace?.close());
 
-test("TOPO-010 AC1 the library provides the elements mission, mission_interface, batch, resource, coverage, coordinator, owner and delivery", async () => {
+test("TOPO-010 AC1 the library provides the elements mission, mission_interface, analysis, consolidation, batch, resource, coverage, coordinator, owner and delivery", async () => {
   const library = await readFile(path.join(trust, "assets/delegation/library.sv"), "utf8");
   const modules = [...library.matchAll(/^module (\w+)/gmu)].map((match) => match[1]);
   assert.deepEqual([...modules].sort(), [...ELEMENTS].sort());
   // Together the accepted cases wire every element of the library.
   const used = new Set();
-  for (const name of ["c1_interface_validated_by_the_owner", "c2_same_files_in_sequence", "c4_nested_delegation"]) {
+  for (const name of [
+    "c1_interface_validated_by_the_owner",
+    "c2_same_files_in_sequence",
+    "c4_nested_delegation",
+    "c33_analysis_and_consolidation",
+  ]) {
     assert.equal((await check(name)).result.accepted, true, name);
     const source = await readFile(path.join(trust, CASES, `${name}.sv`), "utf8");
     for (const element of ELEMENTS) if (new RegExp(`^\\s*${element}\\b`, "mu").test(source)) used.add(element);
   }
   assert.deepEqual([...used].sort(), [...ELEMENTS].sort());
+});
+
+test("TOPO-040 AC1 the library provides the analysis element, a mission that returns findings and has no busy output", async () => {
+  const library = await readFile(path.join(trust, "assets/delegation/library.sv"), "utf8");
+  const header = /^module analysis [\s\S]*?\);/mu.exec(library)[0];
+  for (const parameter of ["ID", "PROCEDURE", "ASSIGNEE", "REVIEWER", "CRITERIA", "DURATION"])
+    assert.match(header, new RegExp(`parameter ${parameter} =`, "u"), parameter);
+  for (const port of ["clk", "start", "decision", "request", "complete", "covers"])
+    assert.match(header, new RegExp(`\\b${port}\\b`, "u"), port);
+  assert.doesNotMatch(header, /\bbusy\b/u);
+  // An analysis is declared as a mission of its Procedure, with its assignee and reviewer, and its kind in the order.
+  const { result } = await check("c33_analysis_and_consolidation");
+  assert.equal(result.accepted, true, result.reason);
+  const analyses = result.missions.filter((mission) => ANALYSES.includes(mission.id));
+  assert.deepEqual(
+    analyses.map(({ id, definition, rootInputs }) => [
+      id,
+      definition.reference,
+      rootInputs.assignee,
+      rootInputs.reviewer,
+    ]),
+    [
+      ["survey-runtime", "delegation-code@2.0.0", "agent-3", "agent-2"],
+      ["survey-store", "delegation-code@2.0.0", "agent-4", "agent-2"],
+      ["survey-ui", "delegation-code@2.0.0", "agent-1", "agent-2"],
+    ],
+  );
+  assert.deepEqual(
+    result.structure.map(({ mission, kind, criteria }) => [mission, kind, criteria]),
+    [
+      ["apply-findings", "mission", ["ANA-1.AC4"]],
+      ["survey-runtime", "analysis", ["ANA-1.AC2"]],
+      ["survey-store", "analysis", ["ANA-1.AC3"]],
+      ["survey-ui", "analysis", ["ANA-1.AC1"]],
+    ],
+  );
+  // Its busy output does not exist, and the topology names the Procedure of each analysis.
+  assert.deepEqual(
+    (await check("c45_analysis_busy")).result,
+    refused("wiring", "topology.sv:8: error: port ``busy'' is not a port of a1."),
+  );
+  assert.deepEqual(
+    (await check("c35_analysis_without_procedure")).result,
+    refused(
+      "wiring",
+      "ERROR: library.sv:124: analysis survey-store: the procedure is empty; a topology names the Procedure of each analysis",
+    ),
+  );
+});
+
+test("TOPO-040 AC2 the library provides the consolidation element, complete when each mission it receives is complete", async () => {
+  const { result } = await check("c33_analysis_and_consolidation");
+  assert.equal(result.accepted, true, result.reason);
+  const entry = (id) => result.structure.find((item) => item.mission === id);
+  // The analyses end at different times; the mission the consolidation starts begins only after the last one.
+  assert.deepEqual(
+    ANALYSES.map((id) => entry(id).complete),
+    [8, 11, 5],
+  );
+  assert.equal(entry("apply-findings").start, Math.max(...ANALYSES.map((id) => entry(id).complete)) + 2);
+  // One consolidated analysis that never starts keeps the consolidation incomplete: the work is never delivered.
+  assert.deepEqual(
+    (await check("c34_consolidation_waits_for_every_mission")).result,
+    refused("run", "the work is never delivered (t=152)"),
+  );
+});
+
+test("TOPO-040 AC3 the order places a mission started by a consolidation after every consolidated mission", async () => {
+  const { result } = await check("c33_analysis_and_consolidation");
+  assert.equal(result.accepted, true, result.reason);
+  const started = result.structure.find((item) => item.mission === "apply-findings");
+  assert.deepEqual(started.after, ANALYSES);
+  for (const id of ANALYSES)
+    assert.ok(result.structure.find((item) => item.mission === id).complete < started.start, id);
+  // The analyses run in parallel: none is ordered after another.
+  for (const id of ANALYSES) assert.deepEqual(result.structure.find((item) => item.mission === id).after, []);
+});
+
+test("TOPO-050 AC1 the validation input of an interface mission comes from the validation output of the owner element", async () => {
+  assert.equal((await check("c1_interface_validated_by_the_owner")).result.accepted, true);
+  assert.deepEqual(
+    (await check("c36_validation_not_from_owner")).result,
+    refused(
+      "wiring",
+      "line 10: the validation input of mission_interface b must be driven only by the validation output of an owner; approved is driven by an assignment on line 6",
+    ),
+  );
+  assert.deepEqual(
+    (await check("c37_validation_expression")).result,
+    refused(
+      "wiring",
+      "line 9: the validation input of mission_interface b is not a plain net driven by the validation output of an owner",
+    ),
+  );
+});
+
+test("TOPO-050 AC2 the decision input of a mission comes from the decision output of the coordinator element", async () => {
+  for (const name of ["c1_interface_validated_by_the_owner", "c4_nested_delegation", "c33_analysis_and_consolidation"])
+    assert.equal((await check(name)).result.accepted, true, name);
+  assert.deepEqual(
+    (await check("c38_decision_not_from_coordinator")).result,
+    refused(
+      "wiring",
+      "line 7: the decision input of mission a must be driven only by the decision output of a coordinator; arbitration is driven by the arbitration output of owner p",
+    ),
+  );
+});
+
+test("TOPO-050 AC3 each input of a resource is the busy output of a mission, without expression", async () => {
+  assert.equal((await check("c2_same_files_in_sequence")).result.accepted, true);
+  assert.deepEqual(
+    (await check("c39_resource_input_expression")).result,
+    refused(
+      "wiring",
+      "line 11: the busy_2 input of resource r is not a plain net driven by the busy output of a mission",
+    ),
+  );
+  assert.deepEqual(
+    (await check("c40_resource_input_not_busy")).result,
+    refused(
+      "wiring",
+      "line 11: the busy_2 input of resource r must be driven only by the busy output of a mission; k_b is driven by the covers output of mission b",
+    ),
+  );
+});
+
+test("TOPO-050 AC4 a mission with an empty id, assignee or reviewer is refused at wiring with its reason", async () => {
+  assert.deepEqual(
+    (await check("c41_empty_id")).result,
+    refused("wiring", "ERROR: library.sv:23: mission: the id is empty"),
+  );
+  assert.deepEqual(
+    (await check("c42_empty_assignee")).result,
+    refused("wiring", "ERROR: library.sv:24: mission batch-b-card: the assignee is empty"),
+  );
+  assert.deepEqual(
+    (await check("c43_empty_reviewer")).result,
+    refused("wiring", "ERROR: library.sv:25: mission batch-b-card: the reviewer is empty"),
+  );
+  // The missions of a batch are missions too.
+  assert.deepEqual(
+    (await check("c44_batch_empty_assignee")).result,
+    refused("wiring", "ERROR: library.sv:24: mission pdf-export-2: the assignee is empty"),
+  );
 });
 
 test("TOPO-010 AC2 a mission whose reviewer is also its assignee is refused at wiring with its reason", async () => {

@@ -20,6 +20,9 @@ module mission #(parameter ID = "", parameter PROCEDURE = "delegation-code@2.0.0
   output reg request, output reg complete, output wire busy, output wire covers);
   generate
     if (ASSIGNEE == REVIEWER) $error({"mission ", ID, ": the reviewer is also the assignee"});
+    if (ID == "") $error("mission: the id is empty");
+    if (ASSIGNEE == "") $error({"mission ", ID, ": the assignee is empty"});
+    if (REVIEWER == "") $error({"mission ", ID, ": the reviewer is empty"});
     if (!plain_text(ID) || !plain_text(PROCEDURE) || !plain_text(ASSIGNEE) || !plain_text(REVIEWER) ||
         !plain_text(CRITERIA) || !plain_text(BATCH))
       $error({"mission ", ID, ": a parameter holds a control character"});
@@ -31,6 +34,7 @@ module mission #(parameter ID = "", parameter PROCEDURE = "delegation-code@2.0.0
     $display("MISSION %m reviewer %0s", REVIEWER);
     $display("MISSION %m criteria %0s", CRITERIA);
     $display("MISSION %m batch %0s", BATCH);
+    $display("MISSION %m kind mission");
   end
   initial begin request = 0; complete = 0; end
   integer done = 0; reg started = 0, suspended = 0;
@@ -56,6 +60,9 @@ module mission_interface #(parameter ID = "", parameter PROCEDURE = "delegation-
   output reg validation_request, output reg complete, output wire busy, output wire covers);
   generate
     if (ASSIGNEE == REVIEWER) $error({"mission ", ID, ": the reviewer is also the assignee"});
+    if (ID == "") $error("mission: the id is empty");
+    if (ASSIGNEE == "") $error({"mission ", ID, ": the assignee is empty"});
+    if (REVIEWER == "") $error({"mission ", ID, ": the reviewer is empty"});
     if (!plain_text(ID) || !plain_text(PROCEDURE) || !plain_text(ASSIGNEE) || !plain_text(REVIEWER) ||
         !plain_text(CRITERIA))
       $error({"mission ", ID, ": a parameter holds a control character"});
@@ -67,6 +74,7 @@ module mission_interface #(parameter ID = "", parameter PROCEDURE = "delegation-
     $display("MISSION %m reviewer %0s", REVIEWER);
     $display("MISSION %m criteria %0s", CRITERIA);
     $display("MISSION %m batch ");
+    $display("MISSION %m kind interface");
     $display("DECISION %m owner visual validation");
   end
   initial begin validation_request = 0; complete = 0; end
@@ -89,6 +97,7 @@ module batch #(parameter ID = "", parameter PROCEDURE = "delegation-code@2.0.0",
                parameter CRITERIA_1 = "", parameter CRITERIA_2 = "") (
   input wire clk, input wire start, input wire decision,
   output wire request, output wire complete, output wire busy, output wire covers);
+  generate if (ID == "") $error("batch: the id is empty"); endgenerate
   wire d1, d2, f1, o1, o2, c1, c2;
   mission #(.ID({ID, "-1"}), .PROCEDURE(PROCEDURE), .ASSIGNEE(ASSIGNEE_1), .REVIEWER(REVIEWER), .CRITERIA(CRITERIA_1),
             .BATCH(ID))
@@ -99,6 +108,55 @@ module batch #(parameter ID = "", parameter PROCEDURE = "delegation-code@2.0.0",
   assign request = d1 | d2;
   assign busy = o1 | o2;
   assign covers = c1 & c2;
+endmodule
+
+// An analysis: a mission that returns findings. It holds no resource, so it has no busy output. It has no default
+// Procedure: the topology names the one it uses.
+module analysis #(parameter ID = "", parameter PROCEDURE = "",
+                  parameter ASSIGNEE = "", parameter REVIEWER = "", parameter CRITERIA = "", parameter DURATION = 6) (
+  input wire clk, input wire start, input wire decision,
+  output reg request, output reg complete, output wire covers);
+  generate
+    if (ASSIGNEE == REVIEWER) $error({"analysis ", ID, ": the reviewer is also the assignee"});
+    if (ID == "") $error("analysis: the id is empty");
+    if (ASSIGNEE == "") $error({"analysis ", ID, ": the assignee is empty"});
+    if (REVIEWER == "") $error({"analysis ", ID, ": the reviewer is empty"});
+    if (PROCEDURE == "") $error({"analysis ", ID, ": the procedure is empty; a topology names the Procedure of each analysis"});
+    if (!plain_text(ID) || !plain_text(PROCEDURE) || !plain_text(ASSIGNEE) || !plain_text(REVIEWER) ||
+        !plain_text(CRITERIA))
+      $error({"analysis ", ID, ": a parameter holds a control character"});
+  endgenerate
+  initial begin
+    $display("MISSION %m id %0s", ID);
+    $display("MISSION %m procedure %0s", PROCEDURE);
+    $display("MISSION %m assignee %0s", ASSIGNEE);
+    $display("MISSION %m reviewer %0s", REVIEWER);
+    $display("MISSION %m criteria %0s", CRITERIA);
+    $display("MISSION %m batch ");
+    $display("MISSION %m kind analysis");
+  end
+  initial begin request = 0; complete = 0; end
+  integer done = 0; reg started = 0;
+  assign covers = 1;
+  always @(posedge clk) begin
+    if (start && !started) begin started <= 1; $display("START %m time %0d", $time / 2); end
+    if (started && !complete) begin
+      if (done >= DURATION) begin complete <= 1; $display("COMPLETE %m time %0d", $time / 2); end
+      else done <= done + 1;
+    end
+    // decision is wired like a mission's; an analysis raises no out-of-scope question in the simulation.
+    if (decision) request <= 0;
+  end
+endmodule
+
+// A consolidation: complete once each of the N missions it receives has completed (each completion is latched).
+module consolidation #(parameter N = 2) (input wire clk, input wire [N-1:0] complete_in, output reg complete);
+  reg [N-1:0] seen = 0;
+  initial complete = 0;
+  always @(posedge clk) begin
+    seen <= seen | complete_in;
+    if (&(seen | complete_in)) complete <= 1;
+  end
 endmodule
 
 // A resource that two missions never hold at the same time (the same files, for example).

@@ -9,14 +9,32 @@ instructions, contract and other root inputs) comes from an optional data file.
 | --- | --- |
 | `mission` | A code mission (`PROCEDURE`, default `delegation-code@2.0.0`) with its assignee, reviewer and criteria; it may stop on an out-of-scope question (`OUT_OF_SCOPE`) and wait for the arbitration. The reviewer cannot be the assignee. |
 | `mission_interface` | An interface mission (default `delegation-interface@3.0.0`): it completes only after the owner's visual validation, which it declares as an owner decision. |
+| `analysis` | A mission that returns findings (`PROCEDURE` has no default: the topology names it), with its assignee, a distinct reviewer and the criteria it carries; it holds no resource and has no busy output. |
+| `consolidation` | Receives the `complete` outputs of N missions (`complete_in`) and completes once each of them is complete (each completion is latched); a mission it starts comes after every consolidated mission. |
 | `batch` | One delegated unit holding two missions run one after the other (nested delegation); both missions name their batch. |
 | `resource` | Something two missions never hold at the same time, such as the same files. |
-| `coverage` | The criteria of the thread (`NAMES`): each one is carried by a mission, and every mission criterion is named. |
+| `coverage` | The criteria of the thread (`NAMES`, `N` of them): each one is carried by a mission, and every mission criterion is named. Wire one `covers` output per name; the replication `{n{k_a}}` avoids repeating a mission's wire, for example `.criteria({ {8{k_b}}, {8{k_a}} })`. |
 | `coordinator` | Escalates a mission's question to the owner and passes the arbitration back. |
 | `owner` | The product owner: answers an escalation with an arbitration and a validation request with a validation. |
 | `delivery` | The delivery (`ID`, `PROCEDURE`) declared once every mission is complete; `INPUT` holds its root inputs as space-separated `key=value` pairs. |
 
-A text parameter holds no double quote, backslash or control character.
+A text parameter holds no double quote, backslash or control character. A mission (`mission`, `mission_interface`,
+`analysis`, and each mission of a `batch`) with an empty id, assignee or reviewer, and a batch with an empty id, is
+refused at wiring by the library.
+
+## Wiring guarantees
+
+Once Icarus Verilog has wired the topology, the check verifies on the parsed topology, at stage `wiring` with the line:
+
+- the `validation` input of every `mission_interface` is a plain net driven only by the `validation` output of an
+  `owner`;
+- the `decision` input of every `mission`, `analysis` and `batch` is a plain net driven only by the `decision` output
+  of a `coordinator`;
+- each input of a `resource` is a plain net driven only by the `busy` output of a `mission`, `mission_interface` or
+  `batch`.
+
+A net is driven by an output when that output's port connection names it; an `assign` to the net, another output or a
+topology input port is another driver.
 
 ## What a topology file may contain
 
@@ -31,7 +49,8 @@ ports as `input wire <name>` and `output wire <name>`. Its body holds only three
   input as a warning.
 
 An expression holds only nets and ports of the topology, `1'b0`, `1'b1`, decimal numbers, parentheses, the operators
-`& | ^ ~ ! ? :` and the concatenation `{a, b}`, which the coverage cases need to wire several criteria.
+`& | ^ ~ ! ? :` and the concatenation `{a, b}` with its replication `{n{a}}`, which the coverage and consolidation cases need to wire
+several criteria or missions.
 
 Before Icarus Verilog runs, the check refuses at stage `wiring`, naming the construct and its line, everything else: a
 dotted name outside `.port(` and `.PARAM(`, a drive strength, an attribute, any other operator, an identifier that is not
@@ -67,8 +86,8 @@ mission; an entry's `acceptance verification`, when present, must be JSON with a
 
 The check prints one JSON object: `accepted`, `stage` (`wiring`, `run` or `accepted`), `reason`, and for an accepted
 topology `missions` and `delivery` (entries of a Plan mission declaration), `decisions` (owner decisions) and `structure`
-(each mission's criteria, batch, start and completion times and the missions complete before it starts). `--lines`
+(each mission's kind — `mission`, `interface` or `analysis` —, criteria, batch, start and completion times and the missions complete before it starts). `--lines`
 prints the same result on eight fixed lines for the Operation `delegation.topology-check`. Icarus Verilog (`iverilog`,
 `vvp`) must be installed.
 
-[cases/](cases): `c1`, `c2_same_files_in_sequence`, `c4` and `c15` (with its data file) are accepted; the others are refused.
+[cases/](cases): `c1`, `c2_same_files_in_sequence`, `c4`, `c15` (with its data file) and `c33` are accepted; the others are refused.
