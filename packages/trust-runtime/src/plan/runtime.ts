@@ -70,7 +70,7 @@ import type { PlanEvents } from "./events.js";
 import { completesPlanOnValidation, dependentCheckUris, isIntentValue, MAX_INTENT_LENGTH } from "./intent.js";
 import { normalizePlanMetadata } from "./metadata.js";
 import { parseMissionDeclarations } from "./mission-declarations.js";
-import type { PlanStore } from "./store.js";
+import { type PlanStore, SUPERSEDED_GENERATION_REASON } from "./store.js";
 import { planTransaction } from "./transaction.js";
 
 export const DEFAULT_SESSION_DURATION_MS = 24 * 60 * 60 * 1_000;
@@ -290,7 +290,29 @@ export class PlanRuntime {
       plan,
       at: this.#now().toISOString(),
       create: (revision, creator) => this.#saveInitialRevision(database, revision, this.#now(), randomUUID(), creator),
+      removed: (childPlan) =>
+        this.#closeSupersededGeneration(database, childPlan, {
+          cancelledAt: this.#now().toISOString(),
+          cancelledBy: null,
+          reason: SUPERSEDED_GENERATION_REASON,
+        }),
     });
+  }
+
+  /**
+   * The Plan of a relaunched mission or of a mission that left its parent never runs again: it is cancelled with its
+   * current descendants, so it does not stay in progress. A complete or already cancelled Plan is left as it is.
+   */
+  async #closeSupersededGeneration(
+    database: Database,
+    plan: string,
+    decision: Pick<PlanCancellation, "cancelledAt" | "cancelledBy" | "reason">,
+  ): Promise<void> {
+    if (await this.#plans.using(database).findCancellation(plan)) return;
+    if ((await readComposition(database, plan)).complete) return;
+    const sessionChanges: SessionChange[] = [];
+    await this.#cancelComposition(database, plan, decision, sessionChanges);
+    this.#publishSessionChanges(sessionChanges);
   }
 
   async #publishAncestorChanges(plan: string): Promise<void> {
@@ -462,7 +484,7 @@ export class PlanRuntime {
   }
 
   /**
-   * Ends a root Plan with an operator reason. In one transaction the root and its current child Plans and their
+   * Ends a root Plan, or the Plan of a superseded mission generation, with an operator reason. In one transaction the root and its current child Plans and their
    * descendants receive the same cancellation record, their open Sessions close and their pending Attempts are
    * interrupted. Nothing is deleted: Checks, Attempts, Facts, declarations and revisions stay readable.
    */
@@ -486,10 +508,11 @@ export class PlanRuntime {
       await this.#refuseCancelled(transaction, planSlug);
       const parent = await transaction
         .selectFrom("child_generations")
-        .select("parent_plan")
+        .select(["parent_plan", "superseded_at"])
         .where("child_plan", "=", planSlug)
         .executeTakeFirst();
-      if (parent) {
+      // A superseded generation is no longer part of its parent: it is cancelled on its own.
+      if (parent && parent.superseded_at === null) {
         throw new PlanRuntimeError(
           "plan-conflict",
           `Plan ${planSlug} is a child Plan of ${parent.parent_plan}; cancel its root Plan or withdraw its mission from the parent`,
@@ -840,7 +863,6 @@ export class PlanRuntime {
    */
   async relaunchPlan(input: PlanRelaunchInput, access?: AccessContext): Promise<PlanRelaunchResult> {
     await this.#authorizePlan(access, "plan.relaunch", input.plan);
-    await this.#refuseCancelled(this.#database, input.plan);
     if (!isEscalationDeclaration(input.relaunchReason)) {
       throw new PlanRuntimeError(
         "plan-conflict",
@@ -854,12 +876,13 @@ export class PlanRuntime {
     let relaunched = false;
     await planTransaction(this.#database, planSlug, async (transaction) => {
       await this.#authorizePlan(access, "plan.relaunch", planSlug, transaction);
-      await this.#refuseCancelled(transaction, planSlug);
       const relation = await transaction
         .selectFrom("child_generations")
         .selectAll()
         .where("child_plan", "=", planSlug)
         .executeTakeFirst();
+      // A relaunched generation is cancelled with its supersession: a replayed request still reads its result.
+      if (!relation || relation.superseded_at === null) await this.#refuseCancelled(transaction, planSlug);
       if (!relation) throw new PlanRuntimeError("plan-conflict", `Plan ${planSlug} is not a child invocation`);
       const escalations = this.#escalations.using(transaction);
       const requested = await escalations.find(input.escalationId);
@@ -892,6 +915,11 @@ export class PlanRuntime {
           .where("child_plan", "=", planSlug)
           .where("superseded_at", "is", null)
           .execute();
+        await this.#closeSupersededGeneration(transaction, planSlug, {
+          cancelledAt: relaunchedAt,
+          cancelledBy: this.#access.principal(access),
+          reason: `${SUPERSEDED_GENERATION_REASON}. ${auditReason}`,
+        });
         await this.#synchronizeChildren(transaction, relation.parent_plan);
         relaunched = true;
       }

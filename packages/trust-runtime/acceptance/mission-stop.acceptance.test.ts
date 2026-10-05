@@ -275,7 +275,9 @@ test("R3 P3 a mission that never ran is removed without a reason as before", { t
   const after = await client.read(plan);
   assert.deepEqual(await workIds(plan), ["kept"]);
   assert.deepEqual(after.stoppedMissions, [], "a removal without a reason is not a stop");
+  // The Plan of the removed mission does not stay in progress: TRUST closes it, without listing it as a stop.
   const idle = await client.read(of("idle").child);
-  assert.deepEqual([idle.cancellation, idle.parent?.current], [null, false]);
-  assert.notEqual(idle.workState, "CANCELLED");
+  assert.equal(idle.parent?.current, false);
+  assert.equal(idle.workState, "CANCELLED");
+  assert.match(idle.cancellation?.reason ?? "", /^No longer the current generation of its mission/u);
 });

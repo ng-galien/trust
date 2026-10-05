@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import type {
   CheckAttemptAdmissionResult,
   CheckFinalizationResult,
+  PlanCancellationResult,
   PlanRelaunchResult,
   PlanView,
 } from "@trust/extension-sdk";
@@ -194,6 +195,15 @@ test("an escalated mission is relaunched as the next generation of the same invo
       attemptKey: "abandoned-generation",
     });
     assert.equal(refused.status, "REFUSED", "the abandoned generation admits no further Check");
+
+    // The Plan of the relaunched generation does not stay in progress: TRUST cancels it with the relaunch reason.
+    assert.equal(abandoned.workState, "CANCELLED");
+    assert.match(abandoned.cancellation?.reason ?? "", /Relaunched as a new invocation generation/u);
+    const current = await request("plan.cancel", {
+      plan: relaunched.childPlan,
+      reason: "Not a superseded generation.",
+    });
+    assert.ok(current.error, "a current child Plan is cancelled through its root Plan or its mission");
 
     // The next generation runs the same pinned definition and inputs, and completes the parent.
     const next = await read(relaunched.childPlan);

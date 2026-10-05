@@ -35,6 +35,9 @@ export type PlanRevisionHistoryEntry = Pick<
   | "checkValues"
 > & { readonly checkUris: readonly string[] };
 
+/** Starts the reason recorded on a Plan that TRUST closes because it is no longer the current generation of its mission. */
+export const SUPERSEDED_GENERATION_REASON = "No longer the current generation of its mission";
+
 export class PlanStore {
   constructor(private readonly dependencies: PlanStoreDependencies) {}
 
@@ -233,7 +236,8 @@ export class PlanStore {
     }
     return stopped.flatMap((row) => {
       const mission = missions.get(row.invocation_id);
-      if (!mission) return [];
+      // A generation closed because it is no longer current was not stopped by an operator.
+      if (!mission || row.reason.startsWith(SUPERSEDED_GENERATION_REASON)) return [];
       return [
         {
           collection: mission.collection,

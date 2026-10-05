@@ -271,6 +271,8 @@ export async function synchronizeChildren(input: {
   plan: string;
   at: string;
   create(revision: PlanRevision, creator: import("@trust/extension-sdk").ExternalPrincipal | null): Promise<void>;
+  /** Called for the child Plan of each generation superseded because its mission left the Plan. */
+  removed?(childPlan: string): Promise<void>;
 }): Promise<Set<string>> {
   const { database } = input;
   const plans = new PlanStore({ database });
@@ -316,6 +318,7 @@ export async function synchronizeChildren(input: {
         !revision.invocations.some((invocation) => invocation.id === value.invocation_id),
     )) {
       await supersede(relation);
+      await input.removed?.(relation.child_plan);
       changed.add(slug);
     }
     for (const scenario of ordered) {
