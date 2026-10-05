@@ -17,17 +17,18 @@ export const SCOPE = `    Given Procedure scope
       | all | Observe a disposable workspace. | Claim anything about another workspace. |`;
 
 /**
- * Starts a runtime whose "local" Environment is a new workspace holding the `helpers` (names below scripts/) and
- * saves the `operations` (source paths below assets/operations/) in that disposable runtime only.
+ * Starts a runtime whose "local" Environment is a new workspace holding the `helpers` (names below scripts/, copied
+ * into its `helperDirectory`) and saves the `operations` (source paths below assets/operations/) in that disposable
+ * runtime only. `environment` adds Environment values; `trustRpcUrl` names the disposable runtime.
  */
-export async function startWorkspace(prefix, { helpers, operations }) {
+export async function startWorkspace(prefix, { helpers, operations, helperDirectory = "scripts", environment = {} }) {
   const directory = await mkdtemp(path.join(tmpdir(), prefix));
   const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith("TRUST_")));
   await mkdir(path.join(directory, "operations"));
-  await mkdir(path.join(directory, "workspace/scripts"), { recursive: true });
+  await mkdir(path.join(directory, "workspace", helperDirectory), { recursive: true });
   const workspace = path.join(directory, "workspace");
   for (const helper of helpers)
-    await copyFile(path.join(root, "scripts", helper), path.join(workspace, "scripts", helper));
+    await copyFile(path.join(root, "scripts", helper), path.join(workspace, helperDirectory, helper));
   await writeFile(path.join(directory, "extensions.json"), '{"extensions":[]}');
   const runtime = await startPublicRuntime(prefix, {
     extensionsFile: path.join(directory, "extensions.json"),
@@ -48,7 +49,10 @@ export async function startWorkspace(prefix, { helpers, operations }) {
       sourceName: path.basename(source),
       source: await readFile(path.join(root, "assets/operations", source), "utf8"),
     });
-  await rpc("environment.save", { environment: "local", values: { workspaceRoot: workspace } });
+  await rpc("environment.save", {
+    environment: "local",
+    values: { workspaceRoot: workspace, trustRpcUrl: `${runtime.endpoint}/rpc`, ...environment },
+  });
   const read = (plan) => rpc("plan.read", { plan });
   return {
     directory,
@@ -91,8 +95,15 @@ export async function startWorkspace(prefix, { helpers, operations }) {
       if (output.code) return { interrupted: true, code: output.code, message: output.stderr };
       const result = JSON.parse(output.stdout).result;
       assert.equal(result.status, "COMPLETED", JSON.stringify(result));
-      const lines = Object.values(result.actionOutcome)[0].stdout.trimEnd().split("\n");
-      return { ...result.qualification, lines, report: JSON.parse(lines.at(-1)) };
+      const stdout = Object.values(result.actionOutcome)[0]?.stdout;
+      if (typeof stdout !== "string") return { ...result.qualification };
+      const lines = stdout.trimEnd().split("\n");
+      // A helper's last line is its JSON report when it has one; a gate reports on its fixed lines only.
+      return {
+        ...result.qualification,
+        lines,
+        report: lines.at(-1).startsWith("{") ? JSON.parse(lines.at(-1)) : undefined,
+      };
     },
     close: async () => {
       await runtime.close();
