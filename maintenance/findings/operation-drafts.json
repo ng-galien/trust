@@ -1,0 +1,570 @@
+{
+  "axis": "operation-drafts",
+  "findings": [
+    {
+      "id": "published-vitest-run-source-in-drafts",
+      "title": "acceptance.vitest-run@1.0.0 is published in the owner's runtime but its source still sits in the drafts folder",
+      "kind": "leftover",
+      "location": {
+        "file": "assets/operations/drafts/acceptance.vitest-run.feature",
+        "lines": [
+          2,
+          2
+        ],
+        "text": "@trust-dsl:1 @operation:acceptance.vitest-run @version:1.0.0"
+      },
+      "evidence": "operation.list on 127.0.0.1:4498 returns acceptance.vitest-run@1.0.0 and its published source equals this file line for line. The published Procedure delegation-code-vitest@1.0.0 (trust-extension/extensions/corpus/procedures/delegation/delegation-code-vitest.procedure.feature) invokes it. The only reference to the path is scripts/acceptance-vitest-run.acceptance.test.mjs line 67 (\"drafts/acceptance.vitest-run.feature\"); scripts/acceptance-operations-support.mjs resolves it below assets/operations/. No file assets/operations/acceptance.vitest-run.feature exists. assets/operations/README.md does not mention a drafts folder.",
+      "action": "Move the file unchanged to assets/operations/acceptance.vitest-run.feature and change line 67 of scripts/acceptance-vitest-run.acceptance.test.mjs to \"acceptance.vitest-run.feature\".",
+      "touches": [
+        "assets/operations/drafts/acceptance.vitest-run.feature",
+        "scripts/acceptance-vitest-run.acceptance.test.mjs"
+      ],
+      "risk": "low",
+      "riskReason": "Moving the file keeps its exact text, so the published source stays identical; only the path in the test harness changes, and a wrong path fails that test at once.",
+      "state": "open"
+    },
+    {
+      "id": "published-script-gate-source-in-drafts",
+      "title": "workspace.script-gate@1.0.0 is published in the owner's runtime but its source still sits in the drafts folder",
+      "kind": "leftover",
+      "location": {
+        "file": "assets/operations/drafts/workspace.script-gate.feature",
+        "lines": [
+          2,
+          2
+        ],
+        "text": "@trust-dsl:1 @operation:workspace.script-gate @version:1.0.0"
+      },
+      "evidence": "operation.list returns workspace.script-gate@1.0.0 with a source equal to this file. The published Procedure delegation-code-vitest@1.0.0 invokes workspace.script-gate@1.0.0. The only reference to the path is scripts/acceptance-vitest-run.acceptance.test.mjs line 68 (\"drafts/workspace.script-gate.feature\"). No file of that name exists in assets/operations/.",
+      "action": "Move the file unchanged to assets/operations/workspace.script-gate.feature and change line 68 of scripts/acceptance-vitest-run.acceptance.test.mjs to \"workspace.script-gate.feature\".",
+      "touches": [
+        "assets/operations/drafts/workspace.script-gate.feature",
+        "scripts/acceptance-vitest-run.acceptance.test.mjs"
+      ],
+      "risk": "low",
+      "riskReason": "Moving the file keeps its exact text, so the published source stays identical; only the path in the test harness changes, and a wrong path fails that test at once.",
+      "state": "open"
+    },
+    {
+      "id": "published-checklist-check-1-1-0-in-drafts",
+      "title": "review.checklist-check@1.1.0 is published but sits in drafts while its 1.0.0 predecessor sits in assets/operations",
+      "kind": "leftover",
+      "location": {
+        "file": "assets/operations/drafts/review.checklist-check-1.1.0.feature",
+        "lines": [
+          1,
+          1
+        ],
+        "text": "@trust-dsl:1 @operation:review.checklist-check @version:1.1.0"
+      },
+      "related": [
+        {
+          "file": "assets/operations/review.checklist-check.feature",
+          "lines": [
+            2,
+            2
+          ],
+          "text": "Feature: Check the shape and coverage of a declared independent review"
+        }
+      ],
+      "evidence": "operation.list returns review.checklist-check@1.0.0 and @1.1.0; each published source equals its file (1.0.0: assets/operations/review.checklist-check.feature, 1.1.0: this draft). The published Procedure delegation-code-vitest@1.0.0 invokes review.checklist-check@1.1.0; delegation-code@2.0.0 and delegation-interface@3.0.0 invoke 1.0.0. The only reference to the draft path is scripts/acceptance-vitest-run.acceptance.test.mjs line 69. Unlike its siblings the file has no \"# language: en\" first line; the published source has none either, so the file must keep that form.",
+      "action": "Move the file unchanged to assets/operations/review.checklist-check-1.1.0.feature and change line 69 of scripts/acceptance-vitest-run.acceptance.test.mjs to \"review.checklist-check-1.1.0.feature\".",
+      "touches": [
+        "assets/operations/drafts/review.checklist-check-1.1.0.feature",
+        "scripts/acceptance-vitest-run.acceptance.test.mjs"
+      ],
+      "risk": "low",
+      "riskReason": "Moving the file keeps its exact text, so the published source stays identical; only the path in the test harness changes, and a wrong path fails that test at once. The missing language line must not be added: that would edit a published source.",
+      "state": "open"
+    },
+    {
+      "id": "published-topology-check-source-in-drafts",
+      "title": "delegation.topology-check@1.0.0 is published in the owner's runtime but its source still sits in the drafts folder",
+      "kind": "leftover",
+      "location": {
+        "file": "assets/operations/drafts/delegation.topology-check.feature",
+        "lines": [
+          2,
+          2
+        ],
+        "text": "@trust-dsl:1 @operation:delegation.topology-check @version:1.0.0"
+      },
+      "evidence": "operation.list returns delegation.topology-check@1.0.0 with a source equal to this file. No Procedure in the repository or in procedure.list invokes it; assets/delegation/README.md line 90 names the Operation, not the path. The only reference to the path is scripts/delegation-topology.acceptance.test.mjs line 167 (\"drafts/delegation.topology-check.feature\").",
+      "action": "Move the file unchanged to assets/operations/delegation.topology-check.feature and change line 167 of scripts/delegation-topology.acceptance.test.mjs to \"delegation.topology-check.feature\".",
+      "touches": [
+        "assets/operations/drafts/delegation.topology-check.feature",
+        "scripts/delegation-topology.acceptance.test.mjs"
+      ],
+      "risk": "low",
+      "riskReason": "Moving the file keeps its exact text, so the published source stays identical; only the path in the test harness changes, and a wrong path fails that test at once.",
+      "state": "open"
+    },
+    {
+      "id": "unpublished-node-run-1-1-0-cited-by-published-source",
+      "title": "acceptance.node-run@1.1.0 is only a draft, yet the published acceptance.vitest-run@1.0.0 describes itself by reference to it",
+      "kind": "inconsistency",
+      "location": {
+        "file": "assets/operations/drafts/acceptance.node-run-1.1.0.feature",
+        "lines": [
+          2,
+          2
+        ],
+        "text": "@trust-dsl:1 @operation:acceptance.node-run @version:1.1.0"
+      },
+      "related": [
+        {
+          "file": "assets/operations/acceptance.node-run.feature",
+          "lines": [
+            2,
+            2
+          ],
+          "text": "@trust-dsl:1 @operation:acceptance.node-run @version:1.0.0"
+        },
+        {
+          "file": "assets/operations/drafts/acceptance.vitest-run.feature",
+          "lines": [
+            7,
+            7
+          ],
+          "text": "  acceptance.node-run@1.1.0; a named test absent from the run counts as missing, a code change as stale."
+        }
+      ],
+      "evidence": "operation.list returns acceptance.node-run@1.0.0 (source assets/operations/acceptance.node-run.feature) and no 1.1.0. The published description of acceptance.vitest-run@1.0.0 (drafts/acceptance.vitest-run.feature line 7) says it has the same counts, digests and duration as acceptance.node-run@1.1.0. The draft is used by scripts/acceptance-node-run-timed.acceptance.test.mjs line 10, scripts/acceptance-node-repeat.acceptance.test.mjs line 55 and scripts/acceptance-timed-verification.mjs; the unpublished draft acceptance.node-repeat@1.0.0 builds on it. No Procedure invokes acceptance.node-run@1.1.0.",
+      "action": "The owner publishes acceptance.node-run@1.1.0 from this exact source, then the file moves unchanged to assets/operations/acceptance.node-run-1.1.0.feature and the paths at line 10 of scripts/acceptance-node-run-timed.acceptance.test.mjs and line 55 of scripts/acceptance-node-repeat.acceptance.test.mjs follow.",
+      "touches": [
+        "assets/operations/drafts/acceptance.node-run-1.1.0.feature",
+        "scripts/acceptance-node-run-timed.acceptance.test.mjs",
+        "scripts/acceptance-node-repeat.acceptance.test.mjs"
+      ],
+      "risk": "medium",
+      "riskReason": "Publishing a version is a product decision and fixes its text for good; the published 1.1.0 must be the draft as it stands. The move itself is safe.",
+      "state": "open"
+    },
+    {
+      "id": "corpus-publication-not-declared",
+      "title": "The Corpus extension declares no list of the Procedures and Operations it publishes; its README still calls them an example",
+      "kind": "inconsistency",
+      "location": {
+        "file": "trust-extension/extensions/corpus/README.md",
+        "lines": [
+          314,
+          315
+        ],
+        "text": "The `procedures` directory contains a reusable example framework and Operations.\nPublish under the usual authorized catalog workflow, configure `corpusThreadsUrl`"
+      },
+      "related": [
+        {
+          "file": "trust-extension/trust-registry.json",
+          "lines": [
+            6,
+            6
+          ],
+          "text": "      \"name\": \"relay-gmail\","
+        }
+      ],
+      "evidence": "Searched extension.json, package.json, build-server.mjs, README.md, IMPLEMENTATION.md and trust-extension/trust-registry.json: the registry index lists only the package relay-gmail (its two Operations and two Procedures carry path, version and sha256); nothing lists Corpus sources. Yet 45 of the 51 Operation and Procedure files under trust-extension/extensions/corpus/procedures (the 52nd file is the vocabulary corpus-terms) are published in the owner's runtime with an identical source, and corpus-thread-framework@0.9.0 drives the engaged framework Plan entretien-code-plan-20261005. Six files are not published: thread-framework.procedure.feature (0.1.0), thread-framework-0.3.0.procedure.feature, thread-read.operation.feature (0.1.0) and the three Procedures of history/ named in another finding. procedure.list shows the Corpus Procedures published by hand (publishedBy local-operator or mcp-agent), while relay-gmail shows publishedBy registry-package:relay-gmail@0.1.0.",
+      "action": "Add a corpus package to trust-extension/trust-registry.json that lists every published Corpus Operation and Procedure with its path, name, version and sha256, and replace the README paragraph by a pointer to that list.",
+      "touches": [
+        "trust-extension/extensions/corpus/README.md",
+        "trust-extension/trust-registry.json"
+      ],
+      "risk": "medium",
+      "riskReason": "No published source changes, but a registry package becomes installable: each sha256 must match the source already published, or a registry install would conflict with the catalogue; the registry acceptance tests read this index format.",
+      "state": "open"
+    },
+    {
+      "id": "coverage-check-unversioned-name-holds-0-1-0",
+      "title": "coverage-check.operation.feature holds corpus.coverage-check@0.1.0 beside the files of versions 0.2.0, 0.3.0 and 0.4.0",
+      "kind": "inconsistency",
+      "location": {
+        "file": "trust-extension/extensions/corpus/procedures/coverage-check.operation.feature",
+        "lines": [
+          1,
+          1
+        ],
+        "text": "@trust-dsl:1 @operation:corpus.coverage-check @version:0.1.0"
+      },
+      "related": [
+        {
+          "file": "trust-extension/extensions/corpus/procedures/coverage-check-0.2.0.operation.feature",
+          "lines": [
+            1,
+            1
+          ],
+          "text": "@trust-dsl:1 @operation:corpus.coverage-check @version:0.2.0"
+        },
+        {
+          "file": "trust-extension/extensions/corpus/procedures/coverage-check-0.3.0.operation.feature",
+          "lines": [
+            1,
+            1
+          ],
+          "text": "@trust-dsl:1 @operation:corpus.coverage-check @version:0.3.0"
+        },
+        {
+          "file": "trust-extension/extensions/corpus/procedures/coverage-check-0.4.0.operation.feature",
+          "lines": [
+            1,
+            1
+          ],
+          "text": "@trust-dsl:1 @operation:corpus.coverage-check @version:0.4.0"
+        }
+      ],
+      "evidence": "All four versions are published with identical sources. Only the unpublished corpus-thread-framework@0.3.0 invokes 0.1.0; thread-framework 0.4.0 and 0.5.0 invoke 0.2.0, 0.6.0 invokes 0.3.0, and 0.7.0 to 0.9.0 invoke 0.4.0. The unversioned path is read by trust-extension/extensions/corpus/acceptance/governance.acceptance.test.mjs line 37. In this folder an unversioned name means the oldest version, while in delegation/ it means 2.0.0 and in assets/operations it means the newest.",
+      "action": "Rename the file unchanged to coverage-check-0.1.0.operation.feature and update line 37 of governance.acceptance.test.mjs.",
+      "touches": [
+        "trust-extension/extensions/corpus/procedures/coverage-check.operation.feature",
+        "trust-extension/extensions/corpus/acceptance/governance.acceptance.test.mjs"
+      ],
+      "risk": "low",
+      "riskReason": "A rename keeps the published text; only one test path changes.",
+      "state": "open"
+    },
+    {
+      "id": "thread-link-unversioned-name-holds-0-1-0",
+      "title": "thread-link.operation.feature holds corpus.thread-link@0.1.0 beside the files of versions 0.2.0 and 0.3.0",
+      "kind": "inconsistency",
+      "location": {
+        "file": "trust-extension/extensions/corpus/procedures/thread-link.operation.feature",
+        "lines": [
+          1,
+          1
+        ],
+        "text": "@trust-dsl:1 @operation:corpus.thread-link @version:0.1.0"
+      },
+      "related": [
+        {
+          "file": "trust-extension/extensions/corpus/procedures/thread-link-0.2.0.operation.feature",
+          "lines": [
+            1,
+            1
+          ],
+          "text": "@trust-dsl:1 @operation:corpus.thread-link @version:0.2.0"
+        },
+        {
+          "file": "trust-extension/extensions/corpus/procedures/thread-link-0.3.0.operation.feature",
+          "lines": [
+            1,
+            1
+          ],
+          "text": "@trust-dsl:1 @operation:corpus.thread-link @version:0.3.0"
+        }
+      ],
+      "evidence": "0.1.0, 0.2.0 and 0.3.0 are published with identical sources. 0.1.0 is still invoked by thread-framework 0.4.0, 0.5.0, 0.6.0, 0.8.0 and 0.9.0 (the version of the engaged framework Plan of this campaign). The unversioned path is read by trust-extension/extensions/corpus/acceptance/continuation-harness.mjs line 340 and apps/trust-web/acceptance/support/corpus-server.mjs line 270.",
+      "action": "Rename the file unchanged to thread-link-0.1.0.operation.feature and update the two test paths.",
+      "touches": [
+        "trust-extension/extensions/corpus/procedures/thread-link.operation.feature",
+        "trust-extension/extensions/corpus/acceptance/continuation-harness.mjs",
+        "apps/trust-web/acceptance/support/corpus-server.mjs"
+      ],
+      "risk": "low",
+      "riskReason": "A rename keeps the published text; the paths are test support only.",
+      "state": "open"
+    },
+    {
+      "id": "thread-complete-unversioned-name-holds-0-1-0",
+      "title": "thread-complete.operation.feature holds corpus.thread-complete@0.1.0 beside the file of version 0.2.0",
+      "kind": "inconsistency",
+      "location": {
+        "file": "trust-extension/extensions/corpus/procedures/thread-complete.operation.feature",
+        "lines": [
+          1,
+          1
+        ],
+        "text": "@trust-dsl:1 @operation:corpus.thread-complete @version:0.1.0"
+      },
+      "related": [
+        {
+          "file": "trust-extension/extensions/corpus/procedures/thread-complete-0.2.0.operation.feature",
+          "lines": [
+            1,
+            1
+          ],
+          "text": "@trust-dsl:1 @operation:corpus.thread-complete @version:0.2.0"
+        }
+      ],
+      "evidence": "Both versions are published with identical sources. Only the unpublished corpus-thread-framework@0.3.0 invokes 0.1.0; frameworks 0.4.0 to 0.9.0 invoke 0.2.0. The unversioned path is read by trust-extension/extensions/corpus/acceptance/governance.acceptance.test.mjs line 38.",
+      "action": "Rename the file unchanged to thread-complete-0.1.0.operation.feature and update line 38 of governance.acceptance.test.mjs.",
+      "touches": [
+        "trust-extension/extensions/corpus/procedures/thread-complete.operation.feature",
+        "trust-extension/extensions/corpus/acceptance/governance.acceptance.test.mjs"
+      ],
+      "risk": "low",
+      "riskReason": "A rename keeps the published text; only one test path changes.",
+      "state": "open"
+    },
+    {
+      "id": "thread-revision-read-unversioned-name-holds-0-1-0",
+      "title": "thread-revision-read.operation.feature holds corpus.thread-revision-read@0.1.0 beside the file of version 0.2.0",
+      "kind": "inconsistency",
+      "location": {
+        "file": "trust-extension/extensions/corpus/procedures/thread-revision-read.operation.feature",
+        "lines": [
+          1,
+          1
+        ],
+        "text": "@trust-dsl:1 @operation:corpus.thread-revision-read @version:0.1.0"
+      },
+      "related": [
+        {
+          "file": "trust-extension/extensions/corpus/procedures/thread-revision-read-0.2.0.operation.feature",
+          "lines": [
+            1,
+            1
+          ],
+          "text": "@trust-dsl:1 @operation:corpus.thread-revision-read @version:0.2.0"
+        }
+      ],
+      "evidence": "Both versions are published with identical sources. 0.1.0 is invoked by the published thread-framework 0.4.0 and 0.5.0 and corpus-thread-addition@0.1.0; 0.6.0 to 0.9.0 invoke 0.2.0. The unversioned path is read by trust-extension/extensions/corpus/acceptance/continuation-harness.mjs line 342 and apps/trust-web/acceptance/support/corpus-server.mjs line 272.",
+      "action": "Rename the file unchanged to thread-revision-read-0.1.0.operation.feature and update the two test paths.",
+      "touches": [
+        "trust-extension/extensions/corpus/procedures/thread-revision-read.operation.feature",
+        "trust-extension/extensions/corpus/acceptance/continuation-harness.mjs",
+        "apps/trust-web/acceptance/support/corpus-server.mjs"
+      ],
+      "risk": "low",
+      "riskReason": "A rename keeps the published text; the paths are test support only.",
+      "state": "open"
+    },
+    {
+      "id": "thread-read-0-1-0-unpublished-test-source",
+      "title": "thread-read.operation.feature holds corpus.thread-read@0.1.0, which the owner's runtime never published, beside the published 0.2.0",
+      "kind": "inconsistency",
+      "location": {
+        "file": "trust-extension/extensions/corpus/procedures/thread-read.operation.feature",
+        "lines": [
+          1,
+          1
+        ],
+        "text": "@trust-dsl:1 @operation:corpus.thread-read @version:0.1.0"
+      },
+      "related": [
+        {
+          "file": "trust-extension/extensions/corpus/procedures/thread-read-0.2.0.operation.feature",
+          "lines": [
+            1,
+            1
+          ],
+          "text": "@trust-dsl:1 @operation:corpus.thread-read @version:0.2.0"
+        }
+      ],
+      "evidence": "operation.list returns corpus.thread-read@0.2.0 only. 0.1.0 is invoked only by thread-framework.procedure.feature (0.1.0, also unpublished). The path is read by tests that publish it in a disposable runtime: trust-extension/extensions/corpus/acceptance/corpus.acceptance.test.mjs lines 194 and 205, governance.acceptance.test.mjs line 35, reframe.acceptance.test.mjs lines 42-43, and apps/trust-web/acceptance/support/corpus-server.mjs lines 368-369.",
+      "action": "Rename the file unchanged to thread-read-0.1.0.operation.feature and update the paths and sourceName strings in the four test files.",
+      "touches": [
+        "trust-extension/extensions/corpus/procedures/thread-read.operation.feature",
+        "trust-extension/extensions/corpus/acceptance/corpus.acceptance.test.mjs",
+        "trust-extension/extensions/corpus/acceptance/governance.acceptance.test.mjs",
+        "trust-extension/extensions/corpus/acceptance/reframe.acceptance.test.mjs",
+        "apps/trust-web/acceptance/support/corpus-server.mjs"
+      ],
+      "risk": "low",
+      "riskReason": "The version is not published in the owner's runtime and the text does not change; only test paths and labels change.",
+      "state": "open"
+    },
+    {
+      "id": "thread-framework-0-1-0-unpublished-test-source",
+      "title": "thread-framework.procedure.feature holds corpus-thread-framework@0.1.0, never published in the owner's runtime, beside the files of 0.2.0 to 0.9.0",
+      "kind": "inconsistency",
+      "location": {
+        "file": "trust-extension/extensions/corpus/procedures/thread-framework.procedure.feature",
+        "lines": [
+          1,
+          1
+        ],
+        "text": "@trust-dsl:1 @procedure:corpus-thread-framework @version:0.1.0"
+      },
+      "related": [
+        {
+          "file": "trust-extension/extensions/corpus/procedures/thread-framework-0.9.0.procedure.feature",
+          "lines": [
+            1,
+            1
+          ],
+          "text": "@trust-dsl:1 @procedure:corpus-thread-framework @version:0.9.0 @controlled-language:corpus-terms"
+        }
+      ],
+      "evidence": "procedure.list returns corpus-thread-framework 0.2.0 and 0.4.0 to 0.9.0; neither 0.1.0 nor 0.3.0 is published. The first page of plan.list shows Plans on 0.7.0, 0.8.0 and 0.9.0 only. The unversioned path, which reads as the current framework, is used by tests as the old framework: trust-extension/extensions/corpus/acceptance/corpus.acceptance.test.mjs line 196, governance.acceptance.test.mjs line 41, reframe.acceptance.test.mjs line 45, and apps/trust-web/acceptance/support/corpus-server.mjs line 372.",
+      "action": "Rename the file unchanged to thread-framework-0.1.0.procedure.feature and update the four test paths.",
+      "touches": [
+        "trust-extension/extensions/corpus/procedures/thread-framework.procedure.feature",
+        "trust-extension/extensions/corpus/acceptance/corpus.acceptance.test.mjs",
+        "trust-extension/extensions/corpus/acceptance/governance.acceptance.test.mjs",
+        "trust-extension/extensions/corpus/acceptance/reframe.acceptance.test.mjs",
+        "apps/trust-web/acceptance/support/corpus-server.mjs"
+      ],
+      "risk": "low",
+      "riskReason": "The version is not published in the owner's runtime and the text does not change; only test paths change.",
+      "state": "open"
+    },
+    {
+      "id": "delegation-interface-unversioned-name-holds-2-0-0",
+      "title": "delegation/delegation-interface.procedure.feature holds delegation-interface@2.0.0 between the files of 1.0.0 and 3.0.0",
+      "kind": "inconsistency",
+      "location": {
+        "file": "trust-extension/extensions/corpus/procedures/delegation/delegation-interface.procedure.feature",
+        "lines": [
+          2,
+          2
+        ],
+        "text": "@trust-dsl:1 @procedure:delegation-interface @version:2.0.0"
+      },
+      "related": [
+        {
+          "file": "trust-extension/extensions/corpus/procedures/delegation/delegation-interface-1.0.0.procedure.feature",
+          "lines": [
+            2,
+            2
+          ],
+          "text": "@trust-dsl:1 @procedure:delegation-interface @version:1.0.0"
+        },
+        {
+          "file": "trust-extension/extensions/corpus/procedures/delegation/delegation-interface-3.0.0.procedure.feature",
+          "lines": [
+            2,
+            2
+          ],
+          "text": "@trust-dsl:1 @procedure:delegation-interface @version:3.0.0"
+        }
+      ],
+      "evidence": "procedure.list returns delegation-interface 1.0.0, 1.1.0, 2.0.0 and 3.0.0, all with identical sources in the repository; 1.0.0, 1.1.0 and 2.0.0 were each published under the sourceName delegation-interface.procedure.feature, so the unversioned file was overwritten version after version. The first page of plan.list shows 10 Plans on 3.0.0 and none on 2.0.0. No file in the repository references the unversioned path; packages/trust-runtime/acceptance/interface-rules.acceptance.test.ts line 27 reads the 3.0.0 file.",
+      "action": "Rename the file unchanged to delegation-interface-2.0.0.procedure.feature.",
+      "touches": [
+        "trust-extension/extensions/corpus/procedures/delegation/delegation-interface.procedure.feature"
+      ],
+      "risk": "low",
+      "riskReason": "A rename keeps the published text and no file references the path.",
+      "state": "open"
+    },
+    {
+      "id": "history-folder-holds-published-old-versions",
+      "title": "history/ keeps old published versions under the same file names as the current versions in delegation/",
+      "kind": "inconsistency",
+      "location": {
+        "file": "trust-extension/extensions/corpus/procedures/history/delegation-code.procedure.feature",
+        "lines": [
+          2,
+          2
+        ],
+        "text": "@trust-dsl:1 @procedure:delegation-code @version:1.0.0"
+      },
+      "related": [
+        {
+          "file": "trust-extension/extensions/corpus/procedures/delegation/delegation-code.procedure.feature",
+          "lines": [
+            2,
+            2
+          ],
+          "text": "@trust-dsl:1 @procedure:delegation-code @version:2.0.0"
+        },
+        {
+          "file": "trust-extension/extensions/corpus/procedures/history/delegation-interface.procedure.feature",
+          "lines": [
+            2,
+            2
+          ],
+          "text": "@trust-dsl:1 @procedure:delegation-interface @version:1.1.0"
+        }
+      ],
+      "evidence": "history/delegation-code.procedure.feature (delegation-code@1.0.0) and history/delegation-interface.procedure.feature (delegation-interface@1.1.0) are published with identical sources, and both invoke the Operations of the retired Coordination extension. Their base names equal those of delegation/delegation-code.procedure.feature (2.0.0, 20 Plans on the first page of plan.list) and delegation/delegation-interface.procedure.feature (2.0.0), so a search by file name finds two versions. The folder delegation/ keeps another old version by suffix (delegation-interface-1.0.0). No file in the repository references a path below history/.",
+      "action": "Move history/delegation-code.procedure.feature unchanged to delegation/delegation-code-1.0.0.procedure.feature and history/delegation-interface.procedure.feature to delegation/delegation-interface-1.1.0.procedure.feature.",
+      "touches": [
+        "trust-extension/extensions/corpus/procedures/history/delegation-code.procedure.feature",
+        "trust-extension/extensions/corpus/procedures/history/delegation-interface.procedure.feature"
+      ],
+      "risk": "low",
+      "riskReason": "Moving keeps the published text, and nothing references these paths.",
+      "state": "open"
+    },
+    {
+      "id": "history-folder-holds-unpublished-procedures",
+      "title": "history/ holds three Procedure versions that the owner's runtime never published and nothing references",
+      "kind": "leftover",
+      "location": {
+        "file": "trust-extension/extensions/corpus/procedures/history/delegation-documentation.procedure.feature",
+        "lines": [
+          2,
+          2
+        ],
+        "text": "@trust-dsl:1 @procedure:delegation-documentation @version:1.0.0"
+      },
+      "related": [
+        {
+          "file": "trust-extension/extensions/corpus/procedures/history/facet-delegation.procedure.feature",
+          "lines": [
+            2,
+            2
+          ],
+          "text": "@trust-dsl:1 @procedure:facet-delegation @version:0.3.0"
+        },
+        {
+          "file": "trust-extension/extensions/corpus/procedures/history/facet-delegation-browser.procedure.feature",
+          "lines": [
+            2,
+            2
+          ],
+          "text": "@trust-dsl:1 @procedure:facet-delegation-browser @version:0.3.0"
+        }
+      ],
+      "evidence": "procedure.list returns delegation-documentation 2.0.0 only, facet-delegation 2.0.0 only and facet-delegation-browser 2.0.0 only; the history files hold delegation-documentation@1.0.0, facet-delegation@0.3.0 and facet-delegation-browser@0.3.0. No file in the repository references these paths or identities, and the ignored .trust snapshots do not hold them either. They invoke coordination.mission-* Operations of the retired Coordination extension. Git keeps them in the history of trust-extension (commit 0e766ff).",
+      "action": "Delete the three files.",
+      "touches": [
+        "trust-extension/extensions/corpus/procedures/history/delegation-documentation.procedure.feature",
+        "trust-extension/extensions/corpus/procedures/history/facet-delegation.procedure.feature",
+        "trust-extension/extensions/corpus/procedures/history/facet-delegation-browser.procedure.feature"
+      ],
+      "risk": "low",
+      "riskReason": "These versions are not published in the owner's runtime and nothing reads them; Git history keeps the text. Another runtime that published them could not be checked.",
+      "state": "open"
+    },
+    {
+      "id": "coordination-mission-sources-overwrote-published-1-0-0",
+      "title": "The coordination.mission-* files hold 1.1.0 under an unversioned name, and the published 1.0.0 sources are no longer in the tree",
+      "kind": "inconsistency",
+      "location": {
+        "file": "assets/operations/coordination.mission-claim.feature",
+        "lines": [
+          2,
+          2
+        ],
+        "text": "@trust-dsl:1 @operation:coordination.mission-claim @version:1.1.0"
+      },
+      "related": [
+        {
+          "file": "assets/operations/coordination.mission-create.feature",
+          "lines": [
+            2,
+            2
+          ],
+          "text": "@trust-dsl:1 @operation:coordination.mission-create @version:1.1.0"
+        },
+        {
+          "file": "assets/operations/coordination.mission-read.feature",
+          "lines": [
+            2,
+            2
+          ],
+          "text": "@trust-dsl:1 @operation:coordination.mission-read @version:1.1.0"
+        },
+        {
+          "file": "assets/operations/coordination.mission-submit.feature",
+          "lines": [
+            2,
+            2
+          ],
+          "text": "@trust-dsl:1 @operation:coordination.mission-submit @version:1.1.0"
+        }
+      ],
+      "evidence": "operation.list returns coordination.mission-claim, mission-create, mission-read and mission-submit at 1.0.0 and 1.1.0. Outside the ignored .trust folder, the repository holds only the 1.1.0 sources; git log -S on the 1.0.0 tag finds the old text in commits f1d8b30 and 20a8e42. No file in the repository references these Operations at 1.0.0; the published Procedures delegation-interface 1.0.0 and 1.1.0 and history/delegation-code invoke 1.1.0.",
+      "action": "Rename the four files unchanged to coordination.mission-<action>-1.1.0.feature so that their name says which published version they hold.",
+      "touches": [
+        "assets/operations/coordination.mission-claim.feature",
+        "assets/operations/coordination.mission-create.feature",
+        "assets/operations/coordination.mission-read.feature",
+        "assets/operations/coordination.mission-submit.feature"
+      ],
+      "risk": "low",
+      "riskReason": "A rename keeps the published 1.1.0 text, and no file in the repository references these four paths.",
+      "state": "open"
+    }
+  ]
+}

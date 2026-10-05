@@ -1,0 +1,797 @@
+{
+  "axis": "verification-scripts",
+  "findings": [
+    {
+      "id": "coordination-verification-copies-acceptance-verification",
+      "title": "coordination-verification.mjs is a whole-file copy of acceptance-verification.mjs with three differing lines",
+      "kind": "duplication",
+      "location": {
+        "file": "scripts/coordination-verification.mjs",
+        "lines": [
+          46,
+          61
+        ],
+        "text": "export function parseContract(serialized, layer) {\n  if (typeof serialized !== \"string\" || serialized.length > 65536) fail(\"Invalid verification contract\");\n  const value = JSON.parse(serialized);\n  if (\n    !value ||\n    Array.isArray(value) ||\n    Object.keys(value).sort().join(\",\") !== \"artifactPaths,assertions,id,layer,requirements,sourcePaths,testFiles\"\n  )\n    fail(\"Closed verification contract keys required\");\n  if (\n    typeof value.id !== \"string\" ||\n    !/^[A-Za-z0-9][A-Za-z0-9_.-]{0,95}$/u.test(value.id) ||\n    value.layer !== layer ||\n    ![\"unit\", \"integration\", \"database\"].includes(layer)\n  )\n    fail(\"Contract identity or layer mismatch\");"
+      },
+      "related": [
+        {
+          "file": "scripts/acceptance-verification.mjs",
+          "lines": [
+            46,
+            61
+          ],
+          "text": "export function parseContract(serialized, layer) {\n  if (typeof serialized !== \"string\" || serialized.length > 65536) fail(\"Invalid verification contract\");\n  const value = JSON.parse(serialized);\n  if (\n    !value ||\n    Array.isArray(value) ||\n    Object.keys(value).sort().join(\",\") !== \"artifactPaths,assertions,id,layer,requirements,sourcePaths,testFiles\"\n  )\n    fail(\"Closed verification contract keys required\");\n  if (\n    typeof value.id !== \"string\" ||\n    !/^[A-Za-z0-9][A-Za-z0-9_.-]{0,95}$/u.test(value.id) ||\n    value.layer !== layer ||\n    ![\"integration\", \"database\"].includes(layer)\n  )\n    fail(\"Contract identity or layer mismatch\");"
+        }
+      ],
+      "evidence": "Compared the two files with diff: the 324 and 322 lines are identical except (1) the header comment of line 3, (2) the accepted layers: coordination-verification.mjs line 59 accepts [\"unit\", \"integration\", \"database\"] where acceptance-verification.mjs accepts [\"integration\", \"database\"], (3) the node_modules exclusion of the snapshot (recorded as its own finding) and (4) the usage string. Callers: coordination-verification.mjs is run by assets/operations/coordination.verification-run.feature, which is still used by trust-extension/extensions/corpus/procedures/thread-framework-0.4.0.procedure.feature, delegation/delegation-interface-1.0.0.procedure.feature and assets/procedures/agent-delegation-verified.feature; acceptance-verification.mjs is run by assets/operations/acceptance.node-run.feature. No comment or test states why the coordination copy exists; the layer difference is the only functional difference that looks intended.",
+      "action": "Make the helper of the next coordination.verification-run version a thin entry point over one shared Node verification module (for example scripts/node-test-verification.mjs exporting parseContract(serialized, layer, allowedLayers), snapshot and executeVerification), keeping the frozen 1.0.0 helpers byte-identical until their Operation version is retired. The shared module must itself be hashed into the digest and copied with the helper into the test workspaces (scripts/acceptance-operations-support.mjs copies only the named helpers).",
+      "touches": [
+        "scripts/coordination-verification.mjs",
+        "scripts/acceptance-verification.mjs",
+        "assets/operations/coordination.verification-run.feature",
+        "assets/operations/acceptance.node-run.feature"
+      ],
+      "risk": "medium",
+      "riskReason": "Every helper puts the hash of its own file bytes into its digest (entries.set(\"@verification-helper\", hash(await readFile(SELF)))), so any edit of a helper changes every sourceDigest it produces: digests captured before the edit become stale and Plans pinned to an expected digest must be re-captured. Both Operations are published at version 1.0.0 and referenced by live procedures, so the change needs new Operation versions rather than an in-place edit.",
+      "state": "open"
+    },
+    {
+      "id": "coordination-snapshot-includes-node-modules",
+      "title": "The coordination-verification.mjs snapshot hashes node_modules directories that acceptance-verification.mjs skips",
+      "kind": "inconsistency",
+      "location": {
+        "file": "scripts/coordination-verification.mjs",
+        "lines": [
+          95,
+          97
+        ],
+        "text": "  async function visit(relative) {\n    const absolute = path.join(root, relative);\n    const stat = await lstat(absolute);"
+      },
+      "related": [
+        {
+          "file": "scripts/acceptance-verification.mjs",
+          "lines": [
+            95,
+            99
+          ],
+          "text": "  async function visit(relative) {\n    // Installed dependencies are not the work under verification: they are never part of the closure.\n    if (path.basename(relative) === \"node_modules\") return;\n    const absolute = path.join(root, relative);\n    const stat = await lstat(absolute);"
+        }
+      ],
+      "evidence": "acceptance-verification.mjs, acceptance-timed-verification.mjs (lines 117-118) and acceptance-vitest-verification.mjs (lines 115-116) return early on a path whose basename is node_modules, with the comment \"Installed dependencies are not the work under verification\". coordination-verification.mjs has no such line, so a contract path that is or contains node_modules is hashed file by file and can exceed MAX_FILES (20000) or MAX_BYTES. Nothing in its comments or in the tests explains the difference; it reads as a copy taken before the exclusion was added to the other helpers.",
+      "action": "Add the same node_modules exclusion to the coordination helper in its next version, or retire it in favour of the shared module proposed in coordination-verification-copies-acceptance-verification.",
+      "touches": [
+        "scripts/coordination-verification.mjs"
+      ],
+      "risk": "medium",
+      "riskReason": "Every helper puts the hash of its own file bytes into its digest (entries.set(\"@verification-helper\", hash(await readFile(SELF)))), so any edit of a helper changes every sourceDigest it produces: digests captured before the edit become stale and Plans pinned to an expected digest must be re-captured. It also changes which files a coordination closure contains, so a closure that held node_modules gets another digest.",
+      "state": "open"
+    },
+    {
+      "id": "coordination-browser-copies-browser-verification",
+      "title": "coordination-browser-verification.mjs is a whole-file copy of browser-acceptance-verification.mjs",
+      "kind": "duplication",
+      "location": {
+        "file": "scripts/coordination-browser-verification.mjs",
+        "lines": [
+          1,
+          9
+        ],
+        "text": "#!/usr/bin/env node\n// Browser twin of coordination-verification.mjs: runs a closed group of named Playwright specs and reports\n// the same observation protocol, so TRUST qualifies browser acceptance exactly like node:test groups.\nimport { spawn } from \"node:child_process\";\nimport { createHash, randomUUID } from \"node:crypto\";\nimport { lstat, readdir, readFile, realpath } from \"node:fs/promises\";\nimport path from \"node:path\";\nimport { fileURLToPath } from \"node:url\";\nimport { renderObservation } from \"./coordination-verification.mjs\";"
+      },
+      "related": [
+        {
+          "file": "scripts/browser-acceptance-verification.mjs",
+          "lines": [
+            1,
+            9
+          ],
+          "text": "#!/usr/bin/env node\n// Browser twin of acceptance-verification.mjs: runs a closed group of named Playwright specs and reports\n// the same observation protocol, so TRUST qualifies browser acceptance exactly like node:test groups.\nimport { spawn } from \"node:child_process\";\nimport { createHash, randomUUID } from \"node:crypto\";\nimport { lstat, readdir, readFile, realpath } from \"node:fs/promises\";\nimport path from \"node:path\";\nimport { fileURLToPath } from \"node:url\";\nimport { renderObservation } from \"./acceptance-verification.mjs\";"
+        }
+      ],
+      "evidence": "Compared the two files with diff: they differ only in the header comment (line 2), the module renderObservation is imported from (./coordination-verification.mjs or ./acceptance-verification.mjs, line 9), the name of the unused second parameter of observe (contract or _contract, line 139) and the usage string. Callers: assets/operations/coordination.browser-verification-run.feature and assets/operations/acceptance.browser-run.feature. Both imported renderObservation functions are byte-identical, so the two browser helpers produce the same output.",
+      "action": "Keep one browser verification module and make the next version of coordination.browser-verification-run call it; retire the copy when no procedure pins version 1.0.0.",
+      "touches": [
+        "scripts/coordination-browser-verification.mjs",
+        "scripts/browser-acceptance-verification.mjs",
+        "assets/operations/coordination.browser-verification-run.feature"
+      ],
+      "risk": "medium",
+      "riskReason": "Every helper puts the hash of its own file bytes into its digest (entries.set(\"@verification-helper\", hash(await readFile(SELF)))), so any edit of a helper changes every sourceDigest it produces: digests captured before the edit become stale and Plans pinned to an expected digest must be re-captured. The Operation is referenced by delegation procedures in trust-extension.",
+      "state": "open"
+    },
+    {
+      "id": "verification-contract-parsing-written-five-times",
+      "title": "The verification contract parser is written in five helpers with the same validation rules",
+      "kind": "duplication",
+      "location": {
+        "file": "scripts/acceptance-timed-verification.mjs",
+        "lines": [
+          69,
+          108
+        ],
+        "text": "export function parseContract(serialized, layer) {\n  if (typeof serialized !== \"string\" || serialized.length > 65536) fail(\"Invalid verification contract\");\n  const value = JSON.parse(serialized);\n  if (!value || Array.isArray(value) || !CONTRACT_KEYS.includes(Object.keys(value).sort().join(\",\")))\n    fail(\"Closed verification contract keys required\");\n  if (\"revision\" in value && (!Number.isSafeInteger(value.revision) || value.revision < 1))\n    fail(\"Contract revision must be a positive integer\");\n  if (\n    typeof value.id !== \"string\" ||\n    !/^[A-Za-z0-9][A-Za-z0-9_.-]{0,95}$/u.test(value.id) ||\n    value.layer !== layer ||\n    ![\"integration\", \"database\"].includes(layer)\n  )\n    fail(\"Contract identity or layer mismatch\");\n  list(\n    value.requirements,\n    (entry) => typeof entry === \"string\" && /^[A-Z][A-Z0-9_.-]{0,95}$/u.test(entry),\n    \"requirement IDs\",\n  );\n  list(value.testFiles, (entry) => relativePath(entry) && /\\.(mjs|cjs|js|ts)$/u.test(entry), \"testFiles\");\n  list(value.sourcePaths, relativePath, \"sourcePaths\");\n  list(value.artifactPaths, relativePath, \"artifactPaths\");\n  list(\n    value.assertions,\n    (entry) =>\n      entry &&\n      Object.keys(entry).sort().join(\",\") === \"file,name,requirement\" &&\n      value.requirements.includes(entry.requirement) &&\n      text(entry.name) &&\n      relativePath(entry.file),\n    \"assertions\",\n  );\n  const keys = value.assertions.map((entry) => `${entry.file}\\0${entry.name}`);\n  if (\n    new Set(keys).size !== keys.length ||\n    value.requirements.some((id) => !value.assertions.some((entry) => entry.requirement === id))\n  )\n    fail(\"Each requirement needs distinct named assertions\");\n  return value;\n}"
+      },
+      "related": [
+        {
+          "file": "scripts/acceptance-verification.mjs",
+          "lines": [
+            46,
+            87
+          ],
+          "text": "export function parseContract(serialized, layer) {\n  if (typeof serialized !== \"string\" || serialized.length > 65536) fail(\"Invalid verification contract\");\n  const value = JSON.parse(serialized);\n  if (\n    !value ||\n    Array.isArray(value) ||\n    Object.keys(value).sort().join(\",\") !== \"artifactPaths,assertions,id,layer,requirements,sourcePaths,testFiles\"\n  )\n    fail(\"Closed verification contract keys required\");\n  if (\n    typeof value.id !== \"string\" ||\n    !/^[A-Za-z0-9][A-Za-z0-9_.-]{0,95}$/u.test(value.id) ||\n    value.layer !== layer ||\n    ![\"integration\", \"database\"].includes(layer)\n  )\n    fail(\"Contract identity or layer mismatch\");\n  list(\n    value.requirements,\n    (entry) => typeof entry === \"string\" && /^[A-Z][A-Z0-9_.-]{0,95}$/u.test(entry),\n    \"requirement IDs\",\n  );\n  list(value.testFiles, (entry) => relativePath(entry) && /\\.(mjs|cjs|js|ts)$/u.test(entry), \"testFiles\");\n  list(value.sourcePaths, relativePath, \"sourcePaths\");\n  list(value.artifactPaths, relativePath, \"artifactPaths\");\n  list(\n    value.assertions,\n    (entry) =>\n      entry &&\n      Object.keys(entry).sort().join(\",\") === \"file,name,requirement\" &&\n      value.requirements.includes(entry.requirement) &&\n      text(entry.name) &&\n      relativePath(entry.file),\n    \"assertions\",\n  );\n  const keys = value.assertions.map((entry) => `${entry.file}\\0${entry.name}`);\n  if (\n    new Set(keys).size !== keys.length ||\n    value.requirements.some((id) => !value.assertions.some((entry) => entry.requirement === id))\n  )\n    fail(\"Each requirement needs distinct named assertions\");\n  return value;\n}"
+        },
+        {
+          "file": "scripts/coordination-verification.mjs",
+          "lines": [
+            46,
+            87
+          ],
+          "text": "export function parseContract(serialized, layer) {\n  if (typeof serialized !== \"string\" || serialized.length > 65536) fail(\"Invalid verification contract\");\n  const value = JSON.parse(serialized);\n  if (\n    !value ||\n    Array.isArray(value) ||\n    Object.keys(value).sort().join(\",\") !== \"artifactPaths,assertions,id,layer,requirements,sourcePaths,testFiles\"\n  )\n    fail(\"Closed verification contract keys required\");\n  if (\n    typeof value.id !== \"string\" ||\n    !/^[A-Za-z0-9][A-Za-z0-9_.-]{0,95}$/u.test(value.id) ||\n    value.layer !== layer ||\n    ![\"unit\", \"integration\", \"database\"].includes(layer)\n  )\n    fail(\"Contract identity or layer mismatch\");\n  list(\n    value.requirements,\n    (entry) => typeof entry === \"string\" && /^[A-Z][A-Z0-9_.-]{0,95}$/u.test(entry),\n    \"requirement IDs\",\n  );\n  list(value.testFiles, (entry) => relativePath(entry) && /\\.(mjs|cjs|js|ts)$/u.test(entry), \"testFiles\");\n  list(value.sourcePaths, relativePath, \"sourcePaths\");\n  list(value.artifactPaths, relativePath, \"artifactPaths\");\n  list(\n    value.assertions,\n    (entry) =>\n      entry &&\n      Object.keys(entry).sort().join(\",\") === \"file,name,requirement\" &&\n      value.requirements.includes(entry.requirement) &&\n      text(entry.name) &&\n      relativePath(entry.file),\n    \"assertions\",\n  );\n  const keys = value.assertions.map((entry) => `${entry.file}\\0${entry.name}`);\n  if (\n    new Set(keys).size !== keys.length ||\n    value.requirements.some((id) => !value.assertions.some((entry) => entry.requirement === id))\n  )\n    fail(\"Each requirement needs distinct named assertions\");\n  return value;\n}"
+        },
+        {
+          "file": "scripts/acceptance-vitest-verification.mjs",
+          "lines": [
+            55,
+            105
+          ],
+          "text": "export function parseContract(serialized) {\n  if (typeof serialized !== \"string\" || serialized.length > 65536) fail(\"Invalid verification contract\");\n  const value = JSON.parse(serialized);\n  const keys = value && !Array.isArray(value) && typeof value === \"object\" ? Object.keys(value) : [];\n  if (\n    !REQUIRED_KEYS.every((key) => keys.includes(key)) ||\n    !keys.every((key) => REQUIRED_KEYS.includes(key) || OPTIONAL_KEYS.includes(key))\n  )\n    fail(\"Closed verification contract keys required\");\n  if (\"revision\" in value && (!Number.isSafeInteger(value.revision) || value.revision < 1))\n    fail(\"Contract revision must be a positive integer\");\n  if (\"vitest\" in value) {\n    const selection = value.vitest;\n    const selectionKeys = selection && !Array.isArray(selection) ? Object.keys(selection) : [\"invalid\"];\n    if (\n      !selectionKeys.every((key) => key === \"project\" || key === \"config\") ||\n      (\"project\" in selection &&\n        !(text(selection.project) && /^[A-Za-z0-9@][A-Za-z0-9@/_.:-]{0,95}$/u.test(selection.project))) ||\n      (\"config\" in selection && !relativePath(selection.config))\n    )\n      fail(\"Contract vitest selection must be { project?, config? } with a project name and a relative config path\");\n  }\n  if (typeof value.id !== \"string\" || !/^[A-Za-z0-9][A-Za-z0-9_.-]{0,95}$/u.test(value.id))\n    fail(\"Contract identity mismatch\");\n  list(\n    value.requirements,\n    (entry) => typeof entry === \"string\" && /^[A-Z][A-Z0-9_.-]{0,95}$/u.test(entry),\n    \"requirement IDs\",\n  );\n  list(value.testFiles, (entry) => relativePath(entry) && TEST_FILE.test(entry), \"testFiles\");\n  list(value.sourcePaths, relativePath, \"sourcePaths\");\n  list(value.artifactPaths, relativePath, \"artifactPaths\");\n  list(\n    value.assertions,\n    (entry) =>\n      entry &&\n      Object.keys(entry).sort().join(\",\") === \"file,name,requirement\" &&\n      value.requirements.includes(entry.requirement) &&\n      text(entry.name) &&\n      relativePath(entry.file) &&\n      value.testFiles.includes(entry.file),\n    \"assertions\",\n  );\n  const named = value.assertions.map((entry) => `${entry.file}\\0${entry.name}`);\n  if (\n    new Set(named).size !== named.length ||\n    value.requirements.some((id) => !value.assertions.some((entry) => entry.requirement === id))\n  )\n    fail(\"Each requirement needs distinct named assertions\");\n  return value;\n}"
+        },
+        {
+          "file": "scripts/browser-acceptance-verification.mjs",
+          "lines": [
+            31,
+            74
+          ],
+          "text": "export function parseBrowserContract(serialized, layer) {\n  if (typeof serialized !== \"string\" || serialized.length > 65536) fail(\"Invalid verification contract\");\n  const value = JSON.parse(serialized);\n  if (\n    !value ||\n    Array.isArray(value) ||\n    Object.keys(value).sort().join(\",\") !==\n      \"artifactPaths,assertions,config,id,layer,requirements,sourcePaths,testFiles\"\n  )\n    fail(\"Closed browser verification contract keys required\");\n  if (\n    typeof value.id !== \"string\" ||\n    !/^[A-Za-z0-9][A-Za-z0-9_.-]{0,95}$/u.test(value.id) ||\n    value.layer !== layer ||\n    layer !== \"browser\"\n  )\n    fail(\"Contract identity or layer mismatch\");\n  if (!relativePath(value.config) || !/\\.(ts|mjs|js)$/u.test(value.config)) fail(\"Invalid Playwright config path\");\n  list(\n    value.requirements,\n    (entry) => typeof entry === \"string\" && /^[A-Z][A-Z0-9_.-]{0,95}$/u.test(entry),\n    \"requirement IDs\",\n  );\n  list(value.testFiles, (entry) => relativePath(entry) && /\\.spec\\.ts$/u.test(entry), \"testFiles\");\n  list(value.sourcePaths, relativePath, \"sourcePaths\");\n  list(value.artifactPaths, relativePath, \"artifactPaths\");\n  list(\n    value.assertions,\n    (entry) =>\n      entry &&\n      Object.keys(entry).sort().join(\",\") === \"file,name,requirement\" &&\n      value.requirements.includes(entry.requirement) &&\n      text(entry.name) &&\n      value.testFiles.includes(entry.file),\n    \"assertions\",\n  );\n  const keys = value.assertions.map((entry) => `${entry.file}\\0${entry.name}`);\n  if (\n    new Set(keys).size !== keys.length ||\n    value.requirements.some((id) => !value.assertions.some((entry) => entry.requirement === id))\n  )\n    fail(\"Each requirement needs distinct named assertions\");\n  return value;\n}"
+        }
+      ],
+      "evidence": "Compared the five parseContract/parseBrowserContract bodies. acceptance-verification.mjs and coordination-verification.mjs are identical except the allowed layers. acceptance-timed-verification.mjs adds the optional revision key (intended: its header says it is \"Self-contained on purpose: acceptance-verification.mjs stays the frozen helper of acceptance.node-run@1.0.0\"). acceptance-vitest-verification.mjs drops layer, adds revision and vitest, accepts jsx/mts/cts/tsx test files and requires each assertion file to be listed in testFiles (intended: documented in its doc comment). browser-acceptance-verification.mjs adds config, requires layer browser and .spec.ts files (intended), but also uses weaker helpers (see browser-contract-helpers-differ). The id rule, the requirement rule, the assertion key rule and the \"Each requirement needs distinct named assertions\" rule are the same text in all five.",
+      "action": "Extract one parser in a shared module (for example scripts/verification-contract.mjs) taking the optional keys, the allowed layers and the test-file pattern as parameters, and use it in the next version of each helper. Each helper copied into a test workspace by scripts/acceptance-operations-support.mjs must then list the shared module in its helpers, and the snapshot must hash the shared module as well as SELF.",
+      "touches": [
+        "scripts/acceptance-timed-verification.mjs",
+        "scripts/acceptance-verification.mjs",
+        "scripts/coordination-verification.mjs",
+        "scripts/acceptance-vitest-verification.mjs",
+        "scripts/browser-acceptance-verification.mjs",
+        "scripts/acceptance-operations-support.mjs"
+      ],
+      "risk": "high",
+      "riskReason": "Every helper puts the hash of its own file bytes into its digest (entries.set(\"@verification-helper\", hash(await readFile(SELF)))), so any edit of a helper changes every sourceDigest it produces: digests captured before the edit become stale and Plans pinned to an expected digest must be re-captured. The serialized contract is itself a digest input, and the refusal messages are asserted by acceptance tests (for example /Closed verification contract keys required/ in scripts/acceptance-node-run-timed.acceptance.test.mjs); a single parser must keep each helper's exact accepted set and messages.",
+      "state": "open"
+    },
+    {
+      "id": "browser-contract-helpers-differ",
+      "title": "The browser helper validates contract paths and names with weaker rules than the Node and Vitest helpers",
+      "kind": "inconsistency",
+      "location": {
+        "file": "scripts/browser-acceptance-verification.mjs",
+        "lines": [
+          19,
+          29
+        ],
+        "text": "const relativePath = (entry) =>\n  typeof entry === \"string\" &&\n  entry.length > 0 &&\n  !path.isAbsolute(entry) &&\n  !entry.includes(\"\\\\\") &&\n  !entry.split(\"/\").some((part) => part === \"..\" || part === \"\");\nconst text = (value) => typeof value === \"string\" && value.trim().length > 0 && value.length <= 400;\nfunction list(value, accept, label) {\n  if (!Array.isArray(value) || value.length === 0 || value.length > 1000 || !value.every(accept))\n    fail(`Invalid ${label}`);\n}"
+      },
+      "related": [
+        {
+          "file": "scripts/acceptance-verification.mjs",
+          "lines": [
+            19,
+            38
+          ],
+          "text": "const text = (value) =>\n  typeof value === \"string\" &&\n  value.length > 0 &&\n  value.length <= 512 &&\n  [...value].every((character) => character.charCodeAt(0) >= 32);\nconst relativePath = (value) =>\n  text(value) &&\n  !path.isAbsolute(value) &&\n  value.split(/[\\\\/]/u).every((part) => part !== \"..\" && part !== \".\" && part !== \"\");\nconst list = (value, predicate, name) => {\n  if (\n    !Array.isArray(value) ||\n    value.length < 1 ||\n    value.length > 256 ||\n    !value.every(predicate) ||\n    new Set(value).size !== value.length\n  )\n    fail(`Invalid ${name}`);\n  return value;\n};"
+        }
+      ],
+      "evidence": "Compared the helper functions. The Node, coordination, timed and Vitest helpers share text (1 to 512 characters, no control character), relativePath (split on / and \\\\, refuses '.', '..' and empty segments) and list (1 to 256 entries, no duplicate). The browser helper (and its coordination copy) has: text with trim and 400 characters that accepts control characters, relativePath that accepts a '.' segment and refuses a backslash, list with up to 1000 entries and no duplicate check. acceptance-selection.mjs (lines 34-41) has a third relativePath variant, refusing backslashes but keeping the '.' and control-character rules. No comment or test explains these differences; the browser rules look like an independent rewrite rather than an intended relaxation.",
+      "action": "Use the shared text, relativePath and list helpers of the Node helpers in the browser helper's next version, keeping the browser-only rules (config path, .spec.ts files, layer browser) in parseBrowserContract.",
+      "touches": [
+        "scripts/browser-acceptance-verification.mjs",
+        "scripts/coordination-browser-verification.mjs",
+        "scripts/acceptance-selection.mjs"
+      ],
+      "risk": "medium",
+      "riskReason": "Every helper puts the hash of its own file bytes into its digest (entries.set(\"@verification-helper\", hash(await readFile(SELF)))), so any edit of a helper changes every sourceDigest it produces: digests captured before the edit become stale and Plans pinned to an expected digest must be re-captured. It narrows what the browser helper accepts: a contract with a duplicate entry, a '.' segment or a control character in an assertion name would become refused.",
+      "state": "open"
+    },
+    {
+      "id": "verification-closure-snapshot-copied",
+      "title": "The closure snapshot (visit, bounds, symbolic-link refusal, sorted digest) is copied in six helpers",
+      "kind": "duplication",
+      "location": {
+        "file": "scripts/acceptance-verification.mjs",
+        "lines": [
+          92,
+          110
+        ],
+        "text": "async function snapshot(root, contract) {\n  const entries = new Map();\n  let bytes = 0;\n  async function visit(relative) {\n    // Installed dependencies are not the work under verification: they are never part of the closure.\n    if (path.basename(relative) === \"node_modules\") return;\n    const absolute = path.join(root, relative);\n    const stat = await lstat(absolute);\n    if ((await realpath(absolute)) !== absolute) fail(`Symbolic link refused in verification closure: ${relative}`);\n    if (stat.isSymbolicLink()) fail(`Symbolic link refused in verification closure: ${relative}`);\n    if (stat.isDirectory()) {\n      for (const name of (await readdir(absolute)).sort()) await visit(path.join(relative, name));\n    } else if (stat.isFile()) {\n      if (entries.has(relative)) return;\n      bytes += stat.size;\n      if (entries.size >= MAX_FILES || bytes > MAX_BYTES) fail(\"Verification closure exceeds bounds\");\n      entries.set(relative, hash(await readFile(absolute)));\n    } else fail(`Unsupported verification file: ${relative}`);\n  }"
+      },
+      "related": [
+        {
+          "file": "scripts/acceptance-timed-verification.mjs",
+          "lines": [
+            113,
+            131
+          ],
+          "text": "async function snapshot(root, contract) {\n  const entries = new Map();\n  let bytes = 0;\n  async function visit(relative) {\n    // Installed dependencies are not the work under verification: they are never part of the closure.\n    if (path.basename(relative) === \"node_modules\") return;\n    const absolute = path.join(root, relative);\n    const stat = await lstat(absolute);\n    if ((await realpath(absolute)) !== absolute) fail(`Symbolic link refused in verification closure: ${relative}`);\n    if (stat.isSymbolicLink()) fail(`Symbolic link refused in verification closure: ${relative}`);\n    if (stat.isDirectory()) {\n      for (const name of (await readdir(absolute)).sort()) await visit(path.join(relative, name));\n    } else if (stat.isFile()) {\n      if (entries.has(relative)) return;\n      bytes += stat.size;\n      if (entries.size >= MAX_FILES || bytes > MAX_BYTES) fail(\"Verification closure exceeds bounds\");\n      entries.set(relative, hash(await readFile(absolute)));\n    } else fail(`Unsupported verification file: ${relative}`);\n  }"
+        },
+        {
+          "file": "scripts/coordination-verification.mjs",
+          "lines": [
+            92,
+            108
+          ],
+          "text": "async function snapshot(root, contract) {\n  const entries = new Map();\n  let bytes = 0;\n  async function visit(relative) {\n    const absolute = path.join(root, relative);\n    const stat = await lstat(absolute);\n    if ((await realpath(absolute)) !== absolute) fail(`Symbolic link refused in verification closure: ${relative}`);\n    if (stat.isSymbolicLink()) fail(`Symbolic link refused in verification closure: ${relative}`);\n    if (stat.isDirectory()) {\n      for (const name of (await readdir(absolute)).sort()) await visit(path.join(relative, name));\n    } else if (stat.isFile()) {\n      if (entries.has(relative)) return;\n      bytes += stat.size;\n      if (entries.size >= MAX_FILES || bytes > MAX_BYTES) fail(\"Verification closure exceeds bounds\");\n      entries.set(relative, hash(await readFile(absolute)));\n    } else fail(`Unsupported verification file: ${relative}`);\n  }"
+        },
+        {
+          "file": "scripts/acceptance-vitest-verification.mjs",
+          "lines": [
+            111,
+            129
+          ],
+          "text": "async function snapshot(root, contract, vitestVersion) {\n  const entries = new Map();\n  let bytes = 0;\n  async function visit(relative) {\n    // Installed dependencies are not the work under verification: they are never part of the closure.\n    if (path.basename(relative) === \"node_modules\") return;\n    const absolute = path.join(root, relative);\n    const stat = await lstat(absolute);\n    if (stat.isSymbolicLink() || (await realpath(absolute)) !== absolute)\n      fail(`Symbolic link refused in verification closure: ${relative}`);\n    if (stat.isDirectory()) {\n      for (const name of (await readdir(absolute)).sort()) await visit(path.join(relative, name));\n    } else if (stat.isFile()) {\n      if (entries.has(relative)) return;\n      bytes += stat.size;\n      if (entries.size >= MAX_FILES || bytes > MAX_BYTES) fail(\"Verification closure exceeds bounds\");\n      entries.set(relative, hash(await readFile(absolute)));\n    } else fail(`Unsupported verification file: ${relative}`);\n  }"
+        },
+        {
+          "file": "scripts/browser-acceptance-verification.mjs",
+          "lines": [
+            76,
+            92
+          ],
+          "text": "async function snapshot(root, contract) {\n  const entries = new Map();\n  let bytes = 0;\n  async function visit(relative) {\n    const absolute = path.join(root, relative);\n    const stat = await lstat(absolute);\n    if (stat.isSymbolicLink() || (await realpath(absolute)) !== absolute)\n      fail(`Symbolic link refused in verification closure: ${relative}`);\n    if (stat.isDirectory()) {\n      for (const name of (await readdir(absolute)).sort()) await visit(path.join(relative, name));\n    } else if (stat.isFile()) {\n      if (entries.has(relative)) return;\n      bytes += stat.size;\n      if (entries.size >= MAX_FILES || bytes > MAX_BYTES) fail(\"Verification closure exceeds bounds\");\n      entries.set(relative, hash(await readFile(absolute)));\n    } else fail(`Unsupported verification file: ${relative}`);\n  }"
+        },
+        {
+          "file": "scripts/coordination-browser-verification.mjs",
+          "lines": [
+            76,
+            92
+          ],
+          "text": "async function snapshot(root, contract) {\n  const entries = new Map();\n  let bytes = 0;\n  async function visit(relative) {\n    const absolute = path.join(root, relative);\n    const stat = await lstat(absolute);\n    if (stat.isSymbolicLink() || (await realpath(absolute)) !== absolute)\n      fail(`Symbolic link refused in verification closure: ${relative}`);\n    if (stat.isDirectory()) {\n      for (const name of (await readdir(absolute)).sort()) await visit(path.join(relative, name));\n    } else if (stat.isFile()) {\n      if (entries.has(relative)) return;\n      bytes += stat.size;\n      if (entries.size >= MAX_FILES || bytes > MAX_BYTES) fail(\"Verification closure exceeds bounds\");\n      entries.set(relative, hash(await readFile(absolute)));\n    } else fail(`Unsupported verification file: ${relative}`);\n  }"
+        }
+      ],
+      "evidence": "Compared the snapshot functions. acceptance-verification.mjs and acceptance-timed-verification.mjs are identical (intended, the timed helper is self-contained on purpose). coordination-verification.mjs lacks the node_modules line. acceptance-vitest-verification.mjs and the two browser helpers merge the two symbolic-link checks into one condition (same behaviour). The browser helpers bound the closure at 512 MB (MAX_BYTES line 13) where the others use 128 MB, and the Vitest digest adds the Vitest version. The final digest expression hash(JSON.stringify({ contract, node, files })) is the same text in five files.",
+      "action": "Move visit, the bounds and the digest into the shared verification module with the closure roots, the extra digest fields and MAX_BYTES as parameters; keep JSON.stringify key order and the @verification-helper entry so the digest formula stays the same for unchanged inputs.",
+      "touches": [
+        "scripts/acceptance-verification.mjs",
+        "scripts/acceptance-timed-verification.mjs",
+        "scripts/coordination-verification.mjs",
+        "scripts/acceptance-vitest-verification.mjs",
+        "scripts/browser-acceptance-verification.mjs",
+        "scripts/coordination-browser-verification.mjs",
+        "scripts/acceptance-operations-support.mjs"
+      ],
+      "risk": "high",
+      "riskReason": "Every helper puts the hash of its own file bytes into its digest (entries.set(\"@verification-helper\", hash(await readFile(SELF)))), so any edit of a helper changes every sourceDigest it produces: digests captured before the edit become stale and Plans pinned to an expected digest must be re-captured. The JSON.stringify key order, the sort comparator and the entry names are digest inputs: a refactor that reorders them silently changes every proof.",
+      "state": "open"
+    },
+    {
+      "id": "verification-import-closure-copied",
+      "title": "The rule that follows a test file's relative imports into the closure is copied in four helpers and absent from the browser helper",
+      "kind": "duplication",
+      "location": {
+        "file": "scripts/acceptance-verification.mjs",
+        "lines": [
+          111,
+          132
+        ],
+        "text": "  const tests = new Set([...contract.testFiles, ...contract.assertions.map((entry) => entry.file)]);\n  for (const relative of new Set([...contract.sourcePaths, ...contract.artifactPaths, ...tests])) await visit(relative);\n  // The support modules a test imports belong to the verified closure even when the contract does not list them:\n  // relative imports are followed from each test file, recursively inside that test file's directory.\n  const followed = new Set();\n  async function followImports(relative, scope) {\n    if (followed.has(relative) || !/\\.(mjs|cjs|js|ts)$/u.test(relative)) return;\n    followed.add(relative);\n    const source = await readFile(path.join(root, relative), \"utf8\");\n    for (const [, specifier] of source.matchAll(LOCAL_IMPORT)) {\n      const target = path.normalize(path.join(path.dirname(relative), specifier));\n      if (target.startsWith(\"..\") || path.isAbsolute(target)) continue;\n      try {\n        await visit(target);\n      } catch (error) {\n        if (error.code === \"ENOENT\") continue;\n        throw error;\n      }\n      if (target.startsWith(scope)) await followImports(target, scope);\n    }\n  }\n  for (const relative of tests) await followImports(relative, `${path.dirname(relative)}${path.sep}`);"
+      },
+      "related": [
+        {
+          "file": "scripts/acceptance-timed-verification.mjs",
+          "lines": [
+            132,
+            153
+          ],
+          "text": "  const tests = new Set([...contract.testFiles, ...contract.assertions.map((entry) => entry.file)]);\n  for (const relative of new Set([...contract.sourcePaths, ...contract.artifactPaths, ...tests])) await visit(relative);\n  // The support modules a test imports belong to the verified closure even when the contract does not list them:\n  // relative imports are followed from each test file, recursively inside that test file's directory.\n  const followed = new Set();\n  async function followImports(relative, scope) {\n    if (followed.has(relative) || !/\\.(mjs|cjs|js|ts)$/u.test(relative)) return;\n    followed.add(relative);\n    const source = await readFile(path.join(root, relative), \"utf8\");\n    for (const [, specifier] of source.matchAll(LOCAL_IMPORT)) {\n      const target = path.normalize(path.join(path.dirname(relative), specifier));\n      if (target.startsWith(\"..\") || path.isAbsolute(target)) continue;\n      try {\n        await visit(target);\n      } catch (error) {\n        if (error.code === \"ENOENT\") continue;\n        throw error;\n      }\n      if (target.startsWith(scope)) await followImports(target, scope);\n    }\n  }\n  for (const relative of tests) await followImports(relative, `${path.dirname(relative)}${path.sep}`);"
+        },
+        {
+          "file": "scripts/coordination-verification.mjs",
+          "lines": [
+            109,
+            130
+          ],
+          "text": "  const tests = new Set([...contract.testFiles, ...contract.assertions.map((entry) => entry.file)]);\n  for (const relative of new Set([...contract.sourcePaths, ...contract.artifactPaths, ...tests])) await visit(relative);\n  // The support modules a test imports belong to the verified closure even when the contract does not list them:\n  // relative imports are followed from each test file, recursively inside that test file's directory.\n  const followed = new Set();\n  async function followImports(relative, scope) {\n    if (followed.has(relative) || !/\\.(mjs|cjs|js|ts)$/u.test(relative)) return;\n    followed.add(relative);\n    const source = await readFile(path.join(root, relative), \"utf8\");\n    for (const [, specifier] of source.matchAll(LOCAL_IMPORT)) {\n      const target = path.normalize(path.join(path.dirname(relative), specifier));\n      if (target.startsWith(\"..\") || path.isAbsolute(target)) continue;\n      try {\n        await visit(target);\n      } catch (error) {\n        if (error.code === \"ENOENT\") continue;\n        throw error;\n      }\n      if (target.startsWith(scope)) await followImports(target, scope);\n    }\n  }\n  for (const relative of tests) await followImports(relative, `${path.dirname(relative)}${path.sep}`);"
+        },
+        {
+          "file": "scripts/acceptance-vitest-verification.mjs",
+          "lines": [
+            137,
+            151
+          ],
+          "text": "  for (const relative of new Set([...contract.sourcePaths, ...contract.artifactPaths, ...contract.testFiles]))\n    await visit(relative);\n  const followed = new Set();\n  async function followImports(relative, scope) {\n    if (followed.has(relative) || !TEST_FILE.test(relative)) return;\n    followed.add(relative);\n    const source = await readFile(path.join(root, relative), \"utf8\");\n    for (const [, specifier] of source.matchAll(LOCAL_IMPORT)) {\n      const target = path.normalize(path.join(path.dirname(relative), specifier));\n      if (target.startsWith(\"..\") || path.isAbsolute(target)) continue;\n      await optional(target);\n      if (target.startsWith(scope)) await followImports(target, scope);\n    }\n  }\n  for (const relative of contract.testFiles) await followImports(relative, `${path.dirname(relative)}${path.sep}`);"
+        },
+        {
+          "file": "scripts/browser-acceptance-verification.mjs",
+          "lines": [
+            93,
+            99
+          ],
+          "text": "  for (const relative of new Set([\n    contract.config,\n    ...contract.sourcePaths,\n    ...contract.artifactPaths,\n    ...contract.testFiles,\n  ]))\n    await visit(relative);"
+        }
+      ],
+      "evidence": "Compared LOCAL_IMPORT and followImports: the regular expression is the same text in acceptance-verification.mjs (line 90), acceptance-timed-verification.mjs (line 111), coordination-verification.mjs (line 90) and acceptance-vitest-verification.mjs (line 108); followImports is identical in the first three and rewritten with an optional() helper in the Vitest helper. The browser helpers do not follow imports: a Playwright spec's support module changes without changing the browser digest unless the contract lists it in sourcePaths. Nothing in the browser helper's comments says this is intended.",
+      "action": "Keep one followImports in the shared verification module; decide whether browser closures follow spec imports (a product decision, since it changes which edits make a browser proof stale).",
+      "touches": [
+        "scripts/acceptance-verification.mjs",
+        "scripts/acceptance-timed-verification.mjs",
+        "scripts/coordination-verification.mjs",
+        "scripts/acceptance-vitest-verification.mjs",
+        "scripts/browser-acceptance-verification.mjs",
+        "scripts/coordination-browser-verification.mjs"
+      ],
+      "risk": "high",
+      "riskReason": "Every helper puts the hash of its own file bytes into its digest (entries.set(\"@verification-helper\", hash(await readFile(SELF)))), so any edit of a helper changes every sourceDigest it produces: digests captured before the edit become stale and Plans pinned to an expected digest must be re-captured. Adding import following to the browser helper adds files to its closure, so every browser digest changes.",
+      "state": "open"
+    },
+    {
+      "id": "browser-digest-omits-imported-protocol",
+      "title": "The browser helper's digest hashes only its own file although its line protocol comes from another module",
+      "kind": "inconsistency",
+      "location": {
+        "file": "scripts/browser-acceptance-verification.mjs",
+        "lines": [
+          107,
+          109
+        ],
+        "text": "  entries.set(\"@verification-helper\", hash(await readFile(SELF)));\n  const files = [...entries].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));\n  return { digest: hash(JSON.stringify({ contract, node: process.version, files })), files };"
+      },
+      "related": [
+        {
+          "file": "scripts/browser-acceptance-verification.mjs",
+          "lines": [
+            9,
+            9
+          ],
+          "text": "import { renderObservation } from \"./acceptance-verification.mjs\";"
+        },
+        {
+          "file": "scripts/acceptance-verification.mjs",
+          "lines": [
+            289,
+            307
+          ],
+          "text": "// A fixed line protocol permits canonical JSONata projection without arbitrary JSON evaluation.\nexport function renderObservation(report) {\n  return [\n    report.contractId,\n    report.layer,\n    report.sourceDigest,\n    report.afterDigest,\n    report.tested,\n    report.passed,\n    report.failed,\n    report.skipped,\n    report.crashed,\n    report.missing,\n    report.stale,\n    report.complete,\n    report.runId,\n    JSON.stringify(report),\n  ].join(\"\\n\");\n}"
+        }
+      ],
+      "evidence": "browser-acceptance-verification.mjs imports renderObservation from ./acceptance-verification.mjs, but its snapshot records only hash(await readFile(SELF)) as @verification-helper. An edit of the imported module changes the browser observation without changing the browser digest; coordination-browser-verification.mjs has the same import from ./coordination-verification.mjs. The field order of the protocol is also written a second time as the JSONata line indexes of assets/operations/acceptance.browser-run.feature (lines 42-55). It also means the browser helper is not self-contained: a test workspace must copy both files.",
+      "action": "Hash every local module the helper imports into @verification-helper (or inline the 15-line renderObservation in the browser helper), as part of the shared-module extraction.",
+      "touches": [
+        "scripts/browser-acceptance-verification.mjs",
+        "scripts/coordination-browser-verification.mjs"
+      ],
+      "risk": "medium",
+      "riskReason": "Every helper puts the hash of its own file bytes into its digest (entries.set(\"@verification-helper\", hash(await readFile(SELF)))), so any edit of a helper changes every sourceDigest it produces: digests captured before the edit become stale and Plans pinned to an expected digest must be re-captured. ",
+      "state": "open"
+    },
+    {
+      "id": "verification-judging-copied",
+      "title": "The judging of named assertions, the failure message and the completeness formula are copied across the verification helpers",
+      "kind": "duplication",
+      "location": {
+        "file": "scripts/acceptance-verification.mjs",
+        "lines": [
+          257,
+          284
+        ],
+        "text": "  report.assertions = contract.assertions.map((required) => {\n    const matching = observations.filter(\n      (observed) => observed.file === required.file && observed.name === required.name,\n    );\n    return {\n      ...required,\n      status: matching.length === 1 ? matching[0].status : matching.length === 0 ? \"missing\" : \"ambiguous\",\n      ...(matching.length === 1 && matching[0].failure ? { failure: matching[0].failure } : {}),\n    };\n  });\n  report.missing = report.assertions.filter((entry) => entry.status !== \"passed\").length;\n  try {\n    report.afterDigest = (await snapshot(root, contract)).digest;\n  } catch {\n    report.afterDigest = \"unavailable\";\n  }\n  if (before.digest !== report.afterDigest) report.stale = 1;\n  report.complete =\n    summary?.success &&\n    report.tested > 0 &&\n    report.passed > 0 &&\n    report.failed === 0 &&\n    report.skipped === 0 &&\n    report.crashed === 0 &&\n    report.missing === 0 &&\n    report.stale === 0\n      ? 1\n      : 0;"
+      },
+      "related": [
+        {
+          "file": "scripts/acceptance-timed-verification.mjs",
+          "lines": [
+            251,
+            260
+          ],
+          "text": "  const assertions = contract.assertions.map((required) => {\n    const matching = observations.filter(\n      (observed) => observed.file === required.file && observed.name === required.name,\n    );\n    return {\n      ...required,\n      status: matching.length === 1 ? matching[0].status : matching.length === 0 ? \"missing\" : \"ambiguous\",\n      ...(matching.length === 1 && matching[0].failure ? { failure: matching[0].failure } : {}),\n    };\n  });"
+        },
+        {
+          "file": "scripts/acceptance-timed-verification.mjs",
+          "lines": [
+            282,
+            292
+          ],
+          "text": "const complete = (observed, stale) =>\n  observed.succeeded &&\n  observed.tested > 0 &&\n  observed.passed > 0 &&\n  observed.failed === 0 &&\n  observed.skipped === 0 &&\n  observed.crashed === 0 &&\n  observed.missing === 0 &&\n  stale === 0\n    ? 1\n    : 0;"
+        },
+        {
+          "file": "scripts/acceptance-vitest-verification.mjs",
+          "lines": [
+            241,
+            250
+          ],
+          "text": "  const assertions = contract.assertions.map((required) => {\n    const matching = observations.filter(\n      (observed) => observed.file === required.file && observed.name === required.name,\n    );\n    return {\n      ...required,\n      status: matching.length === 1 ? matching[0].status : matching.length === 0 ? \"missing\" : \"ambiguous\",\n      ...(matching.length === 1 && matching[0].failure ? { failure: matching[0].failure } : {}),\n    };\n  });"
+        },
+        {
+          "file": "scripts/acceptance-vitest-verification.mjs",
+          "lines": [
+            334,
+            344
+          ],
+          "text": "  report.complete =\n    succeeded &&\n    report.tested > 0 &&\n    report.passed > 0 &&\n    report.failed === 0 &&\n    report.skipped === 0 &&\n    report.crashed === 0 &&\n    report.missing === 0 &&\n    report.stale === 0\n      ? 1\n      : 0;"
+        },
+        {
+          "file": "scripts/browser-acceptance-verification.mjs",
+          "lines": [
+            230,
+            256
+          ],
+          "text": "  report.assertions = contract.assertions.map((required) => {\n    const matching = observations.filter(\n      (observed) => observed.file === required.file && observed.name === required.name,\n    );\n    return {\n      ...required,\n      status: matching.length === 1 ? matching[0].status : matching.length === 0 ? \"missing\" : \"ambiguous\",\n    };\n  });\n  report.missing = report.assertions.filter((entry) => entry.status !== \"passed\").length;\n  try {\n    report.afterDigest = (await snapshot(root, contract)).digest;\n  } catch {\n    report.afterDigest = \"unavailable\";\n  }\n  if (before.digest !== report.afterDigest) report.stale = 1;\n  report.complete =\n    execution.code === 0 &&\n    report.tested > 0 &&\n    report.passed > 0 &&\n    report.failed === 0 &&\n    report.skipped === 0 &&\n    report.crashed === 0 &&\n    report.missing === 0 &&\n    report.stale === 0\n      ? 1\n      : 0;"
+        },
+        {
+          "file": "scripts/acceptance-timed-verification.mjs",
+          "lines": [
+            59,
+            63
+          ],
+          "text": "/** The first 500 characters of a failure's own message and its cause (node:test wraps hook failures). */\nfunction failureMessage(error) {\n  const parts = [error?.message, error?.cause?.message].filter((part) => typeof part === \"string\" && part.length > 0);\n  return parts.join(\" — \").slice(0, 500) || \"failed without a message\";\n}"
+        },
+        {
+          "file": "scripts/acceptance-verification.mjs",
+          "lines": [
+            40,
+            44
+          ],
+          "text": "/** The first 500 characters of a failure's own message and its cause (node:test wraps hook failures). */\nfunction failureMessage(error) {\n  const parts = [error?.message, error?.cause?.message].filter((part) => typeof part === \"string\" && part.length > 0);\n  return parts.join(\" — \").slice(0, 500) || \"failed without a message\";\n}"
+        }
+      ],
+      "evidence": "Compared the assertion matching (passed, missing or ambiguous by file and name) and the complete expression (succeeded, tested > 0, passed > 0, failed, skipped, crashed, missing and stale all zero): the same text appears in acceptance-verification.mjs, coordination-verification.mjs (lines 255-282), acceptance-timed-verification.mjs (as the complete() function), acceptance-vitest-verification.mjs and both browser helpers. The browser copy drops the failure field of an assertion; failureMessage is identical in acceptance-verification.mjs, coordination-verification.mjs and acceptance-timed-verification.mjs. The timed helper's factoring into complete() shows the intended shape.",
+      "action": "Export judge(assertions, observations) and complete(observed, stale) from the shared verification module and use them in each helper's next version.",
+      "touches": [
+        "scripts/acceptance-verification.mjs",
+        "scripts/acceptance-timed-verification.mjs",
+        "scripts/coordination-verification.mjs",
+        "scripts/acceptance-vitest-verification.mjs",
+        "scripts/browser-acceptance-verification.mjs",
+        "scripts/coordination-browser-verification.mjs"
+      ],
+      "risk": "medium",
+      "riskReason": "Every helper puts the hash of its own file bytes into its digest (entries.set(\"@verification-helper\", hash(await readFile(SELF)))), so any edit of a helper changes every sourceDigest it produces: digests captured before the edit become stale and Plans pinned to an expected digest must be re-captured. The judging decides the TRUST qualification of every acceptance Check; covered by the acceptance tests of each Operation, which must all be rerun one by one.",
+      "state": "open"
+    },
+    {
+      "id": "protocol-line-escaping-written-four-ways",
+      "title": "The escaping of a free-text value on the fixed line protocol is written four different ways",
+      "kind": "duplication",
+      "location": {
+        "file": "scripts/acceptance-timed-verification.mjs",
+        "lines": [
+          55,
+          57
+        ],
+        "text": "/** One protocol line: a name observed from a test file never breaks the line protocol. */\nconst line = (value) =>\n  [...String(value)].map((character) => (character.charCodeAt(0) < 32 ? \" \" : character)).join(\"\");"
+      },
+      "related": [
+        {
+          "file": "scripts/workspace-script-gate.mjs",
+          "lines": [
+            16,
+            17
+          ],
+          "text": "const line = (value) =>\n  [...String(value)].map((character) => (character.charCodeAt(0) < 32 ? \" \" : character)).join(\"\");"
+        },
+        {
+          "file": "scripts/acceptance-vitest-verification.mjs",
+          "lines": [
+            379,
+            379
+          ],
+          "text": "    [...report.reason].map((character) => (character.charCodeAt(0) < 32 ? \" \" : character)).join(\"\"),"
+        },
+        {
+          "file": "scripts/workspace-gate.mjs",
+          "lines": [
+            126,
+            128
+          ],
+          "text": "process.stdout.write(\n  `${gate ?? \"\"}\\n${result.passed ? 1 : 0}\\n${result.findings}\\n${result.summary.replace(/\\s+/g, \" \").slice(0, 400)}\\n`,\n);"
+        },
+        {
+          "file": "scripts/coordination-gate.mjs",
+          "lines": [
+            103,
+            105
+          ],
+          "text": "process.stdout.write(\n  `${gate ?? \"\"}\\n${result.passed ? 1 : 0}\\n${result.findings}\\n${result.summary.replace(/\\s+/g, \" \").slice(0, 400)}\\n`,\n);"
+        },
+        {
+          "file": "scripts/review-checklist.mjs",
+          "lines": [
+            68,
+            68
+          ],
+          "text": "    .map((value) => String(value).replace(/\\s+/gu, \" \"))"
+        }
+      ],
+      "evidence": "Searched scripts/ for the line protocol output. acceptance-timed-verification.mjs and workspace-script-gate.mjs define the same line() helper (control characters to a space); acceptance-vitest-verification.mjs inlines the same expression on reason; workspace-gate.mjs and coordination-gate.mjs replace every whitespace run with one space and cut at 400 characters; review-checklist.mjs replaces whitespace runs without a length bound. acceptance-verification.mjs and the browser helpers put no free text on their fixed lines (only validated ids, digests and numbers), so they need none. The differences (truncation, collapsing spaces) are not explained by any comment; they look accidental.",
+      "action": "Extract one protocolLine(value, maxLength) helper in a shared module and use it in the next version of each script. workspace-script-gate.mjs and review-checklist.mjs are copied alone into the Vitest test workspace (HELPERS in scripts/acceptance-vitest-run.acceptance.test.mjs), so the shared module must be added to that list.",
+      "touches": [
+        "scripts/acceptance-timed-verification.mjs",
+        "scripts/workspace-script-gate.mjs",
+        "scripts/acceptance-vitest-verification.mjs",
+        "scripts/workspace-gate.mjs",
+        "scripts/coordination-gate.mjs",
+        "scripts/review-checklist.mjs",
+        "scripts/acceptance-vitest-run.acceptance.test.mjs"
+      ],
+      "risk": "low",
+      "riskReason": "The escaping only changes the text of a summary or a reason line; numeric and digest lines are unaffected. The Vitest helper's file bytes are a digest input, so editing it re-captures its digests.",
+      "state": "open"
+    },
+    {
+      "id": "coordination-gate-is-subset-of-workspace-gate",
+      "title": "coordination-gate.mjs repeats workspace-gate.mjs except the interface rules",
+      "kind": "duplication",
+      "location": {
+        "file": "scripts/coordination-gate.mjs",
+        "lines": [
+          58,
+          95
+        ],
+        "text": "  /** Every change of the checkout, submodules and untracked files included, is committed by the coordinator. */\n  async committed() {\n    const status = await run(\"git\", [\"status\", \"--porcelain=v1\", \"--untracked-files=all\", \"--ignore-submodules=none\"]);\n    const head = await run(\"git\", [\"rev-parse\", \"--short\", \"HEAD\"]);\n    const pending = status.code === 0 ? status.output.split(\"\\n\").filter((line) => line.trim()) : [];\n    return {\n      passed: status.code === 0 && pending.length === 0,\n      findings: status.code === 0 ? pending.length : 1,\n      summary:\n        status.code !== 0\n          ? \"git status failed\"\n          : pending.length\n            ? `${pending.length} uncommitted: ${pending\n                .slice(0, 5)\n                .map((line) => line.slice(3))\n                .join(\", \")}`\n            : `committed at ${head.output.trim()}`,\n    };\n  },\n  /** The integrated documentation suite: fr/en mirror, compiling Gherkin fences and captured screenshots. */\n  async documentation() {\n    const result = await runIn(\"apps/trust-web\", \"npx\", [\n      \"playwright\",\n      \"test\",\n      \"--config\",\n      \"playwright.config.ts\",\n      \"--project\",\n      \"acceptance\",\n      \"--reporter=line\",\n      \"acceptance/docs.acceptance.spec.ts\",\n    ]);\n    const failed = result.output.match(/(\\d+) failed/u);\n    return {\n      passed: result.code === 0,\n      findings: result.code === 0 ? 0 : failed ? Number(failed[1]) : 1,\n      summary: result.code === 0 ? \"documentation suite passes\" : (failed?.[0] ?? `exited with ${result.code}`),\n    };\n  },"
+      },
+      "related": [
+        {
+          "file": "scripts/workspace-gate.mjs",
+          "lines": [
+            81,
+            118
+          ],
+          "text": "  /** Every change of the checkout, submodules and untracked files included, is committed by the coordinator. */\n  async committed() {\n    const status = await run(\"git\", [\"status\", \"--porcelain=v1\", \"--untracked-files=all\", \"--ignore-submodules=none\"]);\n    const head = await run(\"git\", [\"rev-parse\", \"--short\", \"HEAD\"]);\n    const pending = status.code === 0 ? status.output.split(\"\\n\").filter((line) => line.trim()) : [];\n    return {\n      passed: status.code === 0 && pending.length === 0,\n      findings: status.code === 0 ? pending.length : 1,\n      summary:\n        status.code !== 0\n          ? \"git status failed\"\n          : pending.length\n            ? `${pending.length} uncommitted: ${pending\n                .slice(0, 5)\n                .map((line) => line.slice(3))\n                .join(\", \")}`\n            : `committed at ${head.output.trim()}`,\n    };\n  },\n  /** The integrated documentation suite: fr/en mirror, compiling Gherkin fences and captured screenshots. */\n  async documentation() {\n    const result = await runIn(\"apps/trust-web\", \"npx\", [\n      \"playwright\",\n      \"test\",\n      \"--config\",\n      \"playwright.config.ts\",\n      \"--project\",\n      \"acceptance\",\n      \"--reporter=line\",\n      \"acceptance/docs.acceptance.spec.ts\",\n    ]);\n    const failed = result.output.match(/(\\d+) failed/u);\n    return {\n      passed: result.code === 0,\n      findings: result.code === 0 ? 0 : failed ? Number(failed[1]) : 1,\n      summary: result.code === 0 ? \"documentation suite passes\" : (failed?.[0] ?? `exited with ${result.code}`),\n    };\n  },"
+        },
+        {
+          "file": "scripts/coordination-gate.mjs",
+          "lines": [
+            6,
+            26
+          ],
+          "text": "const TIMEOUT_MS = 600000;\nconst run = (command, args) => runIn(\".\", command, args);\nconst runIn = (directory, command, args) =>\n  new Promise((resolve) => {\n    const child = spawn(command, args, { cwd: directory, env: process.env, stdio: [\"ignore\", \"pipe\", \"pipe\"] });\n    let output = \"\";\n    const append = (chunk) => {\n      if (output.length < 4 * 1024 * 1024) output += chunk;\n    };\n    child.stdout.on(\"data\", append);\n    child.stderr.on(\"data\", append);\n    const timer = setTimeout(() => child.kill(\"SIGKILL\"), TIMEOUT_MS);\n    child.on(\"error\", (error) => {\n      clearTimeout(timer);\n      resolve({ code: -1, output: String(error.message) });\n    });\n    child.on(\"close\", (code, signal) => {\n      clearTimeout(timer);\n      resolve({ code: signal ? -1 : code, output });\n    });\n  });"
+        },
+        {
+          "file": "scripts/workspace-gate.mjs",
+          "lines": [
+            7,
+            27
+          ],
+          "text": "const TIMEOUT_MS = 600000;\nconst run = (command, args) => runIn(\".\", command, args);\nconst runIn = (directory, command, args) =>\n  new Promise((resolve) => {\n    const child = spawn(command, args, { cwd: directory, env: process.env, stdio: [\"ignore\", \"pipe\", \"pipe\"] });\n    let output = \"\";\n    const append = (chunk) => {\n      if (output.length < 4 * 1024 * 1024) output += chunk;\n    };\n    child.stdout.on(\"data\", append);\n    child.stderr.on(\"data\", append);\n    const timer = setTimeout(() => child.kill(\"SIGKILL\"), TIMEOUT_MS);\n    child.on(\"error\", (error) => {\n      clearTimeout(timer);\n      resolve({ code: -1, output: String(error.message) });\n    });\n    child.on(\"close\", (code, signal) => {\n      clearTimeout(timer);\n      resolve({ code: signal ? -1 : code, output });\n    });\n  });"
+        }
+      ],
+      "evidence": "Compared the two files: the header comment, TIMEOUT_MS, run, runIn, the architecture, committed and documentation gates and the four-line output are identical. workspace-gate.mjs adds the interface-rules gate (importing ./interface-rules.mjs) and runs the interface checks in parallel; coordination-gate.mjs runs them sequentially without interface rules. Callers: assets/operations/coordination.gate-run.feature (used by trust-extension delegation procedures) and assets/operations/workspace.gate-run.feature. trust-extension/extensions/corpus/acceptance/continuation-harness.mjs copies coordination-gate.mjs alone and workspace-gate.mjs with interface-rules.mjs into a test workspace (lines 306-314), so the scripts are kept self-contained on purpose; the interface difference is a later evolution of workspace-gate.",
+      "action": "Point the next version of coordination.gate-run at workspace-gate.mjs (its gates are a superset), then retire coordination-gate.mjs when no procedure pins coordination.gate-run 1.0.0; update continuation-harness.mjs accordingly.",
+      "touches": [
+        "scripts/coordination-gate.mjs",
+        "scripts/workspace-gate.mjs",
+        "assets/operations/coordination.gate-run.feature",
+        "trust-extension/extensions/corpus/acceptance/continuation-harness.mjs"
+      ],
+      "risk": "medium",
+      "riskReason": "The coordination interface gate would gain the interface rules, so a gate that passes today could fail; and the change crosses into the trust-extension submodule.",
+      "state": "open"
+    },
+    {
+      "id": "spawn-with-timeout-copied",
+      "title": "Spawning a child process with a kill timer and an output cap is written four times with different caps",
+      "kind": "duplication",
+      "location": {
+        "file": "scripts/workspace-script-gate.mjs",
+        "lines": [
+          19,
+          37
+        ],
+        "text": "const runIn = (directory, command, args, timeoutMs) =>\n  new Promise((resolve) => {\n    const child = spawn(command, args, { cwd: directory, env: process.env, stdio: [\"ignore\", \"pipe\", \"pipe\"] });\n    let output = \"\";\n    const append = (chunk) => {\n      if (output.length < 4 * 1024 * 1024) output += chunk;\n    };\n    child.stdout.on(\"data\", append);\n    child.stderr.on(\"data\", append);\n    const timer = setTimeout(() => child.kill(\"SIGKILL\"), timeoutMs);\n    child.on(\"error\", (error) => {\n      clearTimeout(timer);\n      resolve({ code: -1, output: String(error.message) });\n    });\n    child.on(\"close\", (code, signal) => {\n      clearTimeout(timer);\n      resolve({ code: signal ? -1 : code, output });\n    });\n  });"
+      },
+      "related": [
+        {
+          "file": "scripts/workspace-gate.mjs",
+          "lines": [
+            9,
+            27
+          ],
+          "text": "const runIn = (directory, command, args) =>\n  new Promise((resolve) => {\n    const child = spawn(command, args, { cwd: directory, env: process.env, stdio: [\"ignore\", \"pipe\", \"pipe\"] });\n    let output = \"\";\n    const append = (chunk) => {\n      if (output.length < 4 * 1024 * 1024) output += chunk;\n    };\n    child.stdout.on(\"data\", append);\n    child.stderr.on(\"data\", append);\n    const timer = setTimeout(() => child.kill(\"SIGKILL\"), TIMEOUT_MS);\n    child.on(\"error\", (error) => {\n      clearTimeout(timer);\n      resolve({ code: -1, output: String(error.message) });\n    });\n    child.on(\"close\", (code, signal) => {\n      clearTimeout(timer);\n      resolve({ code: signal ? -1 : code, output });\n    });\n  });"
+        },
+        {
+          "file": "scripts/coordination-gate.mjs",
+          "lines": [
+            8,
+            26
+          ],
+          "text": "const runIn = (directory, command, args) =>\n  new Promise((resolve) => {\n    const child = spawn(command, args, { cwd: directory, env: process.env, stdio: [\"ignore\", \"pipe\", \"pipe\"] });\n    let output = \"\";\n    const append = (chunk) => {\n      if (output.length < 4 * 1024 * 1024) output += chunk;\n    };\n    child.stdout.on(\"data\", append);\n    child.stderr.on(\"data\", append);\n    const timer = setTimeout(() => child.kill(\"SIGKILL\"), TIMEOUT_MS);\n    child.on(\"error\", (error) => {\n      clearTimeout(timer);\n      resolve({ code: -1, output: String(error.message) });\n    });\n    child.on(\"close\", (code, signal) => {\n      clearTimeout(timer);\n      resolve({ code: signal ? -1 : code, output });\n    });\n  });"
+        },
+        {
+          "file": "scripts/browser-acceptance-verification.mjs",
+          "lines": [
+            112,
+            137
+          ],
+          "text": "function runPlaywright(root, contract) {\n  const configDirectory = path.join(root, path.dirname(contract.config));\n  const files = contract.testFiles.map((file) => path.relative(configDirectory, path.join(root, file)));\n  const environment = { ...process.env };\n  for (const name of [\"NODE_OPTIONS\", \"NODE_TEST_CONTEXT\", \"PW_TEST_REPORTER\", \"PLAYWRIGHT_JSON_OUTPUT_NAME\", \"CI\"])\n    delete environment[name];\n  return new Promise((resolve) => {\n    const child = spawn(\n      \"npx\",\n      [\"playwright\", \"test\", \"--config\", path.basename(contract.config), \"--reporter=json\", \"--retries=0\", ...files],\n      { cwd: configDirectory, env: environment, stdio: [\"ignore\", \"pipe\", \"pipe\"] },\n    );\n    let stdout = \"\";\n    let size = 0;\n    child.stdout.on(\"data\", (chunk) => {\n      size += chunk.length;\n      if (size <= 64 * 1024 * 1024) stdout += chunk;\n    });\n    child.stderr.resume();\n    const timer = setTimeout(() => child.kill(\"SIGKILL\"), TIMEOUT_MS);\n    child.on(\"close\", (code, signal) => {\n      clearTimeout(timer);\n      resolve({ code, signal, stdout });\n    });\n  });\n}"
+        }
+      ],
+      "evidence": "Compared the runIn helpers of workspace-script-gate.mjs, workspace-gate.mjs and coordination-gate.mjs: identical except the timeout, which is a parameter in workspace-script-gate.mjs and the constant TIMEOUT_MS in the gates. browser-acceptance-verification.mjs runPlaywright spawns with the same SIGKILL timer but keeps stdout only, caps it at 64 MB, discards stderr and has no error listener. acceptance-vitest-verification.mjs uses execFile with timeout and maxBuffer 16 MB instead, and delegation-topology.mjs uses spawnSync. The gate copies are intended to stay self-contained (they are copied alone into test workspaces).",
+      "action": "Extract runIn(directory, command, args, timeoutMs, { capture }) into a shared module and copy it with the gates in the test workspaces (HELPERS of scripts/acceptance-vitest-run.acceptance.test.mjs, continuation-harness.mjs).",
+      "touches": [
+        "scripts/workspace-script-gate.mjs",
+        "scripts/workspace-gate.mjs",
+        "scripts/coordination-gate.mjs",
+        "scripts/browser-acceptance-verification.mjs"
+      ],
+      "risk": "low",
+      "riskReason": "The gates have no digest; the browser helper does (its file bytes). A missing 'error' listener in the browser copy is behaviour, not covered by this refactor.",
+      "state": "open"
+    },
+    {
+      "id": "verification-exit-codes-differ",
+      "title": "The verification scripts end a refusal or an error with different exit codes and output conventions",
+      "kind": "inconsistency",
+      "location": {
+        "file": "scripts/browser-acceptance-verification.mjs",
+        "lines": [
+          261,
+          270
+        ],
+        "text": "if (process.argv[1] && path.resolve(process.argv[1]) === SELF) {\n  const [serialized, layer, expectedDigest, executionId, ...rest] = process.argv.slice(2);\n  if (!serialized || !layer || !expectedDigest || !executionId || rest.length)\n    fail(\"Usage: browser-acceptance-verification.mjs <contract-json> <layer> <expected-digest|capture> <execution-id>\");\n  process.stdout.write(\n    renderObservation(\n      await executeBrowserVerification({ root: process.cwd(), serialized, layer, expectedDigest, executionId }),\n    ),\n  );\n}"
+      },
+      "related": [
+        {
+          "file": "scripts/acceptance-verification.mjs",
+          "lines": [
+            309,
+            324
+          ],
+          "text": "if (process.argv[1] && path.resolve(process.argv[1]) === SELF) {\n  const [serialized, layer, expectedDigest, executionId, ...rest] = process.argv.slice(2);\n  if (rest.length || !executionId)\n    fail(\"Usage: acceptance-verification.mjs <contract-json> <layer> <expected-digest|capture> <execution-id>\");\n  // This process is a child of the packaged Runner; only its final observation reaches stdout.\n  try {\n    console.log(\n      renderObservation(\n        await executeVerification({ root: process.cwd(), serialized, layer, expectedDigest, executionId }),\n      ),\n    );\n  } catch (error) {\n    console.error(error.message);\n    process.exitCode = 2;\n  }\n}"
+        },
+        {
+          "file": "scripts/workspace-script-gate.mjs",
+          "lines": [
+            90,
+            100
+          ],
+          "text": "if (process.argv[1] && path.resolve(process.argv[1]) === SELF) {\n  const [project, gate, ...rest] = process.argv.slice(2);\n  try {\n    if (!project || !gate || rest.length) throw new Error(\"Usage: workspace-script-gate.mjs <project> <gate>\");\n    const result = await runGate(process.cwd(), project, gate);\n    console.log([result.gate, result.passed, result.findings, line(result.summary)].join(\"\\n\"));\n  } catch (error) {\n    console.error(error.message);\n    process.exitCode = 2;\n  }\n}"
+        },
+        {
+          "file": "scripts/review-checklist.mjs",
+          "lines": [
+            4,
+            6
+          ],
+          "text": "const requireValue = (condition, message) => {\n  if (!condition) throw new Error(message);\n};"
+        },
+        {
+          "file": "scripts/acceptance-selection.mjs",
+          "lines": [
+            284,
+            288
+          ],
+          "text": "      if (report.unmappedChangedFiles > 0 || report.missingTestFiles > 0) process.exitCode = 1;\n    } else fail(USAGE);\n  } catch (error) {\n    console.error(error.message);\n    process.exitCode = 2;"
+        },
+        {
+          "file": "scripts/delegation-topology.mjs",
+          "lines": [
+            93,
+            96
+          ],
+          "text": "const usage = (message) => {\n  process.stderr.write(`${message}\\n${USAGE}\\n`);\n  process.exit(2);\n};"
+        },
+        {
+          "file": "scripts/workspace-gate.mjs",
+          "lines": [
+            121,
+            128
+          ],
+          "text": "const [gate, ...rest] = process.argv.slice(2);\nconst execute = Object.hasOwn(gates, gate) && rest.length === 0 ? gates[gate] : null;\nconst result = execute\n  ? await execute()\n  : { passed: false, findings: 1, summary: `unknown gate; expected one of ${Object.keys(gates).join(\", \")}` };\nprocess.stdout.write(\n  `${gate ?? \"\"}\\n${result.passed ? 1 : 0}\\n${result.findings}\\n${result.summary.replace(/\\s+/g, \" \").slice(0, 400)}\\n`,\n);"
+        }
+      ],
+      "evidence": "Read the entry point of each script. acceptance-verification.mjs, coordination-verification.mjs, acceptance-timed-verification.mjs, acceptance-vitest-verification.mjs, workspace-script-gate.mjs and acceptance-selection.mjs catch errors, print the message to stderr and exit 2. browser-acceptance-verification.mjs, its coordination copy and review-checklist.mjs throw uncaught, so a bad input exits 1 with a stack trace. workspace-gate.mjs and coordination-gate.mjs always exit 0, an unknown gate included. acceptance-selection.mjs exits 1 on an unmapped or missing file. delegation-topology.mjs exits 2 on usage and 0 on a refusal; maintenance-findings.mjs exits 0 on a refusal and 2 on usage. The browser helper writes its observation without a final newline where the others use console.log. The 'exit 0 on a refusal' rule is documented in the gates' header comments and in maintenance/README.md; the uncaught throws are not documented and look accidental.",
+      "action": "Wrap the browser helpers' and review-checklist.mjs's entry points in the same try/catch that prints the message and sets process.exitCode = 2, and write a short convention (refusal exits 0 with a report, usage or input error exits 2) in a comment of the shared module.",
+      "touches": [
+        "scripts/browser-acceptance-verification.mjs",
+        "scripts/coordination-browser-verification.mjs",
+        "scripts/review-checklist.mjs"
+      ],
+      "risk": "low",
+      "riskReason": "Only the exit code and stderr of an invalid input change; the Runner reports either as an interrupted Operation. The browser helper's file bytes are a digest input, so its digests are re-captured.",
+      "state": "open"
+    },
+    {
+      "id": "project-root-check-duplicated",
+      "title": "The check that a project is one directory directly below the workspace is written twice",
+      "kind": "duplication",
+      "location": {
+        "file": "scripts/acceptance-vitest-verification.mjs",
+        "lines": [
+          262,
+          272
+        ],
+        "text": "/** The project directory directly below the workspace: one name, no traversal, no symbolic link out of it. */\nexport async function projectRoot(workspace, project) {\n  if (!text(project) || !/^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$/u.test(project) || project === \"..\")\n    fail(\"Project must name one directory directly below the workspace\");\n  const base = await realpath(workspace);\n  const root = path.join(base, project);\n  const stat = await lstat(root).catch(() => undefined);\n  if (!stat?.isDirectory() || (await realpath(root)) !== root)\n    fail(`Project \"${project}\" is not a directory directly below the workspace`);\n  return root;\n}"
+      },
+      "related": [
+        {
+          "file": "scripts/workspace-script-gate.mjs",
+          "lines": [
+            40,
+            53
+          ],
+          "text": "export async function runGate(workspace, project, gate) {\n  if (!PROJECT.test(project ?? \"\") || project === \"..\")\n    throw new Error(\"Project must name one directory directly below the workspace\");\n  const scripts = String(gate ?? \"\").split(\" \");\n  if (\n    scripts.length > 16 ||\n    !scripts.every((script) => SCRIPT.test(script)) ||\n    new Set(scripts).size !== scripts.length\n  )\n    throw new Error(\"Gate must name 1 to 16 distinct package scripts separated by spaces\");\n  const root = path.join(await realpath(workspace), project);\n  const stat = await lstat(root).catch(() => undefined);\n  if (!stat?.isDirectory() || (await realpath(root)) !== root)\n    throw new Error(`Project \"${project}\" is not a directory directly below the workspace`);"
+        }
+      ],
+      "evidence": "Compared projectRoot of acceptance-vitest-verification.mjs with the start of runGate in workspace-script-gate.mjs: the same project name rule /^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$/, the same project === \"..\" test (dead in both, since the rule already refuses a leading dot), the same lstat/realpath test refusing a symbolic link and the same message. The Vitest copy also checks text(project). Both helpers are copied side by side into the Vitest test workspace (HELPERS in scripts/acceptance-vitest-run.acceptance.test.mjs).",
+      "action": "Have workspace-script-gate.mjs import projectRoot from acceptance-vitest-verification.mjs (both are already copied together), or move it to a shared module added to HELPERS; drop the redundant project === \"..\" test.",
+      "touches": [
+        "scripts/acceptance-vitest-verification.mjs",
+        "scripts/workspace-script-gate.mjs"
+      ],
+      "risk": "low",
+      "riskReason": "Same accepted names and same refusals. Editing acceptance-vitest-verification.mjs changes its digest (its file bytes are a digest input); importing from it into the gate avoids that.",
+      "state": "open"
+    },
+    {
+      "id": "consolidation-check-has-no-caller",
+      "title": "scripts/consolidation-check.mjs is called by no Operation, package script, test or document",
+      "kind": "leftover",
+      "location": {
+        "file": "scripts/consolidation-check.mjs",
+        "lines": [
+          7,
+          10
+        ],
+        "text": "const [mode, reportRoot] = process.argv.slice(2);\nif (![\"docs\", \"mcp\", \"integration\"].includes(mode) || !reportRoot || !path.isAbsolute(reportRoot)) {\n  throw new Error(\"Usage: node scripts/consolidation-check.mjs docs|mcp|integration <absolute-report-directory>\");\n}"
+      },
+      "evidence": "Searched the whole repository (assets/, docs/, apps/, packages/, trust-extension/, .github/, lefthook.yml and every package.json, node_modules, .git and dist excluded) for \"consolidation-check\": the only match is its own usage string. No Operation in assets/operations names it, the root package.json scripts do not, and the Operation catalogue of the running runtime (operation.list on 127.0.0.1:4498) names no such script. It writes report files of a past \"consolidation\" acceptance campaign (modes docs, mcp, integration).",
+      "action": "Delete scripts/consolidation-check.mjs.",
+      "touches": [
+        "scripts/consolidation-check.mjs"
+      ],
+      "risk": "low",
+      "riskReason": "No caller exists in the repository or in the running Operation catalogue; a manual user could recover it from Git history.",
+      "state": "open"
+    },
+    {
+      "id": "templates-ui-check-has-no-caller",
+      "title": "scripts/templates-ui-check.mjs is called by no Operation, package script, test or document",
+      "kind": "leftover",
+      "location": {
+        "file": "scripts/templates-ui-check.mjs",
+        "lines": [
+          7,
+          10
+        ],
+        "text": "const [mode, reportRoot] = process.argv.slice(2);\nif (![\"ui\", \"review\"].includes(mode) || !reportRoot || !path.isAbsolute(reportRoot)) {\n  throw new Error(\"Usage: node scripts/templates-ui-check.mjs ui|review <absolute-report-directory>\");\n}"
+      },
+      "evidence": "Searched the whole repository (assets/, docs/, apps/, packages/, trust-extension/, .github/, lefthook.yml and every package.json, node_modules, .git and dist excluded) for \"templates-ui-check\": the only match is its own usage string. No Operation in assets/operations names it and the Operation catalogue of the running runtime does not either. It captures screenshots of a past templates interface campaign (modes ui, review).",
+      "action": "Delete scripts/templates-ui-check.mjs.",
+      "touches": [
+        "scripts/templates-ui-check.mjs"
+      ],
+      "risk": "low",
+      "riskReason": "No caller exists in the repository or in the running Operation catalogue.",
+      "state": "open"
+    },
+    {
+      "id": "checkout-identity-digest-copied",
+      "title": "consolidation-check.mjs and templates-ui-check.mjs carry the same checkout identity digest and run helper",
+      "kind": "duplication",
+      "location": {
+        "file": "scripts/consolidation-check.mjs",
+        "lines": [
+          13,
+          37
+        ],
+        "text": "const run = (command, args, options = {}) =>\n  spawnSync(command, args, {\n    cwd: root,\n    encoding: \"utf8\",\n    maxBuffer: 32 * 1024 * 1024,\n    timeout: 300_000,\n    ...options,\n  });\nfunction identity() {\n  const head = run(\"git\", [\"rev-parse\", \"HEAD\"]);\n  const files = run(\"git\", [\"ls-files\", \"--cached\", \"--others\", \"--exclude-standard\", \"-z\"]);\n  if (head.status !== 0 || files.status !== 0) throw new Error(\"Cannot identify the tested checkout\");\n  const hash = createHash(\"sha256\");\n  for (const file of [...new Set(files.stdout.split(\"\\0\").filter(Boolean))].sort()) {\n    hash.update(file).update(\"\\0\");\n    try {\n      hash.update(readFileSync(path.join(root, file)));\n    } catch (error) {\n      if (error.code !== \"ENOENT\") throw error;\n      hash.update(\"<deleted>\");\n    }\n    hash.update(\"\\0\");\n  }\n  return { head: head.stdout.trim(), digest: hash.digest(\"hex\") };\n}"
+      },
+      "related": [
+        {
+          "file": "scripts/templates-ui-check.mjs",
+          "lines": [
+            13,
+            37
+          ],
+          "text": "const run = (command, args, options = {}) =>\n  spawnSync(command, args, {\n    cwd: root,\n    encoding: \"utf8\",\n    maxBuffer: 32 * 1024 * 1024,\n    timeout: 300_000,\n    ...options,\n  });\nfunction identity() {\n  const head = run(\"git\", [\"rev-parse\", \"HEAD\"]);\n  const files = run(\"git\", [\"ls-files\", \"--cached\", \"--others\", \"--exclude-standard\", \"-z\"]);\n  if (head.status !== 0 || files.status !== 0) throw new Error(\"Cannot identify the tested checkout\");\n  const hash = createHash(\"sha256\");\n  for (const file of [...new Set(files.stdout.split(\"\\0\").filter(Boolean))].sort()) {\n    hash.update(file).update(\"\\0\");\n    try {\n      hash.update(readFileSync(path.join(root, file)));\n    } catch (error) {\n      if (error.code !== \"ENOENT\") throw error;\n      hash.update(\"<deleted>\");\n    }\n    hash.update(\"\\0\");\n  }\n  return { head: head.stdout.trim(), digest: hash.digest(\"hex\") };\n}"
+        }
+      ],
+      "evidence": "Compared the two files with diff: lines 1-38 are identical except the fs import and the mode list; run() and identity() (git ls-files digest of the checkout) are the same text. Neither script has a caller (see the two leftover findings).",
+      "action": "Resolved by deleting both scripts; if one is kept, it needs no shared module.",
+      "touches": [
+        "scripts/consolidation-check.mjs",
+        "scripts/templates-ui-check.mjs"
+      ],
+      "risk": "low",
+      "riskReason": "Neither script has a caller.",
+      "state": "open"
+    }
+  ]
+}

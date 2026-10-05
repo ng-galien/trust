@@ -1,0 +1,643 @@
+{
+  "axis": "corpus-old-frameworks",
+  "findings": [
+    {
+      "id": "orphan-framework-0-6-0-comment",
+      "title": "A JSDoc block describing framework 0.6.0 is attached to no declaration in domain.mjs",
+      "kind": "leftover",
+      "location": {
+        "file": "trust-extension/extensions/corpus/domain.mjs",
+        "lines": [
+          293,
+          296
+        ],
+        "text": "/**\n * Frameworks from 0.6.0 approve each later revision in their own \"approve revision\" Check; their threads accept a\n * revision that changes or removes an approved requirement, which waits without effect until the owner approves it.\n */"
+      },
+      "related": [
+        {
+          "file": "trust-extension/extensions/corpus/domain.mjs",
+          "lines": [
+            307,
+            307
+          ],
+          "text": "const evolves = (plan) => frameworkFrom(plan, 6) && !single(plan);"
+        }
+      ],
+      "evidence": "The block at lines 293-296 is immediately followed by a second JSDoc block (lines 297-300) that documents `single`; the predicate it describes, `evolves`, is declared alone at line 307 without a comment. Searched domain.mjs for every JSDoc block followed by another JSDoc block: this is the only one.",
+      "action": "Move the 0.6.0 comment onto the `evolves` declaration at line 307, or delete it together with `evolves` if finding evolves-revision-approvals is fixed.",
+      "touches": [
+        "trust-extension/extensions/corpus/domain.mjs"
+      ],
+      "risk": "low",
+      "riskReason": "Comment only; no code changes.",
+      "state": "open"
+    },
+    {
+      "id": "framework-from-comment-names-0-4-0",
+      "title": "The comment of the generic frameworkFrom predicate describes only the framework 0.4.0 approval Checks",
+      "kind": "inconsistency",
+      "location": {
+        "file": "trust-extension/extensions/corpus/domain.mjs",
+        "lines": [
+          288,
+          292
+        ],
+        "text": "/** Frameworks from 0.4.0 carry the owner's approvals in their \"approve framing\" and \"approve addition\" Checks. */\nconst frameworkFrom = (plan, from) =>\n  plan.procedure === FRAMEWORK &&\n  (([major, minor]) => major > 0 || minor >= from)(String(plan.procedureVersion).split(\".\").map(Number));\nconst governs = (plan) => frameworkFrom(plan, 4);"
+      },
+      "evidence": "frameworkFrom(plan, from) is called with 4, 6, 7, 8 and 9 (governs, evolves, single, opensFirst, delivers); its comment states what frameworks from 0.4.0 carry (\"approve framing\" and \"approve addition\"), which is false from 0.7.0, where the approval is the \"approve revision\" Check (episodeApprovals, lines 336-347). The comment belongs to `governs`, not to the generic version test.",
+      "action": "Give frameworkFrom a comment saying it tests the minor version of a corpus-thread-framework Plan, and move the 0.4.0 sentence to `governs`.",
+      "touches": [
+        "trust-extension/extensions/corpus/domain.mjs"
+      ],
+      "risk": "low",
+      "riskReason": "Comment only.",
+      "state": "open"
+    },
+    {
+      "id": "evolves-revision-approvals",
+      "title": "revisionApprovals and the evolves predicate serve only framework 0.6.0, to which no thread is linked",
+      "kind": "dead-code",
+      "location": {
+        "file": "trust-extension/extensions/corpus/domain.mjs",
+        "lines": [
+          314,
+          329
+        ],
+        "text": "function revisionApprovals(root) {\n  if (!evolves(root.plan)) return [];\n  const check = checkNamed(root.checks, \"approve revision\");\n  const facts = (check?.attempts ?? []).flatMap((attempt) => attempt.facts ?? []);\n  return (check?.history ?? [])\n    .filter((qualification) => qualification.verdict === \"VALIDATED\")\n    .flatMap((qualification) => facts.filter((fact) => qualification.factIds.includes(fact.id)))\n    .map((fact) => ({\n      thread: fact.values?.thread,\n      state: \"SATISFIED\",\n      plan: root.plan.plan,\n      revision: fact.values?.revision,\n      choice: \"continue\",\n      approved: fact.values?.revision,\n    }));\n}"
+      },
+      "related": [
+        {
+          "file": "trust-extension/extensions/corpus/domain.mjs",
+          "lines": [
+            307,
+            307
+          ],
+          "text": "const evolves = (plan) => frameworkFrom(plan, 6) && !single(plan);"
+        },
+        {
+          "file": "trust-extension/extensions/corpus/domain.mjs",
+          "lines": [
+            494,
+            494
+          ],
+          "text": "    evolving: evolves(episode.root.plan),"
+        }
+      ],
+      "evidence": "Owner's runtime, read-only plan.list (procedure corpus-thread-framework, 27 Plans) and Corpus workspace.read on 2026-10-05: the only 0.6.0 Plan, gestion-threads-cadre-20261005, is CANCELLED; it is position 2 of the history of thread corpus-organisation-flexible with revision null and requirements null, and that thread's current Plan is gestion-threads-plan-20261005c (0.8.0). governance() reads only the current Plan (t.framework_plan) or a history entry with recorded requirements (threads.coverage refuses one with requirements null before calling it), so no thread of the runtime reaches revisionApprovals or `evolving: true`. Callers: revisionApprovals is called only by episodeApprovals (line 358); `evolves` by revisionApprovals and governance (line 494). Only acceptance/evolving-framework.acceptance.test.mjs and thread-management.acceptance.test.mjs engage 0.6.0. The 0.6.0 Procedure stays published in TRUST (published versions are immutable), so a new 0.6.0 Plan can still be engaged and linked.",
+      "action": "First decide (product) that threads.framework refuses a new link to framework 0.6.0 as it refuses frameworks older than 0.4.0; then delete revisionApprovals, `evolves`, the `evolving` field of governance() and its uses, and the 0.6.0 tests.",
+      "touches": [
+        "trust-extension/extensions/corpus/domain.mjs",
+        "trust-extension/extensions/corpus/contracts.mjs",
+        "trust-extension/extensions/corpus/extension.json",
+        "trust-extension/extensions/corpus/acceptance/evolving-framework.acceptance.test.mjs",
+        "trust-extension/extensions/corpus/acceptance/continuation-harness.mjs",
+        "trust-extension/extensions/corpus/acceptance/thread-management.acceptance.test.mjs"
+      ],
+      "risk": "medium",
+      "riskReason": "No runtime thread depends on it, but removing it without refusing 0.6.0 links would silently treat a newly engaged 0.6.0 Plan as 0.4.0/0.5.0 (frozen approved requirements); the refusal is a product decision.",
+      "state": "open"
+    },
+    {
+      "id": "evolving-coverage-0-6-0",
+      "title": "evolvingCoverage measures coverage only for a thread whose current Plan is framework 0.6.0",
+      "kind": "dead-code",
+      "location": {
+        "file": "trust-extension/extensions/corpus/domain.mjs",
+        "lines": [
+          754,
+          761
+        ],
+        "text": "/**\n * Coverage of a thread governed by framework 0.6.0: measured on its latest approved revision, whatever the current\n * document holds. A mission counts when the revision that founds it is approved: the `revision` its verification\n * contract names, else the revision of the addition Plan that declares it, else the first approved revision. It covers a criterion only when its founding\n * revision holds the requirement exactly as the latest approved revision words it. The difference between the\n * current document and the latest approved revision is reported and changes no figure.\n */\nasync function evolvingCoverage(db, thread, missions, approvals) {"
+      },
+      "related": [
+        {
+          "file": "trust-extension/extensions/corpus/domain.mjs",
+          "lines": [
+            966,
+            966
+          ],
+          "text": "      if (governed?.evolving) return evolvingCoverage(db, t, missions, governed.approvals);"
+        }
+      ],
+      "evidence": "Owner's runtime, read-only plan.list (procedure corpus-thread-framework, 27 Plans) and Corpus workspace.read on 2026-10-05: no thread's current framework Plan is 0.6.0 (see evolves-revision-approvals). evolvingCoverage has one caller, threads.coverage at line 966, guarded by governed?.evolving. Its tests are the 0.6.0 tests of acceptance/evolving-framework.acceptance.test.mjs (R1.AC1, R2.*, R1.AC3 P2); the Operation that feeds it with founding revisions and additions is coverage-check@0.3.0, pinned only by framework 0.6.0.",
+      "action": "Delete evolvingCoverage and the line-966 branch in the same change as evolves-revision-approvals, after the 0.6.0 link refusal.",
+      "touches": [
+        "trust-extension/extensions/corpus/domain.mjs",
+        "trust-extension/extensions/corpus/contracts.mjs",
+        "trust-extension/extensions/corpus/extension.json"
+      ],
+      "risk": "medium",
+      "riskReason": "Same precondition as evolves-revision-approvals; the threads.coverage description in contracts.mjs and extension.json also describes the 0.6.0 behaviour and must change with it.",
+      "state": "open"
+    },
+    {
+      "id": "coverage-additions-input",
+      "title": "The `additions` argument of threads.coverage is sent only by coverage-check@0.3.0 of framework 0.6.0",
+      "kind": "dead-code",
+      "location": {
+        "file": "trust-extension/extensions/corpus/contracts.mjs",
+        "lines": [
+          21,
+          28
+        ],
+        "text": "// The missions one addition Plan declares, with the thread revision that addition carries: it founds them.\nconst coverageAddition = object(\n  {\n    revision: { type: \"integer\", minimum: 1 },\n    missions: { oneOf: [{ type: \"array\", maxItems: 100, items: coverageMission }, coverageMission] },\n  },\n  [\"revision\"],\n);"
+      },
+      "related": [
+        {
+          "file": "trust-extension/extensions/corpus/contracts.mjs",
+          "lines": [
+            120,
+            120
+          ],
+          "text": "        additions: { oneOf: [{ type: \"array\", maxItems: 100, items: coverageAddition }, coverageAddition] },"
+        },
+        {
+          "file": "trust-extension/extensions/corpus/extension.json",
+          "lines": [
+            391,
+            392
+          ],
+          "text": "            \"additions\": {\n              \"oneOf\": ["
+        },
+        {
+          "file": "trust-extension/extensions/corpus/domain.mjs",
+          "lines": [
+            961,
+            963
+          ],
+          "text": "        ...[a.additions ?? []]\n          .flat()\n          .flatMap(({ revision, missions: added }) => [added ?? []].flat().map((entry) => ({ ...entry, revision }))),"
+        }
+      ],
+      "evidence": "Searched procedures/ for `additions`: only coverage-check-0.3.0.operation.feature (line 39) sends it, and only thread-framework-0.6.0.procedure.feature references corpus.coverage-check@0.3.0 (0.4.0 and 0.5.0 use @0.2.0, 0.7.0 to 0.9.0 use @0.4.0). Owner's runtime, read-only plan.list (procedure corpus-thread-framework, 27 Plans) and Corpus workspace.read on 2026-10-05: no thread is linked to a 0.6.0 Plan. The schema is written twice: contracts.mjs (coverageAddition and line 120) and the MCP manifest extension.json (line 391 onwards).",
+      "action": "With the 0.6.0 removal, delete coverageAddition, the `additions` property in contracts.mjs and in extension.json, and the additions mapping in domain.mjs lines 960-963.",
+      "touches": [
+        "trust-extension/extensions/corpus/contracts.mjs",
+        "trust-extension/extensions/corpus/extension.json",
+        "trust-extension/extensions/corpus/domain.mjs"
+      ],
+      "risk": "medium",
+      "riskReason": "Removing an input property makes a call that still sends it fail validation; safe only once no 0.6.0 Plan can reach its coverage Check.",
+      "state": "open"
+    },
+    {
+      "id": "evolving-framework-tests-0-6-0",
+      "title": "Acceptance tests still exercise framework 0.6.0, and the shared harness publishes 0.6.0 for every test file",
+      "kind": "leftover",
+      "location": {
+        "file": "trust-extension/extensions/corpus/acceptance/evolving-framework.acceptance.test.mjs",
+        "lines": [
+          36,
+          37
+        ],
+        "text": "async function evolvingFraming(thread, body) {\n  const plan = await attachedFraming(thread, body, \"0.6.0\");"
+      },
+      "related": [
+        {
+          "file": "trust-extension/extensions/corpus/acceptance/continuation-harness.mjs",
+          "lines": [
+            352,
+            356
+          ],
+          "text": "      \"thread-addition.procedure.feature\",\n      \"thread-framework-0.4.0.procedure.feature\",\n      \"thread-framework-0.5.0.procedure.feature\",\n      \"thread-framework-0.6.0.procedure.feature\",\n    ])"
+        },
+        {
+          "file": "trust-extension/extensions/corpus/acceptance/continuation-harness.mjs",
+          "lines": [
+            345,
+            345
+          ],
+          "text": "      path.join(procedures, \"coverage-check-0.3.0.operation.feature\"),"
+        },
+        {
+          "file": "trust-extension/extensions/corpus/acceptance/thread-management.acceptance.test.mjs",
+          "lines": [
+            67,
+            67
+          ],
+          "text": "  for (const version of [\"0.5.0\", \"0.6.0\"]) {"
+        },
+        {
+          "file": "trust-extension/extensions/corpus/acceptance/thread-management.acceptance.test.mjs",
+          "lines": [
+            127,
+            127
+          ],
+          "text": "  const second = await movedApprovedThread(evolving, documentOf(A), \"0.6.0\");"
+        }
+      ],
+      "evidence": "Five of the six tests of the file (titles at lines 92, 161, 251, 298, 327) engage 0.6.0 through evolvingFraming; the sixth (line 370) tests 0.5.0. registerContinuationRuntime in continuation-harness.mjs publishes thread-framework-0.6.0 and coverage-check-0.3.0 for the 13 test files that call it; only evolving-framework and thread-management.acceptance.test.mjs (ORG-060 AC1 loops over 0.5.0 and 0.6.0, ORG-060 AC2 engages 0.6.0 at line 127) use them. Owner's runtime, read-only plan.list (procedure corpus-thread-framework, 27 Plans) and Corpus workspace.read on 2026-10-05: no thread is linked to 0.6.0.",
+      "action": "With the 0.6.0 removal, delete the five 0.6.0 tests, move the 0.5.0 test (line 370) next to the other 0.4.0/0.5.0 continuation tests, drop the 0.6.0 cases of ORG-060 AC1 and AC2, and stop publishing thread-framework-0.6.0 and coverage-check-0.3.0 in the harness.",
+      "touches": [
+        "trust-extension/extensions/corpus/acceptance/evolving-framework.acceptance.test.mjs",
+        "trust-extension/extensions/corpus/acceptance/continuation-harness.mjs",
+        "trust-extension/extensions/corpus/acceptance/thread-management.acceptance.test.mjs"
+      ],
+      "risk": "medium",
+      "riskReason": "Tests only, but they are the sole proof of the 0.6.0 behaviour; delete them only together with the 0.6.0 code.",
+      "state": "open"
+    },
+    {
+      "id": "framework-0-2-0-source-unread",
+      "title": "thread-framework-0.2.0.procedure.feature is read by no test, script or build",
+      "kind": "leftover",
+      "location": {
+        "file": "trust-extension/extensions/corpus/procedures/thread-framework-0.2.0.procedure.feature",
+        "lines": [
+          1,
+          1
+        ],
+        "text": "@trust-dsl:1 @procedure:corpus-thread-framework @version:0.2.0"
+      },
+      "evidence": "Searched the repository (.mjs, .ts, .tsx, .json, .md, excluding node_modules and dist) for thread-framework-0.2.0 and for a templated thread-framework-${version}: no reader (plan-history.acceptance builds the name only for 0.7.0 and 0.8.0). The Corpus Procedures are not in trust-registry.json. Owner's runtime, read-only plan.list (procedure corpus-thread-framework, 27 Plans) and Corpus workspace.read on 2026-10-05: 3 Plans run 0.2.0 (secrets-environment-cadrage-20260928 COMPLETE, registre-extensions-cadrage-20260928 and exigences-techniques-cadrage-20260929 CANCELLED); two are still the current Plan of threads trust-environment-secret-delegation and trust-extension-distribution. They are pinned to the version published in TRUST, which is immutable and does not read this file.",
+      "action": "Delete the source file; keep thread-read-0.2.0.operation.feature, which the governance test still publishes.",
+      "touches": [
+        "trust-extension/extensions/corpus/procedures/thread-framework-0.2.0.procedure.feature"
+      ],
+      "risk": "low",
+      "riskReason": "No reader in the repository; the runtime Plans use the published, immutable version. The only loss is the source for a re-publication into a new runtime.",
+      "state": "open"
+    },
+    {
+      "id": "framework-0-3-0-and-exclusive-operations",
+      "title": "Framework 0.3.0 and its exclusive Operations coverage-check@0.1.0 and thread-complete@0.1.0 have no Plan and serve one refusal test",
+      "kind": "leftover",
+      "location": {
+        "file": "trust-extension/extensions/corpus/procedures/thread-framework-0.3.0.procedure.feature",
+        "lines": [
+          1,
+          1
+        ],
+        "text": "@trust-dsl:1 @procedure:corpus-thread-framework @version:0.3.0"
+      },
+      "related": [
+        {
+          "file": "trust-extension/extensions/corpus/procedures/coverage-check.operation.feature",
+          "lines": [
+            1,
+            1
+          ],
+          "text": "@trust-dsl:1 @operation:corpus.coverage-check @version:0.1.0"
+        },
+        {
+          "file": "trust-extension/extensions/corpus/procedures/thread-complete.operation.feature",
+          "lines": [
+            1,
+            1
+          ],
+          "text": "@trust-dsl:1 @operation:corpus.thread-complete @version:0.1.0"
+        },
+        {
+          "file": "trust-extension/extensions/corpus/acceptance/governance.acceptance.test.mjs",
+          "lines": [
+            41,
+            41
+          ],
+          "text": "  for (const file of [\"thread-framework.procedure.feature\", \"thread-framework-0.3.0.procedure.feature\"])"
+        }
+      ],
+      "evidence": "Owner's runtime, read-only plan.list (procedure corpus-thread-framework, 27 Plans) and Corpus workspace.read on 2026-10-05: no Plan runs 0.3.0 (versions present: 0.2.0, 0.4.0 to 0.9.0). corpus.coverage-check@0.1.0 and corpus.thread-complete@0.1.0 are referenced only by thread-framework-0.3.0 (every later framework uses @0.2.0 or @0.4.0). The only reader of the three files is governance.acceptance.test.mjs, test \"TRQ-060 AC3 a framework Plan older than 0.4.0 cannot be linked to a thread\", which publishes 0.1.0 and 0.3.0 to show the refusal; the refusal itself (domain.mjs lines 1164-1167) stays needed because 0.2.0 Plans exist.",
+      "action": "Make the refusal test engage only 0.1.0 (already published by other tests) or 0.2.0, then delete thread-framework-0.3.0.procedure.feature, coverage-check.operation.feature and thread-complete.operation.feature.",
+      "touches": [
+        "trust-extension/extensions/corpus/procedures/thread-framework-0.3.0.procedure.feature",
+        "trust-extension/extensions/corpus/procedures/coverage-check.operation.feature",
+        "trust-extension/extensions/corpus/procedures/thread-complete.operation.feature",
+        "trust-extension/extensions/corpus/acceptance/governance.acceptance.test.mjs"
+      ],
+      "risk": "low",
+      "riskReason": "No Plan pins these versions; the refusal stays tested with another pre-0.4.0 version.",
+      "state": "open"
+    },
+    {
+      "id": "framework-0-1-0-as-test-vehicle",
+      "title": "Three test suites use the framework 0.1.0 source as a vehicle for behaviour that is not specific to 0.1.0",
+      "kind": "leftover",
+      "location": {
+        "file": "trust-extension/extensions/corpus/acceptance/corpus.acceptance.test.mjs",
+        "lines": [
+          194,
+          196
+        ],
+        "text": "    const operation = await readFile(path.join(extension, \"procedures/thread-read.operation.feature\"), \"utf8\");\n    // Exercise the supported Result projection with a test-only authored composition.\n    const procedure = (await readFile(path.join(extension, \"procedures/thread-framework.procedure.feature\"), \"utf8\"))"
+      },
+      "related": [
+        {
+          "file": "trust-extension/extensions/corpus/acceptance/reframe.acceptance.test.mjs",
+          "lines": [
+            45,
+            45
+          ],
+          "text": "  await rpc(\"procedure.publish\", { source: await readFile(`${procedures}thread-framework.procedure.feature`, \"utf8\") });"
+        },
+        {
+          "file": "apps/trust-web/acceptance/support/corpus-server.mjs",
+          "lines": [
+            372,
+            372
+          ],
+          "text": "  source: await readFile(path.join(procedures, \"thread-framework.procedure.feature\"), \"utf8\"),"
+        }
+      ],
+      "evidence": "Owner's runtime, read-only plan.list (procedure corpus-thread-framework, 27 Plans) and Corpus workspace.read on 2026-10-05: no Plan runs 0.1.0. corpus.acceptance.test.mjs rewrites the 0.1.0 Procedure text with string replacements to test the Result projection of a test-only composition; reframe.acceptance.test.mjs uses 0.1.0 as the pre-0.4.0 framework a thread is reframed from (TRQ-070); the trust-web seed publishes it too. thread-read.operation.feature (corpus.thread-read@0.1.0) is used only by this framework. The real pre-0.4.0 links in the runtime are 0.2.0 Plans.",
+      "action": "Replace the string-patched 0.1.0 source in corpus.acceptance by an inline test Procedure; for reframing, keep one pre-0.4.0 framework source (0.1.0 or 0.2.0, not both) and document it as a test fixture.",
+      "touches": [
+        "trust-extension/extensions/corpus/acceptance/corpus.acceptance.test.mjs",
+        "trust-extension/extensions/corpus/acceptance/reframe.acceptance.test.mjs",
+        "apps/trust-web/acceptance/support/corpus-server.mjs",
+        "trust-extension/extensions/corpus/procedures/thread-framework.procedure.feature",
+        "trust-extension/extensions/corpus/procedures/thread-read.operation.feature"
+      ],
+      "risk": "medium",
+      "riskReason": "Three test suites in two packages change, including the trust-web seed; behaviour of the product is unchanged.",
+      "state": "open"
+    },
+    {
+      "id": "link-time-carried-requirements-0-7-0",
+      "title": "Recording the carried requirements at the link serves only framework 0.7.0, whose Plans are all linked already",
+      "kind": "leftover",
+      "location": {
+        "file": "trust-extension/extensions/corpus/domain.mjs",
+        "lines": [
+          1176,
+          1176
+        ],
+        "text": "      const carried = single(plan) && !opensFirst(plan) ? await carriedRequirements(db, t, a, plan) : null;"
+      },
+      "related": [
+        {
+          "file": "trust-extension/extensions/corpus/domain.mjs",
+          "lines": [
+            1168,
+            1170
+          ],
+          "text": "      // From 0.8.0 the Plan opens before the approval: its revision and requirements stay unknown until the approval\n      // records them. A 0.7.0 link records the revision the Plan approves, as the Plan declares it, and the requirements\n      // it carries; an earlier framework records neither, which stays unknown."
+        },
+        {
+          "file": "trust-extension/extensions/corpus/procedures/thread-link-0.2.0.operation.feature",
+          "lines": [
+            1,
+            1
+          ],
+          "text": "@trust-dsl:1 @operation:corpus.thread-link @version:0.2.0"
+        }
+      ],
+      "evidence": "Owner's runtime, read-only plan.list (procedure corpus-thread-framework, 27 Plans) and Corpus workspace.read on 2026-10-05: 6 Plans run 0.7.0 (4 COMPLETE, 2 CANCELLED); thread trust-extension-data-access is still linked to acces-extensions-plan-20261005 (0.7.0). The branch `single(plan) && !opensFirst(plan)` runs only when a new 0.7.0 Plan is linked; the existing ones already have their history entry (corpus-organisation-flexible shows revision and requirements recorded for its 0.7.0 Plans). corpus.thread-link@0.2.0 is referenced only by thread-framework-0.7.0 and published only by plan-history.acceptance.test.mjs. carriedRequirements itself stays needed for the 0.8.0+ approval path (line 1135).",
+      "action": "Decide (product) whether a new 0.7.0 Plan may still be linked; if not, refuse it and replace line 1176 by the 0.8.0 behaviour (revision and requirements unknown until the approval), then remove the 0.7.0 link test from plan-history.acceptance and the thread-link-0.2.0 source.",
+      "touches": [
+        "trust-extension/extensions/corpus/domain.mjs",
+        "trust-extension/extensions/corpus/contracts.mjs",
+        "trust-extension/extensions/corpus/extension.json",
+        "trust-extension/extensions/corpus/acceptance/plan-history.acceptance.test.mjs",
+        "trust-extension/extensions/corpus/procedures/thread-link-0.2.0.operation.feature"
+      ],
+      "risk": "medium",
+      "riskReason": "Existing 0.7.0 Plans are unaffected (their entries are recorded and `single` stays for their approvals), but refusing a 0.7.0 link is a product decision.",
+      "state": "open"
+    },
+    {
+      "id": "evolving-option-two-meanings",
+      "title": "The `evolving` option of approvalReview and approvableBlocks means \"include technical and withdrawal blocks\", not framework 0.6.0",
+      "kind": "inconsistency",
+      "location": {
+        "file": "trust-extension/extensions/corpus/domain.mjs",
+        "lines": [
+          661,
+          661
+        ],
+        "text": "async function approvalReview(db, thread, approvals, { evolving = true } = {}) {"
+      },
+      "related": [
+        {
+          "file": "trust-extension/extensions/corpus/domain.mjs",
+          "lines": [
+            111,
+            111
+          ],
+          "text": "function approvableBlocks({ requirements, technical, withdrawals = [] }, evolving = true) {"
+        },
+        {
+          "file": "trust-extension/extensions/corpus/domain.mjs",
+          "lines": [
+            1064,
+            1064
+          ],
+          "text": "        const { changed, removed } = await approvalReview(db, proposed, governed.approvals, { evolving: false });"
+        },
+        {
+          "file": "trust-extension/extensions/corpus/domain.mjs",
+          "lines": [
+            494,
+            494
+          ],
+          "text": "    evolving: evolves(episode.root.plan),"
+        }
+      ],
+      "evidence": "governance() returns `evolving: evolves(plan)` (framework 0.6.0, line 494), while approvalReview's `{ evolving }` option and approvableBlocks' `evolving` parameter decide whether technical and withdrawal blocks count. Searched domain.mjs for `evolving: false`: the only caller is the 0.4.0/0.5.0 frozen-revision rule (line 1064), which is precisely the case where governed.evolving is false. Same word, two unrelated meanings in the same function chain.",
+      "action": "Rename the option and the parameter to what they select (for example `withEvolvingBlocks`), independently of the framework version.",
+      "touches": [
+        "trust-extension/extensions/corpus/domain.mjs"
+      ],
+      "risk": "low",
+      "riskReason": "Local rename of a parameter of two module-private functions.",
+      "state": "open"
+    },
+    {
+      "id": "frozen-approved-requirements-0-4-0-0-5-0",
+      "title": "The rule that refuses a revision changing an approved requirement serves only frameworks 0.4.0 and 0.5.0, one of which is in progress",
+      "kind": "leftover",
+      "location": {
+        "file": "trust-extension/extensions/corpus/domain.mjs",
+        "lines": [
+          1059,
+          1069
+        ],
+        "text": "      // Under framework 0.6.0 a revision may change or remove an approved requirement: it waits for the owner's approval.\n      // From 0.7.0, or once the framework Plan is complete or cancelled, such a revision is approved in the next Plan.\n      if (governed && !governed.evolving && !governed.single && !governed.ended) {\n        const proposed = { ...t, requirements: parseRequirements(a.body).requirements };\n        // Technical blocks evolve through approved revisions (the registry); only requirement blocks are frozen here.\n        const { changed, removed } = await approvalReview(db, proposed, governed.approvals, { evolving: false });\n        if (changed.length || removed.length)\n          conflict(\n            `Approved requirements cannot be changed or removed: ${findingsReport({ unapproved: [], changed, removed })}. A change goes through a new requirement.`,\n          );\n      }"
+      },
+      "evidence": "Owner's runtime, read-only plan.list (procedure corpus-thread-framework, 27 Plans) and Corpus workspace.read on 2026-10-05: thread trust-plan-cancellation (ACTIVE) has as current Plan plan-annulation-cadre-20261005, framework 0.5.0, IN_PROGRESS: every threads.revise on it takes this branch. Thread trust-controlled-language (0.5.0 COMPLETE) and trust-npm-distribution (0.4.0 COMPLETE) are ended, so the branch skips them. The comment at line 1059 still describes 0.6.0.",
+      "action": "Nothing can be removed while plan-annulation-cadre-20261005 is in progress. First that Plan must complete or be cancelled (or the thread be relinked to a 0.9.0 Plan); then a link refusal for 0.4.0 to 0.6.0 must be decided; only then delete this branch and its tests (continuation.acceptance TRQ-060 AC3, thread-management ORG-060 AC2, evolving-framework line 370).",
+      "touches": [
+        "trust-extension/extensions/corpus/domain.mjs",
+        "trust-extension/extensions/corpus/contracts.mjs",
+        "trust-extension/extensions/corpus/extension.json",
+        "trust-extension/extensions/corpus/acceptance/continuation.acceptance.test.mjs",
+        "trust-extension/extensions/corpus/acceptance/thread-management.acceptance.test.mjs",
+        "trust-extension/extensions/corpus/acceptance/evolving-framework.acceptance.test.mjs"
+      ],
+      "risk": "high",
+      "riskReason": "A live 0.5.0 Plan in progress depends on it; removing it now would let a revision alter requirements its owner approved.",
+      "state": "open"
+    },
+    {
+      "id": "framing-and-addition-approvals",
+      "title": "episodeApprovals still reads \"approve framing\" and addition Plans for frameworks 0.4.0 to 0.6.0, which feed the live registry",
+      "kind": "leftover",
+      "location": {
+        "file": "trust-extension/extensions/corpus/domain.mjs",
+        "lines": [
+          348,
+          358
+        ],
+        "text": "  const framing = checkNamed(root.checks, \"approve framing\");\n  return [\n    {\n      thread: root.plan.rootInputs?.thread,\n      state: framing?.state,\n      plan: root.plan.plan,\n      revision: framing?.inputs?.revision,\n      choice: root.plan.declarations?.[\"refinement choice\"],\n      approved: root.plan.declarations?.[\"approved revision\"],\n    },\n    ...revisionApprovals(root),"
+      },
+      "related": [
+        {
+          "file": "trust-extension/extensions/corpus/domain.mjs",
+          "lines": [
+            359,
+            372
+          ],
+          "text": "    ...episode.branches.flatMap(({ child }) =>\n      child?.plan.procedure === ADDITION\n        ? [\n            {\n              thread: child.plan.rootInputs?.thread,\n              state: checkNamed(child.checks, \"approve addition\")?.state,\n              plan: child.plan.plan,\n              revision: child.plan.rootInputs?.[\"thread revision\"],\n              choice: child.plan.declarations?.[\"approval choice\"],\n              approved: child.plan.declarations?.[\"approved revision\"],\n            },\n          ]\n        : [],\n    ),"
+        },
+        {
+          "file": "trust-extension/extensions/corpus/procedures/thread-addition.procedure.feature",
+          "lines": [
+            1,
+            1
+          ],
+          "text": "@trust-dsl:1 @procedure:corpus-thread-addition @version:0.1.0"
+        }
+      ],
+      "evidence": "Owner's runtime, read-only plan.list (procedure corpus-thread-framework, 27 Plans) and Corpus workspace.read on 2026-10-05: four threads are currently linked to 0.4.0 or 0.5.0 Plans: corpus-technical-requirements (exigences-techniques-cadre-040-20260930, 0.4.0, CANCELLED, thread abandoned), trust-npm-distribution (0.4.0 COMPLETE), trust-controlled-language (0.5.0 COMPLETE), trust-plan-cancellation (0.5.0 IN_PROGRESS). corpusRegistry calls governance() for every thread of a corpus with a framework Plan; corpus-technical-requirements is in corpus trust and its revision 18, approved in the addition Plan child-1349f4fe-7734-4c60-8582-0a3ce7b75379, is the origin of the four ui-* technical requirements of facet trust-interface. corpus-thread-addition@0.1.0 is used only by 0.4.0 to 0.6.0.",
+      "action": "Keep it. Removing it needs first a product decision on how approvals of ended 0.4.0/0.5.0 Plans are kept (for example a one-time record of their approved revision in the thread Plan history), and the completion of plan-annulation-cadre-20261005.",
+      "touches": [
+        "trust-extension/extensions/corpus/domain.mjs",
+        "trust-extension/extensions/corpus/procedures/thread-addition.procedure.feature"
+      ],
+      "risk": "high",
+      "riskReason": "Removing it today empties the trust-interface registry and ungoverns four threads, one with a Plan in progress.",
+      "state": "open"
+    },
+    {
+      "id": "commit-work-closure-prerequisite",
+      "title": "The \"commit work\" closure prerequisite applies to every framework before 0.9.0",
+      "kind": "leftover",
+      "location": {
+        "file": "trust-extension/extensions/corpus/domain.mjs",
+        "lines": [
+          450,
+          451
+        ],
+        "text": "/** The framework Checks a governed thread's completion waits for, in the order they run. */\nconst CLOSURE_PREREQUISITES = [\"check coverage\", \"commit work\"];"
+      },
+      "related": [
+        {
+          "file": "trust-extension/extensions/corpus/domain.mjs",
+          "lines": [
+            457,
+            459
+          ],
+          "text": "function closurePending(episode) {\n  const satisfied = (name) => checkNamed(episode.root.checks, name)?.state === \"SATISFIED\";\n  if (!delivers(episode.root.plan)) return CLOSURE_PREREQUISITES.filter((name) => !satisfied(name));"
+        },
+        {
+          "file": "trust-extension/extensions/corpus/contracts.mjs",
+          "lines": [
+            167,
+            167
+          ],
+          "text": "    'Complete a thread from its linked framework Plan once the Plan\\'s work covers the thread. For a thread governed by framework 0.4.0, Corpus reads the framework Plan in TRUST and refuses until its \"check coverage\" and \"commit work\" Checks are satisfied and while a requirement is unapproved, changed or removed; from framework 0.9.0 it waits for \"check coverage\" and for at least one delivery Procedure declared in \"delivery\", every child Plan of which is complete, instead of \"commit work\"; with reportFindings, it returns those findings instead of refusing.',"
+        }
+      ],
+      "evidence": "Owner's runtime, read-only plan.list (procedure corpus-thread-framework, 27 Plans) and Corpus workspace.read on 2026-10-05: closurePending returns CLOSURE_PREREQUISITES for every governed Plan that is not 0.9.0 or later. The only pre-0.9.0 framework Plan still in progress is plan-annulation-cadre-20261005 (0.5.0, current Plan of trust-plan-cancellation); its \"complete thread\" Check (thread-complete@0.2.0) calls threads.complete, which waits for \"commit work\". Ended Plans of 0.4.0 to 0.8.0 (19 COMPLETE or CANCELLED) do not call threads.complete again. Tests: governance.acceptance \"a governed thread closes only after its framework Plan satisfied coverage and commit\".",
+      "action": "Keep while plan-annulation-cadre-20261005 is in progress. Afterwards, once new links to frameworks before 0.9.0 are refused, delete CLOSURE_PREREQUISITES and the non-delivery branch of closurePending, and rewrite the threads.complete description in contracts.mjs and extension.json.",
+      "touches": [
+        "trust-extension/extensions/corpus/domain.mjs",
+        "trust-extension/extensions/corpus/contracts.mjs",
+        "trust-extension/extensions/corpus/extension.json",
+        "trust-extension/extensions/corpus/acceptance/governance.acceptance.test.mjs"
+      ],
+      "risk": "high",
+      "riskReason": "A live 0.5.0 Plan completes its thread through this rule; removing it would let that thread close without its \"commit work\" Check.",
+      "state": "open"
+    },
+    {
+      "id": "coverage-missions-input-and-reframed-missions",
+      "title": "threads.coverage still takes caller-sent missions and counts reframed missions for frameworks before 0.7.0",
+      "kind": "leftover",
+      "location": {
+        "file": "trust-extension/extensions/corpus/domain.mjs",
+        "lines": [
+          958,
+          965
+        ],
+        "text": "      const missions = [\n        ...[a.missions ?? []].flat(),\n        // Each mission of an addition keeps the thread revision that addition carries.\n        ...[a.additions ?? []]\n          .flat()\n          .flatMap(({ revision, missions: added }) => [added ?? []].flat().map((entry) => ({ ...entry, revision }))),\n        ...(await reframedMissions(db, t, access)),\n      ];"
+      },
+      "related": [
+        {
+          "file": "trust-extension/extensions/corpus/contracts.mjs",
+          "lines": [
+            119,
+            119
+          ],
+          "text": "        missions: { oneOf: [{ type: \"array\", maxItems: 100, items: coverageMission }, coverageMission] },"
+        },
+        {
+          "file": "trust-extension/extensions/corpus/domain.mjs",
+          "lines": [
+            414,
+            420
+          ],
+          "text": "async function reframedMissions(db, t, access) {\n  const replaced = await rows(\n    db,\n    \"SELECT plan,occurred_at FROM trust_corpus.thread_events WHERE thread=$1 AND event='reframed' ORDER BY sequence\",\n    [t.id],\n  );\n  const missions = [];"
+        },
+        {
+          "file": "trust-extension/extensions/corpus/extension.json",
+          "lines": [
+            335,
+            335
+          ],
+          "text": "            \"missions\": {"
+        }
+      ],
+      "evidence": "Searched procedures/ for coverage-check Operations: @0.1.0 (framework 0.3.0) and @0.2.0 (0.4.0, 0.5.0) send `missions`; @0.4.0 (0.7.0 to 0.9.0) sends none, and line 948-950 refuses missions for 0.7.0+. reframedMissions is called only here, so a 0.7.0+ Plan never counts missions of a replaced Plan. Owner's runtime, read-only plan.list (procedure corpus-thread-framework, 27 Plans) and Corpus workspace.read on 2026-10-05: plan-annulation-cadre-20261005 (0.5.0, IN_PROGRESS) is pinned to coverage-check@0.2.0 and will send missions; corpus-technical-requirements (0.4.0) has a reframed event from exigences-techniques-cadrage-20260929 (0.2.0) whose six missions count in its coverage.",
+      "action": "Keep while a 0.4.0/0.5.0 Plan can still run its coverage Check. After plan-annulation-cadre-20261005 ends and pre-0.7.0 links are refused, delete the `missions` input (contracts.mjs, extension.json), reframedMissions and this branch.",
+      "touches": [
+        "trust-extension/extensions/corpus/domain.mjs",
+        "trust-extension/extensions/corpus/contracts.mjs",
+        "trust-extension/extensions/corpus/extension.json",
+        "trust-extension/extensions/corpus/acceptance/reframe.acceptance.test.mjs"
+      ],
+      "risk": "high",
+      "riskReason": "The in-progress 0.5.0 Plan and the reframed 0.4.0 thread depend on it; removing the input now makes their coverage Check fail validation.",
+      "state": "open"
+    },
+    {
+      "id": "ui-reframed-and-addition-episodes",
+      "title": "The thread page reads the framework Plan a reframing replaced, which exists only for a link older than 0.4.0",
+      "kind": "leftover",
+      "location": {
+        "file": "trust-extension/extensions/corpus/ui/thread-document.tsx",
+        "lines": [
+          163,
+          164
+        ],
+        "text": "  // A reframed thread keeps the missions completed under the framework Plan it replaced.\n  const replaced = thread.events.find((event) => event.event === \"reframed\")?.plan ?? null;"
+      },
+      "related": [
+        {
+          "file": "trust-extension/extensions/corpus/ui/use-delegation-episode.ts",
+          "lines": [
+            111,
+            115
+          ],
+          "text": "/**\n * Several episodes the thread page shows besides its framework Plan: the replaced framework of a reframed thread and\n * the additions that found their own missions. A read that fails keeps its error, so the page reports it instead of\n * hiding the missions, and can be retried.\n */"
+        },
+        {
+          "file": "trust-extension/extensions/corpus/ui/thread-document.tsx",
+          "lines": [
+            240,
+            241
+          ],
+          "text": "  const last = thread.events.find((event) => event.event !== \"reframed\");\n  const reframing = thread.events.find((event) => event.event === \"reframed\");"
+        }
+      ],
+      "evidence": "Owner's runtime, read-only plan.list (procedure corpus-thread-framework, 27 Plans) and Corpus workspace.read on 2026-10-05: a reframed event is recorded only when a link to a framework older than 0.4.0 is replaced (domain.mjs lines 1148-1158 and 1179-1186); thread corpus-technical-requirements has one (from exigences-techniques-cadrage-20260929, 0.2.0), and two threads are still linked to 0.2.0 Plans (trust-environment-secret-delegation, trust-extension-distribution), so a new link would create another. The page shows the six missions inherited from the replaced Plan through this code (owner's visual validation interaction of 2026-10-02 on that thread). The `founders` list next to it (lines 165-168) is generic (any child Plan with its own missions) and is not counted here. The apps/trust-web Playwright seed publishes thread-framework-0.4.0 and 0.1.0 to show it.",
+      "action": "Keep: the replaced 0.2.0 Plan of corpus-technical-requirements is still read by the thread page. Removing it needs first a product decision to stop showing the work of a replaced pre-0.4.0 Plan, and to refuse relinking the two threads still linked to 0.2.0 Plans.",
+      "touches": [
+        "trust-extension/extensions/corpus/ui/thread-document.tsx",
+        "trust-extension/extensions/corpus/ui/use-delegation-episode.ts",
+        "trust-extension/extensions/corpus/ui/plan-monitor.tsx"
+      ],
+      "risk": "high",
+      "riskReason": "Removing it hides delivered missions of live threads in the interface.",
+      "state": "open"
+    }
+  ]
+}

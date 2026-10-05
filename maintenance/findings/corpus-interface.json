@@ -1,0 +1,559 @@
+{
+  "axis": "corpus-interface",
+  "findings": [
+    {
+      "id": "explorer-css-old-library-classes",
+      "title": "28 classes of explorer.module.css belong to the former library page and no component uses them",
+      "kind": "dead-code",
+      "location": {
+        "file": "trust-extension/extensions/corpus/ui/explorer.module.css",
+        "lines": [
+          1,
+          5
+        ],
+        "text": ".page {\n  display: flex;\n  flex-direction: column;\n  gap: 18px;\n}"
+      },
+      "evidence": "A CSS module class is only reachable as explorer / shared.<name> or explorer / shared[\"<name>\"] in a file that imports explorer.module.css; a script listed every class of explorer.module.css, every importer and its alias, and every dynamic explorer / shared[...] index. Importers: entry.tsx, new-view.tsx, organisation.tsx and page.tsx (alias explorer), facet-page.tsx (alias shared); no dynamic index. Used classes: lead, primaryAction, count, empty, crumbs, eyebrow, facetStrip, facetChip, panel, reference. Unused classes with the line of their first rule: page (1), libraryHeader (6), toolbar (25), tabs (33, 39, 42-57), tabsAction (61), filters (75, 81), search (82, 90), group (97), groupTitle (102, 112), threadList (115), threadRow (124-135), threadLink (138, 149), threadHead (152), threadTitle (157), threadSummary (161), threadMeta (169), metaStrong (176), framework (180), pill (187), active (198), frozen (202), completed (206), cardGrid (210), card (215-237), cardTitle (241), activeThread (244), header (265), timeline (311-330), and the whole @media (max-width: 760px) block at lines 334-353, which only styles unused classes. Searched with rg over trust-extension/, apps/trust-web/acceptance/ and packages/: no file reaches these classes through explorer.module.css. Acceptance tests select by [class*='stepName'], [class*='icon'], [class*='tipDate'] and [class*='tipReason'] only, none of which matches these names. The thread list of the entry page is now rendered by thread-rows.tsx with entry.module.css.",
+      "action": "Delete the rules of the 28 unused classes and the @media (max-width: 760px) block from explorer.module.css; keep lead, primaryAction, count, empty, crumbs, eyebrow, facetStrip, facetChip, panel and reference.",
+      "touches": [
+        "trust-extension/extensions/corpus/ui/explorer.module.css"
+      ],
+      "risk": "low",
+      "riskReason": "CSS module class names are hashed, so no element can carry these classes unless a component names them, and none does; the remaining rules are untouched.",
+      "state": "open"
+    },
+    {
+      "id": "plan-monitor-css-old-check-list",
+      "title": "20 classes of plan-monitor.module.css styled the former check and mission list and are no longer used",
+      "kind": "dead-code",
+      "location": {
+        "file": "trust-extension/extensions/corpus/ui/plan-monitor.module.css",
+        "lines": [
+          12,
+          20
+        ],
+        "text": ".links {\n  display: flex;\n  flex-wrap: wrap;\n  align-items: center;\n  justify-content: space-between;\n  gap: 4px 12px;\n  margin: 2px 0 0;\n  font-size: 12.5px;\n}"
+      },
+      "evidence": "A CSS module class is only reachable as styles.<name> or styles[\"<name>\"] in a file that imports plan-monitor.module.css; a script listed every class of plan-monitor.module.css, every importer and its alias, and every dynamic styles[...] index. Only importer: plan-monitor.tsx, which uses root, faint, missions, subhead, rows, awaited, current and stale; it has no dynamic index. Unused classes with their rules: links (12-27), head (28, 34, 47, 51; the .subhead h2 rule at 41 stays), checks (54, 62), checkRow (66, 78, 81, 90), missionName (82, 209, 219), status (86, 90, 106-125), mark (96, 105-121, 132), name (100), satisfied (105-106), failed (109-110), actionable (113-114), running (115-125, 132), blocked (136), missionList (185), mission (193), missionHead (203), missionStep (223), nextName (232), missionTime (236), nestedList (243); the @keyframes corpus-monitor-running (126-130) is only referenced by the dead .running .status rule. The mission rows are now rendered by MissionRowItem from plan-card.tsx with plan-card.module.css. Searched with rg over trust-extension/, apps/trust-web/acceptance/ and packages/: no other reference to these names through this module.",
+      "action": "Delete the rules of the 20 unused classes, the @keyframes corpus-monitor-running and the reduced-motion block that only targets .running .mark; keep root, faint, missions, subhead (with .subhead h2), rows, awaited, current and stale.",
+      "touches": [
+        "trust-extension/extensions/corpus/ui/plan-monitor.module.css"
+      ],
+      "risk": "low",
+      "riskReason": "Hashed module classes that plan-monitor.tsx never names; the follow-up page renders its rows with plan-card.module.css.",
+      "state": "open"
+    },
+    {
+      "id": "plan-views-css-mark-rules",
+      "title": "The .mark rules of plan-views.module.css, and the tone classes that only style .mark, target an element no component renders",
+      "kind": "dead-code",
+      "location": {
+        "file": "trust-extension/extensions/corpus/ui/plan-views.module.css",
+        "lines": [
+          158,
+          161
+        ],
+        "text": ".mark {\n  text-align: center;\n  font-size: 12px;\n}"
+      },
+      "related": [
+        {
+          "file": "trust-extension/extensions/corpus/ui/plan-views.module.css",
+          "lines": [
+            200,
+            212
+          ],
+          "text": ".satisfied .mark {\n  color: var(--corpus-success);\n}\n.failed .mark {\n  color: var(--corpus-danger);\n}\n.actionable .mark,\n.running .mark {\n  color: var(--corpus-accent);\n}\n.running .mark {\n  animation: corpus-running-turn 1.2s linear infinite;\n}"
+        },
+        {
+          "file": "trust-extension/extensions/corpus/ui/plan-views.module.css",
+          "lines": [
+            228,
+            232
+          ],
+          "text": "@media (prefers-reduced-motion: reduce) {\n  .running .mark {\n    animation: none;\n  }\n}"
+        }
+      ],
+      "evidence": "A CSS module class is only reachable as styles.<name> or styles[\"<name>\"] in a file that imports plan-views.module.css; a script listed every class of plan-views.module.css, every importer and its alias, and every dynamic styles[...] index. plan-views.tsx never writes styles.mark; it applies the tone classes through styles[tone] (Tone = satisfied | running | failed | actionable | blocked) on the check row, but in this file satisfied, failed, actionable and running appear only in the selectors '.<tone> .mark' (lines 200-212 and 229); blocked is still used by '.blocked .checkName' (190). The check marks are now StepIcon from visual-language.tsx, styled by visual-language.module.css. Rules concerned: .mark (158-161), .checkItem .mark (162-168), .satisfied/.failed/.actionable/.running .mark (200-212), and the reduced-motion block (228-232). Searched with rg over trust-extension/, apps/trust-web/acceptance/ and packages/ for 'styles.mark' and '.mark': no other use through this module.",
+      "action": "Delete the .mark, .checkItem .mark and '.<tone> .mark' rules and the reduced-motion block that only stops the .running .mark animation; keep styles[tone] on the row, which .blocked .checkName still needs.",
+      "touches": [
+        "trust-extension/extensions/corpus/ui/plan-views.module.css"
+      ],
+      "risk": "low",
+      "riskReason": "No element in plan-views.tsx carries the mark class; the rules can match nothing.",
+      "state": "open"
+    },
+    {
+      "id": "plan-views-css-unused-keyframes",
+      "title": "The @keyframes corpus-running-pulse of plan-views.module.css is not used by any animation",
+      "kind": "dead-code",
+      "location": {
+        "file": "trust-extension/extensions/corpus/ui/plan-views.module.css",
+        "lines": [
+          223,
+          227
+        ],
+        "text": "@keyframes corpus-running-pulse {\n  50% {\n    opacity: 0.35;\n  }\n}"
+      },
+      "evidence": "Listed every @keyframes of the ui/*.css files and searched every animation declaration of those files for its name: corpus-running-pulse has no animation that names it (corpus-running-turn and corpus-monitor-running each have one). Searched with rg over trust-extension/, apps/trust-web/acceptance/ and packages/ for corpus-running-pulse: only its declaration.",
+      "action": "Delete the @keyframes corpus-running-pulse block.",
+      "touches": [
+        "trust-extension/extensions/corpus/ui/plan-views.module.css"
+      ],
+      "risk": "low",
+      "riskReason": "An animation nobody names never runs.",
+      "state": "open"
+    },
+    {
+      "id": "plan-views-css-mission-list",
+      "title": "The .missionList class of plan-views.module.css is not used; its rules share selectors with .plainList",
+      "kind": "dead-code",
+      "location": {
+        "file": "trust-extension/extensions/corpus/ui/plan-views.module.css",
+        "lines": [
+          325,
+          333
+        ],
+        "text": ".plainList,\n.missionList {\n  list-style: none;\n  margin: 0;\n  padding: 0;\n  display: flex;\n  flex-direction: column;\n  gap: 6px;\n}"
+      },
+      "related": [
+        {
+          "file": "trust-extension/extensions/corpus/ui/plan-views.module.css",
+          "lines": [
+            340,
+            351
+          ],
+          "text": ".missionList a {\n  flex: 1;\n  min-width: 0;\n  overflow: hidden;\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  text-decoration: none;\n  font-size: 12.5px;\n}\n.missionList a:hover {\n  text-decoration: underline;\n}"
+        }
+      ],
+      "evidence": "A CSS module class is only reachable as styles.<name> or styles[\"<name>\"] in a file that imports plan-views.module.css; a script listed every class of plan-views.module.css, every importer and its alias, and every dynamic styles[...] index. plan-views.tsx uses styles.plainList and never styles.missionList; the mission list of the Plan page is now made of the Plan card mission rows. Searched with rg over trust-extension/, apps/trust-web/acceptance/ and packages/ for missionList: the other matches are the unused class of plan-monitor.module.css and no component.",
+      "action": "Remove .missionList from the grouped selectors at lines 326 and 335, and delete the .missionList a and .missionList a:hover rules (340-351).",
+      "touches": [
+        "trust-extension/extensions/corpus/ui/plan-views.module.css"
+      ],
+      "risk": "low",
+      "riskReason": "Only the selector list changes; .plainList keeps the same declarations.",
+      "state": "open"
+    },
+    {
+      "id": "thread-document-css-unused-classes",
+      "title": "7 classes of thread-document.module.css are no longer used: main, inputs, facts, framework, awaiting, actions, related",
+      "kind": "dead-code",
+      "location": {
+        "file": "trust-extension/extensions/corpus/ui/thread-document.module.css",
+        "lines": [
+          6,
+          11
+        ],
+        "text": ".main {\n  display: flex;\n  flex-direction: column;\n  gap: 16px;\n  min-width: 0;\n}"
+      },
+      "evidence": "A CSS module class is only reachable as styles.<name> or styles[\"<name>\"] in a file that imports thread-document.module.css; a script listed every class of thread-document.module.css, every importer and its alias, and every dynamic styles[...] index. Importers: thread-document.tsx and reference-reader.tsx (alias styles), no dynamic index. Unused classes with their rules: main (6), inputs (23, 87), facts (129, 136, 140, 218), framework (143), awaiting (146, 164, 167, and 190 in a media query), actions (175, 180), related (224). Searched with rg over trust-extension/, apps/trust-web/acceptance/ and packages/ for each name: no use through this module.",
+      "action": "Delete the rules of these 7 classes, including the .awaiting rule inside the media query at line 190.",
+      "touches": [
+        "trust-extension/extensions/corpus/ui/thread-document.module.css"
+      ],
+      "risk": "low",
+      "riskReason": "Hashed module classes that neither importer names.",
+      "state": "open"
+    },
+    {
+      "id": "organisation-css-unused-classes",
+      "title": "3 classes of organisation.module.css are no longer used: crumb, outcome, success",
+      "kind": "dead-code",
+      "location": {
+        "file": "trust-extension/extensions/corpus/ui/organisation.module.css",
+        "lines": [
+          2,
+          6
+        ],
+        "text": ".crumb {\n  display: inline-flex;\n  align-items: center;\n  gap: 6px;\n}"
+      },
+      "evidence": "A CSS module class is only reachable as organisation / styles.<name> or organisation / styles[\"<name>\"] in a file that imports organisation.module.css; a script listed every class of organisation.module.css, every importer and its alias, and every dynamic organisation / styles[...] index. Importers: entry.tsx (alias organisation) and organisation.tsx; no dynamic index. Unused: crumb (2), outcome (25), success (31). Searched with rg over trust-extension/, apps/trust-web/acceptance/ and packages/ for organisation.crumb, organisation.outcome, organisation.success, styles.crumb, styles.outcome and styles.success in the importers: none.",
+      "action": "Delete the .crumb, .outcome and .success rules from organisation.module.css.",
+      "touches": [
+        "trust-extension/extensions/corpus/ui/organisation.module.css"
+      ],
+      "risk": "low",
+      "riskReason": "Hashed module classes that no importer names.",
+      "state": "open"
+    },
+    {
+      "id": "plan-card-css-unused-classes",
+      "title": "3 classes of plan-card.module.css are no longer used: titleLine, more, linkButton",
+      "kind": "dead-code",
+      "location": {
+        "file": "trust-extension/extensions/corpus/ui/plan-card.module.css",
+        "lines": [
+          51,
+          51
+        ],
+        "text": ".titleLine {"
+      },
+      "related": [
+        {
+          "file": "trust-extension/extensions/corpus/ui/plan-card.module.css",
+          "lines": [
+            176,
+            176
+          ],
+          "text": ".more {"
+        },
+        {
+          "file": "trust-extension/extensions/corpus/ui/plan-card.module.css",
+          "lines": [
+            187,
+            197
+          ],
+          "text": ".linkButton {\n  padding: 0;\n  border: 0;\n  background: none;\n  color: var(--corpus-accent);\n  font: inherit;\n  cursor: pointer;\n}\n.linkButton:hover {\n  text-decoration: underline;\n}"
+        }
+      ],
+      "evidence": "A CSS module class is only reachable as styles.<name> or styles[\"<name>\"] in a file that imports plan-card.module.css; a script listed every class of plan-card.module.css, every importer and its alias, and every dynamic styles[...] index. Only importer: plan-card.tsx; no dynamic index. Unused: titleLine (51), more (176), linkButton (187, 195). Searched with rg over trust-extension/, apps/trust-web/acceptance/ and packages/ for these names: no other use through this module.",
+      "action": "Delete the .titleLine, .more, .linkButton and .linkButton:hover rules.",
+      "touches": [
+        "trust-extension/extensions/corpus/ui/plan-card.module.css"
+      ],
+      "risk": "low",
+      "riskReason": "Hashed module classes that plan-card.tsx never names.",
+      "state": "open"
+    },
+    {
+      "id": "plan-history-css-back",
+      "title": "The .back class of plan-history.module.css is not used",
+      "kind": "dead-code",
+      "location": {
+        "file": "trust-extension/extensions/corpus/ui/plan-history.module.css",
+        "lines": [
+          126,
+          128
+        ],
+        "text": ".back {\n  align-self: flex-start;\n}"
+      },
+      "evidence": "A CSS module class is only reachable as styles.<name> or styles[\"<name>\"] in a file that imports plan-history.module.css; a script listed every class of plan-history.module.css, every importer and its alias, and every dynamic styles[...] index. Only importer: plan-history.tsx, which never writes styles.back (the way back is the trail). Searched with rg over trust-extension/, apps/trust-web/acceptance/ and packages/ for 'styles.back': no match.",
+      "action": "Delete the .back rule.",
+      "touches": [
+        "trust-extension/extensions/corpus/ui/plan-history.module.css"
+      ],
+      "risk": "low",
+      "riskReason": "A hashed module class that no component names.",
+      "state": "open"
+    },
+    {
+      "id": "thread-status-tone-unread",
+      "title": "threadPresentation in thread-status.ts computes a tone that nothing reads",
+      "kind": "leftover",
+      "location": {
+        "file": "trust-extension/extensions/corpus/ui/thread-status.ts",
+        "lines": [
+          3,
+          6
+        ],
+        "text": "export function threadPresentation(thread: { state: Thread[\"state\"] | \"IN_PROGRESS\" }): {\n  label: string;\n  tone: string;\n} {"
+      },
+      "evidence": "The only caller of threadPresentation is threadStatus in the same file, which returns .label only. Searched with rg over trust-extension/, apps/trust-web/acceptance/ and packages/ for threadPresentation: only thread-status.ts; for threadStatus: entry.tsx (lines 100 and 304) and new-view.tsx (line 41), all reading the returned label. The tones active, frozen and completed were the classes of the former explorer.module.css pills, which no component uses any more.",
+      "action": "Drop the tone field and merge threadPresentation into threadStatus, which returns the label for each state.",
+      "touches": [
+        "trust-extension/extensions/corpus/ui/thread-status.ts"
+      ],
+      "risk": "low",
+      "riskReason": "No reader of tone exists; the labels returned by threadStatus are unchanged.",
+      "state": "open"
+    },
+    {
+      "id": "thread-status-labels-duplicate-thread-state",
+      "title": "thread-status.ts repeats the thread state labels that threadState in visual-language.tsx already defines",
+      "kind": "duplication",
+      "location": {
+        "file": "trust-extension/extensions/corpus/ui/thread-status.ts",
+        "lines": [
+          7,
+          19
+        ],
+        "text": "  switch (thread.state) {\n    case \"IN_PROGRESS\":\n      return { label: \"In progress\", tone: \"active\" };\n    case \"ACTIVE\":\n      return { label: \"Open\", tone: \"active\" };\n    case \"FROZEN\":\n      return { label: \"Paused\", tone: \"frozen\" };\n    case \"COMPLETED\":\n      return { label: \"Completed\", tone: \"completed\" };\n    default:\n      throw new Error(`Unknown thread state: ${String(thread.state)}`);\n  }\n}"
+      },
+      "related": [
+        {
+          "file": "trust-extension/extensions/corpus/ui/visual-language.tsx",
+          "lines": [
+            26,
+            37
+          ],
+          "text": "export const threadState = (thread: Pick<Thread, \"state\">, atWork = false): PillState => {\n  switch (thread.state) {\n    case \"ACTIVE\":\n      return atWork ? { label: \"In progress\", role: \"warning\" } : { label: \"Open\", role: \"accent\" };\n    case \"FROZEN\":\n      return { label: \"Paused\", role: \"waiting\" };\n    case \"COMPLETED\":\n      return { label: \"Completed\", role: \"success\" };\n    default:\n      throw new Error(`Unknown thread state: ${String(thread.state)}`);\n  }\n};"
+        }
+      ],
+      "evidence": "Both switch over the thread state and return the same English labels: In progress, Open, Paused and Completed, with the same error for an unknown state. threadStatus feeds the state filter of entry.tsx and the summary of new-view.tsx; threadState feeds the state pills (ThreadStatePill). Searched with rg over trust-extension/, apps/trust-web/acceptance/ and packages/: no other definition of these labels in ui/.",
+      "action": "Make entry.tsx and new-view.tsx use threadState(thread, state === \"IN_PROGRESS\").label from visual-language.tsx (or a small wrapper exported from it) and delete thread-status.ts.",
+      "touches": [
+        "trust-extension/extensions/corpus/ui/thread-status.ts",
+        "trust-extension/extensions/corpus/ui/entry.tsx",
+        "trust-extension/extensions/corpus/ui/new-view.tsx",
+        "trust-extension/extensions/corpus/ui/visual-language.tsx"
+      ],
+      "risk": "medium",
+      "riskReason": "threadState takes the ACTIVE state plus an atWork flag while threadStatus takes the synthetic IN_PROGRESS state; the mapping must keep the filter labels identical, and the filter of entry.tsx is covered by browser tests only.",
+      "state": "open"
+    },
+    {
+      "id": "organisation-form-page-unread-go-and-t",
+      "title": "FormPage in organisation.tsx receives a go prop and calls useI18n without reading either",
+      "kind": "dead-code",
+      "location": {
+        "file": "trust-extension/extensions/corpus/ui/organisation.tsx",
+        "lines": [
+          22,
+          22
+        ],
+        "text": "  go,"
+      },
+      "related": [
+        {
+          "file": "trust-extension/extensions/corpus/ui/organisation.tsx",
+          "lines": [
+            29,
+            29
+          ],
+          "text": "  go(route: CorpusRoute): void;"
+        },
+        {
+          "file": "trust-extension/extensions/corpus/ui/organisation.tsx",
+          "lines": [
+            32,
+            32
+          ],
+          "text": "  const { t } = useI18n();"
+        },
+        {
+          "file": "trust-extension/extensions/corpus/ui/organisation.tsx",
+          "lines": [
+            94,
+            94
+          ],
+          "text": "      go={go}"
+        },
+        {
+          "file": "trust-extension/extensions/corpus/ui/organisation.tsx",
+          "lines": [
+            221,
+            221
+          ],
+          "text": "      go={go}"
+        }
+      ],
+      "evidence": "npx tsc --noEmit -p tsconfig.json --noUnusedLocals --noUnusedParameters in trust-extension/extensions/corpus reports exactly two errors: organisation.tsx(22,3) 'go' is declared but its value is never read, and organisation.tsx(32,9) 't' is declared but its value is never read. Both callers (lines 94 and 221) pass go={go}.",
+      "action": "Remove the go prop from FormPage (destructuring, type and the two go={go} at the call sites) and the unused const { t } = useI18n() in FormPage.",
+      "touches": [
+        "trust-extension/extensions/corpus/ui/organisation.tsx"
+      ],
+      "risk": "low",
+      "riskReason": "The compiler proves neither value is read; the call sites keep go for their own use.",
+      "state": "open"
+    },
+    {
+      "id": "i18n-unused-completed-thread-corpus",
+      "title": "The French entry \"A completed thread keeps its corpus.\" of i18n.tsx is used by no t() call",
+      "kind": "dead-code",
+      "location": {
+        "file": "trust-extension/extensions/corpus/ui/i18n.tsx",
+        "lines": [
+          435,
+          435
+        ],
+        "text": "  \"A completed thread keeps its corpus.\": \"Un thread terminé garde son corpus.\","
+      },
+      "evidence": "A script evaluated the fr catalogue (453 keys) and searched every other ui/*.ts(x) file for each key as a string literal; it also listed every t() call with a non-literal argument and resolved the conditional literals and the tables behind them (GROUPING_LABELS, KIND_LABELS, GROUP_LABELS, segmentLabels, eventLabels, item.kind, `kind|${result.kind}`, state.label). Every other key is used. This key matches only the server refusal in trust-extension/extensions/corpus/domain.mjs (line 1109) and its server acceptance test; no t() call in ui/ passes a server message variable that could resolve to it (the only free-variable call, t(notice) in interaction.tsx, receives the single literal set in plan-input.tsx). No t() call in ui/ uses a key absent from the French catalogue.",
+      "action": "Delete the entry from the fr catalogue.",
+      "touches": [
+        "trust-extension/extensions/corpus/ui/i18n.tsx"
+      ],
+      "risk": "low",
+      "riskReason": "No t() call can reach the key; the server message is unaffected.",
+      "state": "open"
+    },
+    {
+      "id": "new-view-missing-primary-class",
+      "title": "new-view.tsx names styles.primary, a class entry.module.css does not define",
+      "kind": "inconsistency",
+      "location": {
+        "file": "trust-extension/extensions/corpus/ui/new-view.tsx",
+        "lines": [
+          97,
+          97
+        ],
+        "text": "          <button type=\"submit\" className={styles.primary} disabled={pending || !name.trim()}>"
+      },
+      "evidence": "A script listed every <alias>.<name> reference of the ui/*.tsx files and compared it with the classes of the imported module: the only reference to a missing class is styles.primary in new-view.tsx, where styles is entry.module.css. Searched with rg over trust-extension/, apps/trust-web/acceptance/ and packages/ for '.primary' in ui/*.css: none (explorer.module.css has .primaryAction, which is a different class). The class attribute therefore renders as undefined and the save button of the new view has no class.",
+      "action": "Remove className={styles.primary} from the save button of new-view.tsx.",
+      "touches": [
+        "trust-extension/extensions/corpus/ui/new-view.tsx"
+      ],
+      "risk": "low",
+      "riskReason": "The reference already resolves to undefined, so removing it renders the same button.",
+      "state": "open"
+    },
+    {
+      "id": "global-class-corpus-thread-list",
+      "title": "The global class corpus-thread-list set in thread-rows.tsx has no stylesheet, script or test that uses it",
+      "kind": "leftover",
+      "location": {
+        "file": "trust-extension/extensions/corpus/ui/thread-rows.tsx",
+        "lines": [
+          30,
+          30
+        ],
+        "text": "    <ul className={`corpus-thread-list ${styles.rows}`} aria-label={label}>"
+      },
+      "evidence": "Searched with rg over trust-extension/, apps/trust-web/acceptance/ and packages/, and the whole repository (excluding node_modules, dist and bundle) for corpus-thread-list as a word: the only match is the className cited here. No .css file (module or global, including :global() selectors) and no querySelector or Playwright locator names it. Global corpus-* classes that tests do use (corpus-app, corpus-thread, corpus-thread-number, corpus-thread-status, corpus-thread-card, corpus-lifecycle, corpus-state-pill, corpus-markdown) are not recorded.",
+      "action": "Remove corpus-thread-list from the className, keeping the module class.",
+      "touches": [
+        "trust-extension/extensions/corpus/ui/thread-rows.tsx"
+      ],
+      "risk": "low",
+      "riskReason": "No rule, script or test selects the class; only an external user stylesheet could, and none is known.",
+      "state": "open"
+    },
+    {
+      "id": "global-class-corpus-intention",
+      "title": "The global class corpus-intention set in thread-context.tsx has no stylesheet, script or test that uses it",
+      "kind": "leftover",
+      "location": {
+        "file": "trust-extension/extensions/corpus/ui/thread-context.tsx",
+        "lines": [
+          79,
+          79
+        ],
+        "text": "                <div className=\"corpus-intention\" key={i.facet}>"
+      },
+      "evidence": "Searched with rg over trust-extension/, apps/trust-web/acceptance/ and packages/, and the whole repository (excluding node_modules, dist and bundle) for corpus-intention as a word: the only match is the className cited here. No .css file (module or global, including :global() selectors) and no querySelector or Playwright locator names it. Global corpus-* classes that tests do use (corpus-app, corpus-thread, corpus-thread-number, corpus-thread-status, corpus-thread-card, corpus-lifecycle, corpus-state-pill, corpus-markdown) are not recorded.",
+      "action": "Remove corpus-intention from the className, keeping the module class.",
+      "touches": [
+        "trust-extension/extensions/corpus/ui/thread-context.tsx"
+      ],
+      "risk": "low",
+      "riskReason": "No rule, script or test selects the class; only an external user stylesheet could, and none is known.",
+      "state": "open"
+    },
+    {
+      "id": "global-classes-open-thread-dialog",
+      "title": "The global class corpus-create-icon (and corpus-open-dialog at line 149) set in open-thread-dialog.tsx has no stylesheet, script or test that uses it",
+      "kind": "leftover",
+      "location": {
+        "file": "trust-extension/extensions/corpus/ui/open-thread-dialog.tsx",
+        "lines": [
+          136,
+          136
+        ],
+        "text": "        className={compact ? `corpus-create-icon ${styles.compactTrigger}` : undefined}"
+      },
+      "related": [
+        {
+          "file": "trust-extension/extensions/corpus/ui/open-thread-dialog.tsx",
+          "lines": [
+            149,
+            149
+          ],
+          "text": "        className={`corpus-open-dialog ${styles.dialog}`}"
+        }
+      ],
+      "evidence": "Searched with rg over trust-extension/, apps/trust-web/acceptance/ and packages/, and the whole repository (excluding node_modules, dist and bundle) for corpus-create-icon (and corpus-open-dialog at line 149) as a word: the only matches are the className cited here; corpus-open-dialog likewise has no user. No .css file (module or global, including :global() selectors) and no querySelector or Playwright locator names it. Global corpus-* classes that tests do use (corpus-app, corpus-thread, corpus-thread-number, corpus-thread-status, corpus-thread-card, corpus-lifecycle, corpus-state-pill, corpus-markdown) are not recorded.",
+      "action": "Remove corpus-create-icon (and corpus-open-dialog at line 149) from the className, keeping the module class.",
+      "touches": [
+        "trust-extension/extensions/corpus/ui/open-thread-dialog.tsx"
+      ],
+      "risk": "low",
+      "riskReason": "No rule, script or test selects the class; only an external user stylesheet could, and none is known.",
+      "state": "open"
+    },
+    {
+      "id": "global-class-corpus-navigation",
+      "title": "The global class corpus-navigation set in page.tsx has no stylesheet, script or test that uses it",
+      "kind": "leftover",
+      "location": {
+        "file": "trust-extension/extensions/corpus/ui/page.tsx",
+        "lines": [
+          705,
+          705
+        ],
+        "text": "                  <div className={`corpus-navigation ${styles.navigation}`}>"
+      },
+      "evidence": "Searched with rg over trust-extension/, apps/trust-web/acceptance/ and packages/, and the whole repository (excluding node_modules, dist and bundle) for corpus-navigation as a word: the only match is the className cited here. No .css file (module or global, including :global() selectors) and no querySelector or Playwright locator names it. Global corpus-* classes that tests do use (corpus-app, corpus-thread, corpus-thread-number, corpus-thread-status, corpus-thread-card, corpus-lifecycle, corpus-state-pill, corpus-markdown) are not recorded.",
+      "action": "Remove corpus-navigation from the className, keeping the module class.",
+      "touches": [
+        "trust-extension/extensions/corpus/ui/page.tsx"
+      ],
+      "risk": "low",
+      "riskReason": "No rule, script or test selects the class; only an external user stylesheet could, and none is known.",
+      "state": "open"
+    },
+    {
+      "id": "global-class-corpus-post",
+      "title": "The global class corpus-post set in interaction.tsx has no stylesheet, script or test that uses it",
+      "kind": "leftover",
+      "location": {
+        "file": "trust-extension/extensions/corpus/ui/interaction.tsx",
+        "lines": [
+          238,
+          238
+        ],
+        "text": "      <article id={`entry-${item.id}`} tabIndex={-1} data-corpus-entry className={`corpus-post ${styles.compact}`}>"
+      },
+      "related": [
+        {
+          "file": "trust-extension/extensions/corpus/ui/interaction.tsx",
+          "lines": [
+            291,
+            291
+          ],
+          "text": "      className={`corpus-post ${styles.root}`}"
+        }
+      ],
+      "evidence": "Searched with rg over trust-extension/, apps/trust-web/acceptance/ and packages/, and the whole repository (excluding node_modules, dist and bundle) for corpus-post as a word: the only matches are the className cited here. No .css file (module or global, including :global() selectors) and no querySelector or Playwright locator names it. Global corpus-* classes that tests do use (corpus-app, corpus-thread, corpus-thread-number, corpus-thread-status, corpus-thread-card, corpus-lifecycle, corpus-state-pill, corpus-markdown) are not recorded.",
+      "action": "Remove corpus-post from the className, keeping the module class.",
+      "touches": [
+        "trust-extension/extensions/corpus/ui/interaction.tsx"
+      ],
+      "risk": "low",
+      "riskReason": "No rule, script or test selects the class; only an external user stylesheet could, and none is known.",
+      "state": "open"
+    },
+    {
+      "id": "global-class-corpus-library-label",
+      "title": "The global class corpus-library-label set in entry.tsx has no stylesheet, script or test that uses it",
+      "kind": "leftover",
+      "location": {
+        "file": "trust-extension/extensions/corpus/ui/entry.tsx",
+        "lines": [
+          242,
+          242
+        ],
+        "text": "                <p className={`corpus-library-label ${explorer.lead}`}>"
+      },
+      "evidence": "Searched with rg over trust-extension/, apps/trust-web/acceptance/ and packages/, and the whole repository (excluding node_modules, dist and bundle) for corpus-library-label as a word: the only match is the className cited here. No .css file (module or global, including :global() selectors) and no querySelector or Playwright locator names it. Global corpus-* classes that tests do use (corpus-app, corpus-thread, corpus-thread-number, corpus-thread-status, corpus-thread-card, corpus-lifecycle, corpus-state-pill, corpus-markdown) are not recorded.",
+      "action": "Remove corpus-library-label from the className, keeping the module class.",
+      "touches": [
+        "trust-extension/extensions/corpus/ui/entry.tsx"
+      ],
+      "risk": "low",
+      "riskReason": "No rule, script or test selects the class; only an external user stylesheet could, and none is known.",
+      "state": "open"
+    },
+    {
+      "id": "global-class-corpus-references-facet",
+      "title": "The global class corpus-references set in facet-page.tsx has no stylesheet, script or test that uses it",
+      "kind": "leftover",
+      "location": {
+        "file": "trust-extension/extensions/corpus/ui/facet-page.tsx",
+        "lines": [
+          371,
+          371
+        ],
+        "text": "        <section className={`corpus-references ${shared.panel}`} aria-label={t(\"Materialized references\")}>"
+      },
+      "evidence": "Searched with rg over trust-extension/, apps/trust-web/acceptance/ and packages/, and the whole repository (excluding node_modules, dist and bundle) for corpus-references as a word: the only match is the className cited here; the other occurrences of corpus-references are the id and aria-labelledby of the References section in thread-document.tsx, which are not classes. No .css file (module or global, including :global() selectors) and no querySelector or Playwright locator names it. Global corpus-* classes that tests do use (corpus-app, corpus-thread, corpus-thread-number, corpus-thread-status, corpus-thread-card, corpus-lifecycle, corpus-state-pill, corpus-markdown) are not recorded.",
+      "action": "Remove corpus-references from the className, keeping the module class.",
+      "touches": [
+        "trust-extension/extensions/corpus/ui/facet-page.tsx"
+      ],
+      "risk": "low",
+      "riskReason": "No rule, script or test selects the class; only an external user stylesheet could, and none is known.",
+      "state": "open"
+    }
+  ]
+}
