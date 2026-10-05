@@ -362,8 +362,22 @@ export interface PlanView {
   readonly escalations: readonly PlanEscalationView[];
   /** The cancellation that ended this Plan, or of the root Plan that cancelled it with its composition. */
   readonly cancellation: PlanCancellationView | null;
+  /** Missions of this Plan stopped with a reason, oldest first; absent where the revision history is omitted. */
+  readonly stoppedMissions?: readonly PlanStoppedMissionView[];
   readonly revisions: readonly PlanRevisionView[];
   readonly sessions: readonly SessionRecordView[];
+}
+
+/** A mission stopped with a reason: its child Plan and descendants are CANCELLED with that reason. */
+export interface PlanStoppedMissionView {
+  readonly collection: string;
+  readonly mission: string;
+  /** The child Plan the stop cancelled; it stays readable with its Checks and Attempts. */
+  readonly childPlan: string;
+  readonly stoppedAt: string;
+  /** Authenticated principal that stopped the mission; null for unauthenticated local access. */
+  readonly stoppedBy: import("./access.js").ExternalPrincipal | null;
+  readonly reason: string;
 }
 
 /** Read-only episode assembled from the current Plan, its Checks, and accepted child missions.
@@ -630,6 +644,11 @@ export interface PlanDeclarationReplacementInput {
   readonly expectedRevision: number;
   readonly declarations: RuntimeJsonObject;
   readonly missionDeclarations?: MissionDeclarations;
+  /**
+   * Reason that stops every accepted mission omitted from the submitted collections: the child Plan of each and its
+   * descendants become CANCELLED with it. Mandatory to remove a mission whose Attempt gave a verdict or is running.
+   */
+  readonly missionRemovalReason?: string;
 }
 
 export interface PlanDeclarationReplacementResult {

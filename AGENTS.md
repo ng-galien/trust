@@ -139,9 +139,12 @@ Keep installation addresses, inventories and backup records outside Git. See
   Accepted missions are append-only: identical resubmission preserves their resolution and child;
   changing an accepted mission is refused. Removing one is refused only while an Attempt of its child
   Plan or a descendant gave a verdict (finalized) or is running (pending before its expiry); interrupted
-  and expired pending Attempts do not block it. Empty collections remain waiting for work.
+  and expired pending Attempts do not block it. A replacement that carries a removal reason stops the
+  missions it omits instead, even after a verdict or while an Attempt runs: each child Plan and its
+  descendants become `CANCELLED` with that reason and the parent's Plan read keeps the mission and the
+  reason; a mission whose child Plan is `COMPLETE` cannot be stopped. Empty collections remain waiting for work.
   Agents read child Plans and use the existing Runner and escalation paths. Host dispatch remains
-  outside TRUST; this capability adds no cancellation or post-escalation policy.
+  outside TRUST; this capability adds no post-escalation policy.
 - Registry sources are named configuration stored by the runtime. An HTTP source points directly to a
   `trust.registry-index@1` index; a Git source clones one repository (optionally at one ref) and reads
   `trust-registry.json` at its root. Synchronization is explicit, verifies every artifact digest and

@@ -364,7 +364,11 @@ function parsePlanEngagement(value: unknown): PlanEngagementParams {
 }
 
 export function parsePlanDeclarationReplacement(value: unknown): PlanDeclarationReplacementInput {
-  const record = exactRecord(value, ["contract", "plan", "expectedRevision", "declarations"], ["missionDeclarations"]);
+  const record = exactRecord(
+    value,
+    ["contract", "plan", "expectedRevision", "declarations"],
+    ["missionDeclarations", "missionRemovalReason"],
+  );
   const missionDeclarations =
     record.missionDeclarations === undefined ? undefined : parseMissionDeclarations(record.missionDeclarations);
   if (
@@ -373,7 +377,8 @@ export function parsePlanDeclarationReplacement(value: unknown): PlanDeclaration
     !Number.isSafeInteger(record.expectedRevision) ||
     Number(record.expectedRevision) < 1 ||
     !isRecord(record.declarations) ||
-    (record.missionDeclarations !== undefined && missionDeclarations === undefined)
+    (record.missionDeclarations !== undefined && missionDeclarations === undefined) ||
+    (record.missionRemovalReason !== undefined && typeof record.missionRemovalReason !== "string")
   ) {
     throw new InvalidPlanRuntimeRpcParams();
   }
@@ -383,6 +388,8 @@ export function parsePlanDeclarationReplacement(value: unknown): PlanDeclaration
     expectedRevision: record.expectedRevision as number,
     declarations: record.declarations,
     ...(missionDeclarations === undefined ? {} : { missionDeclarations }),
+    // A blank reason reaches the runtime, which refuses it with an explicit message.
+    ...(record.missionRemovalReason === undefined ? {} : { missionRemovalReason: record.missionRemovalReason }),
   };
 }
 

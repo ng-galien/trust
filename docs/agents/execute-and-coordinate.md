@@ -94,6 +94,10 @@ escalation path when admissible; otherwise report the blocker to the coordinator
 Only a mission whose child Plan, in any generation, has no Attempt that gave a
 verdict and none running before its expiry can be removed, by omitting it from
 its collection on an explicit decision; the parent's revision history keeps it.
+A mission that started is stopped with a reason: the same replacement carries
+`missionRemovalReason`, the child Plan and its descendants become `CANCELLED` with
+it, and the parent's `stoppedMissions` keeps the mission and the reason. A mission
+whose child Plan is `COMPLETE` cannot be stopped.
 Inline sources and their resolved definitions remain in persistent Plan history.
 
 ## List and cancel Plans
@@ -111,7 +115,8 @@ child Plans and their descendants become `CANCELLED`, a final state that is not
 `COMPLETE`: their Sessions close and their pending Attempts are interrupted. Nothing
 is deleted. TRUST refuses a cancellation without a reason, of a child Plan, of a
 `COMPLETE` Plan and of a Plan already cancelled. To stop one mission of a running
-Plan, withdraw the mission from its collection instead.
+Plan, withdraw the mission from its collection instead, with `missionRemovalReason`
+when the mission started.
 
 ## Select extension-specific instructions
 

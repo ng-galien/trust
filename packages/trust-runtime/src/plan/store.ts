@@ -193,6 +193,66 @@ export class PlanStore {
     };
   }
 
+  /**
+   * The missions of a Plan that were stopped with a reason, oldest first: each child generation whose child Plan
+   * carries a cancellation of its own (not one inherited from a cancelled root), with the mission it ran.
+   */
+  async listStoppedMissions(
+    planSlug: string,
+  ): Promise<{ collection: string; mission: string; cancellation: PlanCancellation }[]> {
+    const database = this.dependencies.database;
+    const stopped = await database
+      .selectFrom("child_generations")
+      .innerJoin("plan_cancellations", "plan_cancellations.plan_slug", "child_generations.child_plan")
+      .select([
+        "child_generations.invocation_id",
+        "child_generations.child_plan",
+        "plan_cancellations.root_plan",
+        "plan_cancellations.cancelled_at",
+        "plan_cancellations.actor_issuer",
+        "plan_cancellations.actor_subject",
+        "plan_cancellations.reason",
+      ])
+      .where("child_generations.parent_plan", "=", planSlug)
+      .whereRef("plan_cancellations.root_plan", "=", "child_generations.child_plan")
+      .orderBy("plan_cancellations.cancelled_at")
+      .orderBy("child_generations.child_plan")
+      .execute();
+    if (stopped.length === 0) return [];
+    const revisions = await database
+      .selectFrom("plan_revisions")
+      .select("invocations_json")
+      .where("plan_slug", "=", planSlug)
+      .orderBy("revision")
+      .execute();
+    const missions = new Map<string, { collection: string; id: string }>();
+    for (const revision of revisions) {
+      for (const invocation of revision.invocations_json as PlanRevision["invocations"]) {
+        if (invocation.mission) missions.set(invocation.id, invocation.mission);
+      }
+    }
+    return stopped.flatMap((row) => {
+      const mission = missions.get(row.invocation_id);
+      if (!mission) return [];
+      return [
+        {
+          collection: mission.collection,
+          mission: mission.id,
+          cancellation: {
+            planSlug: row.child_plan,
+            rootPlan: row.root_plan,
+            cancelledAt: row.cancelled_at,
+            cancelledBy:
+              row.actor_issuer === null || row.actor_subject === null
+                ? null
+                : { issuer: row.actor_issuer, subject: row.actor_subject },
+            reason: row.reason,
+          },
+        },
+      ];
+    });
+  }
+
   async saveCancellation(cancellation: PlanCancellation): Promise<void> {
     await this.dependencies.database
       .insertInto("plan_cancellations")

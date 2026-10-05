@@ -498,59 +498,12 @@ export class PlanRuntime {
       if ((await readComposition(transaction, planSlug)).complete) {
         throw new PlanRuntimeError("plan-conflict", `Plan ${planSlug} is COMPLETE and cannot be cancelled`);
       }
-      const cancelledPlans = [planSlug];
-      let frontier = [planSlug];
-      while (frontier.length > 0) {
-        const children = await transaction
-          .selectFrom("child_generations")
-          .select("child_plan")
-          .where("parent_plan", "in", frontier)
-          .where("superseded_at", "is", null)
-          .orderBy("parent_plan")
-          .orderBy("invocation_id")
-          .execute();
-        frontier = children.map((value) => value.child_plan).filter((value) => !cancelledPlans.includes(value));
-        cancelledPlans.push(...frontier);
-      }
-      const sessions = this.#sessions.using(transaction);
-      const attempts = this.#attempts.using(transaction);
-      const interruptedAttempts: string[] = [];
-      for (const slug of cancelledPlans) {
-        const cancellation: PlanCancellation = {
-          planSlug: slug,
-          rootPlan: planSlug,
-          cancelledAt,
-          cancelledBy,
-          reason: input.reason,
-        };
-        await plans.saveCancellation(cancellation);
-        const pending = await transaction
-          .selectFrom("attempts")
-          .select("attempt_handle")
-          .where("plan_slug", "=", slug)
-          .where("state", "=", "pending")
-          .orderBy("attempt_order")
-          .execute();
-        const current = await plans.findPlan(slug);
-        for (const { attempt_handle } of pending) {
-          const attempt = await attempts.lockPending(attempt_handle);
-          if (!attempt) continue;
-          if (
-            attempt.intent !== undefined &&
-            current?.currentIntent === attempt.intent &&
-            current.currentIntentAttemptKey === attempt.attemptKey
-          ) {
-            await plans.releaseIntentAttempt(slug, attempt.intent, attempt.attemptKey);
-          }
-          await attempts.interrupt(attempt.handle, cancelledAt);
-          interruptedAttempts.push(attempt.handle);
-        }
-        const session = await sessions.findOpen(slug);
-        if (session) {
-          await sessions.changeState(session.id, "closed", cancelledAt);
-          sessionChanges.push({ id: session.id, plan: slug, state: "closed", at: cancelledAt });
-        }
-      }
+      const { cancelledPlans, interruptedAttempts } = await this.#cancelComposition(
+        transaction,
+        planSlug,
+        { cancelledAt, cancelledBy, reason: input.reason },
+        sessionChanges,
+      );
       return { cancelledPlans, interruptedAttempts };
     });
     this.#publishSessionChanges(sessionChanges);
@@ -567,6 +520,74 @@ export class PlanRuntime {
       cancelledPlans: cancelled.cancelledPlans,
       interruptedAttempts: cancelled.interruptedAttempts,
     };
+  }
+
+  /**
+   * Cancels one Plan with its current child Plans and their descendants: each receives the same cancellation record,
+   * naming the given Plan as the origin, its open Session closes and its pending Attempts are interrupted.
+   */
+  async #cancelComposition(
+    transaction: Database,
+    planSlug: string,
+    decision: Pick<PlanCancellation, "cancelledAt" | "cancelledBy" | "reason">,
+    sessionChanges: SessionChange[],
+  ): Promise<{ readonly cancelledPlans: string[]; readonly interruptedAttempts: string[] }> {
+    const { cancelledAt, cancelledBy } = decision;
+    const plans = this.#plans.using(transaction);
+    const cancelledPlans = [planSlug];
+    let frontier = [planSlug];
+    while (frontier.length > 0) {
+      const children = await transaction
+        .selectFrom("child_generations")
+        .select("child_plan")
+        .where("parent_plan", "in", frontier)
+        .where("superseded_at", "is", null)
+        .orderBy("parent_plan")
+        .orderBy("invocation_id")
+        .execute();
+      frontier = children.map((value) => value.child_plan).filter((value) => !cancelledPlans.includes(value));
+      cancelledPlans.push(...frontier);
+    }
+    const sessions = this.#sessions.using(transaction);
+    const attempts = this.#attempts.using(transaction);
+    const interruptedAttempts: string[] = [];
+    for (const slug of cancelledPlans) {
+      const cancellation: PlanCancellation = {
+        planSlug: slug,
+        rootPlan: planSlug,
+        cancelledAt,
+        cancelledBy,
+        reason: decision.reason,
+      };
+      await plans.saveCancellation(cancellation);
+      const pending = await transaction
+        .selectFrom("attempts")
+        .select("attempt_handle")
+        .where("plan_slug", "=", slug)
+        .where("state", "=", "pending")
+        .orderBy("attempt_order")
+        .execute();
+      const current = await plans.findPlan(slug);
+      for (const { attempt_handle } of pending) {
+        const attempt = await attempts.lockPending(attempt_handle);
+        if (!attempt) continue;
+        if (
+          attempt.intent !== undefined &&
+          current?.currentIntent === attempt.intent &&
+          current.currentIntentAttemptKey === attempt.attemptKey
+        ) {
+          await plans.releaseIntentAttempt(slug, attempt.intent, attempt.attemptKey);
+        }
+        await attempts.interrupt(attempt.handle, cancelledAt);
+        interruptedAttempts.push(attempt.handle);
+      }
+      const session = await sessions.findOpen(slug);
+      if (session) {
+        await sessions.changeState(session.id, "closed", cancelledAt);
+        sessionChanges.push({ id: session.id, plan: slug, state: "closed", at: cancelledAt });
+      }
+    }
+    return { cancelledPlans, interruptedAttempts };
   }
 
   async escalateCheck(input: CheckEscalationInput, access?: AccessContext): Promise<CheckEscalationResult> {
@@ -926,6 +947,13 @@ export class PlanRuntime {
     if (await this.#escalations.findActive(plan.slug)) {
       throw new PlanRuntimeError("plan-conflict", `Plan ${plan.slug} is escalated and must be resumed by an operator`);
     }
+    const stopReason = input.missionRemovalReason;
+    if (stopReason !== undefined && !isEscalationDeclaration(stopReason)) {
+      throw new PlanRuntimeError(
+        "invalid-plan-declarations",
+        "Stopping a mission requires a non-empty missionRemovalReason of at most 4096 characters without surrounding whitespace. No changes accepted.",
+      );
+    }
     let declarations: RuntimeJsonObject;
     let missionDeclarations: MissionDeclarations;
     let resolvedMissions: ResolvedMissions;
@@ -960,7 +988,12 @@ export class PlanRuntime {
             throw new TypeError(`Accepted mission "${mission.id}" cannot be modified`);
           }
           if (!submitted) {
-            const refusal = await executedMissionRefusal(this.#database, current, collection, mission.id, this.#now());
+            // Without a reason only a mission that gave no verdict and is not running leaves; a reason stops any
+            // mission whose child Plan is not COMPLETE.
+            const refusal =
+              stopReason === undefined
+                ? await executedMissionRefusal(this.#database, current, collection, mission.id, this.#now())
+                : await completedMissionRefusal(this.#database, current, collection, mission.id);
             if (refusal) throw new TypeError(refusal);
             withdrawn.add(mission.id);
           }
@@ -1091,6 +1124,8 @@ export class PlanRuntime {
         (value) => (missionDeclarations[value.name]?.length ?? 0) > 0,
       );
     const now = this.#now();
+    const sessionChanges: SessionChange[] = [];
+    const stoppedPlans: string[] = [];
     try {
       await planTransaction(this.#database, plan.slug, async (transaction) => {
         await this.#authorizePlan(access, "plan.declarations.replace", plan.slug, transaction);
@@ -1111,8 +1146,22 @@ export class PlanRuntime {
           );
         }
         for (const { collection, id } of removedMissions) {
-          const refusal = await executedMissionRefusal(transaction, current, collection, id, now);
+          const refusal =
+            stopReason === undefined
+              ? await executedMissionRefusal(transaction, current, collection, id, now)
+              : await completedMissionRefusal(transaction, current, collection, id);
           if (refusal) throw new PlanRuntimeError("invalid-plan-declarations", `${refusal}. No changes accepted.`);
+          if (stopReason === undefined) continue;
+          // A stopped mission ends like a cancelled root Plan: its child Plan and descendants keep the reason.
+          const child = await currentMissionChild(transaction, current, collection, id);
+          if (!child || (await plans.findCancellation(child))) continue;
+          const stopped = await this.#cancelComposition(
+            transaction,
+            child,
+            { cancelledAt: now.toISOString(), cancelledBy: this.#access.principal(access), reason: stopReason },
+            sessionChanges,
+          );
+          stoppedPlans.push(...stopped.cancelledPlans);
         }
         if (chainedPlan.intentChaining && chainedPlan.currentIntentAttemptKey !== undefined) {
           const attempts = this.#attempts.using(transaction);
@@ -1162,6 +1211,10 @@ export class PlanRuntime {
       throw error;
     }
     await this.#ensureSession(plan.slug);
+    this.#publishSessionChanges(sessionChanges);
+    for (const stopped of stoppedPlans) {
+      this.#events.publish({ type: "plan.state", at: now.toISOString(), plan: stopped, workState: "CANCELLED" });
+    }
     const result = declarationResult(current, next);
     await this.#publishAncestorChanges(plan.slug);
     this.#events.publish({
@@ -2139,6 +2192,39 @@ export class PlanRuntime {
     if (Number.isNaN(now.getTime())) throw new Error("Clock returned an invalid instant");
     return now;
   }
+}
+
+/** The child Plan of the current generation of an accepted mission, when it has one. */
+async function currentMissionChild(
+  database: Database,
+  revision: PlanRevision,
+  collection: string,
+  mission: string,
+): Promise<string | undefined> {
+  const invocation = revision.invocations.find(
+    (value) => value.mission?.collection === collection && value.mission.id === mission,
+  );
+  if (!invocation) return undefined;
+  const relation = await database
+    .selectFrom("child_generations")
+    .select("child_plan")
+    .where("parent_plan", "=", revision.planSlug)
+    .where("invocation_id", "=", invocation.id)
+    .where("superseded_at", "is", null)
+    .executeTakeFirst();
+  return relation?.child_plan;
+}
+
+/** A mission whose current child Plan is COMPLETE is delivered work: it cannot be stopped, whatever the reason. */
+async function completedMissionRefusal(
+  database: Database,
+  revision: PlanRevision,
+  collection: string,
+  mission: string,
+): Promise<string | undefined> {
+  const child = await currentMissionChild(database, revision, collection, mission);
+  if (!child || !(await readComposition(database, child)).complete) return undefined;
+  return `Accepted mission "${mission}" cannot be stopped: its child Plan ${child} is COMPLETE`;
 }
 
 /**

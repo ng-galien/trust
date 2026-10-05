@@ -508,6 +508,18 @@ export class PlanReader {
       activeEscalation: activeEscalation ? escalationView(activeEscalation) : null,
       escalations: escalationHistory.map(escalationView),
       cancellation: cancellation ? cancellationView(cancellation) : null,
+      ...(history
+        ? {
+            stoppedMissions: (await this.#plans.listStoppedMissions(plan.slug)).map((stopped) => ({
+              collection: stopped.collection,
+              mission: stopped.mission,
+              childPlan: stopped.cancellation.planSlug,
+              stoppedAt: stopped.cancellation.cancelledAt,
+              stoppedBy: stopped.cancellation.cancelledBy,
+              reason: stopped.cancellation.reason,
+            })),
+          }
+        : {}),
       revisions: (history ? await this.#plans.listRevisions(plan.slug) : []).map((item) => ({
         revision: item.revision,
         definitionDigest: item.definitionDigest,

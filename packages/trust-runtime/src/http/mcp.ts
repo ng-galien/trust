@@ -493,6 +493,17 @@ function renderPlan(view: PlanView): string {
     ...(view.cancellation === null
       ? []
       : ["", "CANCELLATION", ...renderCancellationRecord(view.plan, view.cancellation)]),
+    ...(view.stoppedMissions?.length
+      ? [
+          "",
+          "STOPPED MISSIONS",
+          ...view.stoppedMissions.flatMap((stopped) => [
+            `- ${stopped.collection}/${stopped.mission}: stopped at ${stopped.stoppedAt}`,
+            `  Reason: ${stopped.reason}`,
+            `  Read the cancelled child with trust_plan_read: ${JSON.stringify({ plan: stopped.childPlan })}`,
+          ]),
+        ]
+      : []),
     ...(view.descendantEscalations.length
       ? [
           "",
@@ -1036,7 +1047,7 @@ function tools(): readonly unknown[] {
       name: "trust_plan_declarations_replace",
       title: "Replace TRUST Plan declarations",
       description:
-        "Replace scalar agent declarations and optionally submit declared mission collections. Read the Plan first. Missions use a published Procedure reference or inline canonical sources. Accepted missions cannot be changed; preserve them when adding work. Omitting an accepted mission from its submitted collection removes it unless an Attempt of its child Plan, in any generation, gave a verdict or is pending and not expired; the parent no longer requires that child and its revision history keeps the mission. Omit missionDeclarations to retain them. Compilation does not execute the work; agents read child Plans and use the Runner.",
+        "Replace scalar agent declarations and optionally submit declared mission collections. Read the Plan first. Missions use a published Procedure reference or inline canonical sources. Accepted missions cannot be changed; preserve them when adding work. Omitting an accepted mission from its submitted collection removes it unless an Attempt of its child Plan, in any generation, gave a verdict or is pending and not expired; the parent no longer requires that child and its revision history keeps the mission. With missionRemovalReason, an omitted mission is stopped instead, even when an Attempt gave a verdict or is running: its child Plan and descendants become CANCELLED with that reason, their pending Attempts are interrupted, and the Plan read lists it in stoppedMissions; a mission whose child Plan is COMPLETE cannot be stopped. Omit missionDeclarations to retain them. Compilation does not execute the work; agents read child Plans and use the Runner.",
       inputSchema: {
         type: "object",
         properties: {
@@ -1089,6 +1100,12 @@ function tools(): readonly unknown[] {
                 additionalProperties: false,
               },
             },
+          },
+          missionRemovalReason: {
+            type: "string",
+            maxLength: 4096,
+            description:
+              "Reason that stops every accepted mission omitted from the submitted collections; mandatory to remove a mission whose Attempt gave a verdict or is running",
           },
         },
         required: ["plan", "expectedRevision", "declarations"],
@@ -1156,7 +1173,7 @@ function exactCheckEscalation(value: Record<string, unknown>): CheckEscalationIn
 
 function exactPlanDeclarationReplacement(value: Record<string, unknown>): PlanDeclarationReplacementInput | undefined {
   const keys = ["plan", "expectedRevision", "declarations"];
-  const expected = new Set([...keys, "missionDeclarations"]);
+  const expected = new Set([...keys, "missionDeclarations", "missionRemovalReason"]);
   const missionDeclarations =
     value.missionDeclarations === undefined ? undefined : parseMissionDeclarations(value.missionDeclarations);
   if (
@@ -1166,7 +1183,8 @@ function exactPlanDeclarationReplacement(value: Record<string, unknown>): PlanDe
     !Number.isSafeInteger(value.expectedRevision) ||
     Number(value.expectedRevision) < 1 ||
     !isRecord(value.declarations) ||
-    (value.missionDeclarations !== undefined && missionDeclarations === undefined)
+    (value.missionDeclarations !== undefined && missionDeclarations === undefined) ||
+    (value.missionRemovalReason !== undefined && typeof value.missionRemovalReason !== "string")
   ) {
     return undefined;
   }
@@ -1176,6 +1194,7 @@ function exactPlanDeclarationReplacement(value: Record<string, unknown>): PlanDe
     expectedRevision: value.expectedRevision as number,
     declarations: value.declarations,
     ...(missionDeclarations === undefined ? {} : { missionDeclarations }),
+    ...(value.missionRemovalReason === undefined ? {} : { missionRemovalReason: value.missionRemovalReason }),
   };
 }
 

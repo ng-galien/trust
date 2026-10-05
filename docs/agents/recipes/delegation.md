@@ -129,6 +129,19 @@ generation is superseded and stays readable. The earlier parent revision in
 `plan.read` `revisions` still lists the removed mission. Remove a mission only on
 an explicit decision, for example a contract that can never run.
 
+To stop a mission that started, submit its collection without it and add
+`missionRemovalReason` to the same replacement. The reason is a non-empty text
+of at most 4096 characters without surrounding whitespace; it applies to every
+accepted mission the replacement omits. The child Plan of each stopped mission
+and its descendants become `CANCELLED` with that reason, as for a cancelled root
+Plan: their Sessions close, their pending Attempts are interrupted and nothing is
+deleted. A mission with a running Attempt or with a `NOT_VALIDATED` verdict can
+be stopped this way. A mission whose child Plan is `COMPLETE` cannot: the whole
+replacement is refused with `Accepted mission "<id>" cannot be stopped: its child
+Plan <plan> is COMPLETE`. After the stop the parent no longer counts that child,
+and `plan.read` lists it in `stoppedMissions` with its collection, mission id,
+child Plan, date, author and reason.
+
 When a Corpus thread drives the work, an approved requirement is never edited:
 a later decision withdraws its criteria with a top-level block in the thread
 document, `::::withdrawal{#TRUST-FR-CXP-180 criteria=AC1,AC2}`, then the reason,
