@@ -209,6 +209,9 @@ export const ARCHIVED_PLANS = 22;
 export const DECISION_THREAD = { id: "owner-decisions", title: "Owner decisions" };
 export const DECISION_PLAN = "owner-decisions-framework";
 export const VISUAL_MISSION = "visual-screens";
+/** The instructions of the visual mission; their first sentence is the scope sentence of its page. */
+export const VISUAL_INSTRUCTIONS =
+  "Deliver the screens of the owner decisions thread for the owner to validate. Read the thread before drawing.";
 export const VISUAL_PROCEDURE = `@trust-dsl:1 @procedure:corpus-ui-visual-mission @version:0.1.0
 Feature: Deliver screens of a Corpus thread, reviewed then validated by the owner
   Background: Plan context
@@ -217,6 +220,7 @@ Feature: Deliver screens of a Corpus thread, reviewed then validated by the owne
       | all | Read the delegated thread. | Mutate it. |
     And one reference "thread"
     And one string "mission"
+    And one string "instructions"
     And one string "visual validation" declared by agent
   @scenario:review
   Scenario: Record the independent review checklist

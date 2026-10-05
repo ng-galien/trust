@@ -96,11 +96,8 @@ export const noPageOverflow = (page: Page) =>
     const app = document.querySelector(".corpus-app");
     return document.documentElement.scrollWidth <= innerWidth && (!app || app.scrollWidth <= app.clientWidth);
   });
-/** The mission cards of one section of the framework Plan monitor ("Missions", "Inherited missions"). */
+/** The mission rows of one section of the Plan follow-up page ("Missions", "Inherited missions"). */
 export const missionCards = (page: Page, section = "Missions") =>
-  page
-    .getByRole("region", { name: section, exact: true })
-    .getByRole("listitem")
-    .filter({ has: page.getByRole("list", { name: /^(Progress: |Progression : )/ }) });
+  page.getByRole("region", { name: section, exact: true }).locator("li[data-mission-row]");
 export const missionCard = (page: Page, mission: string, section = "Missions") =>
   missionCards(page, section).filter({ has: page.getByRole("link", { name: mission, exact: true }) });

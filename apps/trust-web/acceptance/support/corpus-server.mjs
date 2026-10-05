@@ -40,6 +40,7 @@ import {
   REGISTRY_THREAD,
   ROUTED_BLOCK,
   THREAD_BODY,
+  VISUAL_INSTRUCTIONS,
   VISUAL_MISSION,
   VISUAL_PROCEDURE,
 } from "./corpus-fixture.ts";
@@ -505,7 +506,11 @@ await declare(
     work: [
       {
         id: VISUAL_MISSION,
-        rootInputs: { thread: DECISION_THREAD.id, mission: VISUAL_MISSION },
+        rootInputs: {
+          thread: DECISION_THREAD.id,
+          mission: VISUAL_MISSION,
+          instructions: VISUAL_INSTRUCTIONS,
+        },
         definition: { kind: "published", reference: "corpus-ui-visual-mission@0.1.0" },
       },
     ],

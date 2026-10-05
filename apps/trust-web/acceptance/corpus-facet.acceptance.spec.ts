@@ -47,6 +47,8 @@ const threadTitles: Record<string, string> = {
   [CONFLICT_THREAD]: "Theme rule",
 };
 /** The extension's trail of the screens followed. */
+/** The Plan details page of the reframed thread, where the mission cards of its framework Plan are. */
+const reframedPlanUrl = `/extensions/corpus/threads/${REFRAMED_THREAD}?view=plan`;
 const corpusTrail = (page: Page) => page.locator(".corpus-app").getByRole("navigation", { name: "Trail" });
 const entries = (page: Page) => page.getByRole("list", { name: "Registry entries" }).getByRole("listitem");
 /** The registry entry of one Procedure reference; its values are named by their terms. */
@@ -183,6 +185,15 @@ test("TRQ-010 AC2 a requirement attached to several facets appears on each facet
 
 test("TRQ-070 AC2 a reframed thread shows the missions completed under its replaced framework", async ({ page }) => {
   const errors = await openCorpus(page, `/extensions/corpus?thread=${REFRAMED_THREAD}`, "Reframed delivery");
+  // The reframing reads in the lifecycle notes, the versions in its recorded reason.
+  await expect(page.getByRole("complementary", { name: "Thread summary" })).toContainText(
+    `Reframed under a new framework Plan · `,
+  );
+  await expect(page.getByRole("complementary", { name: "Thread summary" })).toContainText(
+    `Reframed from ${REFRAMED_OLD_PLAN} (corpus-thread-framework 0.1.0) to ${REFRAMED_PLAN} (corpus-thread-framework 0.4.0).`,
+  );
+  // The missions are on the Plan details page.
+  await visit(page, reframedPlanUrl, REFRAMED_PLAN);
   const replaced = (await (await fetch(`${corpusApi}/trust/episodes/${REFRAMED_OLD_PLAN}`)).json()) as {
     branches: { invocation: { mission?: { id: string } }; child: { plan: { workState: string } } | null }[];
   };
@@ -196,7 +207,8 @@ test("TRQ-070 AC2 a reframed thread shows the missions completed under its repla
   await expect(missionCards(page, "Inherited missions")).toHaveCount(1, { timeout: 30000 });
   const inherited = missionCard(page, INHERITED_MISSIONS.complete, "Inherited missions");
   await expect(inherited).toContainText("Inherited");
-  await expect(inherited.getByRole("list", { name: "Progress: 3 of 3 Checks validated" })).toBeVisible();
+  await expect(inherited.locator(".corpus-state-pill")).toHaveText("Complete");
+  await expect(inherited).toContainText("3 of 3 Checks");
   await expect(page.getByRole("link", { name: INHERITED_MISSIONS.running, exact: true })).toHaveCount(0);
   await expect(page.getByRole("region", { name: "Inherited missions" })).toContainText(REFRAMED_OLD_PLAN);
 
@@ -207,14 +219,6 @@ test("TRQ-070 AC2 a reframed thread shows the missions completed under its repla
   await expect(
     addition.getByRole("list", { name: `Missions of ${ADDITION}` }).getByRole("link", { name: ADDED_MISSION }),
   ).toBeVisible();
-
-  // The reframing reads in the lifecycle notes, the versions in its recorded reason.
-  await expect(page.getByRole("complementary", { name: "Thread summary" })).toContainText(
-    `Reframed under a new framework Plan · `,
-  );
-  await expect(page.getByRole("complementary", { name: "Thread summary" })).toContainText(
-    `Reframed from ${REFRAMED_OLD_PLAN} (corpus-thread-framework 0.1.0) to ${REFRAMED_PLAN} (corpus-thread-framework 0.4.0).`,
-  );
 
   // An inherited mission opens its own page.
   await inherited.getByRole("link", { name: INHERITED_MISSIONS.complete, exact: true }).click();
@@ -292,7 +296,7 @@ test("TRQ-070 AC2 a thread reports an inherited or addition episode it cannot re
   await fault(inheritedPath, true);
   await fault(additionPath, true);
   try {
-    const errors = await openCorpus(page, `/extensions/corpus?thread=${REFRAMED_THREAD}`, "Reframed delivery");
+    const errors = await openCorpus(page, reframedPlanUrl, REFRAMED_PLAN);
     // The replaced framework's missions: reported, not hidden.
     const inherited = page.getByRole("region", { name: "Inherited missions" });
     const inheritedFailure = inherited.getByRole("alert");

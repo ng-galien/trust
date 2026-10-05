@@ -11,6 +11,7 @@ export default defineConfig({
     "corpus-organisation.acceptance.spec.ts",
     "corpus-plan-card.acceptance.spec.ts",
     "corpus-visual-language.acceptance.spec.ts",
+    "corpus-plan-follow-up.acceptance.spec.ts",
   ],
   workers: 1,
   reporter: "line",

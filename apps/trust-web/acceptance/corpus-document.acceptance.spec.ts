@@ -39,6 +39,9 @@ async function childPlan(mission: string) {
 }
 const openThread = (page: Page, language: "en" | "fr" = "en") =>
   openCorpus(page, `/extensions/corpus?thread=${DIAGRAM_THREAD}`, "Document diagrams", language);
+/** The Plan details page of the thread, where the mission cards of its framework Plan are. */
+const openPlan = (page: Page, language: "en" | "fr" = "en") =>
+  openCorpus(page, `/extensions/corpus/threads/${DIAGRAM_THREAD}?view=plan`, FRAMEWORK_PLAN, language);
 const svgOf = async (image: Locator) => {
   const source = (await image.getAttribute("src")) ?? "";
   return decodeURIComponent(source.replace(/^data:image\/svg\+xml;charset=utf-8,/, ""));
@@ -217,44 +220,51 @@ test("REQ-080 AC2 a diagram fits the column and opens full size with zoom and pa
 test("REQ-090 AC1 a mission shows one segment per Check in Procedure order with its state and name", async ({
   page,
 }) => {
-  const errors = await openThread(page);
-  const segments = (mission: string) => missionCard(page, mission).getByRole("list", { name: /^Progress: / });
+  const errors = await openPlan(page);
   await expect(missionCards(page)).toHaveCount(MISSIONS.length, { timeout: 30000 });
 
-  // One segment per Check of the pinned Procedure, in source order (claim, verify, review), not alphabetical.
-  const expected: Record<string, [string, string, string]> = {
-    "mission-complete": ["Validated", "Validated", "Validated"],
-    "mission-running": ["Validated", "In progress", "To come"],
-    "mission-refused": ["Validated", "Not validated", "To come"],
-    "mission-relaunched": ["Validated", "In progress", "To come"],
-    "mission-escalated": ["Validated", "Escalated", "To come"],
+  // One step per Check of the pinned Procedure, in source order (claim, verify, review), not alphabetical.
+  const expected: Record<string, { pill: string; steps: [string, string, string] }> = {
+    "mission-complete": { pill: "Complete", steps: ["Validated", "Validated", "Validated"] },
+    "mission-running": { pill: "In progress", steps: ["Validated", "In progress", "To come"] },
+    "mission-refused": { pill: "In progress", steps: ["Validated", "Not validated", "To come"] },
+    "mission-relaunched": { pill: "In progress", steps: ["Validated", "In progress", "To come"] },
+    "mission-escalated": { pill: "Escalated", steps: ["Validated", "Escalated", "To come"] },
   };
-  for (const [mission, states] of Object.entries(expected)) {
-    const done = states.filter((state) => state === "Validated").length;
-    await expect(segments(mission)).toHaveAccessibleName(`Progress: ${done} of 3 Checks validated`);
-    await expect(segments(mission).getByRole("link")).toHaveText([
-      `claim work · ${states[0]}`,
-      `verify work · ${states[1]}`,
-      `review work · ${states[2]}`,
+  const iconFill: Record<string, string[]> = {};
+  for (const [mission, { pill, steps }] of Object.entries(expected)) {
+    const done = steps.filter((state) => state === "Validated").length;
+    // The row: its state, its identifier, its validated Checks; the whole row opens the mission page.
+    const row = missionCard(page, mission);
+    await expect(row.locator(".corpus-state-pill")).toHaveText(pill);
+    await expect(row).toContainText(`${done} of 3 Checks`);
+    await row.getByRole("link", { name: mission, exact: true }).click();
+    await expect(page).toHaveURL(/view=mission/);
+    await expect(page.getByRole("heading", { name: mission, level: 1 })).toBeVisible();
+    const track = page.getByRole("list", { name: `Progress: ${done} of 3 Checks validated` });
+    await expect(track.getByRole("listitem")).toHaveText([
+      new RegExp(`claim work\\s*${steps[0]}`),
+      new RegExp(`verify work\\s*${steps[1]}`),
+      new RegExp(`review work\\s*${steps[2]}`),
     ]);
-    // The name and state are also the pointer tooltip.
-    await expect(segments(mission).getByRole("link").nth(1)).toHaveAttribute("title", `verify work · ${states[1]}`);
+    iconFill[mission] = await track
+      .locator("[data-step-icon]")
+      .evaluateAll((icons) =>
+        icons.map((icon) => getComputedStyle(icon).backgroundColor + getComputedStyle(icon).borderColor),
+      );
+    await page.goBack();
+    await expect(missionCards(page)).toHaveCount(MISSIONS.length, { timeout: 30000 });
   }
   // A refused Check reads apart from an escalated one and from a Check still to come.
-  const fill = (mission: string, index: number) =>
-    segments(mission)
-      .getByRole("link")
-      .nth(index)
-      .evaluate(
-        (element) =>
-          getComputedStyle(element, "::before").backgroundImage + getComputedStyle(element, "::before").backgroundColor,
-      );
-  const refused = await fill("mission-refused", 1);
-  expect(refused).not.toBe(await fill("mission-escalated", 1));
-  expect(refused).not.toBe(await fill("mission-refused", 2));
+  const refused = iconFill["mission-refused"]?.[1];
+  expect(refused).toBeDefined();
+  expect(refused).not.toBe(iconFill["mission-escalated"]?.[1]);
+  expect(refused).not.toBe(iconFill["mission-refused"]?.[2]);
 
-  // Keyboard: a segment is a link to its Check on the mission page.
-  const verify = segments("mission-escalated").getByRole("link", { name: "verify work · Escalated" });
+  // Keyboard: a step is a link to its Check on the mission page.
+  await missionCard(page, "mission-escalated").getByRole("link", { name: "mission-escalated", exact: true }).click();
+  const track = page.getByRole("list", { name: "Progress: 1 of 3 Checks validated" });
+  const verify = track.getByRole("link").filter({ hasText: "verify work" });
   await verify.focus();
   await expect(verify).toBeFocused();
   await page.keyboard.press("Enter");
@@ -262,19 +272,16 @@ test("REQ-090 AC1 a mission shows one segment per Check in Procedure order with 
   await expect(page).toHaveURL(/check=verify\+work/);
   await expect(page.getByRole("heading", { name: "mission-escalated", level: 1 })).toBeVisible();
   await expect(page.locator("details[open] summary").filter({ hasText: "verify work" })).toBeVisible();
-  // The mission page shows the same progress.
-  await expect(page.getByRole("list", { name: "Progress: 1 of 3 Checks validated" }).getByRole("link")).toHaveText([
-    "claim work · Validated",
-    "verify work · Escalated",
-    "review work · To come",
-  ]);
+  await expect(track.getByRole("listitem").nth(0)).toHaveAttribute("data-step-state", "validated");
+  await expect(track.getByRole("listitem").nth(1)).toHaveAttribute("data-step-state", "owner");
+  await expect(track.getByRole("listitem").nth(2)).toHaveAttribute("data-step-state", "waiting");
   expect(errors).toEqual([]);
 });
 
 test("REQ-090 AC2 a mission card shows its generation, start time and end time with duration or latest activity", async ({
   page,
 }) => {
-  const errors = await openThread(page);
+  const errors = await openPlan(page);
   await expect(missionCards(page)).toHaveCount(MISSIONS.length, { timeout: 30000 });
   const branches = (await episode()).branches;
   const branch = (mission: string) => {
@@ -282,29 +289,40 @@ test("REQ-090 AC2 a mission card shows its generation, start time and end time w
     if (!found?.child) throw new Error(`Mission ${mission} is absent`);
     return found;
   };
+  /** The head of the mission page, opened from its row. */
+  const head = async (target: Page, mission: string) => {
+    await missionCard(target, mission).getByRole("link", { name: mission, exact: true }).click();
+    await expect(target.getByRole("heading", { name: mission, level: 1 })).toBeVisible();
+    return target.locator("header").filter({ has: target.getByRole("heading", { name: mission, level: 1 }) });
+  };
+  const back = async (target: Page) => {
+    await target.goBack();
+    await expect(missionCards(target)).toHaveCount(MISSIONS.length, { timeout: 30000 });
+  };
 
-  await expect(missionCard(page, "mission-relaunched")).toContainText("Generation 2");
-  for (const mission of ["mission-complete", "mission-running", "mission-refused", "mission-escalated"])
-    await expect(missionCard(page, mission)).toContainText("Generation 1");
-
-  // Complete: start, end and duration.
+  // Complete: generation, start, end and duration.
   const complete = branch("mission-complete");
   const start = complete.child?.plan.createdAt ?? "";
   const end = latestActivity(complete);
   const minutes = Math.max(0, Math.round((Date.parse(end) - Date.parse(start)) / 60000));
-  await expect(missionCard(page, "mission-complete")).toContainText(
-    `${shown(start)} → ${shown(end, start)} · ${minutes} min`,
-  );
+  let card = await head(page, "mission-complete");
+  await expect(card).toContainText("Generation 1");
+  await expect(card).toContainText(`${shown(start)} → ${shown(end, start)} · ${minutes} min`);
+  await back(page);
   // In progress or escalated: start and latest activity, the escalation included; the current generation's start.
   for (const mission of ["mission-running", "mission-refused", "mission-relaunched", "mission-escalated"]) {
     const current = branch(mission);
     const started = current.child?.plan.createdAt ?? "";
-    await expect(missionCard(page, mission)).toContainText(
+    card = await head(page, mission);
+    await expect(card).toContainText(mission === "mission-relaunched" ? "Generation 2" : "Generation 1");
+    await expect(card).toContainText(
       `Started ${shown(started)} · last activity ${shown(latestActivity(current), started)}`,
     );
+    expect(await noPageOverflow(page)).toBe(true);
+    await back(page);
   }
   expect(await noPageOverflow(page)).toBe(true);
-  // Nothing on a card overflows it at desktop and phone widths.
+  // Nothing on a row overflows it at desktop and phone widths.
   for (const width of [1280, 390]) {
     await page.setViewportSize({ width, height: 900 });
     const overflowing = await missionCards(page).evaluateAll((cards) =>
@@ -322,25 +340,25 @@ test("REQ-090 AC2 a mission card shows its generation, start time and end time w
     expect(await noPageOverflow(page), `at ${width} px`).toBe(true);
   }
 
-  // The same card in French.
+  // The same in French.
   const french = await page.context().newPage();
-  const frenchErrors = await openThread(french, "fr");
-  await expect(missionCard(french, "mission-relaunched")).toContainText("Génération 2");
-  await expect(missionCard(french, "mission-running")).toContainText("Démarrée");
-  await expect(
-    missionCard(french, "mission-running").getByRole("list", { name: "Progression : 1 sur 3 Checks validés" }),
-  ).toBeVisible();
+  const frenchErrors = await openPlan(french, "fr");
+  await expect(missionCard(french, "mission-running")).toContainText("1 sur 3 Checks");
   await expect(french.getByText("Terminées : 1 sur 5")).toBeVisible();
+  const relaunched = await head(french, "mission-relaunched");
+  await expect(relaunched).toContainText("Génération 2");
+  await expect(relaunched).toContainText("Démarrée");
+  await expect(french.getByRole("list", { name: "Progression : 1 sur 3 Checks validés" })).toBeVisible();
   expect(frenchErrors).toEqual([]);
   expect(errors).toEqual([]);
 });
 
 test("REQ-090 AC3 missions are sorted by latest activity, most recent first", async ({ page }) => {
-  const errors = await openThread(page);
+  const errors = await openPlan(page);
   await expect(missionCards(page)).toHaveCount(MISSIONS.length, { timeout: 30000 });
   await expect.poll(() => missionOrder(page)).toEqual(MISSIONS.map((mission) => mission.id));
-  // Live updates keep the document in place: the drawn diagram is the same element afterwards.
-  const diagram = page.getByRole("figure", { name: "Thread framework" }).getByRole("img");
+  // Live updates keep the page in place: its title is the same element afterwards.
+  const diagram = page.getByRole("heading", { name: FRAMEWORK_PLAN, level: 1 });
   await diagram.evaluate((element) => {
     (element as HTMLElement).dataset.probe = "kept";
   });
@@ -367,9 +385,9 @@ test("REQ-090 AC3 missions are sorted by latest activity, most recent first", as
   await expect
     .poll(() => missionOrder(page), { timeout: 20000 })
     .toEqual(["mission-refused", "mission-running", "mission-complete", "mission-relaunched", "mission-escalated"]);
-  await expect(
-    missionCard(page, "mission-refused").getByRole("link", { name: "verify work · Escalated" }),
-  ).toBeVisible();
+  // Its row reads escalated at its verification.
+  await expect(missionCard(page, "mission-refused").locator(".corpus-state-pill")).toHaveText("Escalated");
+  await expect(missionCard(page, "mission-refused")).toContainText("at: verify work");
   await expect(diagram).toHaveAttribute("data-probe", "kept");
   expect(errors).toEqual([]);
 });
