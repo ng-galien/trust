@@ -460,11 +460,11 @@ await readingThread(examples, notation.id);
 await readingThread(crowded);
 for (const member of CROWD) await readingThread(member, crowded.id);
 
-// 9. The owner's decisions: a framework 0.7.0 Plan, engaged and not linked yet, waits for the approval of a revision,
-// and its mission waits for the owner's visual validation after its review checklist.
+// 9. The owner's decisions: a framework 0.8.0 Plan, the current Plan of its thread from its opening, waits for the
+// approval of a revision, and its mission waits for the owner's visual validation after its review checklist.
 for (const file of [
   "thread-revision-read-0.2.0.operation.feature",
-  "thread-link-0.2.0.operation.feature",
+  "thread-link-0.3.0.operation.feature",
   "coverage-check-0.4.0.operation.feature",
 ])
   await rpc("operation.save", { source: await readFile(path.join(procedures, file), "utf8"), sourceName: file });
@@ -477,22 +477,23 @@ await rpc("vocabulary.publish", {
   sourceName: "corpus-terms.vocabulary.feature",
 });
 await rpc("procedure.publish", {
-  source: await readFile(path.join(procedures, "thread-framework-0.7.0.procedure.feature"), "utf8"),
-  sourceName: "thread-framework-0.7.0.procedure.feature",
+  source: await readFile(path.join(procedures, "thread-framework-0.8.0.procedure.feature"), "utf8"),
+  sourceName: "thread-framework-0.8.0.procedure.feature",
 });
 await rpc("procedure.publish", { source: VISUAL_PROCEDURE });
 await command("threads.open", { ...DECISION_THREAD, body: THREAD_BODY });
 await rpc("plan.engage", {
   contract: "trust.plan-engagement-request@1",
   procedure: "corpus-thread-framework",
-  procedureVersion: "0.7.0",
+  procedureVersion: "0.8.0",
   plan: DECISION_PLAN,
   environment: "local",
-  metadata: { title: DECISION_THREAD.title, labels: ["corpus"], annotations: { "corpus.thread": DECISION_THREAD.id } },
+  metadata: { title: DECISION_THREAD.title, labels: ["corpus"] },
   rootInputs: { thread: DECISION_THREAD.id },
 });
 const { revision: decided } = await command("threads.read", { id: DECISION_THREAD.id });
 await declare(DECISION_PLAN, { "target corpus": "trust", "thread revision": decided });
+await expectVerdict(DECISION_PLAN, "link framework", "VALIDATED");
 for (const name of ["attach thread", "check requirements"]) await expectVerdict(DECISION_PLAN, name, "VALIDATED");
 await declare(
   DECISION_PLAN,

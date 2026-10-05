@@ -196,8 +196,8 @@ export const CROWD = Array.from({ length: 13 }, (_, index) => ({
 /** The Plan history of the reframed thread holds archived Plans before its two real ones: more than one page. */
 export const ARCHIVED_PLANS = 22;
 /**
- * A thread whose framework 0.7.0 Plan, engaged but not linked yet, waits for the owner's approval of a revision, and
- * whose mission waits for the owner's visual validation.
+ * A thread whose framework 0.8.0 Plan, its current Plan from its opening, waits for the owner's approval of a revision,
+ * and whose mission waits for the owner's visual validation.
  */
 export const DECISION_THREAD = { id: "owner-decisions", title: "Owner decisions" };
 export const DECISION_PLAN = "owner-decisions-framework";
