@@ -10,6 +10,7 @@ export default defineConfig({
     "corpus-reading.acceptance.spec.ts",
     "corpus-organisation.acceptance.spec.ts",
     "corpus-plan-card.acceptance.spec.ts",
+    "corpus-visual-language.acceptance.spec.ts",
   ],
   workers: 1,
   reporter: "line",

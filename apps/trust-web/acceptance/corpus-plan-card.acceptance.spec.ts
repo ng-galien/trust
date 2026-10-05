@@ -295,7 +295,8 @@ test("CXP-280 AC3 the card shows the recorded decision and a refusal of the serv
   } finally {
     await fault(declarations, false);
   }
-  await approve.click();
+  // The refusal offers to try the decision again.
+  await current.getByRole("button", { name: "Try again" }).click();
   await expect(current.getByRole("status").filter({ hasText: `Approval of revision ${revision}` })).toContainText(
     "recorded in the Plan. The Check “approve revision” waits to be run.",
   );
