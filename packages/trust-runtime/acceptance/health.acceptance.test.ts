@@ -1,14 +1,14 @@
 import assert from "node:assert/strict";
 import { once } from "node:events";
-import { test } from "node:test";
 import { WebSocket } from "ws";
+import { test } from "./support/fixtures.js";
 import { startPublicRuntime } from "./support/runtime-process.js";
 
 const SOCKET_TIMEOUT_MS = 2_000;
 
-test("the built runtime exposes its public health boundary", async (context) => {
+test("the built runtime exposes its public health boundary", async ({ onTestFinished }) => {
   const running = await startPublicRuntime("trust-health-");
-  context.after(() => running.close());
+  onTestFinished(() => running.close());
 
   const response = await fetch(`${running.endpoint}/health`);
   assert.equal(response.status, 200);
@@ -18,11 +18,11 @@ test("the built runtime exposes its public health boundary", async (context) => 
   assert.match(String(body.currentTime), /^\d{4}-\d{2}-\d{2}T/);
 });
 
-test("an embedded LSP exit notification does not terminate the public runtime", async (context) => {
+test("an embedded LSP exit notification does not terminate the public runtime", async ({ onTestFinished }) => {
   const running = await startPublicRuntime("trust-lsp-lifecycle-");
-  context.after(() => running.close());
+  onTestFinished(() => running.close());
   const socket = new WebSocket(`${running.endpoint.replace("http://", "ws://")}/lsp`);
-  context.after(() => socket.close());
+  onTestFinished(() => socket.close());
   await socketEvent(socket, "open");
 
   socket.send(

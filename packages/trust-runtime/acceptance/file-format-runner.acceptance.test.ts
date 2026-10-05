@@ -3,22 +3,21 @@ import { execFile } from "node:child_process";
 import { mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import type { TrialRecord } from "@trust/extension-sdk";
-import { startPublicRuntime } from "./support/runtime-process.js";
+import { test } from "./support/fixtures.js";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../..");
 const execute = promisify(execFile);
 
 test("public Trials dispatch both file formats and preserve JSON and directory failures", {
   timeout: 60_000,
-}, async () => {
+}, async ({ startRuntime }) => {
   const directory = await mkdtemp(path.join(tmpdir(), "trust-file-formats-"));
   const outside = await mkdtemp(path.join(tmpdir(), "trust-file-outside-"));
   await execute(process.execPath, [path.join(root, "packages/trust-runner/scripts/package-skill.ts")], { cwd: root });
-  const runtime = await startPublicRuntime("trust-file-runtime-", {
+  const runtime = await startRuntime("trust-file-runtime-", {
     environments: { local: { workspaceRoot: directory } },
   });
   const rpc = async <T>(method: string, params: unknown): Promise<T> => {

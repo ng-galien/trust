@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
 import path from "node:path";
-import { after, before, test } from "node:test";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import {
   type CheckAttemptAdmissionResult,
@@ -10,6 +9,8 @@ import {
   type PlanSummaryView,
   type SessionView,
 } from "@trust/extension-sdk";
+import { afterAll, beforeAll } from "vitest";
+import { test } from "./support/fixtures.js";
 
 // The file runs compiled from dist/acceptance or directly as TypeScript from acceptance; both use the built runtime.
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -34,14 +35,14 @@ assert.ok(scopes.includes("trust.plan.cancel.own"));
 let runtime: { endpoint: string; start(): Promise<void>; close(): Promise<void> };
 let client: ReturnType<typeof cancellationClient>;
 
-before(async () => {
+beforeAll(async () => {
   runtime = await fixedAuthentication.fixture({ authentication: fixedAuthentication.fixed({ scopes }) });
   await runtime.start();
   client = cancellationClient(runtime.endpoint);
   await client.publish();
 });
 
-after(async () => {
+afterAll(async () => {
   await runtime?.close();
 });
 

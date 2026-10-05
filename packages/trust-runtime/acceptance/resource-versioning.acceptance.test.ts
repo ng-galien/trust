@@ -3,9 +3,9 @@ import { randomUUID } from "node:crypto";
 import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import test from "node:test";
 import { fileURLToPath } from "node:url";
 import type { CompiledProcedure } from "@trust/procedure";
+import { test } from "./support/fixtures.js";
 import { startPublicRuntime } from "./support/runtime-process.js";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../..");

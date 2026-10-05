@@ -5,9 +5,9 @@ import { once } from "node:events";
 import { mkdtemp, readdir, readFile, rm, stat, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { Client } from "pg";
+import { test } from "./support/fixtures.js";
 import { startPublicRuntime } from "./support/runtime-process.js";
 
 const buildRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -98,7 +98,7 @@ test("typed storage preserves JSON arrays, booleans, revisions and runtime times
 test("embedded ownership follows filesystem identity through symlink and case aliases", {
   skip: Boolean(process.env.TRUST_ACCEPTANCE_POSTGRES_URL),
   timeout: 30_000,
-}, async (context) => {
+}, async ({ onTestFinished }) => {
   const directory = await mkdtemp(path.join(tmpdir(), "trust-storage-alias-"));
   const actual = path.join(directory, "StorageCase");
   const linked = path.join(directory, "linked");
@@ -128,9 +128,9 @@ test("embedded ownership follows filesystem identity through symlink and case al
         }),
         /already has a runtime ownership marker/,
       );
-      context.diagnostic("Case-insensitive volume: the second owner was refused through both case and symlink aliases");
+      console.info("Case-insensitive volume: the second owner was refused through both case and symlink aliases");
     } else {
-      context.diagnostic("Case-sensitive volume: symlink alias refusal verified; case alias is a different path");
+      console.info("Case-sensitive volume: symlink alias refusal verified; case alias is a different path");
     }
     const markers = (await readdir(directory)).filter((name) => name.startsWith(".trust-runtime-owner-"));
     assert.equal(markers.length, 1);

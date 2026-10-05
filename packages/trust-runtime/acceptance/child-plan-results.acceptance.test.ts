@@ -2,9 +2,9 @@ import assert from "node:assert/strict";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import test from "node:test";
 import { fileURLToPath } from "node:url";
-import { type PublicRuntimeProcess, startPublicRuntime } from "./support/runtime-process.js";
+import { test } from "./support/fixtures.js";
+import type { PublicRuntimeProcess } from "./support/runtime-process.js";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../..");
 const childSource = `@trust-dsl:1 @procedure:result-child @version:1.0.0
@@ -44,14 +44,14 @@ Feature: Use a child result
 
 test("child Results enter parent context only after complete validation and are withdrawn on requalification", {
   timeout: 40_000,
-}, async () => {
+}, async ({ startRuntime }) => {
   const directory = await mkdtemp(path.join(tmpdir(), "trust-child-results-db-"));
   const options = {
     storage: { kind: "pglite" as const, directory: path.join(directory, "pglite") },
     operationsDirectory: path.join(root, "assets/operations"),
     environments: { local: { workspaceRoot: root } },
   };
-  let runtime: PublicRuntimeProcess = await startPublicRuntime("trust-child-results-", options);
+  let runtime: PublicRuntimeProcess = await startRuntime("trust-child-results-", options);
   let sequence = 0;
   const rpc = async (method: string, params: unknown, failure = false): Promise<any> => {
     const response = await fetch(`${runtime.endpoint}/rpc`, {
@@ -129,7 +129,7 @@ test("child Results enter parent context only after complete validation and are 
     assert.equal(completed.importedResults[0].childPlan, childPlan);
     assert.equal(completed.checks[0].inputs.baseRevision, "revision-one");
     await runtime.close();
-    runtime = await startPublicRuntime("trust-child-results-restarted-", options);
+    runtime = await startRuntime("trust-child-results-restarted-", options);
     const resumed = await read("result-root");
     assert.equal(resumed.importedResults[0].value, "revision-one");
     assert.equal(resumed.checks[0].inputs.baseRevision, "revision-one");
@@ -189,11 +189,7 @@ test("child Results enter parent context only after complete validation and are 
 
 test("declared missions validate their Result interface and aggregate completed children", {
   timeout: 40_000,
-}, async () => {
-  const runtime = await startPublicRuntime("trust-mission-results-", {
-    operationsDirectory: path.join(root, "assets/operations"),
-    environments: { local: { workspaceRoot: root } },
-  });
+}, async ({ runtime }) => {
   let sequence = 0;
   const rpc = async (method: string, params: unknown, failure = false): Promise<any> => {
     const response = await fetch(`${runtime.endpoint}/rpc`, {
@@ -266,15 +262,14 @@ test("declared missions validate their Result interface and aggregate completed 
       "VALIDATED",
     );
   };
-  try {
-    await rpc("procedure.publish", { source: childSource });
-    await rpc("procedure.publish", {
-      source: childSource
-        .replaceAll("result-child", "no-result-child")
-        .replace('And one reference "revision" returned', 'And one reference "revision"'),
-    });
-    await rpc("procedure.publish", {
-      source: `@trust-dsl:1 @procedure:mission-result-parent @version:1.0.0
+  await rpc("procedure.publish", { source: childSource });
+  await rpc("procedure.publish", {
+    source: childSource
+      .replaceAll("result-child", "no-result-child")
+      .replace('And one reference "revision" returned', 'And one reference "revision"'),
+  });
+  await rpc("procedure.publish", {
+    source: `@trust-dsl:1 @procedure:mission-result-parent @version:1.0.0
 Feature: Aggregate mission Results
   Background: Plan context
     Given Procedure scope
@@ -286,57 +281,50 @@ Feature: Aggregate mission Results
   Scenario: Complete the missions
     Then Invocation "observe work" runs each declared Procedure in "work" and materializes "revisions" from Result "revision" and must establish "all missions are complete"
 `,
-    });
-    await rpc("plan.engage", {
-      contract: "trust.plan-engagement-request@1",
-      procedure: "mission-result-parent",
-      procedureVersion: "1.0.0",
-      plan: "mission-results-root",
-      environment: "local",
-      mode: "dry-run",
-      rootInputs: {},
-    });
-    assert.match(JSON.stringify(await declare([mission("bad", "no-result-child")], true)), /Result.*incompatible/);
-    assert.equal((await read()).invocations.length, 0, "rejected mission creates no child");
-    await declare([mission("first", "result-child")]);
-    const first = (await read()).invocations[0].childPlan;
-    assert.ok(first);
-    await complete(first, "first-revision");
-    assert.deepEqual(
-      (await read()).importedResults.map((item: any) => item.value),
-      ["first-revision"],
-    );
-    await declare([mission("first", "result-child"), mission("second", "result-child")]);
-    const afterAppend = await read();
-    assert.equal(afterAppend.invocations[0].childPlan, first);
-    assert.deepEqual(
-      afterAppend.importedResults.map((item: any) => item.value),
-      ["first-revision"],
-    );
-    const second = afterAppend.invocations[1].childPlan;
-    assert.ok(second);
-    await complete(second, "second-revision");
-    assert.deepEqual(
-      new Set((await read()).importedResults.map((item: any) => item.value)),
-      new Set(["first-revision", "second-revision"]),
-    );
-    await complete(second, "first-revision", true);
-    const repeatedValue = await read();
-    assert.equal(repeatedValue.importedResults.length, 2, "both child generations retain provenance");
-    assert.deepEqual(
-      repeatedValue.importedResults.map((item: any) => item.value),
-      ["first-revision", "first-revision"],
-    );
-  } finally {
-    await runtime.close();
-  }
+  });
+  await rpc("plan.engage", {
+    contract: "trust.plan-engagement-request@1",
+    procedure: "mission-result-parent",
+    procedureVersion: "1.0.0",
+    plan: "mission-results-root",
+    environment: "local",
+    mode: "dry-run",
+    rootInputs: {},
+  });
+  assert.match(JSON.stringify(await declare([mission("bad", "no-result-child")], true)), /Result.*incompatible/);
+  assert.equal((await read()).invocations.length, 0, "rejected mission creates no child");
+  await declare([mission("first", "result-child")]);
+  const first = (await read()).invocations[0].childPlan;
+  assert.ok(first);
+  await complete(first, "first-revision");
+  assert.deepEqual(
+    (await read()).importedResults.map((item: any) => item.value),
+    ["first-revision"],
+  );
+  await declare([mission("first", "result-child"), mission("second", "result-child")]);
+  const afterAppend = await read();
+  assert.equal(afterAppend.invocations[0].childPlan, first);
+  assert.deepEqual(
+    afterAppend.importedResults.map((item: any) => item.value),
+    ["first-revision"],
+  );
+  const second = afterAppend.invocations[1].childPlan;
+  assert.ok(second);
+  await complete(second, "second-revision");
+  assert.deepEqual(
+    new Set((await read()).importedResults.map((item: any) => item.value)),
+    new Set(["first-revision", "second-revision"]),
+  );
+  await complete(second, "first-revision", true);
+  const repeatedValue = await read();
+  assert.equal(repeatedValue.importedResults.length, 2, "both child generations retain provenance");
+  assert.deepEqual(
+    repeatedValue.importedResults.map((item: any) => item.value),
+    ["first-revision", "first-revision"],
+  );
 });
 
-test("on each child Result retains its parent target coordinate", { timeout: 40_000 }, async () => {
-  const runtime = await startPublicRuntime("trust-correlated-child-results-", {
-    operationsDirectory: path.join(root, "assets/operations"),
-    environments: { local: { workspaceRoot: root } },
-  });
+test("on each child Result retains its parent target coordinate", { timeout: 40_000 }, async ({ runtime }) => {
   let sequence = 0;
   const rpc = async (method: string, params: unknown): Promise<any> => {
     const response = await fetch(`${runtime.endpoint}/rpc`, {
@@ -348,10 +336,9 @@ test("on each child Result retains its parent target coordinate", { timeout: 40_
     assert.equal(envelope.error, undefined, JSON.stringify(envelope.error));
     return envelope.result;
   };
-  try {
-    await rpc("procedure.publish", { source: childSource });
-    await rpc("procedure.publish", {
-      source: `@trust-dsl:1 @procedure:correlated-result-parent @version:1.0.0
+  await rpc("procedure.publish", { source: childSource });
+  await rpc("procedure.publish", {
+    source: `@trust-dsl:1 @procedure:correlated-result-parent @version:1.0.0
 Feature: Correlate returned revisions
   Background: Plan context
     Given Procedure scope
@@ -370,80 +357,75 @@ Feature: Correlate returned revisions
       fact.comparedBaseRevision === context["revisions"] || fail("another revision was compared")
       """
 `,
+  });
+  await rpc("plan.engage", {
+    contract: "trust.plan-engagement-request@1",
+    procedure: "correlated-result-parent",
+    procedureVersion: "1.0.0",
+    plan: "correlated-result-root",
+    environment: "local",
+    mode: "dry-run",
+    rootInputs: { repositories: ["repo-a", "repo-b"] },
+  });
+  const initial = await rpc("plan.read", { plan: "correlated-result-root" });
+  assert.equal(initial.invocations.length, 2);
+  for (const invocation of initial.invocations) {
+    const child = await rpc("plan.read", { plan: invocation.childPlan });
+    const repository = child.rootInputs.repository;
+    const attempt = await rpc("check.attempt.admit", {
+      contract: "trust.check-admission-request@1",
+      checkUri: child.checks[0].checkUri,
+      attemptKey: `correlated-${++sequence}`,
     });
-    await rpc("plan.engage", {
-      contract: "trust.plan-engagement-request@1",
-      procedure: "correlated-result-parent",
-      procedureVersion: "1.0.0",
-      plan: "correlated-result-root",
-      environment: "local",
-      mode: "dry-run",
-      rootInputs: { repositories: ["repo-a", "repo-b"] },
-    });
-    const initial = await rpc("plan.read", { plan: "correlated-result-root" });
-    assert.equal(initial.invocations.length, 2);
-    for (const invocation of initial.invocations) {
-      const child = await rpc("plan.read", { plan: invocation.childPlan });
-      const repository = child.rootInputs.repository;
-      const attempt = await rpc("check.attempt.admit", {
-        contract: "trust.check-admission-request@1",
-        checkUri: child.checks[0].checkUri,
-        attemptKey: `correlated-${++sequence}`,
-      });
-      const observedAt = new Date().toISOString();
-      await rpc("check.attempt.facts", {
-        contract: "trust.fact-batch-request@1",
-        attemptKey: attempt.attemptKey,
-        attemptHandle: attempt.attemptHandle,
-        executionId: attempt.executionId,
-        checkUri: attempt.checkUri,
-        recordedAt: observedAt,
-        facts: [
-          {
-            kind: attempt.operation.operation,
-            observedAt,
-            values: {
-              headRevision: `${repository}-revision`,
-              workingTree: "clean",
-            },
+    const observedAt = new Date().toISOString();
+    await rpc("check.attempt.facts", {
+      contract: "trust.fact-batch-request@1",
+      attemptKey: attempt.attemptKey,
+      attemptHandle: attempt.attemptHandle,
+      executionId: attempt.executionId,
+      checkUri: attempt.checkUri,
+      recordedAt: observedAt,
+      facts: [
+        {
+          kind: attempt.operation.operation,
+          observedAt,
+          values: {
+            headRevision: `${repository}-revision`,
+            workingTree: "clean",
           },
-        ],
-      });
-      assert.equal(
-        (
-          await rpc("check.attempt.finalize", {
-            contract: "trust.attempt-finalization-request@1",
-            attemptHandle: attempt.attemptHandle,
-          })
-        ).verdict,
-        "VALIDATED",
-      );
-    }
-    const parent = await rpc("plan.read", { plan: "correlated-result-root" });
-    assert.deepEqual(
-      new Map(parent.importedResults.map((item: any) => [item.parents.repositories, item.value])),
-      new Map([
-        ["repo-a", "repo-a-revision"],
-        ["repo-b", "repo-b-revision"],
-      ]),
+        },
+      ],
+    });
+    assert.equal(
+      (
+        await rpc("check.attempt.finalize", {
+          contract: "trust.attempt-finalization-request@1",
+          attemptHandle: attempt.attemptHandle,
+        })
+      ).verdict,
+      "VALIDATED",
     );
-    assert.deepEqual(
-      new Map(parent.checks.map((check: any) => [check.inputs.project, check.inputs.baseRevision])),
-      new Map([
-        ["repo-a", "repo-a-revision"],
-        ["repo-b", "repo-b-revision"],
-      ]),
-    );
-  } finally {
-    await runtime.close();
   }
+  const parent = await rpc("plan.read", { plan: "correlated-result-root" });
+  assert.deepEqual(
+    new Map(parent.importedResults.map((item: any) => [item.parents.repositories, item.value])),
+    new Map([
+      ["repo-a", "repo-a-revision"],
+      ["repo-b", "repo-b-revision"],
+    ]),
+  );
+  assert.deepEqual(
+    new Map(parent.checks.map((check: any) => [check.inputs.project, check.inputs.baseRevision])),
+    new Map([
+      ["repo-a", "repo-a-revision"],
+      ["repo-b", "repo-b-revision"],
+    ]),
+  );
 });
 
-test("a child Result can feed a parent Check and a subsequent child Result", { timeout: 40_000 }, async () => {
-  const runtime = await startPublicRuntime("trust-chained-child-results-", {
-    operationsDirectory: path.join(root, "assets/operations"),
-    environments: { local: { workspaceRoot: root } },
-  });
+test("a child Result can feed a parent Check and a subsequent child Result", { timeout: 40_000 }, async ({
+  runtime,
+}) => {
   let sequence = 0;
   const rpc = async (method: string, params: unknown): Promise<any> => {
     const response = await fetch(`${runtime.endpoint}/rpc`, {
@@ -483,10 +465,9 @@ test("a child Result can feed a parent Check and a subsequent child Result", { t
       "VALIDATED",
     );
   };
-  try {
-    await rpc("procedure.publish", { source: childSource });
-    await rpc("procedure.publish", {
-      source: `@trust-dsl:1 @procedure:chained-result-parent @version:1.0.0
+  await rpc("procedure.publish", { source: childSource });
+  await rpc("procedure.publish", {
+    source: `@trust-dsl:1 @procedure:chained-result-parent @version:1.0.0
 Feature: Chain returned and observed revisions
   Background: Plan context
     Given Procedure scope
@@ -511,63 +492,56 @@ Feature: Chain returned and observed revisions
     Given scenario "middle" is validated
     Then Invocation "observe final" runs Procedure "result-child@1.0.0" on each "middle revision" as Input "repository" and materializes "a final revision" from Result "revision" and must establish "the final observation is complete"
 `,
-    });
-    await rpc("plan.engage", {
-      contract: "trust.plan-engagement-request@1",
-      procedure: "chained-result-parent",
-      procedureVersion: "1.0.0",
-      plan: "chained-result-root",
-      environment: "local",
-      mode: "dry-run",
-      rootInputs: { repositories: ["repo"] },
-    });
-    const first = await read("chained-result-root");
-    assert.equal(first.invocations.length, 1);
-    await finalize((await read(first.invocations[0].childPlan)).checks[0], {
-      headRevision: "first",
-      workingTree: "clean",
-    });
-    const middle = await read("chained-result-root");
-    assert.equal(middle.checks.length, 1);
-    await finalize(middle.checks[0], {
-      headRevision: "middle",
-      comparedBaseRevision: "first",
-      commitsAhead: 0,
-      workingTree: "clean",
-    });
-    const beforeFinal = await read("chained-result-root");
-    assert.equal(beforeFinal.invocations.length, 2);
-    const lastChild = beforeFinal.invocations.find((item: any) => item.name === "observe final")?.childPlan;
-    assert.ok(lastChild);
-    assert.equal((await read(lastChild)).rootInputs.repository, "middle");
-    await finalize((await read(lastChild)).checks[0], {
-      headRevision: "final",
-      workingTree: "clean",
-    });
-    const complete = await read("chained-result-root");
-    assert.deepEqual(
-      new Map(complete.importedResults.map((item: any) => [item.role, item.value])),
-      new Map([
-        ["z first revision", "first"],
-        ["a final revision", "final"],
-      ]),
-    );
-    assert.deepEqual(complete.importedResults.find((item: any) => item.role === "a final revision")?.parents, {
-      "middle revision": "middle",
-    });
-    assert.equal(complete.invocations.find((item: any) => item.name === "observe final")?.state, "SATISFIED");
-  } finally {
-    await runtime.close();
-  }
+  });
+  await rpc("plan.engage", {
+    contract: "trust.plan-engagement-request@1",
+    procedure: "chained-result-parent",
+    procedureVersion: "1.0.0",
+    plan: "chained-result-root",
+    environment: "local",
+    mode: "dry-run",
+    rootInputs: { repositories: ["repo"] },
+  });
+  const first = await read("chained-result-root");
+  assert.equal(first.invocations.length, 1);
+  await finalize((await read(first.invocations[0].childPlan)).checks[0], {
+    headRevision: "first",
+    workingTree: "clean",
+  });
+  const middle = await read("chained-result-root");
+  assert.equal(middle.checks.length, 1);
+  await finalize(middle.checks[0], {
+    headRevision: "middle",
+    comparedBaseRevision: "first",
+    commitsAhead: 0,
+    workingTree: "clean",
+  });
+  const beforeFinal = await read("chained-result-root");
+  assert.equal(beforeFinal.invocations.length, 2);
+  const lastChild = beforeFinal.invocations.find((item: any) => item.name === "observe final")?.childPlan;
+  assert.ok(lastChild);
+  assert.equal((await read(lastChild)).rootInputs.repository, "middle");
+  await finalize((await read(lastChild)).checks[0], {
+    headRevision: "final",
+    workingTree: "clean",
+  });
+  const complete = await read("chained-result-root");
+  assert.deepEqual(
+    new Map(complete.importedResults.map((item: any) => [item.role, item.value])),
+    new Map([
+      ["z first revision", "first"],
+      ["a final revision", "final"],
+    ]),
+  );
+  assert.deepEqual(complete.importedResults.find((item: any) => item.role === "a final revision")?.parents, {
+    "middle revision": "middle",
+  });
+  assert.equal(complete.invocations.find((item: any) => item.name === "observe final")?.state, "SATISFIED");
 });
 
 test("replacing a child generation withdraws its Result until the replacement completes", {
   timeout: 40_000,
-}, async () => {
-  const runtime = await startPublicRuntime("trust-replaced-child-result-", {
-    operationsDirectory: path.join(root, "assets/operations"),
-    environments: { local: { workspaceRoot: root } },
-  });
+}, async ({ runtime }) => {
   let sequence = 0;
   const rpc = async (method: string, params: unknown): Promise<any> => {
     const response = await fetch(`${runtime.endpoint}/rpc`, {
@@ -626,41 +600,37 @@ test("replacing a child generation withdraws its Result until the replacement co
       "VALIDATED",
     );
   };
-  try {
-    await rpc("procedure.publish", { source: childSource });
-    await rpc("procedure.publish", {
-      source: parentSource
-        .replace('And one reference "repository"', 'And one reference "repository" declared by agent')
-        .replace("@procedure:result-parent", "@procedure:replacement-result-parent"),
-    });
-    await rpc("plan.engage", {
-      contract: "trust.plan-engagement-request@1",
-      procedure: "replacement-result-parent",
-      procedureVersion: "1.0.0",
-      plan: "replacement-root",
-      environment: "local",
-      mode: "dry-run",
-      rootInputs: {},
-    });
-    await declare("repo-one");
-    const original = (await read()).invocations[0].childPlan;
-    assert.ok(original);
-    await complete(original, "old-revision");
-    assert.equal((await read()).importedResults[0].value, "old-revision");
-    await declare("repo-two");
-    const replaced = await read();
-    const next = replaced.invocations[0].childPlan;
-    assert.ok(next);
-    assert.notEqual(next, original);
-    assert.deepEqual(replaced.importedResults, []);
-    assert.equal(replaced.checks.length, 0);
-    assert.equal((await rpc("plan.read", { plan: original })).parent.current, false);
-    await complete(next, "new-revision");
-    const current = await read();
-    assert.equal(current.importedResults[0].value, "new-revision");
-    assert.equal(current.importedResults[0].childPlan, next);
-    assert.equal(current.checks[0].inputs.baseRevision, "new-revision");
-  } finally {
-    await runtime.close();
-  }
+  await rpc("procedure.publish", { source: childSource });
+  await rpc("procedure.publish", {
+    source: parentSource
+      .replace('And one reference "repository"', 'And one reference "repository" declared by agent')
+      .replace("@procedure:result-parent", "@procedure:replacement-result-parent"),
+  });
+  await rpc("plan.engage", {
+    contract: "trust.plan-engagement-request@1",
+    procedure: "replacement-result-parent",
+    procedureVersion: "1.0.0",
+    plan: "replacement-root",
+    environment: "local",
+    mode: "dry-run",
+    rootInputs: {},
+  });
+  await declare("repo-one");
+  const original = (await read()).invocations[0].childPlan;
+  assert.ok(original);
+  await complete(original, "old-revision");
+  assert.equal((await read()).importedResults[0].value, "old-revision");
+  await declare("repo-two");
+  const replaced = await read();
+  const next = replaced.invocations[0].childPlan;
+  assert.ok(next);
+  assert.notEqual(next, original);
+  assert.deepEqual(replaced.importedResults, []);
+  assert.equal(replaced.checks.length, 0);
+  assert.equal((await rpc("plan.read", { plan: original })).parent.current, false);
+  await complete(next, "new-revision");
+  const current = await read();
+  assert.equal(current.importedResults[0].value, "new-revision");
+  assert.equal(current.importedResults[0].childPlan, next);
+  assert.equal(current.checks[0].inputs.baseRevision, "new-revision");
 });

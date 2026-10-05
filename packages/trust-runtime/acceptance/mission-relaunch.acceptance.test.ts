@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import test from "node:test";
 import { fileURLToPath } from "node:url";
 import type {
   CheckAttemptAdmissionResult,
@@ -11,7 +10,7 @@ import type {
   PlanRelaunchResult,
   PlanView,
 } from "@trust/extension-sdk";
-import { startPublicRuntime } from "./support/runtime-process.js";
+import { test } from "./support/fixtures.js";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../..");
 
@@ -50,14 +49,14 @@ const mission = {
 
 test("an escalated mission is relaunched as the next generation of the same invocation and completes its parent", {
   timeout: 60_000,
-}, async () => {
+}, async ({ startRuntime }) => {
   const directory = await mkdtemp(path.join(tmpdir(), "trust-mission-relaunch-"));
   const options = {
     storage: { kind: "pglite" as const, directory: path.join(directory, "pglite") },
     operationsDirectory: path.join(root, "assets/operations"),
     environments: { local: { workspaceRoot: root } },
   };
-  let runtime = await startPublicRuntime("trust-mission-relaunch-", options);
+  let runtime = await startRuntime("trust-mission-relaunch-", options);
   const request = async <T>(method: string, params: unknown): Promise<{ result?: T; error?: { message?: string } }> => {
     const response = await fetch(`${runtime.endpoint}/rpc`, {
       method: "POST",
@@ -214,7 +213,7 @@ test("an escalated mission is relaunched as the next generation of the same invo
     assert.equal((await read("relaunch-root")).invocations[0]?.state, "SATISFIED");
 
     await runtime.close();
-    runtime = await startPublicRuntime("trust-mission-relaunch-", options);
+    runtime = await startRuntime("trust-mission-relaunch-", options);
     const restored = await read("relaunch-root");
     assert.equal(restored.invocations[0]?.childPlan, relaunched.childPlan);
     assert.equal(restored.invocations[0]?.state, "SATISFIED");

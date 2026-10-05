@@ -2,8 +2,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import test from "node:test";
-import { startPublicRuntime } from "./support/runtime-process.js";
+import { test } from "./support/fixtures.js";
 
 interface McpTool {
   name: string;
@@ -37,7 +36,7 @@ async function readStream(stream: Response) {
 
 test("one extension MCP tool shares declared commands with HTTP and announces running catalog changes", {
   timeout: 30_000,
-}, async () => {
+}, async ({ startRuntime }) => {
   const directory = await mkdtemp(path.join(tmpdir(), "trust-extension-commands-"));
   await writeFile(
     path.join(directory, "server.mjs"),
@@ -87,7 +86,7 @@ export function createExtension() {
     registry,
     JSON.stringify({ extensions: [{ manifest, configuration: {}, environment: "local", grants: [] }] }),
   );
-  const runtime = await startPublicRuntime("trust-extension-command-runtime-", {
+  const runtime = await startRuntime("trust-extension-command-runtime-", {
     extensionsFile: registry,
     processEnvironment: { TRUST_EXTENSION_TIMEOUT_MS: "1500" },
   });
@@ -200,7 +199,7 @@ export function createExtension() {
 
 test("extension lifecycle MCP tools expose actual states and control only a named installation", {
   timeout: 30_000,
-}, async () => {
+}, async ({ startRuntime }) => {
   const directory = await mkdtemp(path.join(tmpdir(), "trust-extension-lifecycle-mcp-"));
   const healthyServer = path.join(directory, "healthy.mjs");
   const failingServer = path.join(directory, "failing.mjs");
@@ -241,7 +240,7 @@ test("extension lifecycle MCP tools expose actual states and control only a name
       })),
     }),
   );
-  const runtime = await startPublicRuntime("trust-extension-lifecycle-mcp-runtime-", { extensionsFile: registry });
+  const runtime = await startRuntime("trust-extension-lifecycle-mcp-runtime-", { extensionsFile: registry });
   const rpc = async (name: string, args: object = {}) => {
     const response = await fetch(`${runtime.endpoint}/mcp`, {
       method: "POST",
@@ -297,7 +296,9 @@ test("extension lifecycle MCP tools expose actual states and control only a name
   }
 });
 
-test("a declared extension command requires an actual child hook before catalog admission", async () => {
+test("a declared extension command requires an actual child hook before catalog admission", async ({
+  startRuntime,
+}) => {
   const directory = await mkdtemp(path.join(tmpdir(), "trust-extension-missing-command-"));
   await writeFile(
     path.join(directory, "server.mjs"),
@@ -327,7 +328,7 @@ test("a declared extension command requires an actual child hook before catalog 
       extensions: [{ manifest, configuration: {}, environment: "local", grants: [], autoStart: true }],
     }),
   );
-  const runtime = await startPublicRuntime("trust-extension-missing-runtime-", { extensionsFile: registry });
+  const runtime = await startRuntime("trust-extension-missing-runtime-", { extensionsFile: registry });
   try {
     const catalog = (await fetch(`${runtime.endpoint}/extensions`).then((response) => response.json())) as {
       extensions: ExtensionEntry[];
@@ -348,7 +349,7 @@ test("a declared extension command requires an actual child hook before catalog 
   }
 });
 
-test("invalid extension command declarations refuse runtime startup", async () => {
+test("invalid extension command declarations refuse runtime startup", async ({ startRuntime }) => {
   const directory = await mkdtemp(path.join(tmpdir(), "trust-extension-invalid-commands-"));
   await writeFile(
     path.join(directory, "server.mjs"),
@@ -388,7 +389,7 @@ test("invalid extension command declarations refuse runtime startup", async () =
         }),
       );
       await assert.rejects(
-        startPublicRuntime("trust-invalid-command-runtime-", { extensionsFile: registry }),
+        startRuntime("trust-invalid-command-runtime-", { extensionsFile: registry }),
         /Invalid extension/,
       );
     }

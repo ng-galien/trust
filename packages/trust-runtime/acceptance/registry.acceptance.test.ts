@@ -6,16 +6,17 @@ import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promis
 import { createServer, type Server } from "node:http";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 
-import { startPublicRuntime } from "./support/runtime-process.js";
+import { test } from "./support/fixtures.js";
 
 const execFileAsync = promisify(execFile);
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../..");
 
-test("an HTTP registry refuses an invalid artifact before import and reports imported and unchanged artifacts", async () => {
+test("an HTTP registry refuses an invalid artifact before import and reports imported and unchanged artifacts", async ({
+  startRuntime,
+}) => {
   const directory = await mkdtemp(path.join(tmpdir(), "trust-http-registry-"));
   const operationsDirectory = path.join(directory, "operations-catalog");
   await mkdir(operationsDirectory);
@@ -28,7 +29,7 @@ test("an HTTP registry refuses an invalid artifact before import and reports imp
     "/registry/operations/git.head-read.feature": operationResponse,
     "/registry/procedures/00-git-status.feature": procedure,
   }));
-  const runtime = await startPublicRuntime("trust-http-registry-runtime-", { operationsDirectory });
+  const runtime = await startRuntime("trust-http-registry-runtime-", { operationsDirectory });
   try {
     const insecure = await rpcFailure(runtime.endpoint, "registry.source.save", {
       name: "insecure",
@@ -106,7 +107,9 @@ test("an HTTP registry refuses an invalid artifact before import and reports imp
   }
 });
 
-test("a changed existing Operation rejects the entire registry batch before new artifacts import", async () => {
+test("a changed existing Operation rejects the entire registry batch before new artifacts import", async ({
+  startRuntime,
+}) => {
   const directory = await mkdtemp(path.join(tmpdir(), "trust-registry-immutable-"));
   const original = await readFile(path.join(repositoryRoot, "assets/operations/git.head-read.feature"), "utf8");
   let entries = [{ name: "git.head-read", source: original }];
@@ -128,7 +131,7 @@ test("a changed existing Operation rejects the entire registry batch before new 
       ...entries.map((entry) => [`/${entry.name}.feature`, entry.source]),
     ]),
   );
-  const runtime = await startPublicRuntime("trust-registry-immutable-runtime-", { operationsDirectory: directory });
+  const runtime = await startRuntime("trust-registry-immutable-runtime-", { operationsDirectory: directory });
   try {
     await rpc(runtime.endpoint, "registry.source.save", {
       name: "immutable",
@@ -166,7 +169,7 @@ test("a changed existing Operation rejects the entire registry batch before new 
   }
 });
 
-test("a named Git registry source clones one repository and survives a runtime restart", async () => {
+test("a named Git registry source clones one repository and survives a runtime restart", async ({ startRuntime }) => {
   const directory = await mkdtemp(path.join(tmpdir(), "trust-git-registry-"));
   const repository = path.join(directory, "tenant-repository");
   const operationsDirectory = path.join(directory, "operations-catalog");
@@ -198,7 +201,7 @@ test("a named Git registry source clones one repository and survives a runtime r
     "registry fixture",
   ]);
 
-  const firstRuntime = await startPublicRuntime("trust-git-registry-first-", {
+  const firstRuntime = await startRuntime("trust-git-registry-first-", {
     storage,
     operationsDirectory,
   });
@@ -222,7 +225,7 @@ test("a named Git registry source clones one repository and survives a runtime r
     await firstRuntime.close();
   }
 
-  const secondRuntime = await startPublicRuntime("trust-git-registry-second-", {
+  const secondRuntime = await startRuntime("trust-git-registry-second-", {
     storage,
     operationsDirectory,
   });
@@ -261,7 +264,7 @@ test("a named Git registry source clones one repository and survives a runtime r
   }
 });
 
-test("a Git registry cannot read its index through a symlink outside the checkout", async () => {
+test("a Git registry cannot read its index through a symlink outside the checkout", async ({ startRuntime }) => {
   const directory = await mkdtemp(path.join(tmpdir(), "trust-git-registry-symlink-"));
   const repository = path.join(directory, "registry");
   const outsideIndex = path.join(directory, "outside-index.json");
@@ -283,7 +286,7 @@ test("a Git registry cannot read its index through a symlink outside the checkou
     "-m",
     "symlink registry fixture",
   ]);
-  const runtime = await startPublicRuntime("trust-git-registry-symlink-runtime-", { operationsDirectory });
+  const runtime = await startRuntime("trust-git-registry-symlink-runtime-", { operationsDirectory });
   try {
     await rpc(runtime.endpoint, "registry.source.save", {
       name: "symlink-git",

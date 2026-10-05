@@ -2,9 +2,9 @@ import assert from "node:assert/strict";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import test from "node:test";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import type { CheckAttemptAdmissionResult, CheckFinalizationResult, PlanView } from "@trust/extension-sdk";
+import { test } from "./support/fixtures.js";
 
 // The file runs compiled from dist/acceptance or directly as TypeScript from acceptance; both use the built runtime.
 const here = path.dirname(fileURLToPath(import.meta.url));

@@ -16,7 +16,7 @@
     "clean": "node --input-type=module -e \"import { rmSync } from 'node:fs'; rmSync('dist', { recursive: true, force: true })\"",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "pretest:acceptance": "npm run package:skill --workspace=@trust/runner",
-    "test:acceptance": "npm run build && node --test --test-concurrency=1 dist/acceptance/*.acceptance.test.js acceptance/documentation.acceptance.test.mjs",
+    "test:acceptance": "npm run build && vitest run && node --test acceptance/documentation.acceptance.test.mjs",
     "start": "node dist/src/index.js"
   },
   "dependencies": {
@@ -42,6 +42,7 @@
     "remark-frontmatter": "^5.0.0",
     "remark-gfm": "^4.0.1",
     "typescript": "^5.7.2",
+    "vitest": "^4.1.10",
     "yaml": "^2.9.0",
     "@types/pg": "^8.23.1"
   }

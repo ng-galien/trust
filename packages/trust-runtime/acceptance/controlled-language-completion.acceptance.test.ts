@@ -4,9 +4,10 @@ import { once } from "node:events";
 import { cp, mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { after, before, test } from "node:test";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { promisify } from "node:util";
+import { afterAll, beforeAll } from "vitest";
+import { test } from "./support/fixtures.js";
 
 const LISTEN_TIMEOUT_MS = 60_000;
 const LSP_TIMEOUT_MS = 20_000;
@@ -115,13 +116,13 @@ let sequence = 0;
 /** A nextIntent that breaks two structure rules: a semicolon and a sentence of 28 words. */
 const BROKEN_INTENT = `Inspect the request; ${words(24)} now`;
 
-before(async () => {
+beforeAll(async () => {
   [runtime, accessRuntime] = await Promise.all([startRuntime(), startAccessRuntime()]);
   await publishVocabulary(runtime, local, deliveryTerms("1.0.0"));
   await publishProcedure(procedure({ name: "completion-structure", tag: "@controlled-language" }));
 });
 
-after(async () => {
+afterAll(async () => {
   await Promise.all([runtime?.close(), accessRuntime?.close()]);
 });
 

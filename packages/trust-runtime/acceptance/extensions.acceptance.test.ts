@@ -2,15 +2,14 @@ import assert from "node:assert/strict";
 import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import test from "node:test";
 import { fileURLToPath } from "node:url";
-import { startPublicRuntime } from "./support/runtime-process.js";
+import { test } from "./support/fixtures.js";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../..");
 
 test("installed extensions expose bounded lifecycle, confined assets, filtered Plan reads and live invalidation through HTTP", {
   timeout: 40_000,
-}, async () => {
+}, async ({ startRuntime }) => {
   const directory = await mkdtemp(path.join(tmpdir(), "trust-extensions-"));
   await mkdir(path.join(directory, "dist"));
   await writeFile(path.join(directory, "outside.txt"), "private-data");
@@ -59,7 +58,7 @@ export function createExtension({ publishChanged, configuration }) {
   }
   const registry = path.join(directory, "installations.json");
   await writeFile(registry, JSON.stringify({ extensions: installations }));
-  const runtime = await startPublicRuntime("trust-extension-runtime-", {
+  const runtime = await startRuntime("trust-extension-runtime-", {
     extensionsFile: registry,
     operationsDirectory: path.join(root, "assets/operations"),
     environments: { local: { workspaceRoot: root }, foreign: { workspaceRoot: root } },

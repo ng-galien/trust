@@ -9,7 +9,12 @@ import { fileURLToPath } from "node:url";
 import type { EnvironmentValues, StorageConfiguration } from "@trust/extension-sdk";
 import { Client } from "pg";
 
-const buildRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
+// The runtime always starts from its build, whether the test runs from the build or from its TypeScript source.
+const supportDirectory = path.dirname(fileURLToPath(import.meta.url));
+const buildRoot = supportDirectory.includes(`${path.sep}dist${path.sep}`)
+  ? path.resolve(supportDirectory, "../..")
+  : path.resolve(supportDirectory, "../../dist");
+export const repositoryRoot = path.resolve(buildRoot, "../../..");
 
 export interface PublicRuntimeProcess {
   readonly endpoint: string;
@@ -109,8 +114,9 @@ async function acceptanceStorage(storage: StorageConfiguration): Promise<Storage
   return { kind: "postgresql", connectionString: target.href };
 }
 
-after(async () => {
-  for (const { admin, name } of createdDatabases) {
+/** Drops the PostgreSQL databases this process created; each test runner calls it when its file ends. */
+export async function dropAcceptanceDatabases(): Promise<void> {
+  for (const { admin, name } of createdDatabases.splice(0)) {
     const client = new Client({ connectionString: admin });
     await client.connect();
     try {
@@ -119,7 +125,10 @@ after(async () => {
       await client.end();
     }
   }
-});
+}
+
+// Vitest files end through their fixtures; a node:test hook registered there would start a second runner.
+if (process.env.VITEST === undefined) after(dropAcceptanceDatabases);
 
 async function configureEnvironment(endpoint: string, environment: string, values: EnvironmentValues): Promise<void> {
   const response = await fetch(`${endpoint}/rpc`, {

@@ -2,16 +2,17 @@ import assert from "node:assert/strict";
 import { cp, mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import test from "node:test";
 import { fileURLToPath } from "node:url";
 
-import { startPublicRuntime } from "./support/runtime-process.js";
+import { test } from "./support/fixtures.js";
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../..");
 const operationsDirectory = path.join(repositoryRoot, "assets/operations");
 
-test("intent admission and interruption publish committed Plan state changes", { timeout: 15_000 }, async () => {
-  const runtime = await startPublicRuntime("trust-intent-events-", {
+test("intent admission and interruption publish committed Plan state changes", { timeout: 15_000 }, async ({
+  startRuntime,
+}) => {
+  const runtime = await startRuntime("trust-intent-events-", {
     operationsDirectory,
     environments: { local: { workspaceRoot: repositoryRoot } },
   });
@@ -79,10 +80,10 @@ test("intent admission and interruption publish committed Plan state changes", {
   }
 });
 
-test("the Operation catalog is writable and catalog summaries stay light", async () => {
+test("the Operation catalog is writable and catalog summaries stay light", async ({ startRuntime }) => {
   const directory = await mkdtemp(path.join(tmpdir(), "trust-operations-"));
   await cp(operationsDirectory, directory, { recursive: true });
-  const runtime = await startPublicRuntime("trust-operation-catalog-", { operationsDirectory: directory });
+  const runtime = await startRuntime("trust-operation-catalog-", { operationsDirectory: directory });
   try {
     const original = await readFile(path.join(directory, "git.head-read.feature"), "utf8");
     const source = original.replace("@operation:git.head-read", "@operation:git.head-copy");
@@ -160,10 +161,10 @@ test("the Operation catalog is writable and catalog summaries stay light", async
   }
 });
 
-test("two public runtimes cannot replace an Operation from a stale catalog", async () => {
+test("two public runtimes cannot replace an Operation from a stale catalog", async ({ startRuntime }) => {
   const directory = await mkdtemp(path.join(tmpdir(), "trust-shared-catalog-"));
-  const first = await startPublicRuntime("trust-catalog-first-", { operationsDirectory: directory });
-  const second = await startPublicRuntime("trust-catalog-second-", { operationsDirectory: directory });
+  const first = await startRuntime("trust-catalog-first-", { operationsDirectory: directory });
+  const second = await startRuntime("trust-catalog-second-", { operationsDirectory: directory });
   try {
     const source = await readFile(path.join(operationsDirectory, "git.head-read.feature"), "utf8");
     await rpc(first.endpoint, "operation.save", { source, sourceName: "head.feature" });
@@ -194,8 +195,8 @@ test("two public runtimes cannot replace an Operation from a stale catalog", asy
   }
 });
 
-test("a stale event id from another runtime requires a full resync", async () => {
-  const firstRuntime = await startPublicRuntime("trust-events-first-", {
+test("a stale event id from another runtime requires a full resync", async ({ startRuntime }) => {
+  const firstRuntime = await startRuntime("trust-events-first-", {
     operationsDirectory,
     environments: { local: { workspaceRoot: repositoryRoot } },
   });
@@ -216,7 +217,7 @@ test("a stale event id from another runtime requires a full resync", async () =>
     await firstRuntime.close();
   }
 
-  const secondRuntime = await startPublicRuntime("trust-events-second-", { operationsDirectory });
+  const secondRuntime = await startRuntime("trust-events-second-", { operationsDirectory });
   const secondStream = await openPlanEvents(secondRuntime.endpoint, previousEventId);
   try {
     const events = await secondStream.takeUntil((event) => event.type === "runtime.changed");
@@ -227,8 +228,8 @@ test("a stale event id from another runtime requires a full resync", async () =>
   }
 });
 
-test("Plan pages, Check history and live events are served at public boundaries", async () => {
-  const runtime = await startPublicRuntime("trust-backend-needs-", {
+test("Plan pages, Check history and live events are served at public boundaries", async ({ startRuntime }) => {
+  const runtime = await startRuntime("trust-backend-needs-", {
     operationsDirectory,
     environments: { local: { workspaceRoot: repositoryRoot } },
   });

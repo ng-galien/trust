@@ -1,9 +1,8 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import test from "node:test";
 import { fileURLToPath } from "node:url";
-import { startPublicRuntime } from "./support/runtime-process.js";
+import { test } from "./support/fixtures.js";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../..");
 function wrapper(name: string, child: string, isRoot = false) {
@@ -41,8 +40,8 @@ ${
 
 test("four-level descendant escalation is navigable, notified, isolated and removed on resume or supersession", {
   timeout: 35_000,
-}, async () => {
-  const runtime = await startPublicRuntime("trust-child-escalation-", {
+}, async ({ startRuntime }) => {
+  const runtime = await startRuntime("trust-child-escalation-", {
     operationsDirectory: path.join(root, "assets/operations"),
     environments: { local: { workspaceRoot: root } },
   });

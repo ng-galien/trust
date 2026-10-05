@@ -6,10 +6,10 @@ import { createServer as createNetServer } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { WebSocket } from "ws";
+import { test } from "./support/fixtures.js";
 
 const execute = promisify(execFile);
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../..");

@@ -4,9 +4,10 @@ import { once } from "node:events";
 import { cp, mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { after, before, test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
+import { afterAll, beforeAll } from "vitest";
+import { test } from "./support/fixtures.js";
 
 const LISTEN_TIMEOUT_MS = 60_000;
 const LSP_TIMEOUT_MS = 20_000;
@@ -85,7 +86,7 @@ const BROKEN_INTENT = `Inspect the request; ${words(24)} now`;
 /** A sentence of 26 words that also uses the rejected word "repo" of delivery-terms 1.0.0. */
 const BROKEN_LEXICAL = `Inspect the repo; ${words(23)}`;
 
-before(async () => {
+beforeAll(async () => {
   runtime = await startRuntime();
   await publishVocabulary(vocabulary("1.0.0", [["repo", "repository"]]));
   await publishProcedure(procedure({ name: "declarations-structure", tag: "@controlled-language" }));
@@ -93,7 +94,7 @@ before(async () => {
   await publishProcedure(procedure({ name: "declarations-free" }));
 });
 
-after(async () => {
+afterAll(async () => {
   await runtime?.close();
 });
 

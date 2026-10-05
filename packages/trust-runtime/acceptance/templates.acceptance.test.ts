@@ -3,9 +3,9 @@ import { spawn } from "node:child_process";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import test from "node:test";
 import type { SourceTemplate } from "@trust/extension-sdk";
 import { createMessageConnection, StreamMessageReader, StreamMessageWriter } from "vscode-jsonrpc/node";
+import { test } from "./support/fixtures.js";
 import { startPublicRuntime } from "./support/runtime-process.js";
 
 type Envelope = { result?: unknown; error?: { message: string } };
@@ -309,9 +309,9 @@ test("template render size checks the final text after all substitutions", async
   }
 });
 
-test("public LSP and RPC/MCP reject the same incomplete template definitions", async (context) => {
+test("public LSP and RPC/MCP reject the same incomplete template definitions", async ({ onTestFinished }) => {
   const runtime = await fixture();
-  context.after(() => runtime.close());
+  onTestFinished(() => runtime.close());
   const server = spawn(
     process.execPath,
     [new URL("../../../trust-language-server/bin/trust-language-server.js", import.meta.url).pathname, "--stdio"],
@@ -321,7 +321,7 @@ test("public LSP and RPC/MCP reject the same incomplete template definitions", a
     new StreamMessageReader(server.stdout),
     new StreamMessageWriter(server.stdin),
   );
-  context.after(() => {
+  onTestFinished(() => {
     connection.dispose();
     if (server.exitCode === null) server.kill("SIGTERM");
   });

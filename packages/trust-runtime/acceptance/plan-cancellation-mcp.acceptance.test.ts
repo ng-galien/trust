@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import path from "node:path";
-import { after, before, test } from "node:test";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import type { PlanSummaryView } from "@trust/extension-sdk";
+import { afterAll, beforeAll } from "vitest";
+import { test } from "./support/fixtures.js";
 
 // The file runs compiled from dist/acceptance or directly as TypeScript from acceptance; both use the built runtime.
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -17,7 +18,7 @@ const { cancellationClient } = (await import(
 let runtime: Awaited<ReturnType<typeof startPublicRuntime>>;
 let client: ReturnType<typeof cancellationClient>;
 
-before(async () => {
+beforeAll(async () => {
   runtime = await startPublicRuntime("trust-plan-cancellation-mcp-", {
     operationsDirectory: path.join(runtimePackage, "../../assets/operations"),
   });
@@ -25,7 +26,7 @@ before(async () => {
   await client.publish();
 });
 
-after(async () => {
+afterAll(async () => {
   await runtime?.close();
 });
 

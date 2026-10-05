@@ -4,8 +4,9 @@ import { once } from "node:events";
 import { cp, mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { after, before, test } from "node:test";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { afterAll, beforeAll } from "vitest";
+import { test } from "./support/fixtures.js";
 
 const LISTEN_TIMEOUT_MS = 60_000;
 
@@ -97,14 +98,14 @@ interface GlossaryEntry {
 let dataDirectory: string;
 let runtime: Runtime;
 
-before(async () => {
+beforeAll(async () => {
   dataDirectory = await mkdtemp(path.join(tmpdir(), "trust-base-completion-"));
   await cp(path.join(fixtures, "operations"), path.join(dataDirectory, "operations"), { recursive: true });
   await mkdir(path.join(dataDirectory, "workspace"));
   runtime = await startRuntime();
 });
 
-after(async () => {
+afterAll(async () => {
   await runtime?.stop();
   if (dataDirectory) await rm(dataDirectory, { recursive: true, force: true, maxRetries: 5 });
 });

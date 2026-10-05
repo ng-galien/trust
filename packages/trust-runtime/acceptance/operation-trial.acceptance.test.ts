@@ -2,80 +2,75 @@ import assert from "node:assert/strict";
 import { access, mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import test from "node:test";
 import { fileURLToPath } from "node:url";
 
-import { startPublicRuntime } from "./support/runtime-process.js";
+import { test } from "./support/fixtures.js";
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../..");
 const operationsDirectory = path.join(repositoryRoot, "assets/operations");
 
-test("an Operation Trial runs through the packaged runner and streams its diagnostics", async () => {
-  const runtime = await startPublicRuntime("trust-operation-trial-", {
+test("an Operation Trial runs through the packaged runner and streams its diagnostics", async ({ startRuntime }) => {
+  const runtime = await startRuntime("trust-operation-trial-", {
     operationsDirectory,
     environments: { local: { workspaceRoot: path.dirname(repositoryRoot) } },
   });
-  try {
-    const started = (await rpc(runtime.endpoint, "operation.trial.start", {
-      operation: "git.head-read",
-      version: "1.0.0",
-      environment: "local",
-      input: { project: path.basename(repositoryRoot) },
-    })) as { trial: { id: string } };
+  const started = (await rpc(runtime.endpoint, "operation.trial.start", {
+    operation: "git.head-read",
+    version: "1.0.0",
+    environment: "local",
+    input: { project: path.basename(repositoryRoot) },
+  })) as { trial: { id: string } };
 
-    const stream = fetch(`${runtime.endpoint}/otlp/diagnostics/trials/${started.trial.id}/stream`).then(
-      async (response) => {
-        assert.equal(response.status, 200);
-        return response.text();
-      },
-    );
-    const trial = await waitForTrial(runtime.endpoint, started.trial.id);
-    const streamText = await stream;
+  const stream = fetch(`${runtime.endpoint}/otlp/diagnostics/trials/${started.trial.id}/stream`).then(
+    async (response) => {
+      assert.equal(response.status, 200);
+      return response.text();
+    },
+  );
+  const trial = await waitForTrial(runtime.endpoint, started.trial.id);
+  const streamText = await stream;
 
-    assert.equal(trial.status, "succeeded");
-    assert.equal((trial.outcome as { diagnosticsFailures?: number }).diagnosticsFailures, 0);
-    const eventTypes = trial.events.map(({ type }) => type);
-    assert.ok(eventTypes.includes("operation.start"));
-    assert.ok(eventTypes.includes("step.start"));
-    assert.ok(eventTypes.includes("step.end"));
-    assert.ok(eventTypes.includes("operation.end"));
-    assert.equal(eventTypes.at(-1), "trial.completed");
-    assert.match(streamText, /event: operation\.start/);
-    assert.match(streamText, /event: trial\.completed/);
-    assert.match(streamText, /event: end/);
+  assert.equal(trial.status, "succeeded");
+  assert.equal((trial.outcome as { diagnosticsFailures?: number }).diagnosticsFailures, 0);
+  const eventTypes = trial.events.map(({ type }) => type);
+  assert.ok(eventTypes.includes("operation.start"));
+  assert.ok(eventTypes.includes("step.start"));
+  assert.ok(eventTypes.includes("step.end"));
+  assert.ok(eventTypes.includes("operation.end"));
+  assert.equal(eventTypes.at(-1), "trial.completed");
+  assert.match(streamText, /event: operation\.start/);
+  assert.match(streamText, /event: trial\.completed/);
+  assert.match(streamText, /event: end/);
 
-    const listed = (await rpc(runtime.endpoint, "operation.trial.list", {})) as {
-      trials: Array<{ id: string; operation: string; status: string }>;
-    };
-    assert.deepEqual(
-      listed.trials.map(({ id, operation, status }) => [id, operation, status]),
-      [[started.trial.id, "git.head-read", "succeeded"]],
-    );
-    const filtered = (await rpc(runtime.endpoint, "operation.trial.list", { operation: "git.head-read" })) as {
-      trials: Array<{ id: string }>;
-    };
-    assert.deepEqual(
-      filtered.trials.map(({ id }) => id),
-      [started.trial.id],
-    );
-    assert.equal(
-      (await rpcEnvelope(runtime.endpoint, "operation.trial.list", { unexpected: true })).error?.code,
-      -32_602,
-    );
-    assert.equal(
-      (await rpcEnvelope(runtime.endpoint, "operation.trial.read", { trial: started.trial.id, after: "latest" })).error
-        ?.code,
-      -32_602,
-    );
-  } finally {
-    await runtime.close();
-  }
+  const listed = (await rpc(runtime.endpoint, "operation.trial.list", {})) as {
+    trials: Array<{ id: string; operation: string; status: string }>;
+  };
+  assert.deepEqual(
+    listed.trials.map(({ id, operation, status }) => [id, operation, status]),
+    [[started.trial.id, "git.head-read", "succeeded"]],
+  );
+  const filtered = (await rpc(runtime.endpoint, "operation.trial.list", { operation: "git.head-read" })) as {
+    trials: Array<{ id: string }>;
+  };
+  assert.deepEqual(
+    filtered.trials.map(({ id }) => id),
+    [started.trial.id],
+  );
+  assert.equal(
+    (await rpcEnvelope(runtime.endpoint, "operation.trial.list", { unexpected: true })).error?.code,
+    -32_602,
+  );
+  assert.equal(
+    (await rpcEnvelope(runtime.endpoint, "operation.trial.read", { trial: started.trial.id, after: "latest" })).error
+      ?.code,
+    -32_602,
+  );
 });
 
-test("a timed-out Trial kills its process tree and still closes a full diagnostic stream", async () => {
+test("a timed-out Trial kills its process tree and still closes a full diagnostic stream", async ({ startRuntime }) => {
   const workspaceRoot = await mkdtemp(path.join(tmpdir(), "trust-operation-timeout-"));
   const pidFile = path.join(workspaceRoot, "stubborn.pid");
-  const runtime = await startPublicRuntime("trust-operation-timeout-runtime-", {
+  const runtime = await startRuntime("trust-operation-timeout-runtime-", {
     environments: { local: { workspaceRoot } },
     trialTimeoutMs: 500,
   });
@@ -108,10 +103,10 @@ test("a timed-out Trial kills its process tree and still closes a full diagnosti
   }
 });
 
-test("an operator can cancel a running Trial and its process tree", async () => {
+test("an operator can cancel a running Trial and its process tree", async ({ startRuntime }) => {
   const workspaceRoot = await mkdtemp(path.join(tmpdir(), "trust-operation-cancel-"));
   const pidFile = path.join(workspaceRoot, "stubborn.pid");
-  const runtime = await startPublicRuntime("trust-operation-cancel-runtime-", {
+  const runtime = await startRuntime("trust-operation-cancel-runtime-", {
     environments: { local: { workspaceRoot } },
     trialTimeoutMs: 30_000,
   });

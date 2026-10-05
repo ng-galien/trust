@@ -4,8 +4,9 @@ import { once } from "node:events";
 import { cp, mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { after, before, test } from "node:test";
 import { fileURLToPath } from "node:url";
+import { afterAll, beforeAll } from "vitest";
+import { test } from "./support/fixtures.js";
 
 /** Definition digest recorded from the untagged fixture before the controlled language tag existed. */
 const RECORDED_UNTAGGED_DIGEST = "91d771102705666629954474a9a02cee89b308b85626b29c95986d777594cb5c";
@@ -65,11 +66,11 @@ interface RpcEnvelope {
 
 let runtime: Runtime;
 
-before(async () => {
+beforeAll(async () => {
   runtime = await startRuntime();
 });
 
-after(async () => {
+afterAll(async () => {
   await runtime?.close();
 });
 

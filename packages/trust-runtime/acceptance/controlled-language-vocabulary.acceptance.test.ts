@@ -4,8 +4,9 @@ import { once } from "node:events";
 import { cp, mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { after, before, test } from "node:test";
 import { fileURLToPath } from "node:url";
+import { afterAll, beforeAll } from "vitest";
+import { test } from "./support/fixtures.js";
 
 const LISTEN_TIMEOUT_MS = 60_000;
 const LSP_TIMEOUT_MS = 20_000;
@@ -74,13 +75,13 @@ const DEFAULT_REJECTED: readonly RejectedRow[] = [
 /** Lines: 6 Terms, 8 repository, 9 Operation, 10 observe, 11 Rejected words, 13 repo, 14 action step. */
 const DELIVERY_TERMS = vocabulary({ name: "delivery-terms" });
 
-before(async () => {
+beforeAll(async () => {
   runtime = await startRuntime();
   const published = await rpc("vocabulary.publish", { source: DELIVERY_TERMS, sourceName: "delivery-terms.feature" });
   assert.equal(published.error, undefined, JSON.stringify(published.error));
 });
 
-after(async () => {
+afterAll(async () => {
   await runtime?.close();
 });
 

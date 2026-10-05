@@ -4,10 +4,10 @@ import { randomUUID } from "node:crypto";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
-import { startPublicRuntime } from "./support/runtime-process.js";
+import { test } from "./support/fixtures.js";
+import type { startPublicRuntime } from "./support/runtime-process.js";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../..");
 const execute = promisify(execFile);
@@ -16,7 +16,7 @@ const databaseUrl = process.env.TRUST_POSTGRESQL_ACCEPTANCE_URL;
 test("the public Trial dispatches PostgreSQL through its packaged runner and reports the persisted result", {
   skip: !databaseUrl,
   timeout: 60_000,
-}, async () => {
+}, async ({ startRuntime }) => {
   // This fixture owns only a unique schema; the retained database and its other data remain intact.
   const schema = `trust_runner_${randomUUID().replaceAll("-", "")}`;
   const sql = (statement: string) =>
@@ -34,7 +34,7 @@ test("the public Trial dispatches PostgreSQL through its packaged runner and rep
     ).replaceAll("trust_connector_claims", `${schema}.trust_connector_claims`);
     await writeFile(path.join(directory, "claim.feature"), source);
     await execute(process.execPath, [path.join(root, "packages/trust-runner/scripts/package-skill.ts")], { cwd: root });
-    runtime = await startPublicRuntime("trust-postgresql-trial-", {
+    runtime = await startRuntime("trust-postgresql-trial-", {
       operationsDirectory: directory,
       environments: { acceptance: { databaseUrl: databaseUrl! } },
     });

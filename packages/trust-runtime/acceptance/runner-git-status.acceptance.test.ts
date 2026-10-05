@@ -4,16 +4,15 @@ import { once } from "node:events";
 import { access, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path, { delimiter } from "node:path";
-import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 
-import { startPublicRuntime } from "./support/runtime-process.js";
+import { test } from "./support/fixtures.js";
 
 const execute = promisify(execFile);
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../..");
 
-test("the packaged TRUST Skill executes the git-status Check", async () => {
+test("the packaged TRUST Skill executes the git-status Check", async ({ startRuntime }) => {
   const projectsRoot = await mkdtemp(path.join(tmpdir(), "trust-runner-git-"));
   const projectName = "repository";
   const project = path.join(projectsRoot, projectName);
@@ -64,7 +63,7 @@ test("the packaged TRUST Skill executes the git-status Check", async () => {
   const revision = (await execute("git", ["rev-parse", "HEAD"], { cwd: project })).stdout.trim();
   await writeFile(path.join(project, "untracked.txt"), "dirty\n", "utf8");
 
-  const runtime = await startPublicRuntime("trust-runner-runtime-", {
+  const runtime = await startRuntime("trust-runner-runtime-", {
     operationsDirectory: path.join(repositoryRoot, "assets/operations"),
     environments: { local: { workspaceRoot: projectsRoot } },
   });

@@ -2,15 +2,14 @@ import assert from "node:assert/strict";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import test from "node:test";
 import { fileURLToPath } from "node:url";
 
-import { startPublicRuntime } from "./support/runtime-process.js";
+import { test } from "./support/fixtures.js";
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../..");
 const operationsDirectory = path.join(repositoryRoot, "assets/operations");
 
-test("environments and credential references persist without exposing credential values", async () => {
+test("environments and credential references persist without exposing credential values", async ({ startRuntime }) => {
   const dataDirectory = await mkdtemp(path.join(tmpdir(), "trust-environment-configuration-"));
   const storage = { kind: "pglite" as const, directory: path.join(dataDirectory, "pglite") };
   const credentialValue = "acceptance-secret-that-must-not-be-returned";
@@ -18,7 +17,7 @@ test("environments and credential references persist without exposing credential
   const processEnvironment = { TRUST_CREDENTIAL_KEY_FILE: path.join(dataDirectory, "credential.key") };
 
   try {
-    const first = await startPublicRuntime("trust-environment-first-", {
+    const first = await startRuntime("trust-environment-first-", {
       storage,
       operationsDirectory,
       processEnvironment,
@@ -80,7 +79,7 @@ test("environments and credential references persist without exposing credential
       await first.close();
     }
 
-    const second = await startPublicRuntime("trust-environment-second-", {
+    const second = await startRuntime("trust-environment-second-", {
       storage,
       operationsDirectory,
       processEnvironment,
@@ -160,7 +159,7 @@ test("environments and credential references persist without exposing credential
       await second.close();
     }
 
-    const third = await startPublicRuntime("trust-environment-third-", {
+    const third = await startRuntime("trust-environment-third-", {
       storage,
       processEnvironment,
     });

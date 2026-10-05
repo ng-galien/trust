@@ -6,12 +6,12 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import type { HistoryView, PlanView, StorageConfiguration } from "@trust/extension-sdk";
 import { Client } from "pg";
 import { initializeSqliteSchema } from "../src/database/sqlite-schema.js";
+import { test } from "./support/fixtures.js";
 import { startPublicRuntime } from "./support/runtime-process.js";
 
 const execute = promisify(execFile);
@@ -164,7 +164,7 @@ test("SQLite import CLI rejects a forged schema marker before target writes", as
 
 test("retained SQLite copy continues a mission collection without replacing existing child generations", {
   skip: !process.env.TRUST_IMPORT_RETAINED_SOURCE || !process.env.TRUST_IMPORT_RETAINED_OPERATIONS,
-}, async (context) => {
+}, async ({ onTestFinished }) => {
   const directory = await mkdtemp(path.join(tmpdir(), "trust-retained-import-acceptance-"));
   const target = await newTarget(directory);
   const source = process.env.TRUST_IMPORT_RETAINED_SOURCE;
@@ -278,7 +278,7 @@ test("retained SQLite copy continues a mission collection without replacing exis
     } finally {
       await reopened.close();
     }
-    context.diagnostic(`Retained import verified; private source archive preserved at ${archive}`);
+    console.info(`Retained import verified; private source archive preserved at ${archive}`);
   } finally {
     await target.close();
     // This archive came from retained history: preserve it for independent review.

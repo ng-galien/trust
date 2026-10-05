@@ -101,7 +101,7 @@ test("SEC-030 AC1 a reference to an undeclared credential is refused at compilat
     assert.equal(failure.location?.line, line, `${name} refusal points at its step`);
   }
 
-  const withoutDeclaration = operation().replace(/    And Credentials\n(?: {6}\|[^\n]*\n)+/, "");
+  const withoutDeclaration = operation().replace(/ {4}And Credentials\n(?: {6}\|[^\n]*\n)+/, "");
   assert.ok(!withoutDeclaration.includes("And Credentials"), "the declaration table is removed");
   assert.equal((await refused(withoutDeclaration, "no-declaration.feature")).reason, "unknown-credential");
 
@@ -184,7 +184,7 @@ test("SEC-060 AC1 credential declarations and HTTP, PostgreSQL and Shell referen
   const withoutCredentials = (
     await rpc("operation.compile", {
       source: source
-        .replace(/    And Credentials\n(?: {6}\|[^\n]*\n)+/, "")
+        .replace(/ {4}And Credentials\n(?: {6}\|[^\n]*\n)+/, "")
         .replace(' from Credential "apiToken"', ' as "public"')
         .replace('\n        authenticated by Credential "dbPassword"', "")
         .replace('\n        with variable "DEPLOY_TOKEN" from Credential "deployToken"', ""),

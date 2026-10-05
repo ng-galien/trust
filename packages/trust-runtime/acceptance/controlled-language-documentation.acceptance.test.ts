@@ -5,8 +5,9 @@ import { existsSync } from "node:fs";
 import { cp, mkdir, mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { after, before, test } from "node:test";
 import { fileURLToPath } from "node:url";
+import { afterAll, beforeAll } from "vitest";
+import { test } from "./support/fixtures.js";
 
 const LISTEN_TIMEOUT_MS = 60_000;
 
@@ -108,11 +109,11 @@ interface RuleRow {
 
 let runtime: Runtime;
 
-before(async () => {
+beforeAll(async () => {
   runtime = await startRuntime();
 });
 
-after(async () => {
+afterAll(async () => {
   await runtime?.close();
 });
 
