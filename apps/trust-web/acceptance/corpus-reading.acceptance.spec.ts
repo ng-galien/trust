@@ -179,7 +179,7 @@ test("CXP-070 AC2 a neighbour thread shows its number, title and state pill, and
     await expect(thread(name)).toHaveText(new RegExp(`^#\\d+\\s*${name}\\s*${state}`));
   }
   const child = neighbour(panel, `Child thread: ${notation.title}`);
-  await expect(child).toHaveText(new RegExp(`^#\\d+\\s*${notation.title}\\s*Active`));
+  await expect(child).toHaveText(new RegExp(`^#\\d+\\s*${notation.title}\\s*Open`));
   // A facet or a corpus row: its title and its thread count, without number or state.
   const sources = neighbour(panel, "Facet: Sources");
   await expect(sources).toHaveText(/^Sources\s*2 threads/);
@@ -254,7 +254,7 @@ test("CXP-080 AC1 the facet screen shows description, touching threads with stat
   ]);
   const touching = facet.getByRole("list", { name: "Threads touching Interface" }).getByRole("listitem");
   const line = touching.filter({ has: page.getByRole("link", { name: notation.title, exact: true }) });
-  await expect(line).toContainText("Active");
+  await expect(line).toContainText("Open");
   await expect(line).toContainText(`Intention: ${notation.intention}`);
   await expect(
     touching.filter({ has: page.getByRole("link", { name: "Interface registry", exact: true }) }),

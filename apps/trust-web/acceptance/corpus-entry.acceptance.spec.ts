@@ -92,7 +92,7 @@ test("CXP-020 AC1 each row shows the thread title, its corpus, its facet labels,
   await expect(active.getByRole("list", { name: `Facets of ${topology.title}` }).getByRole("link")).toHaveText(
     ["concepts", "experiments", "sources"].map(facetTitle).sort(),
   );
-  await expect(active).toContainText("Active");
+  await expect(active).toContainText("Open");
   await expect(active).toContainText(`rev. ${await revision(topology.id)}`);
   await expect(row(page, vocabulary.title)).toContainText("Completed");
   await expect(row(page, survey.title)).toContainText("Paused");
@@ -126,12 +126,13 @@ test("CXP-030 AC1 each active filter shows as a chip and removing a chip restore
   page,
 }) => {
   const errors = await openEntry(page);
-  // The entry view filters on the active state.
-  await expect(chip(page, "State: Active")).toBeVisible();
+  // The view of the open threads filters on the open state.
+  await view(page, "Open threads").click();
+  await expect(chip(page, "State: Open")).toBeVisible();
   expect(await listed(page)).not.toContain(vocabulary.title);
   expect(await listed(page)).not.toContain(survey.title);
-  await removeChip(page, "State: Active").click();
-  await expect(chip(page, "State: Active")).toHaveCount(0);
+  await removeChip(page, "State: Open").click();
+  await expect(chip(page, "State: Open")).toHaveCount(0);
   await expect(addFilter(page, "State")).toBeVisible();
   await expect(row(page, vocabulary.title)).toBeVisible();
   await expect(row(page, survey.title)).toBeVisible();
@@ -154,6 +155,29 @@ test("CXP-030 AC1 each active filter shows as a chip and removing a chip restore
   await expect(row(page, "Document diagrams")).toBeVisible();
   await expect(row(page, loose.title)).toBeVisible();
   await expect(row(page, vocabulary.title)).toBeVisible();
+  expect(errors).toEqual([]);
+});
+
+test("CXP-030 AC4 the state filter offers In progress and lists the threads whose framework Plan is at work", async ({
+  page,
+}) => {
+  const errors = await openEntry(page);
+  await addFilter(page, "State").click();
+  await expect(app(page).getByRole("checkbox")).toHaveCount(4);
+  await option(page, "In progress").check();
+  await page.keyboard.press("Escape");
+  await expect(chip(page, "State: In progress")).toBeVisible();
+  // Every listed thread shows the In progress pill, and at least one thread is listed.
+  await expect(rows(page).first()).toBeVisible();
+  for (const item of await rows(page).all())
+    await expect(item.locator(".corpus-thread-status")).toHaveText("In progress");
+  // The open threads with no Plan at work are under Open.
+  await chip(page, "State: In progress").click();
+  await option(page, "In progress").uncheck();
+  await option(page, "Open").check();
+  await page.keyboard.press("Escape");
+  await expect(rows(page).first()).toBeVisible();
+  for (const item of await rows(page).all()) await expect(item.locator(".corpus-thread-status")).toHaveText("Open");
   expect(errors).toEqual([]);
 });
 
@@ -193,8 +217,7 @@ test("CXP-030 AC3 a combination without result says so and offers to remove the 
   await addFilter(page, "Corpus").click();
   await option(page, "TRUST").check();
   await page.keyboard.press("Escape");
-  await chip(page, "State: Active").click();
-  await option(page, "Active").uncheck();
+  await addFilter(page, "State").click();
   await option(page, "Paused").check();
   await page.keyboard.press("Escape");
   await expect(rows(page)).toHaveCount(0);
@@ -225,7 +248,12 @@ test("CXP-040 AC1 the list groups by corpus, facet or state and a thread appears
   await expect(row(page, topology.title)).toHaveCount(3);
   await expect(app(page).getByRole("region", { name: "No facet", exact: true })).toContainText(loose.title);
   await groupBy(page).selectOption("state");
-  await expect(groupTitles(page)).toHaveText([/^Active\s*\d+$/, /^Paused\s*1$/, /^Completed\s*1$/]);
+  await expect(groupTitles(page)).toHaveText([
+    /^In progress\s*\d+$/,
+    /^Open\s*\d+$/,
+    /^Paused\s*1$/,
+    /^Completed\s*1$/,
+  ]);
   await expect(app(page).getByRole("region", { name: "Paused", exact: true })).toContainText(survey.title);
   await expect(app(page).getByRole("region", { name: "Completed", exact: true })).toContainText(vocabulary.title);
   expect(errors).toEqual([]);
@@ -235,8 +263,10 @@ test("CXP-040 AC2 the supplied views exist: in progress, all threads, recently c
   page,
 }) => {
   const errors = await openEntry(page);
-  await expect(view(page, "In progress")).toHaveAttribute("aria-current", "true");
-  await expect(views(page).getByRole("button")).toContainText(["In progress", "All threads", "Recently completed"]);
+  // The list opens on every thread, with no state filter.
+  await expect(view(page, "All threads")).toHaveAttribute("aria-current", "true");
+  await expect(filters(page).getByRole("button", { name: /^Remove filter / })).toHaveCount(0);
+  await expect(views(page).getByRole("button")).toContainText(["All threads", "Open threads", "Recently completed"]);
   const corpusViews = views(page).getByRole("list", { name: "Corpus views" }).getByRole("link");
   await expect(corpusViews).toHaveText([ENTRY_CORPUS.title, "TRUST"]);
   await view(page, "Recently completed").click();
@@ -259,8 +289,8 @@ test("CXP-040 AC2 the supplied views exist: in progress, all threads, recently c
   const french = await page.context().newPage();
   await openEntry(french, "fr");
   await expect(views(french, "Vues").getByRole("button")).toContainText([
-    "En cours",
     "Tous les threads",
+    "Threads ouverts",
     "Terminés récemment",
   ]);
   await french.close();
@@ -268,7 +298,6 @@ test("CXP-040 AC2 the supplied views exist: in progress, all threads, recently c
 
 test("CXP-040 AC3 a saved view keeps its filters and grouping after a reload in the same browser", async ({ page }) => {
   const errors = await openEntry(page);
-  await removeChip(page, "State: Active").click();
   await addFilter(page, "Corpus").click();
   await option(page, ENTRY_CORPUS.title).check();
   await page.keyboard.press("Escape");
@@ -285,7 +314,7 @@ test("CXP-040 AC3 a saved view keeps its filters and grouping after a reload in 
   await expect(view(page, "Exploration by facet")).toHaveAttribute("aria-current", "true");
   await page.reload();
   await expect(page.getByRole("heading", { name: "Corpus", level: 1 })).toBeVisible({ timeout: 30000 });
-  await expect(view(page, "In progress")).toHaveAttribute("aria-current", "true");
+  await expect(view(page, "All threads")).toHaveAttribute("aria-current", "true");
   await view(page, "Exploration by facet").click();
   await expect(chip(page, `Corpus: ${ENTRY_CORPUS.title}`)).toBeVisible();
   await expect(filters(page).getByRole("button", { name: /^Remove filter / })).toHaveCount(1);

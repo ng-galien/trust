@@ -51,8 +51,8 @@ const roleColours = (page: Page) =>
   });
 
 const EXPECTED_ROLES: Record<string, string> = {
-  Active: "warning",
-  "In progress": "accent",
+  Open: "accent",
+  "In progress": "warning",
   Complete: "success",
   Completed: "success",
   Validated: "success",
@@ -103,7 +103,7 @@ test("CXP-300 AC2 a thread, Plan, mission or Check state shows one pill with the
   await openCorpus(page, threadUrl(DIAGRAM_THREAD), "Document diagrams");
   // The thread header, the Plan of the card and its missions each show one pill.
   const header = app(page).getByRole("article", { name: "Thread document" });
-  await expect(header.locator(".corpus-state-pill", { hasText: "Active" }).first()).toBeVisible();
+  await expect(header.locator(".corpus-state-pill", { hasText: /Open|In progress/ }).first()).toBeVisible();
   await expect(card(page).locator(".corpus-state-pill", { hasText: "In progress" }).first()).toBeVisible();
   await card(page)
     .getByRole("button", { name: /missions complete/ })

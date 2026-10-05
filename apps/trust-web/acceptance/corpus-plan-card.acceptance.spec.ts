@@ -331,21 +331,30 @@ test("CXP-270 AC1 the panel of views and corpora and the thread list each keep t
   page,
 }) => {
   await openCorpus(page, ENTRY, "Corpus");
-  for (const width of [1280, 1000, 800, 390]) {
+  // With room beside the list, the panel and the rows are side by side, also once the list scrolled.
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await expect(views(page)).toBeVisible();
+  for (const scroll of [0, 600]) {
+    await page.mouse.wheel(0, scroll);
+    await scrollSettled(page);
+    for (const index of [0, 1, 2, 3])
+      expect(await overlap(views(page), rows(page).nth(index)), `1280 px, row ${index}`).toBe(false);
+  }
+  expect(await noPageOverflow(page)).toBe(true);
+  // Without that room the panel is folded: the list starts under the filter bar and keeps the whole width.
+  for (const width of [1000, 800, 390]) {
     await page.setViewportSize({ width, height: 800 });
     await page.evaluate(() => window.scrollTo(0, 0));
+    await expect(views(page)).toBeHidden();
+    const before = await rows(page).first().boundingBox();
     const show = app(page).getByRole("button", { name: "Show views and corpora" });
-    if (width < 900 && (await show.isVisible())) await show.click();
+    await show.click();
+    // Open, the panel lies over the list: the rows do not move.
     await expect(views(page)).toBeVisible();
-    await expect(rows(page).first()).toBeVisible();
-    // Side by side or one under the other, also once the list scrolled under the panel's place.
-    for (const scroll of [0, 600]) {
-      await page.mouse.wheel(0, scroll);
-      await scrollSettled(page);
-      for (const index of [0, 1, 2, 3])
-        expect(await overlap(views(page), rows(page).nth(index)), `${width} px, row ${index}`).toBe(false);
-    }
+    expect(await rows(page).first().boundingBox(), `${width} px`).toEqual(before);
     expect(await noPageOverflow(page)).toBe(true);
+    await page.keyboard.press("Escape");
+    await expect(views(page)).toBeHidden();
   }
 });
 
