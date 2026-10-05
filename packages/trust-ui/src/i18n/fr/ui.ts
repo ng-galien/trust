@@ -10,6 +10,7 @@ export const ui: Translation<typeof en> = {
     ESCALATED: "Escaladé",
     IN_PROGRESS: "En cours",
     COMPLETE: "Terminé",
+    CANCELLED: "Annulé",
     UNAVAILABLE: "Indisponible",
     OK: "OK",
     DRAFT: "Brouillon",

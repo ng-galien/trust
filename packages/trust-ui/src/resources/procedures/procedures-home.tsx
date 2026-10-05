@@ -280,7 +280,7 @@ function ListView({ rows, search, q }: { rows: ProcedureRow[]; search: string; q
                 to={`/plans/${encodeURIComponent(plan.plan)}`}
                 className="mono inline-flex items-center gap-1 truncate-1 text-accent hover:underline"
                 title={t("procedures.home.planLinkTitle", {
-                  state: plan.workState.replace("_", " "),
+                  state: t(`ui.status.${plan.workState}`),
                   satisfied: String(plan.satisfiedChecks),
                   total: String(plan.checkCount),
                 })}
@@ -291,7 +291,9 @@ function ListView({ rows, search, q }: { rows: ProcedureRow[]; search: string; q
                       ? "h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-info"
                       : plan.workState === "ESCALATED"
                         ? "h-1.5 w-1.5 shrink-0 rounded-full bg-danger"
-                        : "h-1.5 w-1.5 shrink-0 rounded-full bg-success"
+                        : plan.workState === "CANCELLED"
+                          ? "h-1.5 w-1.5 shrink-0 rounded-full bg-faint"
+                          : "h-1.5 w-1.5 shrink-0 rounded-full bg-success"
                   }
                 />
                 {plan.plan}

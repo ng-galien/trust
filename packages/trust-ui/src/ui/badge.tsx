@@ -73,6 +73,7 @@ const knownStatuses = [
   "IN_PROGRESS",
   "ESCALATED",
   "COMPLETE",
+  "CANCELLED",
   "UNAVAILABLE",
   "OK",
   "DRAFT",

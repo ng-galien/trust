@@ -7,6 +7,7 @@ export const ui = {
     ESCALATED: "Escalated",
     IN_PROGRESS: "In progress",
     COMPLETE: "Complete",
+    CANCELLED: "Cancelled",
     UNAVAILABLE: "Unavailable",
     OK: "OK",
     DRAFT: "Draft",

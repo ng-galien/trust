@@ -3,6 +3,7 @@ import type { PlanCheckView, PlanMode, PlanView } from "@trust/extension-sdk";
 import type { CompiledProcedure } from "@trust/procedure";
 import type { TFunction } from "i18next";
 import {
+  Ban,
   ChevronRight,
   CircleArrowUp,
   FileCode2,
@@ -50,6 +51,7 @@ import { ChildPlans } from "./child-plans.js";
 import { DescendantEscalations } from "./descendant-escalations.js";
 import { orderedChecks } from "./model.js";
 import { ModeBadge, PlanStateBadges, ProgressBar } from "./parts.js";
+import { CancelPlanDialog, canCancel, PlanCancellationNotice } from "./plan-cancellation.js";
 import { PlanChecklist } from "./plan-checklist.js";
 import { PlanCockpit } from "./plan-console.js";
 import { PlanEngage } from "./plan-engage.js";
@@ -178,6 +180,7 @@ function PlanItem({
   const [confirming, setConfirming] = useState<"reset" | "delete" | "close">();
   const [resumeOpen, setResumeOpen] = useState(false);
   const [resumeReason, setResumeReason] = useState("");
+  const [cancelOpen, setCancelOpen] = useState(false);
 
   return (
     <ResourceOverlay
@@ -276,6 +279,17 @@ function PlanItem({
               {t("plans.overlay.closeSession")}
             </Button>
           ) : null}
+          {data && canCancel(data) ? (
+            <Button
+              size="sm"
+              variant="danger"
+              icon={<Ban size={13} />}
+              title={t("plans.cancellation.actionTitle")}
+              onClick={() => setCancelOpen(true)}
+            >
+              {t("plans.cancellation.action")}
+            </Button>
+          ) : null}
           <Button
             size="sm"
             icon={<Workflow size={13} />}
@@ -354,6 +368,7 @@ function PlanItem({
           else remove.mutate(data.plan, { onSuccess: onClose });
         }}
       />
+      <CancelPlanDialog plan={slug} open={cancelOpen} onClose={() => setCancelOpen(false)} />
       <ConfirmDialog
         open={resumeOpen}
         title={t("plans.overlay.confirm.resumeTitle", { slug })}
@@ -560,6 +575,11 @@ function PlanSummaryStrip({
             <span className="text-muted"> — {plan.latestQualification.reason}</span>
           </p>
         ) : null}
+        {plan.cancellation ? (
+          <div className="mt-3">
+            <PlanCancellationNotice plan={plan} cancellation={plan.cancellation} />
+          </div>
+        ) : null}
         <DescendantEscalations escalations={plan.descendantEscalations} />
         <ChildPlans plan={plan} />
         {plan.activeEscalation ? (
@@ -645,6 +665,7 @@ export function PlanHistory({ plan }: { plan: PlanView }) {
   ].filter(Boolean);
   return (
     <div className="flex h-full flex-col gap-3 overflow-y-auto bg-bg p-4 [&>*]:shrink-0">
+      {plan.cancellation ? <PlanCancellationNotice plan={plan} cancellation={plan.cancellation} /> : null}
       <section className="rounded-(--radius-3) border border-border bg-surface p-4">
         <span className="kicker">{t("plans.history.latestChange")}</span>
         <p className="mt-1 text-body-lg">

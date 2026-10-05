@@ -149,7 +149,11 @@ function AnchorItemRow({
         >
           {item.state ? (
             <span
-              className={cx("h-1.5 w-1.5 shrink-0 rounded-full", item.state === "COMPLETE" ? "bg-success" : "bg-info")}
+              title={t(`ui.status.${item.state}`)}
+              className={cx(
+                "h-1.5 w-1.5 shrink-0 rounded-full",
+                item.state === "COMPLETE" ? "bg-success" : item.state === "CANCELLED" ? "bg-faint" : "bg-info",
+              )}
             />
           ) : null}
           <span className="mono truncate-1">{item.label}</span>

@@ -1,4 +1,4 @@
-import type { PlanMode } from "@trust/extension-sdk";
+import type { PlanMode, PlanWorkState } from "@trust/extension-sdk";
 import { Activity, FlaskConical, LockKeyhole } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Badge, StatusBadge } from "../../ui/badge.js";
@@ -37,20 +37,21 @@ export function ProgressBar({ satisfied, total, className }: { satisfied: number
   );
 }
 
-/** Work state first (In progress / Complete); a closed or expired Session is a second, quieter badge —
-    expected on a complete Plan, a warning while work remains (the agent cannot admit anything). */
+/** Work state first (In progress / Complete / Cancelled); a closed or expired Session is a second, quieter badge —
+    expected on a complete Plan, a warning while work remains (the agent cannot admit anything). A cancellation
+    closes the Session itself, so a cancelled Plan shows its work state alone. */
 export function PlanStateBadges({
   workState,
   sessionState,
 }: {
-  workState: "IN_PROGRESS" | "ESCALATED" | "COMPLETE" | "CANCELLED";
+  workState: PlanWorkState;
   sessionState: "OPEN" | "UNAVAILABLE";
 }) {
   const { t } = useTranslation();
   return (
     <>
       <StatusBadge state={workState} />
-      {sessionState === "UNAVAILABLE" ? (
+      {sessionState === "UNAVAILABLE" && workState !== "CANCELLED" ? (
         <span title={workState === "COMPLETE" ? t("plans.session.closedCompleteHint") : t("plans.session.closedHint")}>
           <Badge tone={workState === "COMPLETE" ? "neutral" : "warning"} className="inline-flex items-center gap-1">
             <LockKeyhole size={11} /> {t("plans.session.closed")}

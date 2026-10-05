@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import type { PlanWorkState } from "@trust/extension-sdk";
 import type { ParseKeys } from "i18next";
 import {
   Activity,
@@ -145,7 +146,8 @@ export interface AnchorItem {
   label: string;
   to: string;
   meta?: string;
-  state?: string;
+  /** Work state of a Plan item. */
+  state?: PlanWorkState;
   /** Source of a client-side duplicate, when authoring is available. */
   duplicateTo?: string;
   /** Deletion, when the runtime offers it for this item; `blocked` explains why it is refused for this one. */

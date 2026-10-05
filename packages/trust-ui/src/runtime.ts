@@ -9,6 +9,7 @@ import type {
   HistoryListInput,
   HistoryView,
   OperationEnvironments,
+  PlanCancellationResult,
   PlanDeclarationReplacementResult,
   PlanEngagementResult,
   PlanMode,
@@ -232,6 +233,8 @@ export class TrustRuntimeClient {
   resetPlan = (plan: string) => this.call<PlanEngagementResult>("plan.reset", { plan });
   /** Closes the Plan's open Session, if any (`closed: false` when none was open). */
   closePlan = (plan: string) => this.call<{ plan: string; closed: boolean }>("plan.close", { plan });
+  /** Root Plans only: ends the Plan and its current child Plans with a reason (refused for a child, COMPLETE or cancelled Plan). */
+  cancelPlan = (plan: string, reason: string) => this.call<PlanCancellationResult>("plan.cancel", { plan, reason });
   resumePlan = (plan: string, escalationId: string, resumeReason: string) =>
     this.call<{
       contract: "trust.plan-resumption@1";

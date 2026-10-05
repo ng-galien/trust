@@ -139,9 +139,18 @@ function PlanFilters({
           count: count("state", (row) => row.workState === "COMPLETE" && row.sessionState === "OPEN"),
         },
         {
+          value: "cancelled",
+          label: t("plans.home.filters.cancelled"),
+          count: count("state", (row) => row.workState === "CANCELLED"),
+        },
+        {
           value: "unavailable",
           label: t("plans.home.filters.unavailable"),
-          count: count("state", (row) => row.workState !== "ESCALATED" && row.sessionState === "UNAVAILABLE"),
+          count: count(
+            "state",
+            (row) =>
+              row.workState !== "ESCALATED" && row.workState !== "CANCELLED" && row.sessionState === "UNAVAILABLE",
+          ),
         },
       ],
       onToggle: (value, options) =>

@@ -104,6 +104,17 @@ export function useResumePlan() {
   });
 }
 
+/** Operator action: end a root Plan and its current child Plans with a reason. */
+export function useCancelPlan() {
+  const runtime = useRuntime();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ plan, reason }: { plan: string; reason: string }) => runtime.cancelPlan(plan, reason),
+    onSuccess: (result) =>
+      Promise.all(result.cancelledPlans.map((plan) => invalidatePlan(queryClient, plan))).then(() => undefined),
+  });
+}
+
 export function useSaveEnvironment() {
   const runtime = useRuntime();
   const queryClient = useQueryClient();
