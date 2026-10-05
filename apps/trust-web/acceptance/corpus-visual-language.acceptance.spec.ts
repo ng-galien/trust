@@ -51,13 +51,13 @@ const roleColours = (page: Page) =>
   });
 
 const EXPECTED_ROLES: Record<string, string> = {
-  Active: "accent",
+  Active: "warning",
   "In progress": "accent",
   Complete: "success",
   Completed: "success",
   Validated: "success",
   Escalated: "warning",
-  Paused: "warning",
+  Paused: "waiting",
   "Waits for you": "warning",
   "Not validated": "danger",
   Stopped: "danger",
@@ -105,7 +105,11 @@ test("CXP-300 AC2 a thread, Plan, mission or Check state shows one pill with the
   const header = app(page).getByRole("article", { name: "Thread document" });
   await expect(header.locator(".corpus-state-pill", { hasText: "Active" }).first()).toBeVisible();
   await expect(card(page).locator(".corpus-state-pill", { hasText: "In progress" }).first()).toBeVisible();
+  await card(page)
+    .getByRole("button", { name: /missions complete/ })
+    .click();
   const missions = card(page).getByRole("list", { name: "Missions of the Plan" }).getByRole("listitem");
+  await expect(missions.first()).toBeVisible();
   for (const item of await missions.all()) await expect(item.locator(".corpus-state-pill")).toHaveCount(1);
   // Each pill is a dot and a word.
   const first = pills(page).first();

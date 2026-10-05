@@ -160,6 +160,9 @@ test("CXP-250 AC4 the card lists the missions as rows with state, identifier, as
   page,
 }) => {
   await openCorpus(page, threadUrl(DIAGRAM_THREAD), "Document diagrams");
+  await card(page)
+    .getByRole("button", { name: /missions complete/ })
+    .click();
   const missions = card(page).getByRole("list", { name: "Missions of the Plan" }).getByRole("listitem");
   const running = missions.filter({ has: page.getByRole("link", { name: "mission-running", exact: true }) });
   await expect(running).toContainText("In progress");
@@ -174,18 +177,24 @@ test("CXP-250 AC4 the card lists the missions as rows with state, identifier, as
   await expect(page.getByRole("heading", { name: "mission-running", level: 1 })).toBeVisible();
 });
 
-test("CXP-250 AC5 beyond four missions the card shows four rows and Show all n missions", async ({ page }) => {
+test("CXP-250 AC5 the missions of the card are folded behind their count and open as one whole list", async ({
+  page,
+}) => {
   await openCorpus(page, threadUrl(DIAGRAM_THREAD), "Document diagrams");
   const missions = card(page).getByRole("list", { name: "Missions of the Plan" }).getByRole("listitem");
-  await expect(missions).toHaveCount(4);
-  // The complete mission comes after the missions still at work.
-  await expect(card(page)).toContainText("1 more mission, complete");
-  await card(page)
-    .getByRole("button", { name: `Show all ${MISSIONS.length} missions` })
-    .click();
+  const fold = card(page).getByRole("button", { name: /missions complete/ });
+  // Folded, the card gives the count only.
+  await expect(fold).toHaveAttribute("aria-expanded", "false");
+  await expect(fold).toContainText(`1 of ${MISSIONS.length} missions complete`);
+  await expect(missions).toHaveCount(0);
+  await fold.click();
+  await expect(fold).toHaveAttribute("aria-expanded", "true");
   await expect(missions).toHaveCount(MISSIONS.length);
+  // The complete mission comes after the missions still at work.
   await expect(missions.last()).toContainText("mission-complete");
   await expect(missions.last()).toContainText("Complete");
+  await fold.click();
+  await expect(missions).toHaveCount(0);
 });
 
 test("CXP-250 AC6 the card footer holds the revision, the Plan identifier and the links Plan details, Plan history and Open in TRUST", async ({
@@ -435,6 +444,7 @@ test("CXP-280 AC5 a pending decision is the first element of the card under its 
   const current = card(page);
   const decisions = current.getByRole("list", { name: "Your decisions" });
   await expect(decisions).toBeVisible();
+  await current.getByRole("button", { name: /missions? complete/ }).click();
   // Under the title line, before the steps and the missions.
   const order = await current.evaluate((section) =>
     [...section.children].map((child) =>

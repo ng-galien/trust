@@ -106,6 +106,7 @@ test("CXP-060 AC2 the side panel opens the monitoring of the framework Plan and 
   await page.goBack();
   // A mission of the card opens its page.
   const mission = MISSIONS[1]?.id ?? "";
+  await card.getByRole("button", { name: /missions complete/ }).click();
   await card.getByRole("link", { name: mission, exact: true }).click();
   await expect(page).toHaveURL(/view=mission&mission=/);
   await expect(heading(page, mission)).toBeVisible();
