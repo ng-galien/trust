@@ -1,0 +1,12 @@
+Fixture cited by maintenance/examples/findings.json. Keep it unchanged.
+
+export const formatTotal = (amount) => {
+  return `${amount.toFixed(2)} EUR`;
+};
+
+export const formatPrice = (amount) => {
+  return `${amount.toFixed(2)} EUR`;
+};
+
+// legacy toggle, no longer read
+export const LEGACY_PRICING = false;

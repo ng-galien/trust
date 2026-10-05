@@ -1,0 +1,79 @@
+{
+  "axis": "example",
+  "findings": [
+    {
+      "id": "duplicate-amount-formatter",
+      "title": "formatTotal and formatPrice format an amount the same way",
+      "kind": "duplication",
+      "location": {
+        "file": "maintenance/examples/cited-source.txt",
+        "lines": [3, 5],
+        "text": "export const formatTotal = (amount) => {\n  return `${amount.toFixed(2)} EUR`;\n};"
+      },
+      "related": [
+        {
+          "file": "maintenance/examples/cited-source.txt",
+          "lines": [7, 9],
+          "text": "export const formatPrice = (amount) => {\n  return `${amount.toFixed(2)} EUR`;\n};"
+        }
+      ],
+      "evidence": "Both bodies are identical; searched the repository for formatTotal and formatPrice: each has callers.",
+      "action": "Keep formatPrice, make formatTotal call it.",
+      "touches": ["maintenance/examples/cited-source.txt"],
+      "risk": "low",
+      "riskReason": "Same output for every input; covered by the formatter tests.",
+      "state": "open"
+    },
+    {
+      "id": "legacy-pricing-flag",
+      "title": "LEGACY_PRICING is exported and never read",
+      "kind": "leftover",
+      "location": {
+        "file": "maintenance/examples/cited-source.txt",
+        "lines": [11, 12],
+        "text": "// legacy toggle, no longer read\nexport const LEGACY_PRICING = false;"
+      },
+      "evidence": "Searched the repository for LEGACY_PRICING: the only match is its declaration.",
+      "action": "Delete the constant and its comment.",
+      "touches": ["maintenance/examples/cited-source.txt"],
+      "risk": "low",
+      "riskReason": "No reader exists.",
+      "state": "declined",
+      "stateReason": "The fixture must stay unchanged."
+    },
+    {
+      "id": "unused-rounding-helper",
+      "title": "roundAmount has no caller",
+      "kind": "dead-code",
+      "location": {
+        "file": "maintenance/examples/cited-source.txt",
+        "lines": [11, 13],
+        "text": "export const roundAmount = (amount) => {\n  return Math.round(amount * 100) / 100;\n};"
+      },
+      "evidence": "Searched the repository for roundAmount: no caller.",
+      "action": "Delete roundAmount.",
+      "touches": ["maintenance/examples/cited-source.txt"],
+      "risk": "low",
+      "riskReason": "No caller exists.",
+      "state": "fixed",
+      "stateReason": "Deleted; the cited text is no longer in the file."
+    },
+    {
+      "id": "obsolete-pricing-module",
+      "title": "The old pricing module is not imported",
+      "kind": "dead-code",
+      "location": {
+        "file": "maintenance/examples/removed-pricing.txt",
+        "lines": [1, 1],
+        "text": "export const OLD_PRICING = true;"
+      },
+      "evidence": "Searched the repository for removed-pricing: no import.",
+      "action": "Delete the module.",
+      "touches": ["maintenance/examples/removed-pricing.txt"],
+      "risk": "low",
+      "riskReason": "No importer exists.",
+      "state": "fixed",
+      "stateReason": "The file was deleted."
+    }
+  ]
+}
