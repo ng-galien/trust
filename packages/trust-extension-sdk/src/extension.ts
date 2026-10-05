@@ -5,8 +5,10 @@ import type {
   DelegationEpisodeView,
   PlanDeclarationReplacementInput,
   PlanDeclarationReplacementResult,
+  PlanMode,
   PlanSummaryView,
   PlanView,
+  PlanWorkState,
 } from "./index.js";
 
 /** Request-local identity projected by the trusted host; no bearer or user-supplied authority. */
@@ -41,13 +43,27 @@ export interface ExtensionContext {
 }
 
 /**
+ * Plans an extension asks for: each given field must match, and `limit` (a positive integer) keeps at most that many,
+ * newest first. Any other field, an unknown mode or work state, or another limit is refused.
+ */
+export interface ExtensionPlanSelection {
+  readonly procedure?: string;
+  readonly mode?: PlanMode;
+  readonly workState?: PlanWorkState;
+  readonly limit?: number;
+}
+
+/**
  * Server-side TRUST access. Each call names the `read` or `command` invocation still in progress: TRUST applies
  * that caller's rights and the installation's grants, as for the extension page. Outside an invocation every call
  * is refused. Executing an Operation stays the Runner's role.
  */
 export interface ExtensionTrust {
-  /** Requires `plans.read`. */
-  listPlans(invocation: ExtensionInvocationContext): Promise<readonly PlanSummaryView[]>;
+  /** Requires `plans.read`; the Plans of the installation environment, all of them without a selection. */
+  listPlans(
+    invocation: ExtensionInvocationContext,
+    selection?: ExtensionPlanSelection,
+  ): Promise<readonly PlanSummaryView[]>;
   /** Requires `plans.read`. */
   readPlan(plan: string, invocation: ExtensionInvocationContext): Promise<PlanView>;
   /** Requires `plans.read`; the Plan and every child Plan of the episode belong to the installation environment. */

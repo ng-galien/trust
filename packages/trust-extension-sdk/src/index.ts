@@ -24,6 +24,7 @@ export type {
   ExtensionInvocationContext,
   ExtensionLifecycle,
   ExtensionPageProps,
+  ExtensionPlanSelection,
   ExtensionState,
   ExtensionTrust,
   ExtensionTrustFailure,

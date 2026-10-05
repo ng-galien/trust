@@ -3,7 +3,6 @@ import {
   type ExtensionCapability,
   ExtensionTrustError,
   type Installation,
-  type PlanSummaryView,
 } from "@trust/extension-sdk";
 import { AccessError } from "../access/error.js";
 import type { AccessService } from "../access/service.js";
@@ -12,6 +11,7 @@ import type { OperationCatalog } from "../operation/catalog.js";
 import { type PlanReader, ReadError } from "../plan/read.js";
 import { type PlanRuntime, PlanRuntimeError } from "../plan/runtime.js";
 import type { Procedures } from "../procedure/procedures.js";
+import { listExtensionPlans, parseExtensionPlanSelection } from "./plan-selection.js";
 
 const identifier = (value: unknown) =>
   typeof value === "string" && value.length > 0 && value.length <= 200 ? value : undefined;
@@ -81,16 +81,10 @@ export class ExtensionTrustGateway {
     };
     switch (method) {
       case "plans.list": {
-        exact(input, []);
+        const selection = parseExtensionPlanSelection(input);
+        if (selection === undefined) throw new ExtensionTrustError("invalid-request");
         grant("plans.read");
-        const plans: PlanSummaryView[] = [];
-        let cursor: string | undefined;
-        do {
-          const page = await planReader.listPlans(cursor === undefined ? {} : { cursor }, access);
-          plans.push(...page.plans.filter((plan) => plan.environment === installation.environment));
-          cursor = page.nextCursor;
-        } while (cursor !== undefined);
-        return plans;
+        return listExtensionPlans(planReader, installation.environment, selection, access);
       }
       case "plans.read": {
         const { plan } = exact(input, ["plan"]);

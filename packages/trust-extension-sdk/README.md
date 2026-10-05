@@ -150,6 +150,14 @@ identity. Refusals are `ExtensionTrustError` with a closed `failure`; a Plan out
 the caller's rights or the Environment is `not-found`. Executing an Operation stays
 the Runner's role.
 
+`listPlans(invocation, selection?)` and the page's `GET ${trustBase}/plans` take the
+same optional `ExtensionPlanSelection`: `procedure`, `mode` (`live` or `dry-run`),
+`workState` (`IN_PROGRESS`, `ESCALATED`, `COMPLETE` or `CANCELLED`) and `limit`, a
+positive integer that keeps at most that many Plans of the Environment, newest
+first. Without a selection the list holds every Plan of the Environment. Any other
+field, an unknown mode or work state, or another limit is refused: `invalid-request`
+on the server, status 400 on the page path.
+
 A `read` or `command` that exceeds the installation time limit fails alone with 504;
 the host fails the process only when it no longer answers a liveness probe.
 

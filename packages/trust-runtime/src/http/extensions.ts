@@ -7,6 +7,7 @@ import {
   ExtensionSettingsRejected,
   parseExtensionSettingsUpdate,
 } from "../extensions/host.js";
+import { listExtensionPlans, parseExtensionPlanQuery } from "../extensions/plan-selection.js";
 import type { PlanEvents } from "../plan/events.js";
 import { type PlanReader, ReadError } from "../plan/read.js";
 import { type PlanRuntime, PlanRuntimeError } from "../plan/runtime.js";
@@ -96,14 +97,11 @@ export function createExtensionsHttpHandler({
       if (surface === "trust" && rest[0] === "plans") {
         extension.requireGrant("plans.read");
         if (rest.length === 1) {
-          const plans = [];
-          let cursor: string | undefined;
-          do {
-            const page = await planReader.listPlans(cursor === undefined ? {} : { cursor }, access);
-            plans.push(...page.plans.filter((plan) => plan.environment === extension.installation.environment));
-            cursor = page.nextCursor;
-          } while (cursor !== undefined);
-          response.json({ plans });
+          const selection = parseExtensionPlanQuery(request.query);
+          if (selection === undefined) throw new ExtensionError(400, "invalid-extension-query");
+          response.json({
+            plans: await listExtensionPlans(planReader, extension.installation.environment, selection, access),
+          });
           return;
         }
         if (rest.length === 2) {

@@ -137,6 +137,16 @@ export function createExtension({ publishChanged, configuration }) {
       plans.plans.map((plan) => plan.plan),
       ["local-plan"],
     );
+    // A filter and a limit bound the list to the Plans the extension asks for, in its own environment.
+    const selected = async (query: string) =>
+      ((await (await get(`example/trust/plans?${query}`)).json()) as { plans: { plan: string }[] }).plans.map(
+        (plan) => plan.plan,
+      );
+    assert.deepEqual(await selected("procedure=git-status&workState=IN_PROGRESS&limit=1"), ["local-plan"]);
+    assert.deepEqual(await selected("procedure=another-procedure&limit=5"), []);
+    assert.deepEqual(await selected("workState=COMPLETE"), []);
+    for (const query of ["limit=0", "workState=unknown", "mode=other", "plan=local-plan"])
+      assert.equal((await get(`example/trust/plans?${query}`)).status, 400, query);
     assert.equal((await get("example/trust/plans/foreign-plan")).status, 404);
     assert.equal((await get("example/trust/plans/local-plan")).status, 200);
     const events = await get("example/events");

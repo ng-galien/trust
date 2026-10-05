@@ -32,7 +32,7 @@ function askTrust<T>(method: string, input: unknown, invocation: ExtensionInvoca
 }
 
 const trust: ExtensionTrust = {
-  listPlans: (invocation) => askTrust("plans.list", {}, invocation),
+  listPlans: (invocation, selection = {}) => askTrust("plans.list", selection, invocation),
   readPlan: (plan, invocation) => askTrust("plans.read", { plan }, invocation),
   readEpisode: (plan, invocation) => askTrust("episodes.read", { plan }, invocation),
   replaceDeclarations: (input, invocation) => askTrust("plans.declarations.replace", input, invocation),
