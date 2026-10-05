@@ -1,18 +1,7 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import path from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
 import type { CheckAttemptAdmissionResult, CheckFinalizationResult, PlanView } from "@trust/extension-sdk";
 import { test } from "./support/fixtures.js";
 
-// The file runs compiled from dist/acceptance or directly as TypeScript from acceptance; both use the built runtime.
-const here = path.dirname(fileURLToPath(import.meta.url));
-const runtimePackage = path.resolve(here, here.endsWith(`${path.sep}dist${path.sep}acceptance`) ? "../.." : "..");
-const root = path.resolve(runtimePackage, "../..");
-const { startPublicRuntime } = (await import(
-  pathToFileURL(path.join(runtimePackage, "dist/acceptance/support/runtime-process.js")).href
-)) as typeof import("./support/runtime-process.js");
 const parentSource = `@trust-dsl:1 @procedure:mission-removal-parent @version:1.0.0
 Feature: Remove accepted work that never ran
   Background: Plan context
@@ -44,16 +33,10 @@ const mission = (id: string) => ({
   rootInputs: { repository: `${id}-repository` },
 });
 
-/** One disposable runtime with a dry-run parent Plan whose "work" collection holds the given missions. */
-async function setup(plan: string, missions: readonly ReturnType<typeof mission>[]) {
-  const directory = await mkdtemp(path.join(tmpdir(), "trust-mission-removal-"));
-  const runtime = await startPublicRuntime("trust-mission-removal-", {
-    storage: { kind: "pglite" as const, directory: path.join(directory, "pglite") },
-    operationsDirectory: path.join(root, "assets/operations"),
-    environments: { local: { workspaceRoot: root } },
-  });
+/** One dry-run parent Plan on the shared runtime, whose "work" collection holds the given missions. */
+async function setup(endpoint: string, plan: string, missions: readonly ReturnType<typeof mission>[]) {
   const request = async <T>(method: string, params: unknown): Promise<{ result?: T; error?: { message?: string } }> => {
-    const response = await fetch(`${runtime.endpoint}/rpc`, {
+    const response = await fetch(`${endpoint}/rpc`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ jsonrpc: "2.0", id: method, method, params }),
@@ -128,107 +111,88 @@ async function setup(plan: string, missions: readonly ReturnType<typeof mission>
     replacement,
     childOf,
     attempt,
-    async close() {
-      await runtime.close();
-      await rm(directory, { recursive: true, force: true });
-    },
   };
 }
 
 test("CXP-230 AC1 a declarations replacement removes a mission whose child Plan admitted no Attempt and the parent no longer requires it", {
   timeout: 30_000,
-}, async () => {
-  const fixture = await setup("removal-accepted", [mission("delivered-work"), mission("unrun-work")]);
-  try {
-    await fixture.attempt(await fixture.childOf("delivered-work"), true);
-    const unrun = await fixture.childOf("unrun-work");
-    const before = await fixture.read();
-    assert.notEqual(before.workState, "COMPLETE", "the parent waits for the mission that never ran");
+}, async ({ runtime }) => {
+  const fixture = await setup(runtime.endpoint, "removal-accepted", [mission("delivered-work"), mission("unrun-work")]);
+  await fixture.attempt(await fixture.childOf("delivered-work"), true);
+  const unrun = await fixture.childOf("unrun-work");
+  const before = await fixture.read();
+  assert.notEqual(before.workState, "COMPLETE", "the parent waits for the mission that never ran");
 
-    await fixture.rpc("plan.declarations.replace", await fixture.replacement([mission("delivered-work")]));
-    const after = await fixture.read();
-    assert.equal(after.revision > before.revision, true);
-    assert.deepEqual(
-      after.missionDeclarations?.work?.map((value) => value.id),
-      ["delivered-work"],
-    );
-    assert.deepEqual(
-      after.resolvedMissions?.work?.map((value) => value.id),
-      ["delivered-work"],
-    );
-    assert.deepEqual(
-      after.invocations.map((invocation) => invocation.mission?.id),
-      ["delivered-work"],
-      "the parent composition no longer counts the removed mission",
-    );
-    assert.equal(after.workState, "COMPLETE", "the parent no longer requires the removed child Plan");
-    const removedChild = await fixture.read(unrun);
-    assert.equal(removedChild.parent?.current, false, "the removed child Plan is a superseded generation");
-  } finally {
-    await fixture.close();
-  }
+  await fixture.rpc("plan.declarations.replace", await fixture.replacement([mission("delivered-work")]));
+  const after = await fixture.read();
+  assert.equal(after.revision > before.revision, true);
+  assert.deepEqual(
+    after.missionDeclarations?.work?.map((value) => value.id),
+    ["delivered-work"],
+  );
+  assert.deepEqual(
+    after.resolvedMissions?.work?.map((value) => value.id),
+    ["delivered-work"],
+  );
+  assert.deepEqual(
+    after.invocations.map((invocation) => invocation.mission?.id),
+    ["delivered-work"],
+    "the parent composition no longer counts the removed mission",
+  );
+  assert.equal(after.workState, "COMPLETE", "the parent no longer requires the removed child Plan");
+  const removedChild = await fixture.read(unrun);
+  assert.equal(removedChild.parent?.current, false, "the removed child Plan is a superseded generation");
 });
 
 test("CXP-230 AC2 the removal is refused when the child Plan admitted an Attempt", {
   timeout: 30_000,
-}, async () => {
-  const fixture = await setup("removal-refused", [mission("kept-work"), mission("started-work")]);
-  try {
-    await fixture.attempt(await fixture.childOf("started-work"), true);
-    const before = await fixture.read();
-    const refused = await fixture.request(
-      "plan.declarations.replace",
-      await fixture.replacement([mission("kept-work")]),
-    );
-    assert.ok(refused.error, JSON.stringify(refused));
-    assert.match(
-      JSON.stringify(refused.error),
-      /Accepted mission \\"started-work\\" cannot be removed: an Attempt of its child Plan gave a verdict/,
-    );
-    const after = await fixture.read();
-    assert.equal(after.revision, before.revision, "a refused replacement changes nothing");
-    assert.deepEqual(after.invocations, before.invocations);
+}, async ({ runtime }) => {
+  const fixture = await setup(runtime.endpoint, "removal-refused", [mission("kept-work"), mission("started-work")]);
+  await fixture.attempt(await fixture.childOf("started-work"), true);
+  const before = await fixture.read();
+  const refused = await fixture.request("plan.declarations.replace", await fixture.replacement([mission("kept-work")]));
+  assert.ok(refused.error, JSON.stringify(refused));
+  assert.match(
+    JSON.stringify(refused.error),
+    /Accepted mission \\"started-work\\" cannot be removed: an Attempt of its child Plan gave a verdict/,
+  );
+  const after = await fixture.read();
+  assert.equal(after.revision, before.revision, "a refused replacement changes nothing");
+  assert.deepEqual(after.invocations, before.invocations);
 
-    // A modified accepted mission is still refused, whether or not its child ran.
-    const modified = await fixture.request(
-      "plan.declarations.replace",
-      await fixture.replacement([
-        { ...mission("kept-work"), rootInputs: { repository: "other" } },
-        mission("started-work"),
-      ]),
-    );
-    assert.match(JSON.stringify(modified.error), /Accepted mission \\"kept-work\\" cannot be modified/);
-    assert.equal((await fixture.read()).revision, before.revision);
-  } finally {
-    await fixture.close();
-  }
+  // A modified accepted mission is still refused, whether or not its child ran.
+  const modified = await fixture.request(
+    "plan.declarations.replace",
+    await fixture.replacement([
+      { ...mission("kept-work"), rootInputs: { repository: "other" } },
+      mission("started-work"),
+    ]),
+  );
+  assert.match(JSON.stringify(modified.error), /Accepted mission \\"kept-work\\" cannot be modified/);
+  assert.equal((await fixture.read()).revision, before.revision);
 });
 
 test("CXP-230 AC3 the revision history of the parent Plan keeps the removed mission", {
   timeout: 30_000,
-}, async () => {
-  const fixture = await setup("removal-history", [mission("kept-work"), mission("removed-work")]);
-  try {
-    const accepted = (await fixture.read()).revision;
-    const removedChild = await fixture.childOf("removed-work");
-    await fixture.rpc("plan.declarations.replace", await fixture.replacement([mission("kept-work")]));
-    const current = await fixture.read();
-    const earlier = current.revisions.find((revision) => revision.revision === accepted);
-    assert.ok(earlier, "the revision that accepted the mission is still in the history");
-    assert.deepEqual(
-      earlier.missionDeclarations?.work?.map((value) => value.id),
-      ["kept-work", "removed-work"],
-    );
-    const latest = current.revisions.find((revision) => revision.revision === current.revision);
-    assert.deepEqual(
-      latest?.missionDeclarations?.work?.map((value) => value.id),
-      ["kept-work"],
-    );
-    // The removed child Plan stays readable as a superseded generation of the parent.
-    const child = await fixture.read(removedChild);
-    assert.equal(child.parent?.plan, "removal-history");
-    assert.equal(child.parent?.current, false);
-  } finally {
-    await fixture.close();
-  }
+}, async ({ runtime }) => {
+  const fixture = await setup(runtime.endpoint, "removal-history", [mission("kept-work"), mission("removed-work")]);
+  const accepted = (await fixture.read()).revision;
+  const removedChild = await fixture.childOf("removed-work");
+  await fixture.rpc("plan.declarations.replace", await fixture.replacement([mission("kept-work")]));
+  const current = await fixture.read();
+  const earlier = current.revisions.find((revision) => revision.revision === accepted);
+  assert.ok(earlier, "the revision that accepted the mission is still in the history");
+  assert.deepEqual(
+    earlier.missionDeclarations?.work?.map((value) => value.id),
+    ["kept-work", "removed-work"],
+  );
+  const latest = current.revisions.find((revision) => revision.revision === current.revision);
+  assert.deepEqual(
+    latest?.missionDeclarations?.work?.map((value) => value.id),
+    ["kept-work"],
+  );
+  // The removed child Plan stays readable as a superseded generation of the parent.
+  const child = await fixture.read(removedChild);
+  assert.equal(child.parent?.plan, "removal-history");
+  assert.equal(child.parent?.current, false);
 });
