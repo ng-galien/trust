@@ -1,4 +1,4 @@
-Fixture cited by maintenance/examples/findings.json. Keep it unchanged.
+Fixture cited by maintenance/examples/findings.json and its acceptance test.
 
 export const formatTotal = (amount) => {
   return `${amount.toFixed(2)} EUR`;

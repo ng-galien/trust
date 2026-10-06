@@ -1,6 +1,6 @@
 # Maintenance findings
 
-Each analysis axis writes one findings file, `maintenance/findings/<axis>.json`. The following command checks it from the repository root:
+Each analysis axis writes one findings file, `maintenance/findings/<axis>.json`. The following command checks it. It can run from any directory, because it takes the repository root from its own location (`scripts/..`). The findings-file argument is resolved from the current directory.
 
 ```sh
 node scripts/maintenance-findings.mjs check maintenance/findings/<axis>.json
@@ -11,9 +11,10 @@ node scripts/maintenance-findings.mjs check maintenance/findings/<axis>.json
 A findings file is a JSON object with exactly these keys:
 
 - `axis`: the axis name, in kebab-case.
+- `base`: the full 40-character sha of the commit the analyst read. It is required. A fixed finding is proved against it.
 - `findings`: the list of findings. It may be empty.
 
-A finding has exactly these keys. `related` is optional. `stateReason` follows the state.
+A finding has exactly these keys. `also` and `related` are optional. `stateReason` follows the state.
 
 | Key | Value |
 | --- | --- |
@@ -21,10 +22,11 @@ A finding has exactly these keys. `related` is optional. `stateReason` follows t
 | `title` | one line saying what is dead, duplicated, left over or inconsistent |
 | `kind` | `dead-code`, `duplication`, `leftover` or `inconsistency` |
 | `location` | `{ "file", "lines": [first, last], "text" }`: the cited code |
+| `also` | a non-empty list of locations of the same shape: the other places the fix removes (for example, every unused rule of a grouped finding after the first) |
 | `related` | a non-empty list of locations of the same shape (for example, the other copies of a duplication) |
 | `evidence` | how the analyst knows it: what was searched, and what was found or not found |
 | `action` | the proposed fix |
-| `touches` | the files the fix changes; it contains `location.file` |
+| `touches` | the files the fix changes; it contains `location.file` and every `also` file |
 | `risk` | `low`, `medium` or `high` |
 | `riskReason` | why the fix has that risk |
 | `state` | `open`, `fixed` or `declined` |
@@ -42,8 +44,11 @@ The coordinator groups findings into fix missions by `touches`.
 
 The form check is strict: an unknown key, a missing key, a value outside a closed list or a duplicate `id` is refused. The location check depends on the state of the finding:
 
-- **`open` and `declined`**: `location` and every `related` entry must exist, the line range must be within the file, and `text` must equal those lines.
-- **`fixed`**: the `location.text` must no longer appear anywhere in `location.file` as consecutive lines. If the fix deleted the file, the finding is accepted. `lines` keeps the original range and is not checked. `related` is not checked.
+- **`open` and `declined`**: each of `location`, every `also` entry and every `related` entry is read in the working tree. The file must exist, the line range must be within it, and `text` must equal those lines.
+- **`fixed`**: each of `location` and every `also` entry is proved twice.
+  - At the base commit, `text` must equal the cited lines of the file. A path inside a submodule is read at the submodule commit recorded at `base`.
+  - In the working tree, `text` must no longer appear anywhere in the file as consecutive lines. A file the fix deleted counts as absent.
+  - `related` is not checked.
 
 In every text comparison, CRLF counts as LF and the trailing whitespace of each line is ignored.
 
@@ -58,15 +63,16 @@ The command prints one JSON object:
 
 - `refusals` follows the file order.
 - `finding` is the finding's `id`. It is `findings[<index>]` when the finding has no valid id, and `null` for a fault of the file itself, such as invalid JSON, a missing `axis` or an unknown top-level key.
-- The exit code is 0 when the check ran, whether the file is accepted or refused. It is 2 on a usage error or when the findings file cannot be read.
+- The exit code is 0 when the file is accepted and 1 when it is refused, including invalid JSON. It is 2 on a usage error or when the findings file cannot be read.
 
 ## Example
 
-`maintenance/examples/findings.json` cites `maintenance/examples/cited-source.txt` and is accepted. It contains one finding in each state, and a fixed finding whose file was deleted. Here is its first finding:
+`maintenance/examples/findings.json` cites `maintenance/examples/cited-source.txt` and is accepted. Its base is `e3a7a8d`. It contains one finding in each state, and a fixed finding with an `also` location. Here is its first finding:
 
 ```json
 {
   "axis": "example",
+  "base": "e3a7a8d9c8657226cb8a04e64e3f0407e663b8a4",
   "findings": [
     {
       "id": "duplicate-amount-formatter",

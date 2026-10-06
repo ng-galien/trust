@@ -1,5 +1,6 @@
 {
   "axis": "example",
+  "base": "e3a7a8d9c8657226cb8a04e64e3f0407e663b8a4",
   "findings": [
     {
       "id": "duplicate-amount-formatter",
@@ -42,38 +43,45 @@
       "stateReason": "The fixture must stay unchanged."
     },
     {
-      "id": "unused-rounding-helper",
-      "title": "roundAmount has no caller",
-      "kind": "dead-code",
+      "id": "stale-fixture-header",
+      "title": "The fixture header forbids any change although the example now proves a fix on it",
+      "kind": "leftover",
       "location": {
         "file": "maintenance/examples/cited-source.txt",
-        "lines": [11, 13],
-        "text": "export const roundAmount = (amount) => {\n  return Math.round(amount * 100) / 100;\n};"
+        "lines": [1, 1],
+        "text": "Fixture cited by maintenance/examples/findings.json. Keep it unchanged."
       },
-      "evidence": "Searched the repository for roundAmount: no caller.",
-      "action": "Delete roundAmount.",
+      "evidence": "The example needs one fixed finding on its own fixture; the header was the only line no assertion depends on.",
+      "action": "Reword the header.",
       "touches": ["maintenance/examples/cited-source.txt"],
       "risk": "low",
-      "riskReason": "No caller exists.",
+      "riskReason": "A comment line of a fixture.",
       "state": "fixed",
-      "stateReason": "Deleted; the cited text is no longer in the file."
+      "stateReason": "Reworded; the old header is no longer in the file."
     },
     {
-      "id": "obsolete-pricing-module",
-      "title": "The old pricing module is not imported",
-      "kind": "dead-code",
+      "id": "fixed-rule-without-base",
+      "title": "The README states the location rules without the base commit",
+      "kind": "inconsistency",
       "location": {
-        "file": "maintenance/examples/removed-pricing.txt",
-        "lines": [1, 1],
-        "text": "export const OLD_PRICING = true;"
+        "file": "maintenance/README.md",
+        "lines": [46, 46],
+        "text": "- **`fixed`**: the `location.text` must no longer appear anywhere in `location.file` as consecutive lines. If the fix deleted the file, the finding is accepted. `lines` keeps the original range and is not checked. `related` is not checked."
       },
-      "evidence": "Searched the repository for removed-pricing: no import.",
-      "action": "Delete the module.",
-      "touches": ["maintenance/examples/removed-pricing.txt"],
+      "also": [
+        {
+          "file": "maintenance/README.md",
+          "lines": [45, 45],
+          "text": "- **`open` and `declined`**: `location` and every `related` entry must exist, the line range must be within the file, and `text` must equal those lines."
+        }
+      ],
+      "evidence": "The check now reads the cited text at the base commit and checks the also locations; the two README lines describe neither.",
+      "action": "Rewrite both rules with the base commit and the also locations.",
+      "touches": ["maintenance/README.md"],
       "risk": "low",
-      "riskReason": "No importer exists.",
+      "riskReason": "Documentation only.",
       "state": "fixed",
-      "stateReason": "The file was deleted."
+      "stateReason": "Both rules are rewritten."
     }
   ]
 }
