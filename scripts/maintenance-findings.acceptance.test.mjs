@@ -207,8 +207,7 @@ const checkRepository = async (findings, top) =>
 
 const ALPHA = location("src/rules.css", 1, 1, ".alpha { color: red; }");
 const GAMMA = location("src/rules.css", 3, 3, ".gamma { color: green; }");
-const BETA_NOW = location("src/rules.css", 1, 1, ".beta { color: blue; }");
-const DELTA_NOW = location("src/rules.css", 2, 2, ".delta { color: black; }");
+const BETA_AT_BASE = location("src/rules.css", 2, 2, ".beta { color: blue; }");
 const DELTA_AT_BASE = location("src/rules.css", 4, 4, ".delta { color: black; }");
 
 test("MAINT-030 AC1 a fixed finding is proved by its cited text being at the cited lines at the base commit of the file and no longer in the file, and a text absent at the base commit is refused with the finding and the reason", async () => {
@@ -217,6 +216,43 @@ test("MAINT-030 AC1 a fixed finding is proved by its cited text being at the cit
     finding("deleted-file", "fixed", location("src/old.txt", 1, 1, "old helper")),
   ]);
   assert.deepEqual(proved, { accepted: true, axis: "test", findings: 2, open: 0, fixed: 2, declined: 0, refusals: [] });
+
+  const shifted = await checkRepository([
+    finding("removed-alpha", "fixed", ALPHA),
+    finding("kept-beta", "open", BETA_AT_BASE),
+    finding("declined-delta", "declined", DELTA_AT_BASE),
+  ]);
+  assert.deepEqual(shifted, {
+    accepted: true,
+    axis: "test",
+    findings: 3,
+    open: 1,
+    fixed: 1,
+    declined: 1,
+    refusals: [],
+  });
+
+  const removedButOpen = await checkRepository([finding("open-alpha", "open", ALPHA)]);
+  assert.deepEqual(removedButOpen.refusals, [
+    {
+      finding: "open-alpha",
+      reason: "location.text is no longer present in 'src/rules.css' although the state is open",
+    },
+  ]);
+  const removedButDeclined = await checkRepository([finding("declined-alpha", "declined", ALPHA)]);
+  refusedFor(
+    removedButDeclined,
+    "declined-alpha",
+    /^location\.text is no longer present in 'src\/rules\.css' although the state is declined$/,
+  );
+  const openNotAtBase = await checkRepository([
+    finding("open-beta", "open", location("src/rules.css", 1, 1, ".beta { color: blue; }")),
+  ]);
+  refusedFor(
+    openNotAtBase,
+    "open-beta",
+    /^location\.text differs from lines 1-1 of 'src\/rules\.css' at base [0-9a-f]{7}$/,
+  );
 
   const absentAtBase = await checkRepository([
     finding("not-at-base", "fixed", location("src/rules.css", 1, 1, ".alpha { color: pink; }")),
@@ -273,18 +309,43 @@ test("MAINT-030 AC1 a fixed finding is proved by its cited text being at the cit
 });
 
 test("MAINT-030 AC2 the other locations a fix removes are listed on the finding and checked like the primary location in the open and fixed states", async () => {
-  const open = await checkRepository([finding("grouped-open", "open", BETA_NOW, { also: [DELTA_NOW] })]);
+  const open = await checkRepository([finding("grouped-open", "open", BETA_AT_BASE, { also: [DELTA_AT_BASE] })]);
   assert.deepEqual(open, { accepted: true, axis: "test", findings: 1, open: 1, fixed: 0, declined: 0, refusals: [] });
 
   const openWrong = await checkRepository([
-    finding("grouped-open", "open", BETA_NOW, { also: [{ ...DELTA_NOW, text: ".delta { color: white; }" }] }),
+    finding("grouped-open", "open", BETA_AT_BASE, { also: [{ ...DELTA_AT_BASE, text: ".delta { color: white; }" }] }),
   ]);
-  refusedFor(openWrong, "grouped-open", /^also\[0\]\.text differs from lines 2-2 of 'src\/rules\.css'$/);
+  refusedFor(
+    openWrong,
+    "grouped-open",
+    /^also\[0\]\.text differs from lines 4-4 of 'src\/rules\.css' at base [0-9a-f]{7}$/,
+  );
 
   const openOutOfRange = await checkRepository([
-    finding("grouped-open", "open", BETA_NOW, { also: [{ ...DELTA_NOW, lines: [4, 4] }] }),
+    finding("grouped-open", "open", BETA_AT_BASE, { also: [{ ...DELTA_AT_BASE, lines: [5, 5] }] }),
   ]);
-  refusedFor(openOutOfRange, "grouped-open", /^also\[0\]\.lines \[4, 4\] out of range: 'src\/rules\.css' has 2 lines$/);
+  refusedFor(
+    openOutOfRange,
+    "grouped-open",
+    /^also\[0\]\.lines \[5, 5\] out of range: 'src\/rules\.css' at base [0-9a-f]{7} has 4 lines$/,
+  );
+
+  const openAlsoRemoved = await checkRepository([finding("grouped-open", "open", BETA_AT_BASE, { also: [GAMMA] })]);
+  assert.deepEqual(openAlsoRemoved.refusals, [
+    {
+      finding: "grouped-open",
+      reason: "also[0].text is no longer present in 'src/rules.css' although the state is open",
+    },
+  ]);
+  const openRelatedRemoved = await checkRepository([
+    finding("grouped-open", "open", BETA_AT_BASE, { related: [DELTA_AT_BASE, GAMMA] }),
+  ]);
+  assert.deepEqual(openRelatedRemoved.refusals, [
+    {
+      finding: "grouped-open",
+      reason: "related[1].text is no longer present in 'src/rules.css' although the state is open",
+    },
+  ]);
 
   const fixed = await checkRepository([finding("grouped-fixed", "fixed", ALPHA, { also: [GAMMA] })]);
   assert.deepEqual(fixed, { accepted: true, axis: "test", findings: 1, open: 0, fixed: 1, declined: 0, refusals: [] });

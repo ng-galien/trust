@@ -44,9 +44,14 @@ The coordinator groups findings into fix missions by `touches`.
 
 The form check is strict: an unknown key, a missing key, a value outside a closed list or a duplicate `id` is refused. The location check depends on the state of the finding:
 
-- **`open` and `declined`**: each of `location`, every `also` entry and every `related` entry is read in the working tree. The file must exist, the line range must be within it, and `text` must equal those lines.
-- **`fixed`**: each of `location` and every `also` entry is proved twice.
-  - At the base commit, `text` must equal the cited lines of the file. A path inside a submodule is read at the submodule commit recorded at `base`.
+Every check reads the cited text at the base commit. A path inside a submodule is read at the submodule commit recorded at `base`.
+
+- **`open` and `declined`**: each of `location`, every `also` entry and every `related` entry is checked in three steps.
+  - The file must exist in the working tree.
+  - At the base commit, `text` must equal the cited lines.
+  - In the working tree, `text` must still appear somewhere in the file as consecutive lines. The lines may have moved, for example after a fix earlier in the same file. The reason for a text that is gone is "no longer present".
+- **`fixed`**: each of `location` and every `also` entry is checked in two steps.
+  - At the base commit, `text` must equal the cited lines.
   - In the working tree, `text` must no longer appear anywhere in the file as consecutive lines. A file the fix deleted counts as absent.
   - `related` is not checked.
 
@@ -58,7 +63,7 @@ The command prints one JSON object:
 
 ```json
 {"accepted": false, "axis": "example", "findings": 4, "open": 1, "fixed": 2, "declined": 1,
- "refusals": [{"finding": "legacy-pricing-flag", "reason": "location.text differs from lines 11-12 of 'maintenance/examples/cited-source.txt'"}]}
+ "refusals": [{"finding": "legacy-pricing-flag", "reason": "location.text differs from lines 11-12 of 'maintenance/examples/cited-source.txt' at base e3a7a8d"}]}
 ```
 
 - `refusals` follows the file order.

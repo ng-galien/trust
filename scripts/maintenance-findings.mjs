@@ -89,8 +89,17 @@ const readCited = (root, file) => {
   return lines(readFileSync(absolute, "utf8"));
 };
 
-/** Reads a file as recorded at a commit, entering the submodules on its path; null when it is absent. */
+const recorded = new Map();
+
+/** Reads a file as recorded at a commit, once per file; null when it is absent. */
 const readAtCommit = (repository, commit, file) => {
+  const key = `${repository}\0${commit}\0${file}`;
+  if (!recorded.has(key)) recorded.set(key, readRecorded(repository, commit, file));
+  return recorded.get(key);
+};
+
+/** Reads a file as recorded at a commit, entering the submodules on its path; null when it is absent. */
+const readRecorded = (repository, commit, file) => {
   const segments = file.split("/");
   const prefixes = segments.slice(0, -1).map((_, index) => segments.slice(0, index + 1).join("/"));
   if (prefixes.length > 0) {
@@ -109,38 +118,48 @@ const readAtCommit = (repository, commit, file) => {
   return content === null ? null : lines(content);
 };
 
-/** Checks that the cited text is exactly the content of the cited line range of a file content. */
-const atLines = (content, location, label, where) => {
-  if (content === null) return [`${label}.file '${location.file}' not found${where}`];
+/** Checks that the cited text was exactly the content of the cited line range at the base commit. */
+const atBase = (root, base, location, label) => {
+  const where = `at base ${base.slice(0, 7)}`;
+  const content = readAtCommit(root, base, location.file);
+  if (content === null) return [`${label}.file '${location.file}' not found ${where}`];
   const [first, last] = location.lines;
   const count = content.at(-1) === "" ? content.length - 1 : content.length;
   if (last > count)
-    return [`${label}.lines [${first}, ${last}] out of range${where}: '${location.file}' has ${count} lines`];
+    return [`${label}.lines [${first}, ${last}] out of range: '${location.file}' ${where} has ${count} lines`];
   const cited = lines(location.text);
   const actual = content.slice(first - 1, last);
   if (cited.length !== actual.length || cited.some((line, index) => line !== actual[index]))
-    return [`${label}.text differs from lines ${first}-${last} of '${location.file}'${where}`];
+    return [`${label}.text differs from lines ${first}-${last} of '${location.file}' ${where}`];
   return [];
 };
 
-/** Checks that the cited text is exactly the content of the cited line range of the working tree. */
-const presence = (root, location, label) => atLines(readCited(root, location.file), location, label, "");
-
-/** Checks that the cited text was at the cited lines at the base commit and no longer appears in the file. */
-const removal = (root, base, location, label) => [
-  ...atLines(readAtCommit(root, base, location.file), location, label, ` at base ${base.slice(0, 7)}`),
-  ...absence(root, location, label),
-];
-
-/** Checks that the cited text no longer appears as consecutive lines of its file. */
-const absence = (root, location, label) => {
-  const content = readCited(root, location.file);
-  if (content === null) return [];
-  const cited = lines(location.text);
+/** Returns the 1-based line where the cited text starts as consecutive lines of a content, or 0. */
+const lineOf = (content, text) => {
+  const cited = lines(text);
   for (let start = 0; start + cited.length <= content.length; start++)
-    if (cited.every((line, index) => line === content[start + index]))
-      return [`${label}.text is still present in '${location.file}' at line ${start + 1} although the state is fixed`];
-  return [];
+    if (cited.every((line, index) => line === content[start + index])) return start + 1;
+  return 0;
+};
+
+/** Checks a removed location: at its lines at the base commit, and no longer anywhere in the working tree. */
+const removal = (root, base, location, label) => {
+  const faults = atBase(root, base, location, label);
+  const content = readCited(root, location.file);
+  const line = content === null ? 0 : lineOf(content, location.text);
+  if (line > 0)
+    faults.push(`${label}.text is still present in '${location.file}' at line ${line} although the state is fixed`);
+  return faults;
+};
+
+/** Checks a kept location: at its lines at the base commit, and still somewhere in the working tree. */
+const retention = (root, base, location, label, state) => {
+  const content = readCited(root, location.file);
+  if (content === null) return [`${label}.file '${location.file}' not found`];
+  const faults = atBase(root, base, location, label);
+  if (lineOf(content, location.text) === 0)
+    faults.push(`${label}.text is no longer present in '${location.file}' although the state is ${state}`);
+  return faults;
 };
 
 /** Checks one finding; returns the reasons of its faults. */
@@ -196,13 +215,10 @@ const checkFinding = (root, base, finding) => {
   }
   if (faults.length > 0) return faults;
   const removed = [["location", finding.location], ...(also ?? []).map((entry, index) => [`also[${index}]`, entry])];
-  if (finding.state === "fixed") {
-    if (base === null) return [];
-    return removed.flatMap(([label, location]) => removal(root, base, location, label));
-  }
-  const cited = removed.map(([label, location]) => presence(root, location, label));
-  for (const [index, entry] of (related ?? []).entries()) cited.push(presence(root, entry, `related[${index}]`));
-  return cited.flat();
+  if (base === null) return [];
+  if (finding.state === "fixed") return removed.flatMap(([label, location]) => removal(root, base, location, label));
+  const kept = [...removed, ...(related ?? []).map((entry, index) => [`related[${index}]`, entry])];
+  return kept.flatMap(([label, location]) => retention(root, base, location, label, finding.state));
 };
 
 /** Checks a parsed findings file against the repository at root. */
