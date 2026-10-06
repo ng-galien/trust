@@ -14,6 +14,56 @@
         ],
         "text": ".page {\n  display: flex;\n  flex-direction: column;\n  gap: 18px;\n}"
       },
+      "also": [
+        {
+          "file": "trust-extension/extensions/corpus/ui/explorer.module.css",
+          "lines": [
+            6,
+            11
+          ],
+          "text": ".libraryHeader {\n  display: flex;\n  align-items: flex-end;\n  justify-content: space-between;\n  gap: 16px;\n}"
+        },
+        {
+          "file": "trust-extension/extensions/corpus/ui/explorer.module.css",
+          "lines": [
+            25,
+            64
+          ],
+          "text": ".toolbar {\n  display: flex;\n  align-items: center;\n  justify-content: space-between;\n  gap: 12px;\n  flex-wrap: wrap;\n  border-bottom: 1px solid var(--corpus-border);\n}\n.tabs {\n  display: flex;\n  align-items: flex-end;\n  gap: 4px;\n  border-bottom: 1px solid var(--corpus-border);\n}\n.toolbar .tabs {\n  border-bottom: none;\n}\n.tabs button {\n  border: none;\n  border-bottom: 2px solid transparent;\n  border-radius: 0;\n  background: none;\n  color: var(--corpus-muted);\n  padding: 8px 12px;\n  display: inline-flex;\n  align-items: center;\n  gap: 8px;\n}\n.tabs button:hover {\n  background: none;\n  color: var(--corpus-text);\n}\n.tabs button[aria-current=\"page\"] {\n  color: var(--corpus-text);\n  border-bottom-color: var(--corpus-accent);\n}\n.tabsAction {\n  margin-left: auto;\n  padding-bottom: 6px;\n}"
+        },
+        {
+          "file": "trust-extension/extensions/corpus/ui/explorer.module.css",
+          "lines": [
+            75,
+            92
+          ],
+          "text": ".filters {\n  display: flex;\n  gap: 8px;\n  align-items: center;\n  padding-bottom: 8px;\n}\n.filters select,\n.search {\n  min-height: 34px;\n  border: 1px solid var(--corpus-border-strong);\n  border-radius: var(--corpus-radius-sm);\n  background: var(--corpus-surface);\n  color: var(--corpus-text);\n  padding: 4px 10px;\n}\n.search {\n  width: 240px;\n}"
+        },
+        {
+          "file": "trust-extension/extensions/corpus/ui/explorer.module.css",
+          "lines": [
+            97,
+            250
+          ],
+          "text": ".group {\n  display: flex;\n  flex-direction: column;\n  gap: 8px;\n}\n.groupTitle {\n  display: flex;\n  align-items: center;\n  gap: 8px;\n  font-size: 13px;\n  text-transform: uppercase;\n  letter-spacing: 0.06em;\n  color: var(--corpus-muted);\n  margin: 12px 0 0;\n}\n.groupTitle span {\n  font-weight: 500;\n}\n.threadList {\n  list-style: none;\n  margin: 0;\n  padding: 0;\n  border: 1px solid var(--corpus-border);\n  border-radius: var(--corpus-radius);\n  background: var(--corpus-surface);\n  overflow: hidden;\n}\n.threadRow {\n  display: grid;\n  grid-template-columns: minmax(0, 1fr) auto;\n  align-items: start;\n  gap: 4px 16px;\n  padding: 12px 16px;\n  border-top: 1px solid var(--corpus-border);\n}\n.threadRow:first-child {\n  border-top: none;\n}\n.threadRow:hover {\n  background: var(--corpus-surface-2);\n}\n.threadLink {\n  display: flex;\n  flex-direction: column;\n  gap: 4px;\n  text-align: left;\n  border: none;\n  background: none;\n  padding: 0;\n  min-height: 0;\n  font-weight: 400;\n}\n.threadLink:hover {\n  background: none;\n}\n.threadHead {\n  display: flex;\n  align-items: center;\n  gap: 10px;\n}\n.threadTitle {\n  font-size: 15px;\n  font-weight: 600;\n}\n.threadSummary {\n  color: var(--corpus-muted);\n  font-size: 14px;\n  display: -webkit-box;\n  -webkit-line-clamp: 2;\n  -webkit-box-orient: vertical;\n  overflow: hidden;\n}\n.threadMeta {\n  display: flex;\n  flex-wrap: wrap;\n  gap: 4px 14px;\n  font-size: 12.5px;\n  color: var(--corpus-faint);\n}\n.metaStrong {\n  color: var(--corpus-text);\n  font-weight: 550;\n}\n.framework {\n  font-size: 12.5px;\n  color: var(--corpus-faint);\n  text-align: right;\n  max-width: 280px;\n  padding-top: 3px;\n}\n.pill {\n  display: inline-block;\n  flex: none;\n  font-size: 11.5px;\n  font-weight: 600;\n  line-height: 1.7;\n  padding: 0 8px;\n  border-radius: 999px;\n  background: var(--corpus-surface-2);\n  color: var(--corpus-muted);\n}\n.active {\n  background: var(--corpus-success-soft);\n  color: var(--corpus-success);\n}\n.frozen {\n  background: var(--corpus-warning-soft);\n  color: var(--corpus-warning);\n}\n.completed {\n  background: var(--corpus-surface-2);\n  color: var(--corpus-muted);\n}\n.cardGrid {\n  display: grid;\n  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));\n  gap: 12px;\n}\n.card {\n  display: flex;\n  flex-direction: column;\n  align-items: flex-start;\n  gap: 6px;\n  text-align: left;\n  padding: 16px;\n  min-height: 0;\n  font-weight: 400;\n  border: 1px solid var(--corpus-border);\n  border-radius: var(--corpus-radius);\n  background: var(--corpus-surface);\n  box-shadow: var(--corpus-shadow);\n}\n.card:hover {\n  border-color: var(--corpus-accent);\n  background: var(--corpus-surface);\n}\n.card span {\n  color: var(--corpus-muted);\n  font-size: 14px;\n}\n.card code {\n  font: 12px / 1.5 var(--corpus-mono);\n  color: var(--corpus-faint);\n}\n.cardTitle {\n  font-size: 17px;\n}\n.card .activeThread {\n  display: flex;\n  align-items: center;\n  gap: 8px;\n  margin-top: 4px;\n  color: var(--corpus-text);\n}"
+        },
+        {
+          "file": "trust-extension/extensions/corpus/ui/explorer.module.css",
+          "lines": [
+            265,
+            269
+          ],
+          "text": ".header {\n  display: flex;\n  flex-direction: column;\n  gap: 4px;\n}"
+        },
+        {
+          "file": "trust-extension/extensions/corpus/ui/explorer.module.css",
+          "lines": [
+            311,
+            353
+          ],
+          "text": ".timeline {\n  list-style: none;\n  padding: 0;\n  margin: 8px 0;\n}\n.timeline button {\n  display: flex;\n  flex-direction: column;\n  align-items: flex-start;\n  gap: 2px;\n  width: 100%;\n  text-align: left;\n  border: none;\n  border-top: 1px solid var(--corpus-border);\n  border-radius: 0;\n  background: none;\n  padding: 10px 0;\n  font-weight: 400;\n}\n.timeline span {\n  color: var(--corpus-muted);\n  font-size: 13px;\n}\n@media (max-width: 760px) {\n  .libraryHeader {\n    align-items: flex-start;\n    flex-direction: column;\n  }\n  .threadRow {\n    grid-template-columns: 1fr;\n  }\n  .framework {\n    text-align: left;\n    max-width: none;\n  }\n  .filters {\n    width: 100%;\n    flex-wrap: wrap;\n  }\n  .search {\n    width: 100%;\n  }\n}"
+        }
+      ],
       "evidence": "A CSS module class is only reachable as explorer / shared.<name> or explorer / shared[\"<name>\"] in a file that imports explorer.module.css; a script listed every class of explorer.module.css, every importer and its alias, and every dynamic explorer / shared[...] index. Importers: entry.tsx, new-view.tsx, organisation.tsx and page.tsx (alias explorer), facet-page.tsx (alias shared); no dynamic index. Used classes: lead, primaryAction, count, empty, crumbs, eyebrow, facetStrip, facetChip, panel, reference. Unused classes with the line of their first rule: page (1), libraryHeader (6), toolbar (25), tabs (33, 39, 42-57), tabsAction (61), filters (75, 81), search (82, 90), group (97), groupTitle (102, 112), threadList (115), threadRow (124-135), threadLink (138, 149), threadHead (152), threadTitle (157), threadSummary (161), threadMeta (169), metaStrong (176), framework (180), pill (187), active (198), frozen (202), completed (206), cardGrid (210), card (215-237), cardTitle (241), activeThread (244), header (265), timeline (311-330), and the whole @media (max-width: 760px) block at lines 334-353, which only styles unused classes. Searched with rg over trust-extension/, apps/trust-web/acceptance/ and packages/: no file reaches these classes through explorer.module.css. Acceptance tests select by [class*='stepName'], [class*='icon'], [class*='tipDate'] and [class*='tipReason'] only, none of which matches these names. The thread list of the entry page is now rendered by thread-rows.tsx with entry.module.css.",
       "action": "Delete the rules of the 28 unused classes and the @media (max-width: 760px) block from explorer.module.css; keep lead, primaryAction, count, empty, crumbs, eyebrow, facetStrip, facetChip, panel and reference.",
       "touches": [
@@ -21,7 +71,8 @@
       ],
       "risk": "low",
       "riskReason": "CSS module class names are hashed, so no element can carry these classes unless a component names them, and none does; the remaining rules are untouched.",
-      "state": "open"
+      "state": "fixed",
+      "stateReason": "Deleted the rules of the 28 unused classes (page, libraryHeader, toolbar, tabs, tabsAction, filters, search, group, groupTitle, threadList, threadRow, threadLink, threadHead, threadTitle, threadSummary, threadMeta, metaStrong, framework, pill, active, frozen, completed, cardGrid, card, cardTitle, activeThread, header, timeline) and the @media (max-width: 760px) block from explorer.module.css; lead, primaryAction, count, empty, crumbs, eyebrow, facetStrip, facetChip, panel and reference are kept."
     },
     {
       "id": "plan-monitor-css-old-check-list",
@@ -35,6 +86,32 @@
         ],
         "text": ".links {\n  display: flex;\n  flex-wrap: wrap;\n  align-items: center;\n  justify-content: space-between;\n  gap: 4px 12px;\n  margin: 2px 0 0;\n  font-size: 12.5px;\n}"
       },
+      "also": [
+        {
+          "file": "trust-extension/extensions/corpus/ui/plan-monitor.module.css",
+          "lines": [
+            21,
+            40
+          ],
+          "text": ".links a {\n  font-weight: 600;\n  text-decoration: none;\n}\n.links a:hover {\n  text-decoration: underline;\n}\n.head {\n  display: flex;\n  align-items: center;\n  justify-content: space-between;\n  gap: 8px;\n}\n.head h2 {\n  font-size: 12px;\n  text-transform: uppercase;\n  letter-spacing: 0.07em;\n  color: var(--corpus-muted);\n  margin: 0;\n}"
+        },
+        {
+          "file": "trust-extension/extensions/corpus/ui/plan-monitor.module.css",
+          "lines": [
+            47,
+            138
+          ],
+          "text": ".head h2 a {\n  color: inherit;\n  text-decoration: none;\n}\n.head h2 a:hover {\n  color: var(--corpus-accent);\n}\n.checks {\n  list-style: none;\n  margin: 2px 0 0;\n  padding: 0;\n  display: flex;\n  flex-direction: column;\n  gap: 2px;\n}\n.checks li {\n  display: flex;\n  flex-direction: column;\n}\n.checkRow {\n  text-decoration: none;\n  display: grid;\n  grid-template-columns: 16px minmax(0, 1fr) auto;\n  align-items: baseline;\n  gap: 6px;\n  width: 100%;\n  padding: 3px 4px;\n  margin: 0 -4px;\n  border-radius: var(--corpus-radius-sm);\n  color: inherit;\n}\n.checkRow:hover {\n  background: var(--corpus-surface-2);\n}\n.checkRow:focus-visible,\n.missionName:focus-visible {\n  outline: 2px solid var(--corpus-accent);\n  outline-offset: 1px;\n}\n.status {\n  font-size: 11.5px;\n  color: var(--corpus-faint);\n}\n.checkRow .status {\n  overflow: hidden;\n  text-overflow: ellipsis;\n  white-space: nowrap;\n  max-width: 22ch;\n}\n.mark {\n  text-align: center;\n  font-size: 12px;\n}\n.name {\n  overflow: hidden;\n  text-overflow: ellipsis;\n  white-space: nowrap;\n}\n.satisfied .mark,\n.satisfied .status {\n  color: var(--corpus-success);\n}\n.failed .mark,\n.failed .status {\n  color: var(--corpus-danger);\n}\n.actionable .mark,\n.actionable .status,\n.running .mark,\n.running .status {\n  color: var(--corpus-accent);\n}\n.running .mark {\n  animation: corpus-monitor-running 1.2s linear infinite;\n}\n.running .status {\n  display: inline-flex;\n  gap: 6px;\n}\n@keyframes corpus-monitor-running {\n  to {\n    transform: rotate(360deg);\n  }\n}\n@media (prefers-reduced-motion: reduce) {\n  .running .mark {\n    animation: none;\n  }\n}\n.blocked {\n  color: var(--corpus-muted);\n}"
+        },
+        {
+          "file": "trust-extension/extensions/corpus/ui/plan-monitor.module.css",
+          "lines": [
+            185,
+            251
+          ],
+          "text": ".missionList {\n  display: flex;\n  flex-direction: column;\n  gap: 6px;\n  margin: 0;\n  padding: 0;\n  list-style: none;\n}\n.mission {\n  display: flex;\n  flex-direction: column;\n  gap: 2px;\n  min-width: 0;\n  border: 1px solid var(--corpus-border);\n  border-radius: var(--corpus-radius-sm);\n  padding: 6px 10px 8px;\n  background: var(--corpus-surface);\n}\n.missionHead {\n  display: flex;\n  align-items: center;\n  gap: 6px;\n  min-width: 0;\n}\n.missionName {\n  flex: 1;\n  min-width: 0;\n  color: var(--corpus-text);\n  font: 600 12.5px var(--corpus-mono);\n  text-decoration: none;\n  overflow: hidden;\n  text-overflow: ellipsis;\n  white-space: nowrap;\n}\n.missionName:hover {\n  color: var(--corpus-accent);\n  text-decoration: underline;\n}\n.missionStep {\n  display: flex;\n  flex-wrap: wrap;\n  align-items: center;\n  gap: 4px 6px;\n  min-width: 0;\n  font-size: 12px;\n  color: var(--corpus-muted);\n}\n.nextName {\n  min-width: 0;\n  overflow-wrap: anywhere;\n}\n.missionTime {\n  margin: 0;\n  color: var(--corpus-faint);\n  font-size: 11.5px;\n  font-variant-numeric: tabular-nums;\n  overflow-wrap: normal;\n}\n.nestedList {\n  display: flex;\n  flex-direction: column;\n  gap: 6px;\n  margin: 6px 0 0;\n  padding: 0 0 0 10px;\n  border-left: 2px solid var(--corpus-border);\n  list-style: none;\n}"
+        }
+      ],
       "evidence": "A CSS module class is only reachable as styles.<name> or styles[\"<name>\"] in a file that imports plan-monitor.module.css; a script listed every class of plan-monitor.module.css, every importer and its alias, and every dynamic styles[...] index. Only importer: plan-monitor.tsx, which uses root, faint, missions, subhead, rows, awaited, current and stale; it has no dynamic index. Unused classes with their rules: links (12-27), head (28, 34, 47, 51; the .subhead h2 rule at 41 stays), checks (54, 62), checkRow (66, 78, 81, 90), missionName (82, 209, 219), status (86, 90, 106-125), mark (96, 105-121, 132), name (100), satisfied (105-106), failed (109-110), actionable (113-114), running (115-125, 132), blocked (136), missionList (185), mission (193), missionHead (203), missionStep (223), nextName (232), missionTime (236), nestedList (243); the @keyframes corpus-monitor-running (126-130) is only referenced by the dead .running .status rule. The mission rows are now rendered by MissionRowItem from plan-card.tsx with plan-card.module.css. Searched with rg over trust-extension/, apps/trust-web/acceptance/ and packages/: no other reference to these names through this module.",
       "action": "Delete the rules of the 20 unused classes, the @keyframes corpus-monitor-running and the reduced-motion block that only targets .running .mark; keep root, faint, missions, subhead (with .subhead h2), rows, awaited, current and stale.",
       "touches": [
@@ -42,7 +119,8 @@
       ],
       "risk": "low",
       "riskReason": "Hashed module classes that plan-monitor.tsx never names; the follow-up page renders its rows with plan-card.module.css.",
-      "state": "open"
+      "state": "fixed",
+      "stateReason": "Deleted the rules of the 20 unused classes (links, head, checks, checkRow, missionName, status, mark, name, satisfied, failed, actionable, running, blocked, missionList, mission, missionHead, missionStep, nextName, missionTime, nestedList), the @keyframes corpus-monitor-running and the reduced-motion block that only targeted .running .mark; root, faint, missions, subhead (with .subhead h2), rows, awaited, current and stale are kept."
     },
     {
       "id": "plan-views-css-mark-rules",
@@ -56,7 +134,15 @@
         ],
         "text": ".mark {\n  text-align: center;\n  font-size: 12px;\n}"
       },
-      "related": [
+      "also": [
+        {
+          "file": "trust-extension/extensions/corpus/ui/plan-views.module.css",
+          "lines": [
+            162,
+            168
+          ],
+          "text": ".checkItem .mark {\n  position: relative;\n  z-index: 1;\n  background: var(--corpus-surface);\n  border-radius: 999px;\n  line-height: 16px;\n}"
+        },
         {
           "file": "trust-extension/extensions/corpus/ui/plan-views.module.css",
           "lines": [
@@ -81,7 +167,8 @@
       ],
       "risk": "low",
       "riskReason": "No element in plan-views.tsx carries the mark class; the rules can match nothing.",
-      "state": "open"
+      "state": "fixed",
+      "stateReason": "Deleted the .mark, .checkItem .mark and .satisfied/.failed/.actionable/.running .mark rules and the reduced-motion block that only stopped the .running .mark animation (4 rule groups, 1 class); styles[tone] on the check row is kept for .blocked .checkName."
     },
     {
       "id": "plan-views-css-unused-keyframes",
@@ -102,7 +189,8 @@
       ],
       "risk": "low",
       "riskReason": "An animation nobody names never runs.",
-      "state": "open"
+      "state": "fixed",
+      "stateReason": "Deleted the @keyframes corpus-running-pulse block, which no animation named."
     },
     {
       "id": "plan-views-css-mission-list",
@@ -116,7 +204,15 @@
         ],
         "text": ".plainList,\n.missionList {\n  list-style: none;\n  margin: 0;\n  padding: 0;\n  display: flex;\n  flex-direction: column;\n  gap: 6px;\n}"
       },
-      "related": [
+      "also": [
+        {
+          "file": "trust-extension/extensions/corpus/ui/plan-views.module.css",
+          "lines": [
+            334,
+            335
+          ],
+          "text": ".plainList li,\n.missionList li {"
+        },
         {
           "file": "trust-extension/extensions/corpus/ui/plan-views.module.css",
           "lines": [
@@ -133,7 +229,8 @@
       ],
       "risk": "low",
       "riskReason": "Only the selector list changes; .plainList keeps the same declarations.",
-      "state": "open"
+      "state": "fixed",
+      "stateReason": "Removed the .missionList selector from the two grouped selectors (.plainList and .plainList li keep their declarations) and deleted the .missionList a and .missionList a:hover rules."
     },
     {
       "id": "thread-document-css-unused-classes",
@@ -147,6 +244,56 @@
         ],
         "text": ".main {\n  display: flex;\n  flex-direction: column;\n  gap: 16px;\n  min-width: 0;\n}"
       },
+      "also": [
+        {
+          "file": "trust-extension/extensions/corpus/ui/thread-document.module.css",
+          "lines": [
+            23,
+            29
+          ],
+          "text": ".inputs > h2 {\n  font-size: 13px;\n  text-transform: uppercase;\n  letter-spacing: 0.06em;\n  color: var(--corpus-muted);\n  margin: 8px 0 0;\n}"
+        },
+        {
+          "file": "trust-extension/extensions/corpus/ui/thread-document.module.css",
+          "lines": [
+            87,
+            92
+          ],
+          "text": ".inputs {\n  display: flex;\n  flex-direction: column;\n  gap: 12px;\n  scroll-margin-top: 16px;\n}"
+        },
+        {
+          "file": "trust-extension/extensions/corpus/ui/thread-document.module.css",
+          "lines": [
+            129,
+            170
+          ],
+          "text": ".facts {\n  display: grid;\n  grid-template-columns: auto 1fr;\n  gap: 4px 12px;\n  margin: 4px 0 0;\n  font-size: 13.5px;\n}\n.facts dt {\n  color: var(--corpus-muted);\n  font-weight: 500;\n}\n.facts a {\n  text-decoration: none;\n}\n.framework {\n  font-size: 13px;\n}\n.awaiting {\n  display: flex;\n  width: 100%;\n  height: auto;\n  white-space: normal;\n  align-items: flex-start;\n  text-align: left;\n  min-height: 0;\n  font-weight: 400;\n  flex-direction: column;\n  gap: 2px;\n  padding: 12px 16px;\n  border-radius: var(--corpus-radius);\n  border: 1px solid var(--corpus-accent);\n  background: var(--corpus-accent-soft);\n  color: var(--corpus-text);\n  text-decoration: none;\n}\n.awaiting strong {\n  color: var(--corpus-accent);\n}\n.awaiting span {\n  font-size: 13px;\n  color: var(--corpus-muted);\n}"
+        },
+        {
+          "file": "trust-extension/extensions/corpus/ui/thread-document.module.css",
+          "lines": [
+            175,
+            184
+          ],
+          "text": ".actions {\n  flex-direction: row;\n  flex-wrap: wrap;\n  align-items: center;\n}\n.actions button {\n  min-height: 30px;\n  padding: 3px 10px;\n  font-size: 13px;\n}"
+        },
+        {
+          "file": "trust-extension/extensions/corpus/ui/thread-document.module.css",
+          "lines": [
+            189,
+            197
+          ],
+          "text": "@media (max-width: 1100px) {\n  .awaiting {\n    flex-direction: row;\n    flex-wrap: wrap;\n    align-items: baseline;\n    gap: 2px 12px;\n    padding: 8px 14px;\n  }\n}"
+        },
+        {
+          "file": "trust-extension/extensions/corpus/ui/thread-document.module.css",
+          "lines": [
+            218,
+            227
+          ],
+          "text": ".facts dd {\n  display: flex;\n  flex-wrap: wrap;\n  align-items: center;\n  gap: 4px 8px;\n}\n.related {\n  flex-direction: column;\n  align-items: flex-start;\n}"
+        }
+      ],
       "evidence": "A CSS module class is only reachable as styles.<name> or styles[\"<name>\"] in a file that imports thread-document.module.css; a script listed every class of thread-document.module.css, every importer and its alias, and every dynamic styles[...] index. Importers: thread-document.tsx and reference-reader.tsx (alias styles), no dynamic index. Unused classes with their rules: main (6), inputs (23, 87), facts (129, 136, 140, 218), framework (143), awaiting (146, 164, 167, and 190 in a media query), actions (175, 180), related (224). Searched with rg over trust-extension/, apps/trust-web/acceptance/ and packages/ for each name: no use through this module.",
       "action": "Delete the rules of these 7 classes, including the .awaiting rule inside the media query at line 190.",
       "touches": [
@@ -154,7 +301,8 @@
       ],
       "risk": "low",
       "riskReason": "Hashed module classes that neither importer names.",
-      "state": "open"
+      "state": "fixed",
+      "stateReason": "Deleted the rules of the 7 unused classes (main, inputs, facts, framework, awaiting, actions, related) from thread-document.module.css, including the @media (max-width: 1100px) block whose only rule was .awaiting."
     },
     {
       "id": "organisation-css-unused-classes",
@@ -168,6 +316,16 @@
         ],
         "text": ".crumb {\n  display: inline-flex;\n  align-items: center;\n  gap: 6px;\n}"
       },
+      "also": [
+        {
+          "file": "trust-extension/extensions/corpus/ui/organisation.module.css",
+          "lines": [
+            25,
+            38
+          ],
+          "text": ".outcome {\n  display: flex;\n  flex-direction: column;\n  align-items: flex-start;\n  gap: 12px;\n}\n.success {\n  margin: 0;\n  padding: 10px 14px;\n  border-radius: var(--corpus-radius-sm);\n  background: var(--corpus-success-soft);\n  color: var(--corpus-success);\n  font-weight: 600;\n}"
+        }
+      ],
       "evidence": "A CSS module class is only reachable as organisation / styles.<name> or organisation / styles[\"<name>\"] in a file that imports organisation.module.css; a script listed every class of organisation.module.css, every importer and its alias, and every dynamic organisation / styles[...] index. Importers: entry.tsx (alias organisation) and organisation.tsx; no dynamic index. Unused: crumb (2), outcome (25), success (31). Searched with rg over trust-extension/, apps/trust-web/acceptance/ and packages/ for organisation.crumb, organisation.outcome, organisation.success, styles.crumb, styles.outcome and styles.success in the importers: none.",
       "action": "Delete the .crumb, .outcome and .success rules from organisation.module.css.",
       "touches": [
@@ -175,7 +333,8 @@
       ],
       "risk": "low",
       "riskReason": "Hashed module classes that no importer names.",
-      "state": "open"
+      "state": "fixed",
+      "stateReason": "Deleted the rules of the 3 unused classes .crumb, .outcome and .success from organisation.module.css."
     },
     {
       "id": "plan-card-css-unused-classes",
@@ -189,7 +348,15 @@
         ],
         "text": ".titleLine {"
       },
-      "related": [
+      "also": [
+        {
+          "file": "trust-extension/extensions/corpus/ui/plan-card.module.css",
+          "lines": [
+            52,
+            58
+          ],
+          "text": "  display: flex;\n  align-items: center;\n  flex-wrap: wrap;\n  gap: 6px 12px;\n  margin-top: -4px;\n  min-width: 0;\n}"
+        },
         {
           "file": "trust-extension/extensions/corpus/ui/plan-card.module.css",
           "lines": [
@@ -197,6 +364,14 @@
             176
           ],
           "text": ".more {"
+        },
+        {
+          "file": "trust-extension/extensions/corpus/ui/plan-card.module.css",
+          "lines": [
+            177,
+            186
+          ],
+          "text": "  display: flex;\n  align-items: center;\n  justify-content: space-between;\n  gap: 12px;\n  padding: 8px 14px;\n  border-top: 1px solid var(--corpus-border);\n  background: var(--corpus-surface-2);\n  font-size: 13px;\n  color: var(--corpus-muted);\n}"
         },
         {
           "file": "trust-extension/extensions/corpus/ui/plan-card.module.css",
@@ -214,7 +389,8 @@
       ],
       "risk": "low",
       "riskReason": "Hashed module classes that plan-card.tsx never names.",
-      "state": "open"
+      "state": "fixed",
+      "stateReason": "Deleted the rules of the 3 unused classes .titleLine, .more and .linkButton (with .linkButton:hover) from plan-card.module.css."
     },
     {
       "id": "plan-history-css-back",
@@ -235,7 +411,8 @@
       ],
       "risk": "low",
       "riskReason": "A hashed module class that no component names.",
-      "state": "open"
+      "state": "fixed",
+      "stateReason": "Deleted the unused .back rule from plan-history.module.css."
     },
     {
       "id": "thread-status-tone-unread",
@@ -249,6 +426,16 @@
         ],
         "text": "export function threadPresentation(thread: { state: Thread[\"state\"] | \"IN_PROGRESS\" }): {\n  label: string;\n  tone: string;\n} {"
       },
+      "also": [
+        {
+          "file": "trust-extension/extensions/corpus/ui/thread-status.ts",
+          "lines": [
+            21,
+            23
+          ],
+          "text": "export function threadStatus(thread: { state: Thread[\"state\"] | \"IN_PROGRESS\" }): string {\n  return threadPresentation(thread).label;\n}"
+        }
+      ],
       "evidence": "The only caller of threadPresentation is threadStatus in the same file, which returns .label only. Searched with rg over trust-extension/, apps/trust-web/acceptance/ and packages/ for threadPresentation: only thread-status.ts; for threadStatus: entry.tsx (lines 100 and 304) and new-view.tsx (line 41), all reading the returned label. The tones active, frozen and completed were the classes of the former explorer.module.css pills, which no component uses any more.",
       "action": "Drop the tone field and merge threadPresentation into threadStatus, which returns the label for each state.",
       "touches": [
@@ -256,7 +443,8 @@
       ],
       "risk": "low",
       "riskReason": "No reader of tone exists; the labels returned by threadStatus are unchanged.",
-      "state": "open"
+      "state": "fixed",
+      "stateReason": "Deleted thread-status.ts: threadPresentation with its unread tone field (the cited signature) and threadStatus, which only read its label (also entry). The label of each listed state now comes from listStateLabel, a 3-line wrapper of threadState added to visual-language.tsx (see thread-status-labels-duplicate-thread-state)."
     },
     {
       "id": "thread-status-labels-duplicate-thread-state",
@@ -270,6 +458,56 @@
         ],
         "text": "  switch (thread.state) {\n    case \"IN_PROGRESS\":\n      return { label: \"In progress\", tone: \"active\" };\n    case \"ACTIVE\":\n      return { label: \"Open\", tone: \"active\" };\n    case \"FROZEN\":\n      return { label: \"Paused\", tone: \"frozen\" };\n    case \"COMPLETED\":\n      return { label: \"Completed\", tone: \"completed\" };\n    default:\n      throw new Error(`Unknown thread state: ${String(thread.state)}`);\n  }\n}"
       },
+      "also": [
+        {
+          "file": "trust-extension/extensions/corpus/ui/thread-status.ts",
+          "lines": [
+            1,
+            1
+          ],
+          "text": "import type { Thread } from \"./types\";"
+        },
+        {
+          "file": "trust-extension/extensions/corpus/ui/entry.tsx",
+          "lines": [
+            12,
+            12
+          ],
+          "text": "import { threadStatus } from \"./thread-status\";"
+        },
+        {
+          "file": "trust-extension/extensions/corpus/ui/entry.tsx",
+          "lines": [
+            100,
+            100
+          ],
+          "text": "      ? t(threadStatus({ state: key as ThreadState }))"
+        },
+        {
+          "file": "trust-extension/extensions/corpus/ui/entry.tsx",
+          "lines": [
+            304,
+            304
+          ],
+          "text": "                { label: null, options: STATES.map((state) => ({ value: state, label: t(threadStatus({ state })) })) },"
+        },
+        {
+          "file": "trust-extension/extensions/corpus/ui/new-view.tsx",
+          "lines": [
+            8,
+            8
+          ],
+          "text": "import { threadStatus } from \"./thread-status\";"
+        },
+        {
+          "file": "trust-extension/extensions/corpus/ui/new-view.tsx",
+          "lines": [
+            41,
+            41
+          ],
+          "text": "    [t(\"State\"), filters.states.map((state) => t(threadStatus({ state }))).join(\", \") || all],"
+        }
+      ],
       "related": [
         {
           "file": "trust-extension/extensions/corpus/ui/visual-language.tsx",
@@ -290,7 +528,8 @@
       ],
       "risk": "medium",
       "riskReason": "threadState takes the ACTIVE state plus an atWork flag while threadStatus takes the synthetic IN_PROGRESS state; the mapping must keep the filter labels identical, and the filter of entry.tsx is covered by browser tests only.",
-      "state": "open"
+      "state": "fixed",
+      "stateReason": "Fixed by the coordinator's arbitration. Deleted thread-status.ts and its duplicated switch (the cited lines) with its import of Thread (also entry). entry.tsx (state filter options and state group titles) and new-view.tsx (state summary) now call listStateLabel, exported from visual-language.tsx next to threadState: IN_PROGRESS is threadState({ state: ACTIVE }, true).label, the other states threadState({ state }).label, so the labels stay In progress, Open, Paused and Completed, in the order of STATES. The also entries are the 2 removed imports of thread-status and the 3 replaced threadStatus calls."
     },
     {
       "id": "organisation-form-page-unread-go-and-t",
@@ -299,28 +538,12 @@
       "location": {
         "file": "trust-extension/extensions/corpus/ui/organisation.tsx",
         "lines": [
-          22,
-          22
+          18,
+          23
         ],
-        "text": "  go,"
+        "text": "function FormPage({\n  trail,\n  title,\n  lead,\n  go,\n  children,"
       },
-      "related": [
-        {
-          "file": "trust-extension/extensions/corpus/ui/organisation.tsx",
-          "lines": [
-            29,
-            29
-          ],
-          "text": "  go(route: CorpusRoute): void;"
-        },
-        {
-          "file": "trust-extension/extensions/corpus/ui/organisation.tsx",
-          "lines": [
-            32,
-            32
-          ],
-          "text": "  const { t } = useI18n();"
-        },
+      "also": [
         {
           "file": "trust-extension/extensions/corpus/ui/organisation.tsx",
           "lines": [
@@ -338,6 +561,24 @@
           "text": "      go={go}"
         }
       ],
+      "related": [
+        {
+          "file": "trust-extension/extensions/corpus/ui/organisation.tsx",
+          "lines": [
+            29,
+            29
+          ],
+          "text": "  go(route: CorpusRoute): void;"
+        },
+        {
+          "file": "trust-extension/extensions/corpus/ui/organisation.tsx",
+          "lines": [
+            32,
+            32
+          ],
+          "text": "  const { t } = useI18n();"
+        }
+      ],
       "evidence": "npx tsc --noEmit -p tsconfig.json --noUnusedLocals --noUnusedParameters in trust-extension/extensions/corpus reports exactly two errors: organisation.tsx(22,3) 'go' is declared but its value is never read, and organisation.tsx(32,9) 't' is declared but its value is never read. Both callers (lines 94 and 221) pass go={go}.",
       "action": "Remove the go prop from FormPage (destructuring, type and the two go={go} at the call sites) and the unused const { t } = useI18n() in FormPage.",
       "touches": [
@@ -345,7 +586,8 @@
       ],
       "risk": "low",
       "riskReason": "The compiler proves neither value is read; the call sites keep go for their own use.",
-      "state": "open"
+      "state": "fixed",
+      "stateReason": "Removed the unread go prop of FormPage: its destructuring line (cited location, re-cited by the coordinator's arbitration as base lines 18-23 because the single line '  go,' also exists in the other components of the file), its type member '  go(route: CorpusRoute): void;' (base line 29) and the 2 '      go={go}' at the call sites (also entries); removed the unread '  const { t } = useI18n();' of FormPage (base line 32). Lines 29 and 32 stay in related, not in also, because the same text exists in NewCorpusScreen, EditCorpusForm and the move page."
     },
     {
       "id": "i18n-unused-completed-thread-corpus",
@@ -366,7 +608,8 @@
       ],
       "risk": "low",
       "riskReason": "No t() call can reach the key; the server message is unaffected.",
-      "state": "open"
+      "state": "fixed",
+      "stateReason": "Deleted the unused key 'A completed thread keeps its corpus.' from the fr catalogue, which is the only catalogue (English is the key itself)."
     },
     {
       "id": "new-view-missing-primary-class",
@@ -408,7 +651,8 @@
       ],
       "risk": "low",
       "riskReason": "No rule, script or test selects the class; only an external user stylesheet could, and none is known.",
-      "state": "open"
+      "state": "fixed",
+      "stateReason": "Removed the unused global class token corpus-thread-list from the className of the thread list; the module class styles.rows and the element are kept."
     },
     {
       "id": "global-class-corpus-intention",
@@ -429,7 +673,8 @@
       ],
       "risk": "low",
       "riskReason": "No rule, script or test selects the class; only an external user stylesheet could, and none is known.",
-      "state": "open"
+      "state": "fixed",
+      "stateReason": "Removed the unused global class token corpus-intention; it was the only class of the element, so the className attribute goes and the div is kept."
     },
     {
       "id": "global-classes-open-thread-dialog",
@@ -443,7 +688,7 @@
         ],
         "text": "        className={compact ? `corpus-create-icon ${styles.compactTrigger}` : undefined}"
       },
-      "related": [
+      "also": [
         {
           "file": "trust-extension/extensions/corpus/ui/open-thread-dialog.tsx",
           "lines": [
@@ -460,7 +705,8 @@
       ],
       "risk": "low",
       "riskReason": "No rule, script or test selects the class; only an external user stylesheet could, and none is known.",
-      "state": "open"
+      "state": "fixed",
+      "stateReason": "Removed the 2 unused global class tokens corpus-create-icon (compact trigger button) and corpus-open-dialog (dialog) from their className; the module classes styles.compactTrigger and styles.dialog and the elements are kept."
     },
     {
       "id": "global-class-corpus-navigation",
@@ -481,7 +727,8 @@
       ],
       "risk": "low",
       "riskReason": "No rule, script or test selects the class; only an external user stylesheet could, and none is known.",
-      "state": "open"
+      "state": "fixed",
+      "stateReason": "Removed the unused global class token corpus-navigation from the className; the module class styles.navigation and the element are kept."
     },
     {
       "id": "global-class-corpus-post",
@@ -495,7 +742,7 @@
         ],
         "text": "      <article id={`entry-${item.id}`} tabIndex={-1} data-corpus-entry className={`corpus-post ${styles.compact}`}>"
       },
-      "related": [
+      "also": [
         {
           "file": "trust-extension/extensions/corpus/ui/interaction.tsx",
           "lines": [
@@ -512,7 +759,8 @@
       ],
       "risk": "low",
       "riskReason": "No rule, script or test selects the class; only an external user stylesheet could, and none is known.",
-      "state": "open"
+      "state": "fixed",
+      "stateReason": "Removed the unused global class token corpus-post from the 2 entry articles (compact and full); the module classes styles.compact and styles.root and the elements are kept."
     },
     {
       "id": "global-class-corpus-library-label",
@@ -533,7 +781,8 @@
       ],
       "risk": "low",
       "riskReason": "No rule, script or test selects the class; only an external user stylesheet could, and none is known.",
-      "state": "open"
+      "state": "fixed",
+      "stateReason": "Removed the unused global class token corpus-library-label from the className of the library lead; the module class explorer.lead and the element are kept."
     },
     {
       "id": "global-class-corpus-references-facet",
@@ -554,7 +803,8 @@
       ],
       "risk": "low",
       "riskReason": "No rule, script or test selects the class; only an external user stylesheet could, and none is known.",
-      "state": "open"
+      "state": "fixed",
+      "stateReason": "Removed the unused global class token corpus-references from the className of the materialized references section; the module class shared.panel and the element are kept."
     }
   ]
 }

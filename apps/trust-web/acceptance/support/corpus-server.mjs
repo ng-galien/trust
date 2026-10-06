@@ -9,8 +9,6 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 import {
-  ADDED_MISSION,
-  ADDITION,
   ARCHIVED_PLANS,
   ASSIGNED_MISSION_PROCEDURE,
   CONFLICT_BODY,
@@ -165,31 +163,49 @@ async function escalate(plan, name, attemptHandle) {
 }
 const childOf = async (id, plan = FRAMEWORK_PLAN) =>
   (await readPlan(plan)).invocations.find((i) => i.mission?.id === id).childPlan;
-const engage = (plan, thread, procedureVersion) =>
+/** The framework version Corpus serves. */
+const FRAMEWORK_VERSION = "0.9.0";
+const engage = (plan, thread, metadata) =>
   rpc("plan.engage", {
     contract: "trust.plan-engagement-request@1",
     procedure: "corpus-thread-framework",
-    procedureVersion,
+    procedureVersion: FRAMEWORK_VERSION,
     plan,
     environment: "local",
+    ...(metadata ? { metadata } : {}),
     rootInputs: { thread },
   });
+/** The committed repository of the projects directory that the declared delivery of every framework Plan observes. */
+const DELIVERED_PROJECT = "delivered";
+const DELIVERY = {
+  id: "commit",
+  rootInputs: { project: DELIVERED_PROJECT },
+  definition: { kind: "published", reference: "delivery-git@1.0.0" },
+};
 const mission = (thread, id, verdict = "pass") => ({
   id,
   rootInputs: { thread, mission: id, verdict },
   definition: { kind: "published", reference: "corpus-ui-mission@0.1.0" },
 });
-/** Engage framework 0.4.0 on an open thread, attach and link it, check its requirements and approve its framing. */
+/**
+ * Engage a framework Plan on an open thread, open it as the current Plan, attach the thread, check its requirements
+ * and its declared delivery, open the given work, then approve the checked revision, which the history records.
+ */
 async function approvedFraming(thread, plan) {
-  await engage(plan, thread, "0.4.0");
-  const { revision } = await command("threads.read", { id: thread });
-  await declare(plan, { "target corpus": "trust", "thread revision": revision });
-  for (const name of ["attach thread", "link framework", "check requirements"])
-    await expectVerdict(plan, name, "VALIDATED");
+  await openedFraming(thread, plan);
   const { revision: checked } = await command("threads.read", { id: thread });
-  await declare(plan, { "refinement choice": "continue", "approved revision": checked });
-  await expectVerdict(plan, "approve framing", "VALIDATED");
+  await declare(plan, { "approval choice": "continue", "approved revision": checked });
+  for (const name of ["approve revision", "record revision"]) await expectVerdict(plan, name, "VALIDATED");
   return checked;
+}
+/** Engage a framework Plan and run its Checks up to the declaration of its delivery, before the owner's approval. */
+async function openedFraming(thread, plan, metadata) {
+  await engage(plan, thread, metadata);
+  await expectVerdict(plan, "link framework", "VALIDATED");
+  const { revision } = await command("threads.read", { id: thread });
+  await declare(plan, { "target corpus": "trust", "thread revision": revision }, { delivery: [DELIVERY] });
+  for (const name of ["attach thread", "check requirements", "check delivery"])
+    await expectVerdict(plan, name, "VALIDATED");
 }
 /** Stop Corpus, write its disposable store directly, start it again: retained data no command creates any more. */
 async function editCorpusStore(statement, values) {
@@ -225,8 +241,18 @@ await build(
   ],
   corpus,
 );
+// The projects directory of the Environment, with the committed repository the declared deliveries observe.
 const workspace = path.join(temporary, "workspace");
-await mkdir(workspace);
+const delivered = path.join(workspace, DELIVERED_PROJECT);
+await mkdir(delivered, { recursive: true });
+const git = (...args) =>
+  exec("git", ["-c", "user.name=Corpus acceptance", "-c", "user.email=acceptance@example.invalid", ...args], {
+    cwd: delivered,
+  });
+await writeFile(path.join(delivered, "README.md"), "Delivered work\n");
+await git("init", "--quiet");
+await git("add", ".");
+await git("commit", "--quiet", "-m", "Delivered work");
 await writeFile(
   path.join(temporary, "extensions.json"),
   JSON.stringify({
@@ -268,16 +294,27 @@ const procedures = path.join(corpus, "procedures");
 for (const file of [
   path.join(procedures, "thread-attach.operation.feature"),
   path.join(procedures, "thread-link.operation.feature"),
+  path.join(procedures, "thread-link-0.3.0.operation.feature"),
   path.join(procedures, "requirements-check.operation.feature"),
-  path.join(procedures, "thread-revision-read.operation.feature"),
-  path.join(procedures, "coverage-check-0.2.0.operation.feature"),
+  path.join(procedures, "delivery-read.operation.feature"),
+  path.join(procedures, "thread-revision-read-0.2.0.operation.feature"),
+  path.join(procedures, "coverage-check-0.4.0.operation.feature"),
   path.join(procedures, "thread-complete-0.2.0.operation.feature"),
-  path.join(root, "assets/operations/coordination.gate-run.feature"),
+  path.join(root, "assets/operations/git.head-read.feature"),
 ])
   await rpc("operation.save", { source: await readFile(file, "utf8"), sourceName: path.basename(file) });
-await rpc("procedure.publish", {
-  source: await readFile(path.join(procedures, "thread-framework-0.4.0.procedure.feature"), "utf8"),
+await rpc("vocabulary.publish", {
+  source: await readFile(path.join(procedures, "corpus-terms.vocabulary.feature"), "utf8"),
+  sourceName: "corpus-terms.vocabulary.feature",
 });
+for (const file of [
+  `thread-framework-${FRAMEWORK_VERSION}.procedure.feature`,
+  "delivery/delivery-git-1.0.0.procedure.feature",
+])
+  await rpc("procedure.publish", {
+    source: await readFile(path.join(procedures, file), "utf8"),
+    sourceName: path.basename(file),
+  });
 await rpc("procedure.publish", { source: MISSION_PROCEDURE });
 await rpc("procedure.publish", { source: ASSIGNED_MISSION_PROCEDURE });
 await rpc("environment.save", {
@@ -286,11 +323,13 @@ await rpc("environment.save", {
     corpusThreadsUrl: `${base}/api/threads`,
     corpusCommandsUrl: `${base}/commands`,
     corpusEpisodesUrl: `${base}/trust/episodes`,
+    corpusRegistryUrl: `${base}/api/registry`,
+    trustRpcUrl: `${runtimeUrl}/rpc`,
     workspaceRoot: workspace,
   },
 });
 
-// 3. The thread, attached and linked through its governed framework Checks, its first framing approved.
+// 3. The thread, opened as the current Plan, attached through its governed framework Checks, its revision approved.
 await command("threads.open", { id: DIAGRAM_THREAD, title: "Document diagrams", body: THREAD_BODY });
 await approvedFraming(DIAGRAM_THREAD, FRAMEWORK_PLAN);
 
@@ -363,18 +402,14 @@ await command("threads.revise", {
 await command("threads.open", { id: CONFLICT_THREAD, title: "Theme rule", body: CONFLICT_BODY });
 await approvedFraming(CONFLICT_THREAD, `${CONFLICT_THREAD}-framework`);
 
-// 6. A thread delivered under framework 0.1.0, then reframed under a 0.4.0 framework Plan with work of its own.
-await rpc("operation.save", {
-  source: await readFile(path.join(procedures, "thread-read.operation.feature"), "utf8"),
-  sourceName: "thread-read.operation.feature",
-});
-await rpc("procedure.publish", {
-  source: await readFile(path.join(procedures, "thread-framework.procedure.feature"), "utf8"),
-});
+// 6. A thread whose first framework Plan was cancelled with work of its own, then followed by a new framework Plan.
 await command("threads.open", { id: REFRAMED_THREAD, title: "Reframed delivery", body: REFRAMED_BODY });
-await engage(REFRAMED_OLD_PLAN, REFRAMED_THREAD, "0.1.0");
-await declare(REFRAMED_OLD_PLAN, { "target corpus": "trust", "thread revision": 1, "refinement choice": "continue" });
-for (const name of ["attach thread", "observe refinement"]) await expectVerdict(REFRAMED_OLD_PLAN, name, "VALIDATED");
+// Archived Plans of the history, older than the two real ones: the history reads by pages.
+await editCorpusStore(
+  "INSERT INTO trust_corpus.thread_plans(thread,position,plan,revision,requirements,opened_at) SELECT $1,n,$1 || '-archive-' || lpad(n::text,2,'0'),1,ARRAY['TRUST-FR-ARC-010'],now() - (($2::integer + 1 - n) * interval '1 day') FROM generate_series(1,$2::integer) AS n",
+  [REFRAMED_THREAD, ARCHIVED_PLANS],
+);
+await approvedFraming(REFRAMED_THREAD, REFRAMED_OLD_PLAN);
 await declare(
   REFRAMED_OLD_PLAN,
   {},
@@ -385,43 +420,10 @@ await declare(
 const inherited = await childOf(INHERITED_MISSIONS.complete, REFRAMED_OLD_PLAN);
 for (const name of ["claim work", "verify work", "review work"]) await expectVerdict(inherited, name, "VALIDATED");
 await expectVerdict(await childOf(INHERITED_MISSIONS.running, REFRAMED_OLD_PLAN), "claim work", "VALIDATED");
-// Retained threads are still linked to their old framework; no command creates such a link any more.
-await editCorpusStore("UPDATE trust_corpus.threads SET framework_plan=$2 WHERE id=$1", [
-  REFRAMED_THREAD,
-  REFRAMED_OLD_PLAN,
-]);
-// Archived Plans of the history, older than the two real ones: the history reads by pages.
-await editCorpusStore(
-  "INSERT INTO trust_corpus.thread_plans(thread,position,plan,revision,requirements,opened_at) SELECT $1,n,$1 || '-archive-' || lpad(n::text,2,'0'),1,ARRAY['TRUST-FR-ARC-010'],now() - (($2::integer + 1 - n) * interval '1 day') FROM generate_series(1,$2::integer) AS n",
-  [REFRAMED_THREAD, ARCHIVED_PLANS],
-);
+await rpc("plan.cancel", { plan: REFRAMED_OLD_PLAN, reason: "The next framework Plan continues the thread." });
 await approvedFraming(REFRAMED_THREAD, REFRAMED_PLAN);
 await declare(REFRAMED_PLAN, {}, { work: [mission(REFRAMED_THREAD, CURRENT_MISSION)] });
 await expectVerdict(await childOf(CURRENT_MISSION, REFRAMED_PLAN), "claim work", "VALIDATED");
-// An approved addition whose own mission is in progress.
-await rpc("procedure.publish", {
-  source: await readFile(path.join(procedures, "thread-addition.procedure.feature"), "utf8"),
-});
-const { revision: added } = await command("threads.read", { id: REFRAMED_THREAD });
-await declare(
-  REFRAMED_PLAN,
-  {},
-  {
-    work: [
-      mission(REFRAMED_THREAD, CURRENT_MISSION),
-      {
-        id: ADDITION,
-        rootInputs: { thread: REFRAMED_THREAD, "thread revision": added },
-        definition: { kind: "published", reference: "corpus-thread-addition@0.1.0" },
-      },
-    ],
-  },
-);
-const addition = await childOf(ADDITION, REFRAMED_PLAN);
-await declare(addition, { "approval choice": "continue", "approved revision": added });
-await expectVerdict(addition, "approve addition", "VALIDATED");
-await declare(addition, {}, { work: [mission(REFRAMED_THREAD, ADDED_MISSION)] });
-await expectVerdict(await childOf(ADDED_MISSION, addition), "claim work", "VALIDATED");
 
 // 7. The entry screen: a second corpus whose threads touch several facets, in every state, and a thread without corpus.
 await command("corpora.create", { ...ENTRY_CORPUS, description: "Exploratory work on delegation" });
@@ -464,41 +466,11 @@ await readingThread(examples, notation.id);
 await readingThread(crowded);
 for (const member of CROWD) await readingThread(member, crowded.id);
 
-// 9. The owner's decisions: a framework 0.8.0 Plan, the current Plan of its thread from its opening, waits for the
+// 9. The owner's decisions: a framework Plan, the current Plan of its thread from its opening, waits for the
 // approval of a revision, and its mission waits for the owner's visual validation after its review checklist.
-for (const file of [
-  "thread-revision-read-0.2.0.operation.feature",
-  "thread-link-0.3.0.operation.feature",
-  "coverage-check-0.4.0.operation.feature",
-])
-  await rpc("operation.save", { source: await readFile(path.join(procedures, file), "utf8"), sourceName: file });
-await rpc("operation.save", {
-  source: await readFile(path.join(root, "assets/operations/workspace.gate-run.feature"), "utf8"),
-  sourceName: "workspace.gate-run.feature",
-});
-await rpc("vocabulary.publish", {
-  source: await readFile(path.join(procedures, "corpus-terms.vocabulary.feature"), "utf8"),
-  sourceName: "corpus-terms.vocabulary.feature",
-});
-await rpc("procedure.publish", {
-  source: await readFile(path.join(procedures, "thread-framework-0.8.0.procedure.feature"), "utf8"),
-  sourceName: "thread-framework-0.8.0.procedure.feature",
-});
 await rpc("procedure.publish", { source: VISUAL_PROCEDURE });
 await command("threads.open", { ...DECISION_THREAD, body: THREAD_BODY });
-await rpc("plan.engage", {
-  contract: "trust.plan-engagement-request@1",
-  procedure: "corpus-thread-framework",
-  procedureVersion: "0.8.0",
-  plan: DECISION_PLAN,
-  environment: "local",
-  metadata: { title: DECISION_THREAD.title, labels: ["corpus"] },
-  rootInputs: { thread: DECISION_THREAD.id },
-});
-const { revision: decided } = await command("threads.read", { id: DECISION_THREAD.id });
-await declare(DECISION_PLAN, { "target corpus": "trust", "thread revision": decided });
-await expectVerdict(DECISION_PLAN, "link framework", "VALIDATED");
-for (const name of ["attach thread", "check requirements"]) await expectVerdict(DECISION_PLAN, name, "VALIDATED");
+await openedFraming(DECISION_THREAD.id, DECISION_PLAN, { title: DECISION_THREAD.title, labels: ["corpus"] });
 await declare(
   DECISION_PLAN,
   {},

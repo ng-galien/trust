@@ -107,7 +107,7 @@ Every diagram is drawn with the host theme.
 /** Threads of the technical requirement registry: approved blocks, a shared one, a pending one and a conflict. */
 export const REGISTRY_THREAD = "interface-registry";
 export const CONFLICT_THREAD = "registry-conflict";
-/** A thread delivered under framework 0.1.0, then reframed under a 0.4.0 framework Plan. */
+/** A thread whose first framework Plan was cancelled with work of its own, then followed by a new framework Plan. */
 export const REFRAMED_THREAD = "reframed-delivery";
 export const REFRAMED_OLD_PLAN = "reframed-delivery-framework-0-1-0";
 export const REFRAMED_PLAN = "reframed-delivery-framework";
@@ -159,7 +159,7 @@ ${requirement("CORPUS-UI-REQ-030", "THEME_RULE", "The theme rule is declared.")}
 ${CONFLICTING_BLOCK}`;
 export const REFRAMED_BODY = `## Goal
 
-Deliver the thread, then continue it under framework 0.4.0.
+Deliver the thread, then continue it under a new framework Plan.
 
 ${requirement("CORPUS-UI-REQ-040", "REFRAMED_DELIVERY", "The delivered work is kept.")}`;
 /** An addition of the reframed thread's current framework and the mission it founds. */
@@ -203,7 +203,7 @@ export const CROWD = Array.from({ length: 13 }, (_, index) => ({
 /** The Plan history of the reframed thread holds archived Plans before its two real ones: more than one page. */
 export const ARCHIVED_PLANS = 22;
 /**
- * A thread whose framework 0.8.0 Plan, its current Plan from its opening, waits for the owner's approval of a revision,
+ * A thread whose framework Plan, its current Plan from its opening, waits for the owner's approval of a revision,
  * and whose mission waits for the owner's visual validation.
  */
 export const DECISION_THREAD = { id: "owner-decisions", title: "Owner decisions" };
