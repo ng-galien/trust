@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { existsSync } from "node:fs";
 import { readdir, readFile, realpath, symlink } from "node:fs/promises";
 import path from "node:path";
 import { after, before, test } from "node:test";
@@ -7,6 +8,8 @@ import { SCOPE, startWorkspace } from "./acceptance-operations-support.mjs";
 
 const trust = fileURLToPath(new URL("../", import.meta.url));
 const PROCEDURE = "trust-extension/extensions/corpus/procedures/delegation/delegation-code-vitest.procedure.feature";
+/* The Procedure lives in the Corpus submodule of a private repository; a checkout without it skips AC3 and AC4. */
+const corpus = existsSync(path.join(trust, PROCEDURE)) ? false : "the Corpus submodule is not checked out";
 const HELPERS = ["acceptance-vitest-verification.mjs", "workspace-script-gate.mjs", "review-checklist.mjs"];
 const SUM = "export const sum = (left, right) => left + right;\n";
 const files = ["test/sum.acceptance.test.mjs", "test/zero.acceptance.test.mjs"];
@@ -107,7 +110,7 @@ test("keeps zero neutral", () => expect(sum(7, 0)).toBe(7));
   );
   fixture = await realpath(path.join(workspace.workspace, "fixture"));
   await workspace.publish(probe);
-  await workspace.publish(await readFile(path.join(trust, PROCEDURE), "utf8"));
+  if (!corpus) await workspace.publish(await readFile(path.join(trust, PROCEDURE), "utf8"));
 });
 after(() => workspace?.close());
 
@@ -223,6 +226,7 @@ test("TEST-010 AC2 the Operation runs at the root of the repository of the Plan 
 
 test("TEST-010 AC3 a delegation Procedure proves a mission with the Vitest Operation, the repository quality gate, the repetition, the review checklist and the response", {
   timeout: 120000,
+  skip: corpus,
 }, async () => {
   await mission("proved");
   const verified = await workspace.run("proved", "verify acceptance");
@@ -258,6 +262,7 @@ test("TEST-010 AC3 a delegation Procedure proves a mission with the Vitest Opera
 
 test("TEST-010 AC4 a missing named test or a code change between the two runs gives a negative verdict with its reason", {
   timeout: 120000,
+  skip: corpus,
 }, async () => {
   await mission("absent", { "acceptance verification": contract({ sum: "sum > subtracts two numbers" }) });
   const absent = await workspace.run("absent", "verify acceptance");

@@ -29,6 +29,8 @@ const interfaceProcedure = path.join(
 const TOKEN_FILE = "packages/trust-ui/src/tokens.css";
 const HOST_CATALOGUES = "packages/trust-ui/src/i18n";
 const CORPUS_UI = "trust-extension/extensions/corpus/ui";
+/* The Corpus extension is a Git submodule of a private repository; a checkout without it skips these tests. */
+const skip = existsSync(path.join(repositoryRoot, CORPUS_UI)) ? false : "the Corpus submodule is not checked out";
 
 interface GateResult {
   readonly gate: string;
@@ -54,7 +56,9 @@ after(async () => {
   for (const directory of temporaryDirectories) await rm(directory, { recursive: true, force: true, maxRetries: 5 });
 });
 
-test("CXP-130 AC1 the guide names the theme token file, the style sheet convention, the English and French catalogues and the components to reuse", async () => {
+test("CXP-130 AC1 the guide names the theme token file, the style sheet convention, the English and French catalogues and the components to reuse", {
+  skip,
+}, async () => {
   const tokens = await readFile(path.join(repositoryRoot, TOKEN_FILE), "utf8");
   assert.match(tokens, /:root \{[\s\S]*--color-surface:/u, "the token file defines the light theme");
   assert.match(tokens, /html\.dark \{[\s\S]*--color-surface:/u, "the token file defines the dark theme");
@@ -101,7 +105,9 @@ test("CXP-130 AC1 the guide names the theme token file, the style sheet conventi
   }
 });
 
-test("CXP-130 AC2 the guide gives a conforming example and a refused example for each interface rule of the Procedure", async () => {
+test("CXP-130 AC2 the guide gives a conforming example and a refused example for each interface rule of the Procedure", {
+  skip,
+}, async () => {
   const procedure = await readFile(interfaceProcedure, "utf8");
   const rules = /one string "interface rules" fixed as "([^"]+)"/u.exec(procedure)?.[1]?.split(" ") ?? [];
   assert.equal(rules.length, 8, "the Procedure fixes eight interface rules");
@@ -151,7 +157,9 @@ test("CXP-130 AC2 the guide gives a conforming example and a refused example for
     );
 });
 
-test("CXP-130 AC3 the agent guide links to the interface guide and the integrated documentation gives it through MCP", async () => {
+test("CXP-130 AC3 the agent guide links to the interface guide and the integrated documentation gives it through MCP", {
+  skip,
+}, async () => {
   const skill = await readFile(path.join(repositoryRoot, "docs/agents/SKILL.md"), "utf8");
   assert.match(skill, /\[Interface authoring\]\(author-interface\.md\)/u, "the agent guide links to the guide");
   const agent = await readFile(path.join(repositoryRoot, agentGuide), "utf8");
@@ -190,7 +198,9 @@ test("CXP-130 AC3 the agent guide links to the interface guide and the integrate
   }
 });
 
-test("CXP-140 AC1 the gate fails and names the key when a translation key exists in one language catalogue only", async () => {
+test("CXP-140 AC1 the gate fails and names the key when a translation key exists in one language catalogue only", {
+  skip,
+}, async () => {
   const englishCommon = await readFile(path.join(repositoryRoot, HOST_CATALOGUES, "en/common.ts"), "utf8");
   const frenchCommon = await readFile(path.join(repositoryRoot, HOST_CATALOGUES, "fr/common.ts"), "utf8");
   const files: Record<string, string> = {
@@ -241,7 +251,9 @@ test("CXP-140 AC1 the gate fails and names the key when a translation key exists
     assert.ok(result.summary.includes(named), `the gate summary names ${named}: ${result.summary}`);
 });
 
-test("CXP-140 AC2 the gate fails and names file and line when a style sheet writes a colour outside the token files", async () => {
+test("CXP-140 AC2 the gate fails and names file and line when a style sheet writes a colour outside the token files", {
+  skip,
+}, async () => {
   const sheet = [
     "/* A comment may mention #ffffff or white. */",
     ".panel {",
@@ -287,7 +299,7 @@ test("CXP-140 AC2 the gate fails and names file and line when a style sheet writ
   assert.ok(!result.details.some((finding) => finding.startsWith(TOKEN_FILE)), "the token file may write colours");
 });
 
-test("CXP-140 AC3 the existing style sheets of Corpus and of the host pass the gate", async () => {
+test("CXP-140 AC3 the existing style sheets of Corpus and of the host pass the gate", { skip }, async () => {
   const started = Date.now();
   const result = await runGate(repositoryRoot, "interface-rules");
   assert.ok(Date.now() - started < GATE_TIMEOUT_MS, "the measured rules run quickly");

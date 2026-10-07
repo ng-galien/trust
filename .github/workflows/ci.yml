@@ -24,9 +24,7 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
-        with:
-          # The runtime interface-rules test reads the Corpus extension of the submodule.
-          submodules: recursive
+        # The Corpus submodule is a private repository; the tests that read it skip without it.
 
       - name: Set up Node.js
         uses: actions/setup-node@v6
