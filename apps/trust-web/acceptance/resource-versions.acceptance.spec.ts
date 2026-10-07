@@ -142,6 +142,26 @@ test("catalog search finds Operation descriptions and tags and Procedure descrip
   await page.goto("/procedures?q=Repository%20repository-review");
   await expect(page.locator('main a[href^="/procedures/git-status"]')).toHaveCount(1);
 
+  // The runtime is shared with the later specs, which read the Procedure under its source title.
+  const restored = await (
+    await request.post(runtimeRpcUrl, {
+      data: {
+        jsonrpc: "2.0",
+        id: "catalog-restore",
+        method: "catalog.metadata.update",
+        params: {
+          kind: "procedure",
+          name: "git-status",
+          version: "2.0.0",
+          expectedRevision: 1,
+          title: "Establish whether a Git repository has local changes",
+          classification: {},
+        },
+      },
+    })
+  ).json();
+  expect(restored.error).toBeUndefined();
+
   const catalogResponse = await (
     await request.post(runtimeRpcUrl, {
       data: { jsonrpc: "2.0", id: "catalog-method-snapshots", method: "operation.list", params: {} },
