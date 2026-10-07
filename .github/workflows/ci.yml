@@ -39,14 +39,15 @@ jobs:
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium
 
+      - name: Build
+        # The workspace packages resolve each other through their built declarations, so the build comes first.
+        run: npm run build
+
       - name: Typecheck
         run: npm run typecheck
 
       - name: Lint
         run: npm run check
-
-      - name: Build
-        run: npm run build
 
       - name: Acceptance tests of the workspaces
         run: npm run test:acceptance
