@@ -8,9 +8,11 @@
 - An extension selects and bounds the Plans it lists (`GET /extensions/<extension>/trust/plans?procedure=&mode=&workState=&limit=`).
 - Controlled language for Procedure prose, with published vocabularies.
 - Legacy extensions retired; delegation goes through native TRUST missions.
+- The runtime and the Runner declare the MCP revisions they speak (2025-11-25, 2025-06-18, 2025-03-26): `initialize` answers with the requested revision when it is one of them and with 2025-11-25 otherwise; a request whose `MCP-Protocol-Version` header names another revision is refused with 400 and the list; `serverInfo` carries the package version.
 
 ### Operations and Procedures
 
+- The npm package carries no Operation and the server seeds none: an installation starts with an empty catalogue and authors or imports its Operations (registry sources, `trust_operation_save`). The example catalogue stays in the repository under `assets/operations`.
 - `acceptance.vitest-run@1.0.0` runs the Vitest tests a mission contract names in any project of the workspace; `workspace.script-gate@1.0.0` runs the quality gate a project declares in its package scripts; `review.checklist-check@1.1.0`.
 - Draft Operations that observe test duration, stability and selection.
 - `delegation.topology-check@1.0.0`: a Verilog library of delegation elements (`assets/delegation/`) describes who delegates to whom, in what order, who arbitrates and how the work is delivered; the check compiles the topology with Icarus Verilog, refuses an incoherent one with its reason and returns the missions, owner decisions, delivery and order to declare in a Plan.

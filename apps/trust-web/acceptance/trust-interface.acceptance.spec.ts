@@ -7,7 +7,7 @@ test("search icon focuses its input and the cockpit separator supports keyboard 
   request,
 }) => {
   await page.goto("/operations");
-  const search = page.getByPlaceholder("Search name, title or field, or pick filters…");
+  const search = page.getByPlaceholder("Search name, title, description, tag or field, or pick filters…");
   await expect(search).toBeVisible();
   const inputId = await search.getAttribute("id");
   await page.locator(`label[for="${inputId}"]`).click();

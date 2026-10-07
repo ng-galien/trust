@@ -22,6 +22,9 @@ async function capture(page: Page, name: string) {
 
 /** Acceptance data is installed explicitly through the public API, never shipped in the product catalog. */
 async function createProcedureFixture(request: APIRequestContext, id: string, title: string) {
+  // A retried test finds the fixture its first attempt saved; the fixture is the same, so it is reused.
+  const existing = (await runtimeRpc<SourceTemplate[]>(request, "template.list", {})).find((item) => item.id === id);
+  if (existing) return existing;
   const catalog = await runtimeRpc<{ procedures: PublishedProcedure[] }>(request, "procedure.list", {});
   const original = catalog.procedures.find((item) => item.procedure.procedure === "git-status");
   if (!original) throw new Error("The seeded Procedure fixture is missing");
@@ -258,6 +261,8 @@ test("template source uses real LSP defaults, typed completion, diagnostics and 
   await page.getByLabel("Template identifier", { exact: true }).fill("acceptance-template-language");
   await page.getByLabel("Title", { exact: true }).fill("Template language acceptance");
   await page.getByRole("button", { name: "Save template", exact: true }).click();
+  // The save opens the saved template's page; the preview is read there, once that page has settled.
+  await expect(page).toHaveURL(/\/templates\/acceptance-template-language$/);
   await page.getByRole("tab", { name: "Preview", exact: true }).click();
   await page.getByRole("button", { name: "Preview text", exact: true }).click();
   await expect(editor.locator(".view-lines")).not.toContainText("{{procedure}}");

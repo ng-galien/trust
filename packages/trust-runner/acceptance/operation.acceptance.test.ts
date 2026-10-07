@@ -531,6 +531,9 @@ Feature: Keep running until the Check limit stops the process
     const workspaceRoot = join(projectsRoot, "trust-example");
     await mkdir(workspaceRoot);
     await execute("git", ["init", "-q", "--initial-branch=main"], { cwd: workspaceRoot });
+    // The merge the Operation records needs a committer identity; the repository carries its own.
+    await execute("git", ["config", "user.name", "TRUST Acceptance"], { cwd: workspaceRoot });
+    await execute("git", ["config", "user.email", "trust@example.invalid"], { cwd: workspaceRoot });
     await writeFile(join(workspaceRoot, "tracked.txt"), "baseline\n", "utf8");
     await execute("git", ["add", "tracked.txt"], { cwd: workspaceRoot });
     await execute(

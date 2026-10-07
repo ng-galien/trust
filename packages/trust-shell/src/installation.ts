@@ -11,7 +11,6 @@ const moduleDirectory = path.dirname(fileURLToPath(import.meta.url));
 export interface TrustInstallation {
   readonly root: string;
   readonly runtimeEntry: string;
-  readonly operationsDirectory: string;
   readonly webDirectory: string;
   /** Workspace package whose sources build the Runner; absent when `runnerSkillSource` is already packaged. */
   readonly runnerPackageRoot?: string;
@@ -48,7 +47,6 @@ export function trustInstallationAt(root: string): TrustInstallation {
   return {
     root,
     runtimeEntry: path.join(root, "packages/trust-runtime/dist/src/index.js"),
-    operationsDirectory: path.join(root, "assets/operations"),
     webDirectory: path.join(root, "apps/trust-web/dist"),
     runnerPackageRoot: path.join(root, "packages/trust-runner"),
     runnerSkillSource: path.join(root, "assets/skills/trust"),
@@ -61,7 +59,6 @@ export function distributionInstallationAt(root: string): TrustInstallation {
   return {
     root,
     runtimeEntry: path.join(root, "lib/runtime/index.js"),
-    operationsDirectory: path.join(root, "operations"),
     webDirectory: path.join(root, "web"),
     runnerSkillSource: path.join(root, "skills/trust"),
     operationsSkillSource: path.join(root, "skills/trust-operations"),
@@ -98,7 +95,6 @@ function isInstallation(value: TrustInstallation): boolean {
   return (
     existsSync(value.runtimeEntry) &&
     existsSync(path.join(value.webDirectory, "index.html")) &&
-    existsSync(path.join(value.operationsDirectory, "git.head-read.feature")) &&
     existsSync(path.join(value.runnerSkillSource, "SKILL.md")) &&
     existsSync(path.join(value.operationsSkillSource, "SKILL.md")) &&
     (value.runnerPackageRoot === undefined

@@ -72,7 +72,6 @@ lib/runtime/index.js         runtime bundle (runtime, language packages and libr
 lib/runtime/child.js         extension host child process bundle
 documentation/catalog.json   documentation served by MCP
 web/                         built web interface
-operations/                  built-in Operation sources
 skills/trust/                packaged Runner skill (bundled scripts)
 skills/trust-operations/     operational skill
 node_modules/@electric-sql/pglite   bundled dependency (WebAssembly and data files)

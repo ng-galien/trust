@@ -21,7 +21,8 @@ export interface StagedNpmPackage {
 
 /**
  * Assembles the publishable `@ng-galien/trust` package from a built checkout: bundled runtime and CLI,
- * built web interface, packaged Runner, agent skills, built-in Operations and documentation catalog.
+ * built web interface, packaged Runner, agent skills and documentation catalog. It carries no Operation: an
+ * installation authors or imports its own.
  */
 export async function stageNpmPackage(checkout: TrustInstallation, output: string): Promise<StagedNpmPackage> {
   const runnerPackageRoot = checkout.runnerPackageRoot;
@@ -66,9 +67,6 @@ export async function stageNpmPackage(checkout: TrustInstallation, output: strin
   });
   await packageRunnerSkill(checkout, target.runnerSkillSource);
   await cp(checkout.operationsSkillSource, target.operationsSkillSource, { recursive: true });
-  await mkdir(target.operationsDirectory, { recursive: true });
-  for (const name of (await readdir(checkout.operationsDirectory)).filter((entry) => entry.endsWith(".feature")))
-    await cp(path.join(checkout.operationsDirectory, name), path.join(target.operationsDirectory, name));
   await cp(
     path.join(runtimeRoot, "dist/documentation/catalog.json"),
     path.join(directory, "documentation/catalog.json"),
@@ -99,7 +97,7 @@ export async function stageNpmPackage(checkout: TrustInstallation, output: strin
     type: "module",
     engines: { node: shellManifest.engines.node },
     bin: { trust: "bin/trust.js" },
-    files: ["bin", "lib", "web", "operations", "skills", "documentation"],
+    files: ["bin", "lib", "web", "skills", "documentation"],
     dependencies,
     bundleDependencies: [...BUNDLED_DEPENDENCIES],
     publishConfig: { access: "public" },

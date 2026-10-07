@@ -210,8 +210,9 @@ test("DIST-010 AC1 the packed package installs in an empty directory and trust s
   const health = await (await fetch(`${serverUrl}/health`)).json();
   assert.equal(health.service, "trust-runtime");
 
+  // TRUST carries no Operation: a fresh installation starts with an empty catalogue and authors or imports its own.
   const catalog = await rpc("operation.list", {});
-  assert.ok(catalog.operations.some((operation) => operation.operation === "git.head-read"));
+  assert.deepEqual(catalog.operations, []);
 
   const tools = (await mcp(`${serverUrl}/mcp`, "tools/list", {})).tools.map((tool) => tool.name);
   for (const name of ["trust_plan_read", "trust_documentation_read"]) assert.ok(tools.includes(name), name);
@@ -223,7 +224,8 @@ test("DIST-010 AC1 the packed package installs in an empty directory and trust s
   assert.match(skill.content.map((part) => part.text).join("\n"), /Use TRUST for the next task/);
 
   assert.ok((await stat(path.join(dataDirectory, "pglite"))).isDirectory(), "the database lives in the data directory");
-  assert.ok(existsSync(path.join(dataDirectory, "operations/git.head-read.feature")));
+  assert.ok((await stat(path.join(dataDirectory, "operations"))).isDirectory(), "the Operation sources directory");
+  assert.deepEqual(await readdir(path.join(dataDirectory, "operations")), []);
 });
 
 test("DIST-010 AC2 the packed package contains only runtime files and declares its license and Node version", async () => {
@@ -241,7 +243,7 @@ test("DIST-010 AC2 the packed package contains only runtime files and declares i
   const files = packed.files.map((file) => file.path);
   assert.ok(files.length > 0);
   const allowed =
-    /^(package\.json|README\.md|LICENSE|bin\/trust\.js|lib\/cli\.js|lib\/runtime\/(index|child)\.js|documentation\/catalog\.json|operations\/[a-z0-9.-]+\.feature|skills\/(trust|trust-operations)\/.+|web\/.+|node_modules\/@electric-sql\/pglite\/.+)$/;
+    /^(package\.json|README\.md|LICENSE|bin\/trust\.js|lib\/cli\.js|lib\/runtime\/(index|child)\.js|documentation\/catalog\.json|skills\/(trust|trust-operations)\/.+|web\/.+|node_modules\/@electric-sql\/pglite\/.+)$/;
   assert.deepEqual(
     files.filter((file) => !allowed.test(file)),
     [],

@@ -1,7 +1,7 @@
 import { type ChildProcess, spawn } from "node:child_process";
 import { createHash, randomUUID, timingSafeEqual } from "node:crypto";
-import { constants, createReadStream, existsSync } from "node:fs";
-import { copyFile, mkdir, readdir, stat } from "node:fs/promises";
+import { createReadStream, existsSync } from "node:fs";
+import { mkdir, stat } from "node:fs/promises";
 import {
   createServer,
   request as httpRequest,
@@ -159,8 +159,9 @@ export async function startTrustServer(options: TrustServerOptions): Promise<Run
         ? `http://${configurationAuthority(host, runtimePort)}/otlp/diagnostics`
         : configuration.server.diagnosticsEndpoint;
   await mkdir(stateDirectory, { recursive: true });
+  // The Operation sources of this installation: authored or imported here, none come with TRUST itself.
   const operationsDirectory = configuration.server.operationsDirectory ?? path.join(stateDirectory, "operations");
-  await prepareOperationsDirectory(options.installation.operationsDirectory, operationsDirectory);
+  await mkdir(operationsDirectory, { recursive: true });
   await Promise.all([assertPortAvailable(host, runtimePort), assertPortAvailable(host, webPort)]);
 
   const instance = randomUUID();
@@ -206,20 +207,6 @@ export async function startTrustServer(options: TrustServerOptions): Promise<Run
     await stopChild(runtime);
     throw error;
   }
-}
-
-async function prepareOperationsDirectory(source: string, destination: string): Promise<void> {
-  await mkdir(destination, { recursive: true });
-  const builtIns = (await readdir(source)).filter((name) => name.endsWith(".feature"));
-  await Promise.all(
-    builtIns.map(async (name) => {
-      try {
-        await copyFile(path.join(source, name), path.join(destination, name), constants.COPYFILE_EXCL);
-      } catch (error) {
-        if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
-      }
-    }),
-  );
 }
 
 export async function readTrustServerStatus(
