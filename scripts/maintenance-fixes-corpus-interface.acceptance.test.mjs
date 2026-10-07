@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
+import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { test } from "node:test";
@@ -8,6 +9,8 @@ import { fileURLToPath } from "node:url";
 const trust = fileURLToPath(new URL("../", import.meta.url));
 const FINDINGS = "maintenance/findings/corpus-interface.json";
 const CORPUS = path.join(trust, "trust-extension/extensions/corpus");
+// The Corpus submodule is a private repository; a checkout without it skips the test.
+const skip = existsSync(CORPUS) ? false : "the Corpus submodule is not checked out";
 const WEB = path.join(trust, "apps/trust-web");
 
 /** The 19 findings of TRUST-FR-MAINT-040.AC1, and the duplication finding fixed with them by the coordinator's arbitration. */
@@ -51,6 +54,7 @@ function run(command, args, cwd, env = process.env) {
 }
 
 test("MAINT-040 AC1 the first-batch findings of the axis corpus-interface are fixed and pass the check, and the typecheck, the interface gate and the entry and thread browser specs pass unchanged", {
+  skip,
   timeout: 1_800_000,
 }, async () => {
   const check = await run(

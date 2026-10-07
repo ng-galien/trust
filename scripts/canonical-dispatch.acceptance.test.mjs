@@ -9,12 +9,19 @@ import { promisify } from "node:util";
 
 const execute = promisify(execFile);
 const root = fileURLToPath(new URL("../", import.meta.url));
+// The test drives the installed Code Moniker CLI; a machine without it skips the test.
+const codeMoniker = await execute("code-moniker", ["--version"]).then(
+  () => false,
+  (error) => (error.code === "ENOENT" ? "the code-moniker CLI is not installed" : false),
+);
 const dispatchRule = "authority-call-flow-uses-canonical-dispatch";
 const assertionRule = "authority-call-flow-rejects-variant-assertions";
 
 // Exercises the public Code Moniker CLI with the actual project rules. These
 // are syntax-policy fixtures, not inferred-type or runtime-behavior tests.
-test("Code Moniker rejects ad-hoc dispatch but accepts visitors, predicates and transport routing", async () => {
+test("Code Moniker rejects ad-hoc dispatch but accepts visitors, predicates and transport routing", {
+  skip: codeMoniker,
+}, async () => {
   const directory = await mkdtemp(path.join(tmpdir(), "trust-canonical-dispatch-"));
   const put = async (relative, source) => {
     const file = path.join(directory, relative);

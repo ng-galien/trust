@@ -11,6 +11,14 @@ import { SCOPE, startWorkspace } from "./acceptance-operations-support.mjs";
 const exec = promisify(execFile);
 const trust = fileURLToPath(new URL("../", import.meta.url));
 const SCRIPT = path.join(trust, "scripts/delegation-topology.mjs");
+// The library reports its wiring refusals with elaboration-time $error, which Icarus Verilog evaluates from version 13.
+const icarus = await promisify(execFile)("iverilog", ["-V"]).then(
+  ({ stdout }) => {
+    const major = Number(/Icarus Verilog version (\d+)/u.exec(stdout)?.[1]);
+    return major >= 13 ? false : `Icarus Verilog 13 is required, found ${stdout.split("\n")[0]}`;
+  },
+  () => "Icarus Verilog is not installed",
+);
 const CASES = "assets/delegation/cases";
 const ELEMENTS = [
   "mission",
@@ -173,7 +181,9 @@ before(async () => {
 });
 after(() => workspace?.close());
 
-test("TOPO-010 AC1 the library provides the elements mission, mission_interface, analysis, consolidation, batch, resource, coverage, coordinator, owner and delivery", async () => {
+test("TOPO-010 AC1 the library provides the elements mission, mission_interface, analysis, consolidation, batch, resource, coverage, coordinator, owner and delivery", {
+  skip: icarus,
+}, async () => {
   const library = await readFile(path.join(trust, "assets/delegation/library.sv"), "utf8");
   const modules = [...library.matchAll(/^module (\w+)/gmu)].map((match) => match[1]);
   assert.deepEqual([...modules].sort(), [...ELEMENTS].sort());
@@ -192,7 +202,9 @@ test("TOPO-010 AC1 the library provides the elements mission, mission_interface,
   assert.deepEqual([...used].sort(), [...ELEMENTS].sort());
 });
 
-test("TOPO-040 AC1 the library provides the analysis element, a mission that returns findings and has no busy output", async () => {
+test("TOPO-040 AC1 the library provides the analysis element, a mission that returns findings and has no busy output", {
+  skip: icarus,
+}, async () => {
   const library = await readFile(path.join(trust, "assets/delegation/library.sv"), "utf8");
   const header = /^module analysis [\s\S]*?\);/mu.exec(library)[0];
   for (const parameter of ["ID", "PROCEDURE", "ASSIGNEE", "REVIEWER", "CRITERIA", "DURATION"])
@@ -240,7 +252,9 @@ test("TOPO-040 AC1 the library provides the analysis element, a mission that ret
   );
 });
 
-test("TOPO-040 AC2 the library provides the consolidation element, complete when each mission it receives is complete", async () => {
+test("TOPO-040 AC2 the library provides the consolidation element, complete when each mission it receives is complete", {
+  skip: icarus,
+}, async () => {
   const { result } = await check("c33_analysis_and_consolidation");
   assert.equal(result.accepted, true, result.reason);
   const entry = (id) => result.structure.find((item) => item.mission === id);
@@ -257,7 +271,9 @@ test("TOPO-040 AC2 the library provides the consolidation element, complete when
   );
 });
 
-test("TOPO-040 AC3 the order places a mission started by a consolidation after every consolidated mission", async () => {
+test("TOPO-040 AC3 the order places a mission started by a consolidation after every consolidated mission", {
+  skip: icarus,
+}, async () => {
   const { result } = await check("c33_analysis_and_consolidation");
   assert.equal(result.accepted, true, result.reason);
   const started = result.structure.find((item) => item.mission === "apply-findings");
@@ -268,7 +284,9 @@ test("TOPO-040 AC3 the order places a mission started by a consolidation after e
   for (const id of ANALYSES) assert.deepEqual(result.structure.find((item) => item.mission === id).after, []);
 });
 
-test("TOPO-050 AC1 the validation input of an interface mission comes from the validation output of the owner element", async () => {
+test("TOPO-050 AC1 the validation input of an interface mission comes from the validation output of the owner element", {
+  skip: icarus,
+}, async () => {
   assert.equal((await check("c1_interface_validated_by_the_owner")).result.accepted, true);
   assert.deepEqual(
     (await check("c36_validation_not_from_owner")).result,
@@ -286,7 +304,9 @@ test("TOPO-050 AC1 the validation input of an interface mission comes from the v
   );
 });
 
-test("TOPO-050 AC2 the decision input of a mission comes from the decision output of the coordinator element", async () => {
+test("TOPO-050 AC2 the decision input of a mission comes from the decision output of the coordinator element", {
+  skip: icarus,
+}, async () => {
   for (const name of ["c1_interface_validated_by_the_owner", "c4_nested_delegation", "c33_analysis_and_consolidation"])
     assert.equal((await check(name)).result.accepted, true, name);
   assert.deepEqual(
@@ -298,7 +318,9 @@ test("TOPO-050 AC2 the decision input of a mission comes from the decision outpu
   );
 });
 
-test("TOPO-050 AC3 each input of a resource is the busy output of a mission, without expression", async () => {
+test("TOPO-050 AC3 each input of a resource is the busy output of a mission, without expression", {
+  skip: icarus,
+}, async () => {
   assert.equal((await check("c2_same_files_in_sequence")).result.accepted, true);
   assert.deepEqual(
     (await check("c39_resource_input_expression")).result,
@@ -316,7 +338,9 @@ test("TOPO-050 AC3 each input of a resource is the busy output of a mission, wit
   );
 });
 
-test("TOPO-050 AC4 a mission with an empty id, assignee or reviewer is refused at wiring with its reason", async () => {
+test("TOPO-050 AC4 a mission with an empty id, assignee or reviewer is refused at wiring with its reason", {
+  skip: icarus,
+}, async () => {
   assert.deepEqual(
     (await check("c41_empty_id")).result,
     refused("wiring", "ERROR: library.sv:23: mission: the id is empty"),
@@ -336,7 +360,9 @@ test("TOPO-050 AC4 a mission with an empty id, assignee or reviewer is refused a
   );
 });
 
-test("TOPO-010 AC2 a mission whose reviewer is also its assignee is refused at wiring with its reason", async () => {
+test("TOPO-010 AC2 a mission whose reviewer is also its assignee is refused at wiring with its reason", {
+  skip: icarus,
+}, async () => {
   const { result } = await check("c5_reviewer_is_assignee");
   assert.deepEqual(
     result,
@@ -359,7 +385,9 @@ test("TOPO-010 AC2 a mission whose reviewer is also its assignee is refused at w
   );
 });
 
-test("TOPO-010 AC3 a topology that uses an element absent from the library is refused at wiring with the name of the element", async () => {
+test("TOPO-010 AC3 a topology that uses an element absent from the library is refused at wiring with the name of the element", {
+  skip: icarus,
+}, async () => {
   const { result } = await check("c6_element_absent");
   assert.deepEqual(result, refused("wiring", "line 9: reviewer_pool is not a library element"));
   // An element defined in the topology file itself is not a library element either.
@@ -383,7 +411,9 @@ test("TOPO-010 AC3 a topology that uses an element absent from the library is re
   );
 });
 
-test("TOPO-020 AC1 the check refuses a topology whose wiring gives an error or a warning and returns the message of the tool", async () => {
+test("TOPO-020 AC1 the check refuses a topology whose wiring gives an error or a warning and returns the message of the tool", {
+  skip: icarus,
+}, async () => {
   // The same wiring run directly with Icarus Verilog gives only a warning and an executable simulation.
   const directory = await mkdtemp(path.join(tmpdir(), "delegation-wiring-"));
   try {
@@ -420,7 +450,9 @@ test("TOPO-020 AC1 the check refuses a topology whose wiring gives an error or a
   assert.deepEqual(error.result, refused("wiring", "topology.sv:8: error: port ``reviewed'' is not a port of a."));
 });
 
-test("TOPO-020 AC2 the check runs the topology and refuses work never delivered, two missions at the same time on one resource and a criterion carried by no mission", async () => {
+test("TOPO-020 AC2 the check runs the topology and refuses work never delivered, two missions at the same time on one resource and a criterion carried by no mission", {
+  skip: icarus,
+}, async () => {
   assert.deepEqual(
     (await check("c8_work_never_delivered")).result,
     refused("run", "the work is never delivered (t=152)"),
@@ -496,6 +528,7 @@ test("TOPO-020 AC2 the check runs the topology and refuses work never delivered,
 });
 
 test("TOPO-020 AC3 an accepted topology gives its missions, owner decisions and delivery in the form a Plan declaration accepts", {
+  skip: icarus,
   timeout: 120000,
 }, async () => {
   assert.deepEqual((await check("c1_interface_validated_by_the_owner")).result, ACCEPTED_C1);
@@ -601,7 +634,7 @@ test("TOPO-020 AC3 an accepted topology gives its missions, owner decisions and 
   );
 });
 
-test("TOPO-020 AC4 the same topology gives the same result at each check", async () => {
+test("TOPO-020 AC4 the same topology gives the same result at each check", { skip: icarus }, async () => {
   for (const name of ["c1_interface_validated_by_the_owner", "c4_nested_delegation", "c7_exception_wired_to_nobody"]) {
     const first = await check(name);
     const second = await check(name);
@@ -628,6 +661,7 @@ test("TOPO-020 AC4 the same topology gives the same result at each check", async
 });
 
 test("TOPO-030 AC1 an Operation checks a topology file of the workspace and produces the verdict, its reason and the missions", {
+  skip: icarus,
   timeout: 120000,
 }, async () => {
   await workspace.engage("topology-probe", "accepted", {
@@ -661,6 +695,7 @@ test("TOPO-030 AC1 an Operation checks a topology file of the workspace and prod
 });
 
 test("TOPO-030 AC2 a Check that uses this Operation gives a negative verdict with the reason of the refusal for a refused topology", {
+  skip: icarus,
   timeout: 120000,
 }, async () => {
   await workspace.engage("topology-probe", "refused", {

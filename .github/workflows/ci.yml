@@ -25,6 +25,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
         # The Corpus submodule is a private repository; the tests that read it skip without it.
+        # The maintenance findings are checked against the base commit of each findings file: full history.
+        with:
+          fetch-depth: 0
 
       - name: Set up Node.js
         uses: actions/setup-node@v6

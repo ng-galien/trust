@@ -171,7 +171,8 @@
       ],
       "risk": "medium",
       "riskReason": "No published source changes, but a registry package becomes installable: each sha256 must match the source already published, or a registry install would conflict with the catalogue; the registry acceptance tests read this index format.",
-      "state": "open"
+      "state": "fixed",
+      "stateReason": "Owner's decision of 6 October 2026: Corpus serves only corpus-thread-framework@0.9.0. The README sentence presenting the procedures directory as an example framework is gone with the old versions."
     },
     {
       "id": "coverage-check-unversioned-name-holds-0-1-0",
@@ -219,7 +220,8 @@
       ],
       "risk": "low",
       "riskReason": "A rename keeps the published text; only one test path changes.",
-      "state": "open"
+      "state": "fixed",
+      "stateReason": "Owner's decision of 6 October 2026: Corpus serves only corpus-thread-framework@0.9.0. The unversioned source and the 0.2.0 and 0.3.0 files are deleted; only the current version remains."
     },
     {
       "id": "thread-link-unversioned-name-holds-0-1-0",
@@ -234,14 +236,6 @@
         "text": "@trust-dsl:1 @operation:corpus.thread-link @version:0.1.0"
       },
       "related": [
-        {
-          "file": "trust-extension/extensions/corpus/procedures/thread-link-0.2.0.operation.feature",
-          "lines": [
-            1,
-            1
-          ],
-          "text": "@trust-dsl:1 @operation:corpus.thread-link @version:0.2.0"
-        },
         {
           "file": "trust-extension/extensions/corpus/procedures/thread-link-0.3.0.operation.feature",
           "lines": [
@@ -292,7 +286,8 @@
       ],
       "risk": "low",
       "riskReason": "A rename keeps the published text; only one test path changes.",
-      "state": "open"
+      "state": "fixed",
+      "stateReason": "Owner's decision of 6 October 2026: Corpus serves only corpus-thread-framework@0.9.0. The unversioned source is deleted; only the current version remains."
     },
     {
       "id": "thread-revision-read-unversioned-name-holds-0-1-0",
@@ -325,7 +320,8 @@
       ],
       "risk": "low",
       "riskReason": "A rename keeps the published text; the paths are test support only.",
-      "state": "open"
+      "state": "fixed",
+      "stateReason": "Owner's decision of 6 October 2026: Corpus serves only corpus-thread-framework@0.9.0. The unversioned source is deleted; only the current version remains."
     },
     {
       "id": "thread-read-0-1-0-unpublished-test-source",
@@ -360,7 +356,8 @@
       ],
       "risk": "low",
       "riskReason": "The version is not published in the owner's runtime and the text does not change; only test paths and labels change.",
-      "state": "open"
+      "state": "fixed",
+      "stateReason": "Owner's decision of 6 October 2026: Corpus serves only corpus-thread-framework@0.9.0. The 0.1.0 source is deleted."
     },
     {
       "id": "thread-framework-0-1-0-unpublished-test-source",
@@ -395,7 +392,8 @@
       ],
       "risk": "low",
       "riskReason": "The version is not published in the owner's runtime and the text does not change; only test paths change.",
-      "state": "open"
+      "state": "fixed",
+      "stateReason": "Owner's decision of 6 October 2026: Corpus serves only corpus-thread-framework@0.9.0. The 0.1.0 source is deleted; thread-framework-0.9.0 is the only framework source."
     },
     {
       "id": "delegation-interface-unversioned-name-holds-2-0-0",
@@ -434,7 +432,8 @@
       ],
       "risk": "low",
       "riskReason": "A rename keeps the published text and no file references the path.",
-      "state": "open"
+      "state": "fixed",
+      "stateReason": "Owner's decision of 6 October 2026: Corpus serves only corpus-thread-framework@0.9.0. The unversioned 2.0.0 source and the 1.0.0 file are deleted; delegation-interface-3.0.0 remains."
     },
     {
       "id": "history-folder-holds-published-old-versions",
@@ -474,7 +473,8 @@
       ],
       "risk": "low",
       "riskReason": "Moving keeps the published text, and nothing references these paths.",
-      "state": "open"
+      "state": "fixed",
+      "stateReason": "Owner's decision of 6 October 2026: Corpus serves only corpus-thread-framework@0.9.0. The history folder is deleted with the old published versions it held."
     },
     {
       "id": "history-folder-holds-unpublished-procedures",
@@ -515,7 +515,8 @@
       ],
       "risk": "low",
       "riskReason": "These versions are not published in the owner's runtime and nothing reads them; Git history keeps the text. Another runtime that published them could not be checked.",
-      "state": "open"
+      "state": "fixed",
+      "stateReason": "Owner's decision of 6 October 2026: Corpus serves only corpus-thread-framework@0.9.0. The history folder is deleted with the unpublished Procedures it held."
     },
     {
       "id": "coordination-mission-sources-overwrote-published-1-0-0",

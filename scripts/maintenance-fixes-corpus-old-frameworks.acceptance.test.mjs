@@ -1,16 +1,15 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
+import { existsSync } from "node:fs";
 import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
-import {
-  A,
-  documentOf,
-  editCorpusStore,
-  ok,
-  registerContinuationRuntime,
-} from "../trust-extension/extensions/corpus/acceptance/continuation-harness.mjs";
+
+// The Corpus submodule is a private repository; a checkout without it skips the test and loads no harness.
+const HARNESS = new URL("../trust-extension/extensions/corpus/acceptance/continuation-harness.mjs", import.meta.url);
+const skip = existsSync(HARNESS) ? false : "the Corpus submodule is not checked out";
+const { A, documentOf, editCorpusStore, ok, registerContinuationRuntime } = skip ? {} : await import(HARNESS.href);
 
 const trust = fileURLToPath(new URL("../", import.meta.url));
 const FINDINGS = "maintenance/findings/corpus-old-frameworks.json";
@@ -70,6 +69,7 @@ async function filesUnder(directory) {
 }
 
 test("MAINT-040 AC2 the Corpus extension serves only the current framework version, the old-frameworks findings are fixed or declined and pass the check, a thread linked to an old Plan is read with the current rules, and the remaining Corpus acceptance tests pass unchanged", {
+  skip,
   timeout: 1_800_000,
 }, async () => {
   // The findings of the axis pass the check, each fixed or declined.
