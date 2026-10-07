@@ -1,0 +1,65 @@
+name: Build and test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          submodules: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24.10.0
+          cache: npm
+
+      - name: Install system tools
+        # Icarus Verilog checks the delegation topologies; PostgreSQL binaries serve the Runner credential test.
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends iverilog postgresql
+          ls /usr/lib/postgresql
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run check
+
+      - name: Build
+        run: npm run build
+
+      - name: Acceptance tests of the workspaces
+        run: npm run test:acceptance
+
+      - name: Acceptance tests of the repository scripts
+        run: node --test --test-concurrency=1 scripts/*.acceptance.test.mjs
+
+      - name: Keep the Playwright report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-results
+          path: |
+            apps/trust-web/test-results
+            apps/trust-web/playwright-report
+          if-no-files-found: ignore

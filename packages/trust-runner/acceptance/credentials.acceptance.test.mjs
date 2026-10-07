@@ -16,10 +16,15 @@ const execute = promisify(execFile);
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
 // libpq ships initdb and pg_ctl without the server; the first directory that also holds postgres is used.
 const postgresqlBin = [
+  ...(process.env.TRUST_POSTGRESQL_BIN ? [process.env.TRUST_POSTGRESQL_BIN] : []),
   "/opt/homebrew/opt/libpq/bin",
   "/opt/homebrew/opt/postgresql@18/bin",
   "/opt/homebrew/opt/postgresql@17/bin",
   "/opt/homebrew/bin",
+  // Debian and Ubuntu install each major version under /usr/lib/postgresql.
+  "/usr/lib/postgresql/18/bin",
+  "/usr/lib/postgresql/17/bin",
+  "/usr/lib/postgresql/16/bin",
 ].find((candidate) => existsSync(path.join(candidate, "postgres")));
 // macOS PostgreSQL refuses to start without a valid locale in its process environment.
 const postgresqlProcessEnvironment = { PATH: process.env.PATH ?? "", LANG: "C", LC_ALL: "C" };
