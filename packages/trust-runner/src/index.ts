@@ -15,7 +15,7 @@ export type { DiagnosticEvent, DiagnosticsSink, StepReporter } from "./diagnosti
 export { OtlpDiagnosticsSink } from "./diagnostics/otlp.js";
 export { createRunnerLogging } from "./diagnostics/pino.js";
 export { HttpStatusError } from "./http/run.js";
-export { createMcpHandler, MCP_PROTOCOL_VERSION, TRUST_CHECK_RUN_TOOL } from "./mcp/protocol.js";
+export { createMcpHandler, MCP_PROTOCOL_VERSION, MCP_PROTOCOL_VERSIONS, TRUST_CHECK_RUN_TOOL } from "./mcp/protocol.js";
 export { runMcpStdio } from "./mcp/stdio.js";
 export type { OperationResult, OperationRunnerConfiguration } from "./operation/run.js";
 export { runOperation } from "./operation/run.js";

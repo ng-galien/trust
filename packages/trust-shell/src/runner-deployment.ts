@@ -34,6 +34,10 @@ export async function packageRunnerSkill(
     }
     await mkdir(path.join(output, "scripts"), { recursive: true });
     const { build } = await import("esbuild");
+    const runnerManifest = JSON.parse(await readFile(path.join(runnerPackageRoot, "package.json"), "utf8")) as {
+      readonly version?: unknown;
+    };
+    if (typeof runnerManifest.version !== "string") throw new Error(`No version in ${runnerPackageRoot}/package.json`);
     await Promise.all([
       cp(path.join(installation.runnerSkillSource, "SKILL.md"), path.join(output, "SKILL.md")),
       cp(path.join(installation.runnerSkillSource, "agents"), path.join(output, "agents"), { recursive: true }),
@@ -55,6 +59,8 @@ export async function packageRunnerSkill(
       },
       minify: true,
       target: "node24",
+      // The stdio MCP server announces the Runner version it was bundled from.
+      define: { __TRUST_RUNNER_VERSION__: JSON.stringify(runnerManifest.version) },
       outdir: path.join(output, "scripts"),
     });
     // The bundles are ES modules; this marker keeps them runnable wherever the Runner is deployed.

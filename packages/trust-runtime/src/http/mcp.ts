@@ -19,6 +19,7 @@ import { ExtensionError, type ExtensionHost } from "../extensions/host.js";
 import { parseMissionDeclarations } from "../plan/mission-declarations.js";
 import { type PlanReader, ReadError } from "../plan/read.js";
 import { type PlanRuntime, PlanRuntimeError } from "../plan/runtime.js";
+import { trustRuntimeVersion } from "../version.js";
 import { expireAccessStream, guardAccessStream, requestAccess } from "./access.js";
 import {
   AUTHORING_TOOL_NAMES,
@@ -46,6 +47,14 @@ import { callRegistryTool, isRegistryToolName, registryTools } from "./mcp-regis
 import type { RegistryRpcDependencies } from "./registry.js";
 
 export const MCP_JSON_LIMIT_BYTES = 1_048_576;
+/**
+ * The MCP revisions the runtime speaks, latest first. They are the handshake revisions that define Streamable HTTP:
+ * `initialize` answers with the requested revision when it is one of them and with the latest otherwise, and every
+ * later request names one of them in its `MCP-Protocol-Version` header.
+ */
+const LATEST_PROTOCOL_VERSION = "2025-11-25";
+export const MCP_PROTOCOL_VERSIONS: readonly string[] = [LATEST_PROTOCOL_VERSION, "2025-06-18", "2025-03-26"];
+const PROTOCOL_VERSION_REQUIRED = `MCP-Protocol-Version must be one of ${MCP_PROTOCOL_VERSIONS.join(", ")}`;
 
 const PARSE_ERROR = -32_700;
 const INVALID_REQUEST = -32_600;
@@ -89,7 +98,13 @@ export function createMcpHttpHandler(dependencies: McpHttpDependencies): Router 
       response.status(406).end();
       return;
     }
-    void dispatch(request.body, request.get("mcp-protocol-version"), {
+    // Only `initialize` may arrive without a negotiated revision; any other message names a supported one.
+    const initialize = isRecord(request.body) && request.body.method === "initialize";
+    if (!initialize && !supportedProtocolVersion(request.get("mcp-protocol-version"))) {
+      response.status(400).json(failure(requestId(request.body), INVALID_REQUEST, PROTOCOL_VERSION_REQUIRED));
+      return;
+    }
+    void dispatch(request.body, {
       ...dependencies,
       access: requestAccess(request),
     })
@@ -118,8 +133,8 @@ export function createMcpHttpHandler(dependencies: McpHttpDependencies): Router 
       response.status(406).end();
       return;
     }
-    if (!validProtocolVersion(request.get("mcp-protocol-version"))) {
-      response.status(400).json(failure(null, INVALID_REQUEST, "MCP-Protocol-Version is required"));
+    if (!supportedProtocolVersion(request.get("mcp-protocol-version"))) {
+      response.status(400).json(failure(null, INVALID_REQUEST, PROTOCOL_VERSION_REQUIRED));
       return;
     }
     response
@@ -161,11 +176,7 @@ export function createMcpHttpHandler(dependencies: McpHttpDependencies): Router 
   return router;
 }
 
-async function dispatch(
-  message: unknown,
-  protocolVersion: string | undefined,
-  dependencies: McpHttpDependencies,
-): Promise<JsonRpcResponse | undefined> {
+async function dispatch(message: unknown, dependencies: McpHttpDependencies): Promise<JsonRpcResponse | undefined> {
   if (!isRecord(message) || message.jsonrpc !== "2.0" || typeof message.method !== "string") {
     return failure(requestId(message), INVALID_REQUEST, "Invalid Request");
   }
@@ -173,11 +184,7 @@ async function dispatch(
     return failure(null, INVALID_REQUEST, "Invalid Request");
   }
   const id = requestId(message);
-  const notification = !("id" in message);
-  if (message.method !== "initialize" && !validProtocolVersion(protocolVersion)) {
-    return notification ? undefined : failure(id, INVALID_REQUEST, "MCP-Protocol-Version is required");
-  }
-  if (notification) return undefined;
+  if (!("id" in message)) return undefined;
   if (id === null) return failure(null, INVALID_REQUEST, "Invalid Request");
 
   switch (message.method) {
@@ -187,9 +194,11 @@ async function dispatch(
         return failure(id, INVALID_PARAMS, "Invalid initialize parameters");
       }
       return success(id, {
-        protocolVersion: requestedProtocolVersion,
+        protocolVersion: supportedProtocolVersion(requestedProtocolVersion)
+          ? requestedProtocolVersion
+          : LATEST_PROTOCOL_VERSION,
         capabilities: { tools: { listChanged: true } },
-        serverInfo: { name: "trust-runtime", version: "0.1.0" },
+        serverInfo: { name: "trust-runtime", version: trustRuntimeVersion() },
       });
     }
     case "ping":
@@ -1254,6 +1263,10 @@ function initializeProtocolVersion(value: unknown): string | undefined {
 
 function validProtocolVersion(value: unknown): value is string {
   return boundedString(value, 64);
+}
+
+function supportedProtocolVersion(value: unknown): value is string {
+  return typeof value === "string" && MCP_PROTOCOL_VERSIONS.includes(value);
 }
 
 function validToolsListParams(value: unknown): boolean {

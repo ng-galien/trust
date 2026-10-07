@@ -1,8 +1,16 @@
+import { existsSync, readFileSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import type { JsonValue } from "@trust/operation";
 import type { CheckResult } from "../check/run.js";
 import { isJsonObject, type JsonObject } from "../lib/json.js";
 
+/** The MCP revisions the Runner speaks over stdio, latest first; `initialize` echoes a supported request, else the latest. */
 export const MCP_PROTOCOL_VERSION = "2025-11-25";
+export const MCP_PROTOCOL_VERSIONS: readonly string[] = [MCP_PROTOCOL_VERSION, "2025-06-18", "2025-03-26"];
+// The Runner deployment bundle defines its package version; a module run from the build reads it from its package.
+declare const __TRUST_RUNNER_VERSION__: string | undefined;
+const RUNNER_VERSION = typeof __TRUST_RUNNER_VERSION__ === "string" ? __TRUST_RUNNER_VERSION__ : packageVersion();
 export const TRUST_CHECK_RUN_TOOL = "trust_check_run";
 
 export interface CheckRunner {
@@ -25,10 +33,12 @@ export function createMcpHandler(runner: CheckRunner) {
     const id = typeof message.id === "string" || typeof message.id === "number" ? message.id : null;
     if (id === null) return error(null, -32600, "Invalid Request");
     if (message.method === "initialize") {
+      const requested = isJsonObject(message.params) ? message.params.protocolVersion : undefined;
       return success(id, {
-        protocolVersion: MCP_PROTOCOL_VERSION,
+        protocolVersion:
+          typeof requested === "string" && MCP_PROTOCOL_VERSIONS.includes(requested) ? requested : MCP_PROTOCOL_VERSION,
         capabilities: { tools: { listChanged: false } },
-        serverInfo: { name: "trust-runner", version: "0.1.0" },
+        serverInfo: { name: "trust-runner", version: RUNNER_VERSION },
       });
     }
     if (message.method === "ping") return success(id, {});
@@ -82,4 +92,19 @@ function success(id: string | number, result: JsonObject): JsonRpcResponse {
 
 function error(id: string | number | null, code: number, message: string): JsonRpcResponse {
   return { jsonrpc: "2.0", id, error: { code, message } };
+}
+
+/** Version of the nearest package above this module: the Runner package in the repository. */
+function packageVersion(): string {
+  let directory = path.dirname(fileURLToPath(import.meta.url));
+  for (;;) {
+    const manifest = path.join(directory, "package.json");
+    if (existsSync(manifest)) {
+      const parsed = JSON.parse(readFileSync(manifest, "utf8")) as { readonly version?: unknown };
+      if (typeof parsed.version === "string") return parsed.version;
+    }
+    const parent = path.dirname(directory);
+    if (parent === directory) throw new Error("TRUST Runner package manifest not found");
+    directory = parent;
+  }
 }

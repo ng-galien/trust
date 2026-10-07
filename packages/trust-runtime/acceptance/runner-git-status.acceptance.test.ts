@@ -11,6 +11,11 @@ import { test } from "./support/fixtures.js";
 
 const execute = promisify(execFile);
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../..");
+const runnerVersion = (
+  JSON.parse(await readFile(path.join(repositoryRoot, "packages/trust-runner/package.json"), "utf8")) as {
+    version: string;
+  }
+).version;
 
 test("the packaged TRUST Skill executes the git-status Check", async ({ startRuntime }) => {
   const projectsRoot = await mkdtemp(path.join(tmpdir(), "trust-runner-git-"));
@@ -264,7 +269,9 @@ test("the packaged TRUST Skill executes the git-status Check", async ({ startRun
       },
       runnerBinRoot,
     );
+    assert.equal(mcp.initialize.result?.protocolVersion, "2025-11-25");
     assert.equal(mcp.initialize.result?.serverInfo?.name, "trust-runner");
+    assert.equal(mcp.initialize.result?.serverInfo?.version, runnerVersion);
     assert.equal(mcp.tools.result?.tools?.[0]?.name, "trust_check_run");
     const mcpText = mcp.call.result?.content?.find(({ type }) => type === "text")?.text;
     assert.equal(typeof mcpText, "string");
@@ -326,7 +333,8 @@ async function rpc(endpoint: string, method: string, params: unknown): Promise<u
 
 interface McpStdioResponse {
   readonly result?: {
-    readonly serverInfo?: { readonly name?: string };
+    readonly protocolVersion?: string;
+    readonly serverInfo?: { readonly name?: string; readonly version?: string };
     readonly tools?: readonly { readonly name?: string }[];
     readonly content?: readonly { readonly type?: string; readonly text?: string }[];
     readonly isError?: boolean;
