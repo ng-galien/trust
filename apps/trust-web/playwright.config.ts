@@ -2,11 +2,16 @@ import { defineConfig } from "@playwright/test";
 
 const webPort = process.env.TRUST_WEB_ACCEPTANCE_WEB_PORT ?? "4174";
 
+// A continuous-integration runner renders a page more slowly than a workstation: the assertions wait longer there.
+const ci = Boolean(process.env.CI);
+
 export default defineConfig({
   testDir: "./acceptance",
   fullyParallel: false,
   workers: 1,
   reporter: "line",
+  timeout: ci ? 60_000 : 30_000,
+  expect: { timeout: ci ? 15_000 : 5_000 },
   projects: [
     {
       name: "acceptance",

@@ -43,6 +43,10 @@ jobs:
         # The workspace packages resolve each other through their built declarations, so the build comes first.
         run: npm run build
 
+      - name: Build the bundled example extension
+        # The root build does not bundle extensions; the runtime and web acceptance tests install Dragon Heist.
+        run: npm run build --workspace=@trust-extension/dragon-heist
+
       - name: Typecheck
         run: npm run typecheck
 
