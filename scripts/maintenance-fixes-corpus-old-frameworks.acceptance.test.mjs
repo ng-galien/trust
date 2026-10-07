@@ -45,7 +45,7 @@ const CORPUS_FILES = [
 ];
 
 // The isolated runtime in which a thread linked to a Plan TRUST does not hold is read.
-registerContinuationRuntime();
+if (!skip) registerContinuationRuntime();
 
 /** Runs one command to its end and returns its exit code and its combined output. */
 function run(command, args, cwd, env = process.env) {
