@@ -121,21 +121,59 @@ export TRUST_OTLP_ENDPOINT=http://127.0.0.1:4173/v1/traces
 
 ## 5. Pick an Operation and publish a Procedure
 
-An Operation is a reusable action that produces typed Facts. The server ships
-built-in Operations; `git.head-read` reads a repository's HEAD and working tree.
+An Operation is a reusable action that produces typed Facts. TRUST carries no
+Operation: a project writes or imports the ones it needs. This one reads a
+repository's HEAD and working tree with two `git` commands.
 
 ```sh
-trust rpc operation.read '{"operation":"git.head-read","version":"1.0.0"}' --field title
+mkdir -p trust
+cat > trust/git.head-read.feature <<'EOF'
+# language: en
+@trust-dsl:1 @operation:git.head-read @version:1.0.0
+Feature: Read Git HEAD and working tree
+
+  Background: Operation interface
+    Given Environment
+      | name          | type      |
+      | workspaceRoot | directory |
+    And Input
+      | input   | type      | cardinality |
+      | project | reference | one         |
+    And Produced fields
+      | field        | type      | cardinality | domain                |
+      | headRevision | reference | one         | any                   |
+      | workingTree  | string    | one         | enum "clean", "dirty" |
+
+  Scenario: Run
+    When Shell "head" runs "git" with cwd from Environment "workspaceRoot" and Input "project"
+      | argument  | source  |
+      | rev-parse | literal |
+      | --verify  | literal |
+      | HEAD      | literal |
+    And Shell "status" runs "git" with cwd from Environment "workspaceRoot" and Input "project"
+      | argument                 | source  |
+      | status                   | literal |
+      | --porcelain=v1           | literal |
+      | --untracked-files=normal | literal |
+    Then Produce with JSONata
+      """
+      {
+        "headRevision": $trim(steps.head.stdout),
+        "workingTree": $trim(steps.status.stdout) = "" ? "clean" : "dirty"
+      }
+      """
+EOF
+trust rpc operation.save '{"sourceName":"git.head-read.feature"}' --text source=trust/git.head-read.feature --field operation.title
 ```
 
-Expected output: `Read Git HEAD and working tree`.
+Expected output: `Read Git HEAD and working tree`. A published Operation version is
+immutable, like a Procedure version.
 
 A Procedure states which Checks a Plan contains and what each Check must
 establish. This one asks for a local change in the observed repository. The agent
 may edit files; it may not commit or reset to change the observed state.
 
 ```sh
-mkdir -p trust
 cat > trust/repository-change.feature <<'EOF'
 # language: en
 @trust-dsl:1 @procedure:repository-change @version:1.0.0

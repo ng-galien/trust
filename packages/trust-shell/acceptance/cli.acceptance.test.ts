@@ -261,7 +261,7 @@ test("trust registry commands persist and synchronize an HTTP registry through t
   ).replaceAll("git.head-read", "registry.git-head-read");
   const procedure = (await readFile(path.join(repositoryRoot, "assets/procedures/00-git-status.feature"), "utf8"))
     .replace("@procedure:git-status", "@procedure:registry-git-status")
-    .replace('Operation "git.head-read"', 'Operation "registry.git-head-read"');
+    .replace('Operation "git.head-read@*"', 'Operation "registry.git-head-read@*"');
   const index = JSON.stringify({
     contract: "trust.registry-index@1",
     artifacts: [
