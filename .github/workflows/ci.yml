@@ -10,6 +10,13 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  # The Runner acceptance tests commit in disposable repositories.
+  GIT_AUTHOR_NAME: TRUST CI
+  GIT_AUTHOR_EMAIL: ci@trust.invalid
+  GIT_COMMITTER_NAME: TRUST CI
+  GIT_COMMITTER_EMAIL: ci@trust.invalid
+
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
@@ -18,7 +25,8 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
         with:
-          submodules: false
+          # The runtime interface-rules test reads the Corpus extension of the submodule.
+          submodules: recursive
 
       - name: Set up Node.js
         uses: actions/setup-node@v6
@@ -42,6 +50,10 @@ jobs:
       - name: Build
         # The workspace packages resolve each other through their built declarations, so the build comes first.
         run: npm run build
+
+      - name: Package the Runner skill
+        # The Dragon Heist and runtime tests run the packaged Runner scripts.
+        run: npm run package:skill
 
       - name: Build the bundled example extension
         # The root build does not bundle extensions; the runtime and web acceptance tests install Dragon Heist.

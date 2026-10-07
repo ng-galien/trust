@@ -46,6 +46,7 @@ describe("Procedure compiler", () => {
       "08-end-to-end-red-green-telemetry.feature",
       "09-runner-smoke.feature",
       "10-runner-smoke-journey.feature",
+      "agent-delegation-verified.feature",
       "agent-delegation.feature",
     ]);
 

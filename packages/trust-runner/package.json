@@ -17,7 +17,7 @@
   ],
   "scripts": {
     "package:skill": "npm run build --workspace=@trust/shell && node scripts/package-skill.ts",
-    "test:acceptance": "npm run build --workspace=@trust/operation && npm run typecheck && vitest run acceptance",
+    "test:acceptance": "npm run build --workspace=@trust/operation && npm run typecheck && vitest run acceptance --exclude \"**/credentials.acceptance.test.mjs\" && node --test acceptance/credentials.acceptance.test.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.acceptance.json"
   },
   "dependencies": {

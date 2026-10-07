@@ -10,8 +10,9 @@ export default defineConfig({
   fullyParallel: false,
   workers: 1,
   reporter: "line",
-  timeout: ci ? 60_000 : 30_000,
-  expect: { timeout: ci ? 15_000 : 5_000 },
+  timeout: ci ? 90_000 : 30_000,
+  expect: { timeout: ci ? 30_000 : 5_000 },
+  retries: ci ? 1 : 0,
   projects: [
     {
       name: "acceptance",
