@@ -44,7 +44,10 @@ test("LSP references open the exact resource version and retain their source ori
   await page.getByRole("button", { name: "Close", exact: true }).click();
   await expect(page).toHaveURL(origin);
   const procedure = editor.getByText(/^"?dragon-heist-distraction@1\.0\.0"?$/).first();
-  await procedure.scrollIntoViewIfNeeded();
+  // Monaco redraws its lines while the editor lays itself out again after the overlay closes.
+  await expect(async () => {
+    await procedure.scrollIntoViewIfNeeded({ timeout: 2_000 });
+  }).toPass({ timeout: 15_000 });
   await procedure.hover();
   await expect(page.locator(".monaco-hover").filter({ hasText: "1.0.0" }).first()).toBeVisible();
   await procedure.click({ modifiers: [modifier] });
