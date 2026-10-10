@@ -81,46 +81,65 @@ export async function startPublicRuntime(
           await once(runtime, "exit");
         }
         await rm(dataDirectory, { recursive: true, force: true });
+        releaseAcceptanceDatabase(storage);
       },
     };
   } catch (error) {
     runtime.kill("SIGTERM");
     await rm(dataDirectory, { recursive: true, force: true });
+    releaseAcceptanceDatabase(storage);
     throw error;
   }
 }
 
 const postgresTargets = new Map<string, string>();
-const createdDatabases: Array<{ admin: string; name: string }> = [];
+/** Databases this process created, with the runtimes still using each; a drop never takes a running runtime's. */
+const createdDatabases: Array<{ admin: string; name: string; directory: string; target: string; live: number }> = [];
 
 /** Every acceptance process owns its databases; an explicit directory maps to one restartable target. */
 async function acceptanceStorage(storage: StorageConfiguration): Promise<StorageConfiguration> {
   const admin = process.env.TRUST_ACCEPTANCE_POSTGRES_URL;
   if (storage.kind === "postgresql" || !admin) return storage;
   const existing = postgresTargets.get(storage.directory);
-  if (existing) return { kind: "postgresql", connectionString: existing };
+  if (existing) {
+    const entry = createdDatabases.find((value) => value.target === existing);
+    if (entry) entry.live += 1;
+    return { kind: "postgresql", connectionString: existing };
+  }
   const name = `trust_acceptance_${randomUUID().replaceAll("-", "")}`;
+  const target = new URL(admin);
+  target.pathname = `/${name}`;
   const client = new Client({ connectionString: admin });
   await client.connect();
   try {
     await client.query(`CREATE DATABASE "${name}" TEMPLATE template0`);
-    createdDatabases.push({ admin, name });
+    createdDatabases.push({ admin, name, directory: storage.directory, target: target.href, live: 1 });
   } finally {
     await client.end();
   }
-  const target = new URL(admin);
-  target.pathname = `/${name}`;
   postgresTargets.set(storage.directory, target.href);
   return { kind: "postgresql", connectionString: target.href };
 }
 
-/** Drops the PostgreSQL databases this process created; each test runner calls it when its file ends. */
+/** A closed runtime no longer holds its database; the database stays until the next drop. */
+function releaseAcceptanceDatabase(storage: StorageConfiguration): void {
+  if (storage.kind !== "postgresql") return;
+  const entry = createdDatabases.find((value) => value.target === storage.connectionString);
+  if (entry) entry.live -= 1;
+}
+
+/**
+ * Drops the PostgreSQL databases this process created and no running runtime uses; a per-test runtime's end calls
+ * it beside the file-wide runtime, which keeps its database until the file ends.
+ */
 export async function dropAcceptanceDatabases(): Promise<void> {
-  for (const { admin, name } of createdDatabases.splice(0)) {
-    const client = new Client({ connectionString: admin });
+  for (const entry of createdDatabases.filter((value) => value.live <= 0)) {
+    createdDatabases.splice(createdDatabases.indexOf(entry), 1);
+    if (postgresTargets.get(entry.directory) === entry.target) postgresTargets.delete(entry.directory);
+    const client = new Client({ connectionString: entry.admin });
     await client.connect();
     try {
-      await client.query(`DROP DATABASE "${name}" WITH (FORCE)`);
+      await client.query(`DROP DATABASE "${entry.name}" WITH (FORCE)`);
     } finally {
       await client.end();
     }
