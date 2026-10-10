@@ -1,4 +1,4 @@
-import { CompiledQuery, type Dialect, PostgresDialect } from "kysely";
+import { type Dialect, PostgresDialect } from "kysely";
 import pg from "pg";
 import { DATABASE_PARSERS } from "./codecs.js";
 import { DatabaseOwnershipError } from "./ownership.js";
@@ -22,7 +22,6 @@ export async function createPostgresDialect(connectionString: string): Promise<D
     },
   };
   const owner = new pg.Client({ ...configuration, application_name: "trust-runtime-owner" });
-  const pool = new pg.Pool({ ...configuration, max: 8 });
   const clients = new Set<pg.PoolClient>();
   let closed = false;
   let releasingOwnership = false;
@@ -31,6 +30,17 @@ export async function createPostgresDialect(connectionString: string): Promise<D
     if (closed || ownershipLost)
       throw new DatabaseOwnershipError("PostgreSQL runtime database ownership is unavailable");
   };
+  const pool = new pg.Pool({
+    ...configuration,
+    max: 8,
+    // The pool awaits initialization and destroys a failed client before checkout.
+    // Kysely acquisition hooks run after checkout without releasing on hook failure.
+    onConnect: async (client) => {
+      assertOwner();
+      await client.query("SET search_path = public, pg_catalog");
+      await client.query("SET TIME ZONE 'UTC'");
+    },
+  });
   const loseOwnership = (): void => {
     if (releasingOwnership || ownershipLost) return;
     ownershipLost = true;
@@ -71,6 +81,8 @@ export async function createPostgresDialect(connectionString: string): Promise<D
   }
 
   return new PostgresDialect({
+    // Cancellation must not wait for another connection from the same saturated pool.
+    controlClient: pg.Client,
     pool: {
       options: configuration,
       async connect() {
@@ -95,14 +107,6 @@ export async function createPostgresDialect(connectionString: string): Promise<D
           await owner.end();
         }
       },
-    },
-    onCreateConnection: async (connection) => {
-      assertOwner();
-      await connection.executeQuery(CompiledQuery.raw("SET search_path = public, pg_catalog"));
-      await connection.executeQuery(CompiledQuery.raw("SET TIME ZONE 'UTC'"));
-    },
-    onReserveConnection: async () => {
-      assertOwner();
     },
   });
 }

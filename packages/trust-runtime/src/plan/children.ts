@@ -322,9 +322,33 @@ export async function synchronizeChildren(input: {
       changed.add(slug);
     }
     for (const scenario of ordered) {
-      for (const invocation of revision.invocations.filter((value) => value.definition.scenario === scenario)) {
-        const state = await readComposition(database, slug);
-        const eligible = invocation.scenarioDependencies.every((value) => state.scenarios.has(value));
+      const invocations = revision.invocations.filter((value) => value.definition.scenario === scenario);
+      if (invocations.length === 0) continue;
+      // Every invocation in a scenario has the same prerequisites. They were visited first and cannot
+      // include this scenario, so visiting its children cannot change this prerequisite projection.
+      // Read again for the next scenario, and after the loop, to include this scenario's mutations.
+      const state = await readComposition(database, slug);
+      const dependencies = invocations[0]!.scenarioDependencies;
+      for (const invocation of invocations)
+        if (
+          invocation.scenarioDependencies.length !== dependencies.length ||
+          invocation.scenarioDependencies.some((value) => !dependencies.includes(value))
+        )
+          throw new Error(`Invocation ${invocation.id} does not share the prerequisites of scenario ${scenario}`);
+      const eligible = dependencies.every((value) => state.scenarios.has(value));
+      const prerequisiteChecks = revision.checks
+        .filter((value) => dependencies.includes(value.scenario))
+        .map((value) => activeMap.get(value.uri)?.activationDigest);
+      const prerequisiteChildren = await Promise.all(
+        state.invocations
+          .filter((value) => dependencies.includes(value.scenario))
+          .map(async (value) => ({
+            id: value.id,
+            generation: value.generation,
+            revision: value.childPlan ? (await plans.findPlan(value.childPlan))?.currentRevision : null,
+          })),
+      );
+      for (const invocation of invocations) {
         const history = await database
           .selectFrom("child_generations")
           .selectAll()
@@ -336,18 +360,8 @@ export async function synchronizeChildren(input: {
         const signatureInput = {
           definition: invocation.definition.procedureDigest,
           inputs: invocation.rootInputs,
-          checks: revision.checks
-            .filter((value) => invocation.scenarioDependencies.includes(value.scenario))
-            .map((value) => activeMap.get(value.uri)?.activationDigest),
-          children: await Promise.all(
-            state.invocations
-              .filter((value) => invocation.scenarioDependencies.includes(value.scenario))
-              .map(async (value) => ({
-                id: value.id,
-                generation: value.generation,
-                revision: value.childPlan ? (await plans.findPlan(value.childPlan))?.currentRevision : null,
-              })),
-          ),
+          checks: prerequisiteChecks,
+          children: prerequisiteChildren,
         };
         const signature = childInputFingerprint(signatureInput);
         if (current && (!eligible || current.comparison_fingerprint !== signature)) {

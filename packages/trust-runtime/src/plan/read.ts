@@ -40,7 +40,7 @@ import { ancestorBlocker, readComposition } from "./children.js";
 import type { EscalationStore } from "./escalation-store.js";
 import { completesPlanOnValidation } from "./intent.js";
 import type { PlanStore } from "./store.js";
-import { planReadTransaction, planTransaction, readTransaction, shareComposition } from "./transaction.js";
+import { planTransaction, readTransaction } from "./transaction.js";
 
 const DEFAULT_PROCEDURE_PAGE_SIZE = 49_152;
 const MAX_PROCEDURE_PAGE_SIZE = 65_536;
@@ -139,29 +139,39 @@ export class PlanReader {
   }
 
   async readPlanBySlug(planSlug: string, initializeIntent = false, access?: AccessContext): Promise<PlanView> {
-    // Only a Plan whose intent chain has not started needs the exclusive write path; every other read is shared.
     const pending = initializeIntent ? await this.#plans.findPlan(planSlug) : undefined;
-    const initializes = pending?.intentChaining === true && pending.intentChainState === "NOT_STARTED";
-    return (initializes ? planTransaction : planReadTransaction)(this.#database, planSlug, async (database) => {
+    if (pending?.intentChaining && pending.intentChainState === "NOT_STARTED") {
+      // Initialization is a mutation; neither authorization nor the response may prolong its exclusive lock.
+      await this.#authorizePlan(access, "plan.read", planSlug);
+      await planTransaction(this.#database, planSlug, async (database) => {
+        const reader = this.#using(database);
+        const plan = await reader.#plans.findPlan(planSlug);
+        if (plan?.intentChaining && plan.intentChainState === "NOT_STARTED") {
+          await reader.#plans.initializeIntent(
+            plan.slug,
+            `Follow Procedure "${plan.procedure}@${plan.procedureVersion}" for Plan "${plan.slug}"`,
+          );
+        }
+      });
+    }
+    return readTransaction(this.#database, async (database) => {
       const reader = this.#using(database);
       await reader.#authorizePlan(access, "plan.read", planSlug);
-      return reader.#readPlanBySlug(planSlug, initializeIntent);
+      return reader.#readPlanBySlug(planSlug);
     });
   }
 
   /** The live Plan view without its revision history and sessions, for surfaces that follow current progress. */
   async readLivePlanBySlug(planSlug: string, access?: AccessContext): Promise<PlanView> {
-    return planReadTransaction(this.#database, planSlug, async (database) => {
+    return readTransaction(this.#database, async (database) => {
       const reader = this.#using(database);
       await reader.#authorizePlan(access, "plan.read", planSlug);
-      return reader.#readPlanBySlug(planSlug, false, false);
+      return reader.#readPlanBySlug(planSlug, false);
     });
   }
 
   async readCheck(checkUri: string, access?: AccessContext): Promise<CheckView> {
-    await this.#authorizeCheck(access, "check.read", checkUri);
-    const { plan } = await this.#resolve(checkUri);
-    return planReadTransaction(this.#database, plan.slug, async (database) => {
+    return readTransaction(this.#database, async (database) => {
       const reader = this.#using(database);
       await reader.#authorizeCheck(access, "check.read", checkUri);
       return reader.#readCheck(checkUri);
@@ -169,13 +179,11 @@ export class PlanReader {
   }
 
   async readProcedure(input: ProcedureReadInput, access?: AccessContext): Promise<ProcedureReadView> {
+    if (!this.#scoped)
+      return readTransaction(this.#database, (database) => this.#using(database).readProcedure(input, access));
     this.#access.authorize(access, "procedure.read");
     await this.#authorizeCheck(access, "plan.read", input.checkUri);
     const { check, plan } = await this.#resolve(input.checkUri);
-    if (!this.#scoped)
-      return planReadTransaction(this.#database, plan.slug, (database) =>
-        this.#using(database).readProcedure(input, access),
-      );
     const revision = await this.#plans.readRevision(plan.slug, plan.currentRevision);
     if (!revision) {
       throw new ReadError("revision-not-found", `The active revision for Plan ${plan.slug} is unavailable`);
@@ -212,6 +220,9 @@ export class PlanReader {
     input: PlanListInput = {},
     access?: AccessContext,
   ): Promise<{ readonly plans: readonly PlanSummaryView[]; readonly nextCursor?: string }> {
+    if (!this.#scoped)
+      return readTransaction(this.#database, (database) => this.#using(database).listPlans(input, access));
+    // Page selection and every derived summary share the same database snapshot.
     const accessScope = this.#access.planScope(access, "plan.list");
     const creator = accessScope === "own" ? this.#access.principal(access) : null;
     const limit = listLimit(input.limit);
@@ -238,17 +249,11 @@ export class PlanReader {
         limit: limit + 1,
       });
       const plans = derived ? page : page.slice(0, limit);
-      // One read transaction for the page: parents and children share their lookups, readers never block readers.
-      const summaries = await readTransaction(this.#database, async (database) => {
-        const reader = this.#using(database);
-        const read = [];
-        for (const plan of plans) {
-          await shareComposition(database, plan.slug);
-          await reader.#authorizePlan(access, "plan.list", plan.slug);
-          read.push(await reader.#readPlanBySlug(plan.slug, false, false));
-        }
-        return read;
-      });
+      const summaries = [];
+      for (const plan of plans) {
+        await this.#authorizePlan(access, "plan.list", plan.slug);
+        summaries.push(await this.#readPlanBySlug(plan.slug, false));
+      }
       for (const view of summaries) {
         if (workState === undefined || view.workState === workState) matches.push(planSummary(view));
       }
@@ -328,20 +333,12 @@ export class PlanReader {
   }
 
   /** `history` false skips the revision history and sessions, which a list summary never shows. */
-  async #readPlanBySlug(planSlug: string, initializeIntent = false, history = true): Promise<PlanView> {
+  async #readPlanBySlug(planSlug: string, history = true): Promise<PlanView> {
     if (!this.#scoped)
-      return (initializeIntent ? planTransaction : planReadTransaction)(this.#database, planSlug, (database) =>
-        this.#using(database).#readPlanBySlug(planSlug, initializeIntent, history),
-      );
-    let plan = await this.#plans.findPlan(planSlug);
+      return readTransaction(this.#database, (database) => this.#using(database).#readPlanBySlug(planSlug, history));
+    const plan = await this.#plans.findPlan(planSlug);
     if (!plan) {
       throw new ReadError("plan-not-found", `Plan ${planSlug} is unavailable`);
-    }
-    if (initializeIntent && plan.intentChaining && plan.intentChainState === "NOT_STARTED") {
-      plan = await this.#plans.initializeIntent(
-        plan.slug,
-        `Follow Procedure "${plan.procedure}@${plan.procedureVersion}" for Plan "${plan.slug}"`,
-      );
     }
     const revision = await this.#plans.readRevision(plan.slug, plan.currentRevision);
     if (!revision) {
@@ -537,11 +534,11 @@ export class PlanReader {
   }
 
   async readDelegationEpisode(planSlug: string, access?: AccessContext): Promise<DelegationEpisodeView> {
-    await this.#authorizePlan(access, "plan.read", planSlug);
     if (!this.#scoped)
-      return planReadTransaction(this.#database, planSlug, (database) =>
+      return readTransaction(this.#database, (database) =>
         this.#using(database).readDelegationEpisode(planSlug, access),
       );
+    await this.#authorizePlan(access, "plan.read", planSlug);
     const root = await this.#readEpisodePlan(planSlug);
     const branches = await Promise.all(
       root.plan.invocations.map(async (invocation) => ({
@@ -554,7 +551,7 @@ export class PlanReader {
 
   /** An episode follows live progress: its Plan views omit the revision history and sessions (read the Plan for them). */
   async #readEpisodePlan(planSlug: string): Promise<DelegationEpisodePlanView> {
-    const plan = await this.#readPlanBySlug(planSlug, false, false);
+    const plan = await this.#readPlanBySlug(planSlug, false);
     const checks = await Promise.all(plan.checks.map((check) => this.#readCheck(check.checkUri)));
     return { plan, checks };
   }
@@ -566,7 +563,7 @@ export class PlanReader {
   }
 
   async readSessionBySlug(planSlug: string, access?: AccessContext): Promise<SessionView> {
-    const view = await planReadTransaction(this.#database, planSlug, async (database) => {
+    const view = await readTransaction(this.#database, async (database) => {
       const reader = this.#using(database);
       await reader.#authorizePlan(access, "session.read", planSlug);
       return reader.#readPlanBySlug(planSlug);
@@ -584,9 +581,8 @@ export class PlanReader {
   }
 
   async #readCheck(checkUri: string): Promise<CheckView> {
+    if (!this.#scoped) return readTransaction(this.#database, (database) => this.#using(database).#readCheck(checkUri));
     const { check, plan } = await this.#resolve(checkUri);
-    if (!this.#scoped)
-      return planReadTransaction(this.#database, plan.slug, (database) => this.#using(database).#readCheck(checkUri));
     const [
       history,
       activeQualifications,

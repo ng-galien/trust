@@ -8,6 +8,7 @@
 - An extension selects and bounds the Plans it lists (`GET /extensions/<extension>/trust/plans?procedure=&mode=&workState=&limit=`).
 - Controlled language for Procedure prose, with published vocabularies.
 - Legacy extensions retired; delegation goes through native TRUST missions.
+- Plan reads run in one read-only `REPEATABLE READ` snapshot instead of taking the shared composition lock: a suspended reader no longer blocks a writer, and the pool initializes each PostgreSQL connection before checkout so a failed initialization no longer keeps a connection taken. The child synchronization reads each scenario's prerequisites once.
 - The runtime and the Runner declare the MCP revisions they speak (2025-11-25, 2025-06-18, 2025-03-26): `initialize` answers with the requested revision when it is one of them and with 2025-11-25 otherwise; a request whose `MCP-Protocol-Version` header names another revision is refused with 400 and the list; `serverInfo` carries the package version.
 
 ### Operations and Procedures

@@ -16,6 +16,8 @@ env:
   GIT_AUTHOR_EMAIL: ci@trust.invalid
   GIT_COMMITTER_NAME: TRUST CI
   GIT_COMMITTER_EMAIL: ci@trust.invalid
+  # The PostgreSQL proofs create and drop disposable databases on the runner's own server (role below).
+  TRUST_ACCEPTANCE_POSTGRES_URL: postgresql://trust_ci:trust_ci@127.0.0.1:5432/postgres
 
 jobs:
   build-and-test:
@@ -41,6 +43,8 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends iverilog postgresql
           ls /usr/lib/postgresql
+          sudo systemctl start postgresql
+          sudo -u postgres psql -v ON_ERROR_STOP=1 -c "CREATE ROLE trust_ci SUPERUSER LOGIN PASSWORD 'trust_ci'"
 
       - name: Install dependencies
         run: npm ci

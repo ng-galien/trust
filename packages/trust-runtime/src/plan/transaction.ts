@@ -33,36 +33,16 @@ export async function planTransaction<T>(
   });
 }
 
-/**
- * Read one composition consistently without serializing readers: the shared lock waits for a writer of the
- * same root and excludes new writers until the read commits, while concurrent reads proceed together.
- */
-export async function planReadTransaction<T>(
-  database: Database,
-  plan: string,
-  work: (transaction: Database) => Promise<T>,
-): Promise<T> {
-  return readTransaction(database, async (transaction) => {
-    await shareComposition(transaction, plan);
-    return work(transaction);
-  });
-}
-
-/** A read-only transaction whose repeated lookups are shared; lock each composition with `shareComposition`. */
+/** All statements and cached lookups observe one committed database snapshot. */
 export async function readTransaction<T>(database: Database, work: (transaction: Database) => Promise<T>): Promise<T> {
-  return database.transaction().execute(async (transaction) => {
-    await sql`set transaction read only`.execute(transaction);
-    readScopes.set(transaction, new Map());
-    return work(transaction);
-  });
-}
-
-/** Take the shared lock of the composition that contains this Plan, for the rest of the read transaction. */
-export async function shareComposition(transaction: Database, plan: string): Promise<void> {
-  const root = await compositionRoot(transaction, plan);
-  await readOnce(transaction, `lock:${root}`, () =>
-    sql`select pg_advisory_xact_lock_shared(hashtextextended(${`trust.plan:${root}`}, 0))`.execute(transaction),
-  );
+  return database
+    .transaction()
+    .setIsolationLevel("repeatable read")
+    .setAccessMode("read only")
+    .execute(async (transaction) => {
+      readScopes.set(transaction, new Map());
+      return work(transaction);
+    });
 }
 
 async function compositionRoot(transaction: Database, plan: string): Promise<string> {
