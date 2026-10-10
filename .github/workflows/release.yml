@@ -1,0 +1,114 @@
+name: Publish npm and GitHub Release
+
+# Uses npm Trusted Publishing (OIDC): no NPM_TOKEN secret. One-time setup on npmjs.com: package
+# @ng-galien/trust → Settings → Trusted Publisher → GitHub Actions, repository ng-galien/trust,
+# workflow filename "release.yml".
+
+on:
+  push:
+    tags:
+      - "v*"
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  preflight:
+    name: Validate release contract
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Resolve and validate package version
+        id: version
+        run: |
+          VERSION="$(node -p "require('./package.json').version")"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          if [[ "$GITHUB_REF_NAME" != "v${VERSION}" ]]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match package version ${VERSION}"
+            exit 1
+          fi
+          git fetch origin main:refs/remotes/origin/main
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" refs/remotes/origin/main; then
+            echo "::error::Release tag $GITHUB_REF_NAME must point to a commit on main."
+            exit 1
+          fi
+          if ! grep -q "^## ${VERSION} " CHANGELOG.md; then
+            echo "::error::CHANGELOG.md has no section for ${VERSION}"
+            exit 1
+          fi
+
+  publish:
+    name: Publish @ng-galien/trust and create the release
+    needs: preflight
+    runs-on: ubuntu-latest
+    # id-token lets GitHub mint the OIDC token npm verifies against the trusted publisher configuration.
+    permissions:
+      contents: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24.10.0
+          cache: npm
+          registry-url: https://registry.npmjs.org
+
+      - name: Check npm publication
+        id: npm
+        env:
+          VERSION: ${{ needs.preflight.outputs.version }}
+        run: |
+          ERROR_FILE="$(mktemp)"
+          if npm view "@ng-galien/trust@${VERSION}" version >/dev/null 2>"$ERROR_FILE"; then
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+            echo "@ng-galien/trust@${VERSION} is already published; skipping npm publish."
+          elif grep -q "E404" "$ERROR_FILE"; then
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          else
+            cat "$ERROR_FILE" >&2
+            exit 1
+          fi
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Package the Runner skill
+        run: npm run package:skill
+
+      - name: Stage the npm package
+        run: |
+          npm run package:npm -- --output "$RUNNER_TEMP/npm"
+          cd "$RUNNER_TEMP/npm"
+          test ! -e operations
+          test "$(find . -name '*.feature' | wc -l)" -eq 0
+          npm pack --pack-destination "$RUNNER_TEMP"
+
+      - name: Publish
+        if: steps.npm.outputs.publish == 'true'
+        working-directory: ${{ runner.temp }}/npm
+        run: npm publish --access public --provenance
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.preflight.outputs.version }}
+        run: |
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            echo "GitHub Release $GITHUB_REF_NAME already exists."
+            exit 0
+          fi
+          awk -v v="## ${VERSION} " 'index($0, v) == 1 {f = 1; next} /^## / {f = 0} f' CHANGELOG.md > release-notes.md
+          printf "\nFull changelog: https://github.com/%s/blob/%s/CHANGELOG.md\n" "$GITHUB_REPOSITORY" "$GITHUB_REF_NAME" >> release-notes.md
+          gh release create "$GITHUB_REF_NAME" --verify-tag --title "TRUST ${VERSION}" --notes-file release-notes.md "$RUNNER_TEMP"/ng-galien-trust-*.tgz
