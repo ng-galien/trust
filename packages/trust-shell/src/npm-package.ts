@@ -94,6 +94,10 @@ export async function stageNpmPackage(checkout: TrustInstallation, output: strin
     version: shellManifest.version,
     description: "TRUST server, web interface, Runner and agent skills in one command",
     license: "MIT",
+    // npm provenance verifies that the published repository matches the GitHub Actions run that signs it.
+    repository: { type: "git", url: "git+https://github.com/ng-galien/trust.git" },
+    homepage: "https://github.com/ng-galien/trust#readme",
+    bugs: { url: "https://github.com/ng-galien/trust/issues" },
     type: "module",
     engines: { node: shellManifest.engines.node },
     bin: { trust: "bin/trust.js" },
