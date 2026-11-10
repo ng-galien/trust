@@ -699,7 +699,9 @@ Feature: Keep running until the Check limit stops the process
   test("finds a Shell executable through the runner additional path configuration", async () => {
     const workspaceRoot = await temporaryDirectory("trust-runner-path-workspace-");
     const executableRoot = await temporaryDirectory("trust-runner-path-bin-");
-    await symlink("/bin/echo", join(executableRoot, "trust-path-probe"));
+    await writeFile(join(executableRoot, "trust-path-probe"), "#!/bin/sh\nprintf '%s\\n' \"$1\"\n", {
+      mode: 0o755,
+    });
 
     const result = await runOperation(
       fixtureOperation("shell.additional-path.feature"),

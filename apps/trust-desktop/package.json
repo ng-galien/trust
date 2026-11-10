@@ -13,6 +13,6 @@
     "@trust/shell": "file:../../packages/trust-shell"
   },
   "devDependencies": {
-    "electron": "44.1.1"
+    "electron": "44.10.2"
   }
 }
